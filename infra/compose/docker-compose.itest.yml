@@ -1,0 +1,292 @@
+services:
+  # ============================================================================
+  # Infrastructure Services
+  # ============================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: atlas-itest-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - atlas-itest-postgres-data:/var/lib/postgresql/data
+      - ./config/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./postgres-fatal-monitor.sh:/usr/local/bin/postgres-fatal-monitor.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/postgres-fatal-monitor.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Database Migration & Seeding (One-shot services)
+  # ============================================================================
+
+  migrate:
+    image: rust:latest
+    container_name: atlas-itest-migrate
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    environment:
+      DATABASE_URL: ${CONTROL_PLANE_DB_URL}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
+    command: >
+      bash -c "
+        cd crates/control_plane_db &&
+        cargo run --bin migrate
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - atlas-itest-network
+    restart: on-failure
+
+  seed:
+    image: rust:latest
+    container_name: atlas-itest-seed
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    environment:
+      DATABASE_URL: ${CONTROL_PLANE_DB_URL}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
+    command: >
+      bash -c "
+        cd crates/control_plane_db &&
+        cargo run --bin seed
+      "
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - atlas-itest-network
+    restart: on-failure
+
+  # ============================================================================
+  # Application Services
+  # ============================================================================
+
+  control-plane:
+    build:
+      context: ../../
+      dockerfile: apps/control-plane/Dockerfile
+    container_name: atlas-itest-control-plane
+    environment:
+      PORT: ${CONTROL_PLANE_PORT}
+      DATABASE_URL: ${CONTROL_PLANE_DB_URL}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
+      RUST_LOG: ${RUST_LOG}
+    ports:
+      - "${CONTROL_PLANE_PORT}:${CONTROL_PLANE_PORT}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${CONTROL_PLANE_PORT}/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  ingress:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.ingress
+    container_name: atlas-itest-ingress
+    environment:
+      CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
+      TENANT_ID: ${TENANT_ID}
+      RUST_LOG: ${RUST_LOG}
+      METRICS_ADDR: ${METRICS_ADDR}
+    ports:
+      - "${INGRESS_PORT}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  workers:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.workers
+    container_name: atlas-itest-workers
+    environment:
+      CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
+      TENANT_ID: ${TENANT_ID}
+      RUST_LOG: ${RUST_LOG}
+    ports:
+      - "${WORKERS_METRICS_PORT}:9101"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9101/metrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Observability Stack
+  # ============================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: atlas-itest-prometheus
+    profiles: ["obs"]
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - atlas-itest-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: atlas-itest-grafana
+    profiles: ["obs"]
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - atlas-itest-grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./config/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: atlas-itest-loki
+    profiles: ["obs"]
+    ports:
+      - "${LOKI_PORT}:3100"
+    volumes:
+      - ./config/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - atlas-itest-loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: atlas-itest-promtail
+    profiles: ["obs"]
+    volumes:
+      - ./config/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Ops UI Dashboard
+  # ============================================================================
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: atlas-itest-dozzle
+    ports:
+      - "${DOZZLE_PORT}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DOZZLE_LEVEL: info
+      DOZZLE_TAILSIZE: 300
+      DOZZLE_FILTER: "name=atlas-itest-*"
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: atlas-itest-pgadmin
+    profiles: ["obs"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "${PGADMIN_PORT}:80"
+    volumes:
+      - atlas-itest-pgadmin-data:/var/lib/pgadmin
+      - ./config/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  atlas-itest-network:
+    driver: bridge
+    name: atlas-itest-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  atlas-itest-postgres-data:
+    name: atlas-itest-postgres-data
+  atlas-itest-grafana-data:
+    name: atlas-itest-grafana-data
+  atlas-itest-prometheus-data:
+    name: atlas-itest-prometheus-data
+  atlas-itest-loki-data:
+    name: atlas-itest-loki-data
+  atlas-itest-pgadmin-data:
+    name: atlas-itest-pgadmin-data

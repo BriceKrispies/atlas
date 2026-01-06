@@ -1,0 +1,57 @@
+# Multi-stage build for atlas-platform-ingress
+FROM rust:latest AS chef
+RUN cargo install cargo-chef
+WORKDIR /build
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
+COPY apps/ ./apps/
+COPY tools/ ./tools/
+COPY tests/ ./tests/
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+# Build dependencies - this layer is cached
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy source code
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
+COPY apps/ ./apps/
+COPY tools/ ./tools/
+COPY tests/ ./tests/
+
+# Build application
+RUN cargo build --release -p atlas-platform-ingress
+
+# Stage 2: Runtime - minimal Debian image
+FROM debian:trixie-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/ingress /usr/local/bin/ingress
+
+# Create non-root user
+RUN useradd -m -u 1000 atlas && \
+    chown -R atlas:atlas /usr/local/bin/ingress
+
+USER atlas
+
+# Expose ports
+EXPOSE 3000
+
+# Default environment variables
+ENV RUST_LOG=info
+ENV CONTROL_PLANE_ENABLED=true
+
+# Health check
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+CMD ["/usr/local/bin/ingress"]

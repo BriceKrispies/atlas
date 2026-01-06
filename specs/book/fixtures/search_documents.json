@@ -1,0 +1,60 @@
+{
+  "$comment": "Sample search documents demonstrating permission-aware indexing",
+  "documents": [
+    {
+      "documentType": "Page",
+      "documentId": "page-001",
+      "tenantId": "tenant-001",
+      "fields": {
+        "title": "Public Welcome Page",
+        "slug": "welcome",
+        "status": "published"
+      },
+      "resourceType": "Page",
+      "resourceId": "page-001",
+      "permissionAttributes": null,
+      "indexedAt": "2025-01-01T12:00:00.000Z",
+      "$comment": "No permissionAttributes means publicly accessible within tenant"
+    },
+    {
+      "documentType": "Page",
+      "documentId": "page-002",
+      "tenantId": "tenant-001",
+      "fields": {
+        "title": "Restricted Admin Page",
+        "slug": "admin-dashboard",
+        "status": "published"
+      },
+      "resourceType": "Page",
+      "resourceId": "page-002",
+      "permissionAttributes": {
+        "allowedPrincipals": ["principal-admin-1", "principal-admin-2"]
+      },
+      "indexedAt": "2025-01-01T12:01:00.000Z",
+      "$comment": "Only specified principals can view this document"
+    },
+    {
+      "documentType": "Page",
+      "documentId": "page-003",
+      "tenantId": "tenant-001",
+      "fields": {
+        "title": "User-Specific Dashboard",
+        "slug": "my-dashboard",
+        "status": "published"
+      },
+      "resourceType": "Page",
+      "resourceId": "page-003",
+      "permissionAttributes": {
+        "allowedPrincipals": ["principal-user-123"]
+      },
+      "indexedAt": "2025-01-01T12:02:00.000Z",
+      "$comment": "User-scoped document"
+    }
+  ],
+  "$invariants": {
+    "tenant_isolation": "Documents from different tenantIds MUST NOT appear in same search results",
+    "permission_filtering": "Search results MUST be filtered by permissionAttributes before returning to user",
+    "null_permissions_public": "Documents with null permissionAttributes are visible to all users within the tenant",
+    "explicit_principal_list": "permissionAttributes.allowedPrincipals is a whitelist; only listed principals can view"
+  }
+}

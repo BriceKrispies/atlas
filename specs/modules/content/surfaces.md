@@ -1,0 +1,111 @@
+# Content Module Surfaces
+
+## Announcements Widget
+
+- **Type:** Widget
+- **Plane:** End User (visibility) / Tenant Admin (configuration)
+- **Purpose:** Allow tenant admins to display arbitrary messages or files to end users
+- **Actors & Permissions:**
+  - Tenant Admin: configure widget content (message text or file selection)
+  - End Users: view announcements (read-only)
+- **Inputs:**
+  - Configuration (admin): announcement message (plain text or rich text) OR file selection from media library
+  - Optional: visibility rules (show to all users, specific business units, etc.)
+- **Outputs:**
+  - Display of announcement content (text or file) to end users
+  - Visual rendering appropriate for content type (image display, PDF preview, etc.)
+- **Owned Data:**
+  - Widget configuration table (widget_instance_id, content_type, message_text OR file_id, tenant_id)
+- **Dependencies:**
+  - **modules/content/media** — if displaying file, retrieves from media library
+  - **modules/org** — if targeting specific business units (possibly)
+- **Rules / Invariants:**
+  - Widget can display either message text OR file, not both simultaneously (or both?)
+  - Content is tenant-scoped
+  - Widget configuration is per-instance (different announcements on different pages)
+  - File must be accessible (private files visible to tenant users, public files visible to all)
+- **Edge Cases:**
+  - File selected but later deleted from media library
+  - File toggled to private but widget is on public page
+  - Very large text message (truncation or scrolling?)
+  - Unsupported file type (how is it rendered?)
+  - Multiple announcements on same page (priority or ordering?)
+- **Acceptance Scenarios:**
+  - Admin configures widget to show text message "Welcome to the new portal!"
+  - Admin configures widget to display banner image from media library
+  - Admin updates announcement content and changes are immediately visible
+  - End users see announcement when visiting page with widget
+  - Widget displays image inline, PDF with preview, video with player
+- **TODO / Open Questions:**
+  - Can widget show both text and file simultaneously?
+  - Is there scheduling (show announcement during date range)?
+  - Can announcements be dismissed by users?
+  - Are announcements targeted by business unit or role?
+  - Is there a history of past announcements?
+  - Can there be multiple active announcements (carousel or list)?
+  - What happens if linked file is deleted or made private?
+
+---
+
+## Media Library Page
+
+- **Type:** Page
+- **Plane:** End User (possibly) / Tenant Admin (management)
+- **Purpose:** Allow users to upload, view, search, and categorize files; admin can toggle file privacy and manage categories
+- **Actors & Permissions:**
+  - Tenant Admin: upload files, toggle privacy, manage categories, delete files
+  - End Users: upload files (?), view files they have access to
+- **Inputs:**
+  - File uploads (any file type)
+  - Privacy toggle (private ↔ public)
+  - Category assignment (from admin-defined categories)
+  - Search queries (filename, category, date range)
+- **Outputs:**
+  - Paginated grid or list of files
+  - File preview/display (inline for images, download link for others)
+  - Public URL for public files
+  - Search results
+  - Category filter results
+- **Owned Data:**
+  - Files table (file_id, filename, mime_type, size, uploader_id, uploaded_at, privacy_status, public_url, tenant_id)
+  - File categories table (category_id, category_name, tenant_id)
+  - File-to-category associations (file_id, category_id)
+- **Dependencies:**
+  - File storage backend (S3, etc.)
+  - CDN for public file URLs
+- **Rules / Invariants:**
+  - Files are private by default
+  - Public files have stable URLs that return placeholder if toggled back to private
+  - Only admin can toggle privacy status
+  - Categories are defined by admin, applied by users
+  - Files are tenant-scoped (cannot see other tenant's files)
+  - Page makes "best attempt" to display file based on MIME type
+- **Edge Cases:**
+  - Very large file uploads (size limit enforcement)
+  - Unsupported MIME types (fallback to download link)
+  - File with malicious content (security scanning?)
+  - Public file accessed after being toggled to private (placeholder rendering)
+  - Category deleted (what happens to files in that category?)
+  - Search with no results
+  - Public URL collision (two tenants, same filename)
+- **Acceptance Scenarios:**
+  - User uploads image file, sees thumbnail preview in library
+  - Admin assigns file to "Marketing Assets" category
+  - Admin toggles file to public, receives public URL, can link it anywhere
+  - Public file embedded on website loads correctly
+  - Admin toggles file back to private, public URL now shows placeholder image/message
+  - User searches for "logo" and finds all files with "logo" in filename
+  - User filters by category "Brand Guidelines" and sees only those files
+  - Page displays images inline, shows PDF previews, provides download for ZIP files
+- **TODO / Open Questions:**
+  - Can non-admin end users upload files? If so, what permissions?
+  - What is the file size limit?
+  - Are there allowed/blocked file types?
+  - Is there virus/malware scanning on upload?
+  - Can files be replaced/versioned (keep old versions)?
+  - Can files be deleted, or only toggled private?
+  - What exactly is the placeholder? (image with dimensions? generic message? 404 with special handling?)
+  - Does placeholder preserve original file dimensions to prevent layout shifts?
+  - Is there a bulk upload feature?
+  - Can files be tagged or have metadata beyond categories?
+  - Is there access control beyond public/private (e.g., specific business units)?

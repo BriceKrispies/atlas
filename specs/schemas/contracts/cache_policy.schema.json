@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/cache-policy.v1.json",
+  "title": "CacheArtifactDescriptor",
+  "description": "Cache artifact policy and invalidation rules",
+  "type": "object",
+  "required": ["artifactId", "varyBy", "ttlSeconds", "tags", "privacy"],
+  "additionalProperties": false,
+  "properties": {
+    "artifactId": {
+      "type": "string",
+      "description": "Unique cache artifact identifier",
+      "minLength": 1
+    },
+    "varyBy": {
+      "type": "array",
+      "description": "Dimensions by which cache entries vary",
+      "items": {
+        "type": "string",
+        "enum": ["TENANT", "LOCALE", "ROLE", "USER", "ABAC_CONTEXT", "NONE"]
+      },
+      "uniqueItems": true
+    },
+    "ttlSeconds": {
+      "type": "integer",
+      "description": "Time-to-live in seconds",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "tags": {
+      "type": "array",
+      "description": "Invalidation tags (may include template variables like {tenantId})",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "privacy": {
+      "type": "string",
+      "description": "Privacy level for cache safety enforcement",
+      "enum": ["PUBLIC", "TENANT", "USER", "ROLE_SCOPED"]
+    }
+  },
+  "$defs": {
+    "cacheKeyConvention": {
+      "description": "Cache key format: {tenantId}:{artifactKind}:{artifactId}:{varyHash}:{versionToken}",
+      "type": "string",
+      "pattern": "^[^:]+:[^:]+:[^:]+(?::[^:]+)?(?::[^:]+)?$"
+    },
+    "invalidationMechanisms": {
+      "type": "string",
+      "enum": ["invalidateTags", "bumpVersionToken"]
+    },
+    "stampedeProtectionStrategy": {
+      "type": "string",
+      "enum": ["singleflight", "soft_ttl_background_refresh", "lock_with_timeout"]
+    }
+  }
+}

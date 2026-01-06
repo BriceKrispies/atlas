@@ -1,0 +1,55 @@
+# Organization Module Surfaces
+
+## Business Unit Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to create and manage business units, which are collections of users and/or other business units, making them globally available for use by other widgets and features
+- **Actors & Permissions:**
+  - Tenant Admin: full CRUD access to business units within their tenant
+- **Inputs:**
+  - Business unit name and description
+  - User search queries: username pattern, role filter, custom criteria
+  - User selections (individual or bulk)
+  - Business unit selections (for nesting)
+- **Outputs:**
+  - List of all business units for the tenant
+  - Business unit detail view showing members (users and nested units)
+  - Search results for users to add
+  - Confirmation of add/remove operations
+- **Owned Data:**
+  - Business units table (name, description, parent_unit_id, tenant_id, created_at)
+  - Business unit membership table (business_unit_id, user_id OR child_business_unit_id, tenant_id)
+- **Dependencies:**
+  - User directory for search functionality
+  - Role system for "all users in this role" queries
+- **Rules / Invariants:**
+  - Business unit names must be unique within a tenant
+  - Users can belong to multiple business units
+  - Business units can contain other business units (nesting)
+  - All business units and memberships are tenant-scoped
+  - Removing a business unit should handle dependent configurations gracefully
+- **Edge Cases:**
+  - Circular nesting (unit A contains unit B contains unit A)
+  - Deep nesting (performance impact on membership resolution)
+  - Deleting a business unit that is referenced by messaging widget config, badge rules, etc.
+  - Adding all users in a role (what if role membership changes later?)
+  - User deleted from system but still in business unit membership
+  - Empty business unit (no members)
+- **Acceptance Scenarios:**
+  - Admin creates business unit "Sales Team" and adds 10 users individually
+  - Admin searches for "all users with 'manager' in username" and adds them in bulk to "Management" business unit
+  - Admin searches for "all users in role 'Engineer'" and adds them to "Engineering" business unit
+  - Admin creates nested structure: "Company" contains "Sales Team" and "Engineering Team"
+  - Admin removes user from business unit
+  - Admin deletes business unit (with warning if referenced elsewhere)
+  - Business units are available for selection in messaging widget configuration
+- **TODO / Open Questions:**
+  - What is the exact search syntax or UI for "all users with this in username" or "all users in this role"?
+  - Are these searches saved as dynamic queries (membership auto-updates) or snapshots (static list)?
+  - If dynamic, how is membership recalculated? (on-demand, scheduled, or real-time?)
+  - Can business units have metadata or custom fields?
+  - Is there a bulk import for business unit membership (via CSV)?
+  - How deep can nesting go?
+  - Is there a visualization for business unit hierarchy?
+  - What is the UI pattern for "seamless" user search and addition?

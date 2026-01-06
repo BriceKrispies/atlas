@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm spec:check:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm install)",
+      "Bash(timeout 3 node:*)",
+      "Bash(exit 0)",
+      "Bash(ls:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo run:*)",
+      "Bash(timeout 3 cargo run:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker-compose:*)",
+      "Bash(make db-migrate:*)",
+      "Bash(make db-seed:*)",
+      "Bash(docker exec:*)",
+      "Bash(curl:*)",
+      "Bash(cargo clean:*)",
+      "Bash(cargo check:*)",
+      "Bash(cat:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(make itest-up:*)",
+      "Bash(make itest-down:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker run:*)",
+      "Bash(printf '#!/bin/sh\\\\n# Monitor PostgreSQL logs and exit container on FATAL errors\\\\n\\\\n# Use stdbuf to disable buffering for immediate log output\\\\n/usr/local/bin/docker-entrypoint.sh postgres 2>&1 | stdbuf -oL -eL grep --line-buffered -E \"\".*\"\" | while IFS= read -r line; do\\\\n    echo \"\"$line\"\"\\\\n    if echo \"\"$line\"\" | grep -q \"\"FATAL:\"\"; then\\\\n        echo \"\"FATAL error detected - exiting container\"\"\\\\n        killall postgres\\\\n        exit 1\\\\n    fi\\\\ndone\\\\n\\\\nexit $?\\\\n')",
+      "Bash(git config core.autocrlf)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker compose:*)"
+    ]
+  }
+}

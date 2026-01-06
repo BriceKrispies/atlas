@@ -1,0 +1,23 @@
+[package]
+name = "atlas-platform-workers"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "workers"
+path = "src/main.rs"
+
+[dependencies]
+atlas-core.workspace = true
+atlas-platform-runtime.workspace = true
+atlas-platform-adapters.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+prometheus.workspace = true
+lazy_static.workspace = true
+axum.workspace = true
+
+[dev-dependencies]

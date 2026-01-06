@@ -1,0 +1,141 @@
+# Communications Module Surfaces
+
+## Email Templates Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to create, save, edit, and manage reusable email templates that can be used by other parts of the system when sending emails
+- **Actors & Permissions:**
+  - Tenant Admin: full CRUD access to email templates within their tenant
+- **Inputs:**
+  - Template name
+  - Email subject (may contain tokens)
+  - Email body (HTML and/or plain text, may contain tokens)
+  - Optional: category, description, variables/placeholders documentation
+- **Outputs:**
+  - List of all email templates for the tenant
+  - Template preview with token placeholders visible
+  - Template editor interface
+- **Owned Data:**
+  - Email templates table (name, subject, body_html, body_plain, tenant_id, created_at, updated_at)
+- **Dependencies:**
+  - **modules/tokens** — templates embed tokens that are evaluated at send time
+- **Rules / Invariants:**
+  - Template names must be unique within a tenant
+  - Templates can contain arbitrary token placeholders
+  - Tokens are not evaluated until email send time
+  - Templates are reusable across multiple email sends
+- **Edge Cases:**
+  - Deleting a template that is currently referenced by badge rules or other config
+  - Token in template no longer exists when email is sent
+  - Template references tokens that fail to evaluate
+  - Large HTML templates (size limits?)
+- **Acceptance Scenarios:**
+  - Admin creates template "Welcome Email" with subject "Welcome to [site_url]" and body containing `[current_user_points]` token
+  - Admin edits existing template and saves changes
+  - Admin previews template with token placeholders shown as `[token_name]`
+  - Admin deletes unused template
+  - System prevents duplicate template names
+  - Template can be selected by other modules (badges, etc.) when configuring email sends
+- **TODO / Open Questions:**
+  - Is there a template preview with sample token evaluation?
+  - Can admins test-send templates to themselves?
+  - Are templates versioned (keep history of changes)?
+  - Is there a template gallery or just a simple list?
+  - Can templates be duplicated?
+  - Are there default/system templates provided out of the box?
+
+---
+
+## Messaging Widget
+
+- **Type:** Widget
+- **Plane:** End User (visibility) / Tenant Admin (configuration)
+- **Purpose:** Allow arbitrary configuration of who can send and view messages for business units in the system
+- **Actors & Permissions:**
+  - Tenant Admin: configure widget (which business units can send/view)
+  - End Users: send/view messages based on widget configuration and business unit membership
+- **Inputs:**
+  - Configuration (admin): business unit send permissions, business unit view permissions
+  - User interaction: message content, recipient business unit
+- **Outputs:**
+  - Message feed/inbox for authorized users
+  - Send confirmation
+  - Real-time or polled message updates
+- **Owned Data:**
+  - Messages table (content, sender_id, recipient_business_unit_id, timestamp, tenant_id)
+  - Widget configuration table (instance_id, send_allowed_business_units, view_allowed_business_units, tenant_id)
+- **Dependencies:**
+  - **modules/org** — resolve business units and check user membership
+- **Rules / Invariants:**
+  - User can only send messages if they belong to a business unit with send permission
+  - User can only view messages sent to business units they have view permission for
+  - Messages are scoped to tenant
+  - Widget configuration is per-instance (multiple widgets can have different configs)
+- **Edge Cases:**
+  - User removed from business unit loses access to messages
+  - Business unit deleted (what happens to historical messages?)
+  - Empty business unit (no members to receive message)
+  - User belongs to multiple business units (can send as which unit?)
+  - Nested business units (do permissions inherit?)
+- **Acceptance Scenarios:**
+  - Admin configures widget to allow "Sales" business unit to send, "All Employees" to view
+  - User in "Sales" composes and sends message to "All Employees"
+  - Users in "All Employees" see the message in their widget
+  - User not in "Sales" cannot send messages
+  - User not in "All Employees" cannot see messages
+  - Multiple widget instances configured differently on different pages
+- **TODO / Open Questions:**
+  - Is messaging one-to-many (broadcast to business unit) or one-to-one?
+  - Can users reply to messages, or is it announcement-style only?
+  - Are messages threaded or flat chronological list?
+  - Is there message search or filtering?
+  - Are there read receipts or read status tracking?
+  - Can messages be edited or deleted after sending?
+  - Can messages include attachments or rich media?
+  - What is the exact permission model? (read vs. send, per-business-unit or global?)
+  - Do nested business units (business unit contains other business units) affect messaging permissions?
+
+---
+
+## Email Notifications Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Show all emails that have been sent within the system, track delivery status, and provide searchability for troubleshooting and audit
+- **Actors & Permissions:**
+  - Tenant Admin: read-only access to all email notifications within their tenant
+- **Inputs:**
+  - Search filters: recipient email, subject, content, date range, status
+- **Outputs:**
+  - Paginated list of sent emails with metadata
+  - Email details view (from, to, subject, timestamp, status, body preview)
+- **Owned Data:**
+  - Email notifications history table (from_address, to_address, subject, body, sent_at, status, tenant_id, template_id)
+- **Dependencies:**
+  - Email delivery service (for status updates)
+  - **modules/tokens** — emails were rendered with tokens, but this page shows final rendered output
+- **Rules / Invariants:**
+  - All emails sent by the system are recorded
+  - History is immutable (cannot delete or edit sent emails)
+  - Status updates arrive asynchronously from email delivery service
+  - Searchable by email address, subject, and content
+- **Edge Cases:**
+  - Email stuck in "sending" status (delivery service down)
+  - Bounce or failure status (how is it displayed?)
+  - Very large email bodies (truncate in list view?)
+  - High volume of emails (pagination performance)
+- **Acceptance Scenarios:**
+  - Admin views list of all emails sent in the last 7 days
+  - Admin searches for emails sent to a specific user
+  - Admin filters by status "delivered" vs. "failed"
+  - Admin clicks email to see full details (subject, body, timestamp, status)
+  - Admin sees which template was used (if applicable)
+  - Status updates from "sent" to "delivered" or "bounced" over time
+- **TODO / Open Questions:**
+  - What statuses are tracked? (sent, delivered, opened, clicked, bounced, failed?)
+  - Is there email retry logic visible on this page?
+  - Can admins resend failed emails?
+  - Is there export functionality (CSV, etc.)?
+  - Are email bodies stored in full or truncated?
+  - Is there PII concern with storing email content?

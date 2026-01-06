@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Atlas Platform Control Plane",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "control_plane",
+      "Username": "atlas_platform",
+      "SSLMode": "prefer"
+    }
+  }
+}

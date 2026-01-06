@@ -1,0 +1,78 @@
+# Import Module Surfaces
+
+## Spreadsheet Uploader Widget
+
+- **Type:** Widget
+- **Plane:** Tenant Admin (likely, possibly End User for specific use cases)
+- **Purpose:** Allow users to upload spreadsheets (CSV or XLSX) with configurable validation rules, dry-run preview, and bulk intent generation
+- **Actors & Permissions:**
+  - Tenant Admin: configure widget, upload spreadsheets, commit imports
+  - Possibly End User: upload spreadsheets for approved workflows (not specified)
+- **Inputs:**
+  - Spreadsheet file upload (CSV or XLSX)
+  - Widget configuration: column definitions, validation rules, action to perform
+  - Commit action (after reviewing dry-run results)
+- **Outputs:**
+  - Validation results: errors, warnings, row-by-row feedback
+  - Dry-run preview: what will happen if committed
+  - Commit confirmation and success/failure summary
+  - Upload history list
+- **Owned Data:**
+  - Uploads table (upload_id, filename, uploader_id, uploaded_at, status, validation_results_json, tenant_id)
+  - Widget configuration table (widget_instance_id, column_definitions, validation_rules, action_type, tenant_id)
+  - Upload history table (upload_id, row_count, success_count, error_count, committed_at, tenant_id)
+- **Dependencies:**
+  - **modules/points** — example: bulk award points
+  - **User management** — example: bulk create users
+  - **modules/audit** — records intents for each row processed
+  - File parsing library for CSV/XLSX
+- **Rules / Invariants:**
+  - Widget must be configured before accepting uploads
+  - Validation runs immediately on upload (dry-run mode)
+  - User cannot commit until validation passes (or only valid rows are committed?)
+  - Each committed row generates at least one intent
+  - All uploads are logged in history regardless of commit status
+  - Uploads are tenant-scoped
+- **Edge Cases:**
+  - Malformed CSV/XLSX (fails to parse)
+  - Very large files (thousands of rows, async processing needed?)
+  - Duplicate data in spreadsheet (how to handle?)
+  - Referenced entities no longer exist at commit time (user deleted between upload and commit)
+  - Partial commit (some rows succeed, some fail)
+  - Concurrent uploads by different admins
+  - Widget misconfigured (missing column definitions)
+  - Empty spreadsheet or spreadsheet with only headers
+- **Acceptance Scenarios:**
+  - **Bulk Point Awards Example:**
+    - Admin configures widget: columns = [username, points], action = "award points"
+    - Admin uploads CSV with columns: username, points
+    - Widget validates: usernames exist, points are positive integers
+    - Admin sees dry-run results: "100 rows, 95 valid, 5 errors (user not found)"
+    - Admin reviews errors, fixes CSV, re-uploads
+    - All rows valid, admin clicks "Commit"
+    - Widget awards points to each user, generates 100 "points_awarded" intents
+    - Admin sees success summary: "100 points awarded"
+  - **Bulk User Creation Example:**
+    - Admin configures widget: columns = [username, email, role], action = "create user"
+    - Admin uploads XLSX with user data
+    - Widget validates: usernames unique, emails valid format, roles exist
+    - Admin sees dry-run: "50 rows, 48 valid, 2 errors (duplicate username, invalid email)"
+    - Admin commits, 48 users created
+    - Upload history records: "48 created, 2 failed"
+  - **Upload History:**
+    - Admin views past uploads with status, row counts, timestamp
+    - Admin clicks upload to see detailed validation results
+    - Admin can re-download original file
+- **TODO / Open Questions:**
+  - Is this widget admin-only, or can end users use it for specific workflows?
+  - What is the exact configuration UI? (form builder, JSON editor, presets?)
+  - Are there built-in configurations (point awards, user creation), or is it fully custom?
+  - Can widget be configured to allow partial commits (skip errors, commit valid rows)?
+  - Is there row-level error detail in the UI (e.g., "Row 23: user 'jdoe' not found")?
+  - Can admins download validation results as annotated CSV?
+  - What is the maximum file size or row count?
+  - Is processing synchronous or async? (Async if large files)
+  - Can imports be rolled back after commit?
+  - Are there notifications when async imports complete?
+  - Is the widget configuration per-instance or global per-tenant?
+  - Can admins test validation rules before uploading real data?

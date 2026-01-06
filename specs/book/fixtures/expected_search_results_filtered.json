@@ -1,0 +1,40 @@
+{
+  "$comment": "Expected search results for principal-user-123 searching 'Dashboard'. Only page-003 is returned because permissionAttributes filtering.",
+  "documents": [
+    {
+      "documentId": "page-003",
+      "documentType": "Page",
+      "fields": {
+        "title": "User-Specific Dashboard",
+        "slug": "my-dashboard",
+        "status": "published"
+      },
+      "highlights": {
+        "title": "User-Specific <mark>Dashboard</mark>"
+      }
+    }
+  ],
+  "total": 1,
+  "facets": null,
+  "$explanation": {
+    "matched_documents": [
+      {
+        "documentId": "page-002",
+        "title": "Restricted Admin Page",
+        "matched_text": true,
+        "filtered_out_reason": "permissionAttributes.allowedPrincipals does not include principal-user-123"
+      },
+      {
+        "documentId": "page-003",
+        "title": "User-Specific Dashboard",
+        "matched_text": true,
+        "included_reason": "permissionAttributes.allowedPrincipals includes principal-user-123"
+      }
+    ]
+  },
+  "$invariants": {
+    "permission_enforcement": "MUST NOT return documents where principalId is not in allowedPrincipals",
+    "tenant_isolation": "MUST NOT return documents from other tenants",
+    "deterministic_filtering": "Same query with same principal always returns same results (given same index state)"
+  }
+}

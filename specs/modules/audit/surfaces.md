@@ -1,0 +1,52 @@
+# Audit Module Surfaces
+
+## Intents History Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin (possibly End User with limited scope)
+- **Purpose:** Display a filterable, read-only list of all user intents (activities) within the system for audit and troubleshooting
+- **Actors & Permissions:**
+  - Tenant Admin: view all intents within their tenant
+  - End User: possibly view their own intents only (not specified)
+- **Inputs:**
+  - Filter criteria: intent type, user, date range, keyword search
+  - Pagination controls
+- **Outputs:**
+  - Paginated list of intents with key details (type, actor, timestamp, summary)
+  - Intent detail view (full context/payload)
+  - Export functionality (possibly)
+- **Owned Data:**
+  - Intents table (intent_id, intent_type, actor_id, timestamp, context_json, tenant_id)
+- **Dependencies:**
+  - All modules that emit intents (every module in the system)
+- **Rules / Invariants:**
+  - Intent history is read-only (cannot edit or delete)
+  - All intents are tenant-scoped
+  - Intents are displayed in chronological order (newest first, typically)
+  - High write volume requires efficient storage and indexing
+  - Filters must perform well even with millions of records
+- **Edge Cases:**
+  - Very high volume of intents (millions of records, pagination performance)
+  - Complex filter combinations (multiple criteria, full-text search)
+  - Intent types not recognized by UI (graceful degradation)
+  - Missing or malformed context data in intents
+  - User deleted but intents reference their ID (display "Unknown User"?)
+  - Export of very large result sets (timeout, async job?)
+- **Acceptance Scenarios:**
+  - Admin views all intents from last 7 days
+  - Admin filters to show only "badge_awarded" intents
+  - Admin searches for all intents by a specific user
+  - Admin clicks intent to see full details (JSON payload)
+  - Admin exports filtered intent list to CSV
+  - Intent details include: type, user, timestamp, relevant context (e.g., "Badge: Gold Star, Points: 100")
+  - Page loads quickly even with thousands of intents
+- **TODO / Open Questions:**
+  - Can end users view their own intent history, or is this admin-only?
+  - What level of detail is shown in the list view vs. detail view?
+  - Is there full-text search across intent context/payload?
+  - Are intents grouped or categorized in any way (by module, by type)?
+  - Is there a retention policy, or are intents kept forever?
+  - Can intents be exported? If so, what format (CSV, JSON)?
+  - Are there aggregate views or analytics (e.g., "top intent types", "user activity heatmap")?
+  - How are intent types displayed to users (raw names like "badge_awarded" or human-friendly labels)?
+  - Is there real-time updating (live tail of intents) or manual refresh?

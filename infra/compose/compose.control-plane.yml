@@ -1,0 +1,122 @@
+# Control Plane Database - Postgres + pgAdmin
+# Compatible with both podman-compose (default) and docker-compose
+# Usage:
+#   make db-up              # Uses docker-compose by default
+#   CONTAINER_RUNTIME=docker make db-up  # Uses docker-compose
+#
+# Access:
+#   Postgres: localhost:5432
+#   pgAdmin:  http://localhost:5050
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: atlas-platform-control-plane-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-control_plane}
+      POSTGRES_USER: ${POSTGRES_USER:-atlas_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas_platform} -d ${POSTGRES_DB:-control_plane}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - control_plane_network
+
+  migrate:
+    image: rust:latest
+    container_name: atlas-platform-migrate
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    environment:
+      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+    command: >
+      bash -c "
+      cargo run -p atlas-platform-control-plane-db --bin migrate
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - control_plane_network
+    profiles:
+      - tools
+
+  seed:
+    image: rust:latest
+    container_name: atlas-platform-seed
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    environment:
+      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+    command: >
+      bash -c "
+      cargo run -p atlas-platform-control-plane-db --bin seed
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - control_plane_network
+    profiles:
+      - tools
+
+  control-plane:
+    build:
+      context: ../../
+      dockerfile: apps/control-plane/Dockerfile
+    container_name: atlas-platform-control-plane
+    environment:
+      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+      PORT: 8000
+      RUST_LOG: info
+      ENVIRONMENT: dev
+      DEV_DB_HOST: postgres
+      DEV_DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-atlas_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - control_plane_network
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: atlas-platform-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      - postgres
+    networks:
+      - control_plane_network
+    restart: unless-stopped
+    profiles:
+      - tools
+
+networks:
+  control_plane_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  pgadmin_data:

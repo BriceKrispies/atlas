@@ -1,0 +1,53 @@
+# Points Module Surfaces
+
+## Points Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to define and configure the point system, including setting the monetary value per point
+- **Actors & Permissions:**
+  - Tenant Admin: configure point system, view point statistics, possibly adjust user balances
+- **Inputs:**
+  - Monetary value per point (e.g., "1 point = $0.50")
+  - Possibly: manual point adjustments (award/deduct points for specific users)
+- **Outputs:**
+  - Current point system configuration display
+  - Point statistics (total points awarded, top earners, etc.)
+  - Confirmation of configuration changes
+  - Manual adjustment confirmation
+- **Owned Data:**
+  - Point configuration table (points_per_dollar OR dollars_per_point, tenant_id, updated_at)
+  - User point balances table (user_id, balance, tenant_id)
+  - Point transactions table (user_id, amount, reason, source, timestamp, tenant_id)
+- **Dependencies:**
+  - **modules/badges** — badges award points, so badge history ties into point transactions
+  - **modules/import** — spreadsheet uploads may award points in bulk
+- **Rules / Invariants:**
+  - Default value is 1 point ≈ 50 cents ($0.50)
+  - Value can be changed by admin and applies tenant-wide
+  - Point balances are non-negative (unless deductions are supported)
+  - All point transactions are logged
+  - Configuration changes do not retroactively alter earned points
+- **Edge Cases:**
+  - Setting monetary value to 0 or negative (validation)
+  - Very large point balances (display formatting)
+  - Concurrent point awards to same user (race conditions)
+  - Manual adjustment creating negative balance (if allowed)
+  - Changing monetary value after significant points already awarded (user expectations)
+- **Acceptance Scenarios:**
+  - Admin views current configuration: "1 point = $0.50"
+  - Admin changes value to "1 point = $0.25" and saves
+  - Admin views total points awarded across all users: 10,000 points
+  - Admin sees leaderboard of top 10 point earners
+  - Admin manually awards 100 points to a specific user with reason "Contest winner"
+  - Point transaction is logged and user's balance increases
+  - Tokens like `[current_user_points]` reflect updated balances
+- **TODO / Open Questions:**
+  - Can admin manually award or deduct points? Or is that only via badges/imports?
+  - Is the monetary value purely informational (display only) or tied to payouts?
+  - Are there reports on point distribution, trends, or analytics?
+  - Can points be archived or reset (e.g., yearly reset)?
+  - Is there a point redemption or spending mechanism?
+  - How granular is the monetary value? (cents only, or fractional cents?)
+  - What is the UI for the configuration page? (single input field, or more complex settings?)
+  - Are there notifications when users earn points?

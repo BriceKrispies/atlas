@@ -1,0 +1,53 @@
+{
+  "$comment": "Sample analytics events recorded from domain events",
+  "events": [
+    {
+      "eventId": "analytics-001",
+      "eventType": "ContentPages.page_created",
+      "tenantId": "tenant-001",
+      "dimensions": {
+        "eventType": "ContentPages.PageCreated",
+        "status": "draft"
+      },
+      "metrics": {
+        "count": 1
+      },
+      "timestamp": "2025-01-01T12:00:00.000Z",
+      "schemaId": "analytics.contentpages.page_created.v1"
+    },
+    {
+      "eventId": "analytics-002",
+      "eventType": "ContentPages.page_created",
+      "tenantId": "tenant-001",
+      "dimensions": {
+        "eventType": "ContentPages.PageCreated",
+        "status": "published"
+      },
+      "metrics": {
+        "count": 1
+      },
+      "timestamp": "2025-01-01T12:05:00.000Z",
+      "schemaId": "analytics.contentpages.page_created.v1"
+    },
+    {
+      "eventId": "analytics-003",
+      "eventType": "ContentPages.widget_added",
+      "tenantId": "tenant-001",
+      "dimensions": {
+        "eventType": "ContentPages.WidgetInstanceAdded",
+        "widgetTypeId": "text-widget"
+      },
+      "metrics": {
+        "count": 1
+      },
+      "timestamp": "2025-01-01T12:10:00.000Z",
+      "schemaId": "analytics.contentpages.widget_added.v1"
+    }
+  ],
+  "$invariants": {
+    "tenant_scoped": "Analytics events MUST be scoped to tenantId",
+    "deterministic_bucketing": "Events are bucketed by timestamp + bucketSize deterministically",
+    "dimension_immutability": "Dimensions are extracted from domain events and immutable",
+    "metric_aggregation": "Metrics are aggregated within each bucket (time + dimensions)"
+  }
+}

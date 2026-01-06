@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.dev/schemas/analytics_event.v1.json",
+  "title": "AnalyticsEvent",
+  "description": "Analytics event derived from domain events for time-series aggregation",
+  "type": "object",
+  "required": ["eventId", "eventType", "tenantId", "dimensions", "metrics", "timestamp", "schemaId"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this analytics event"
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Type of event being tracked"
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant this event belongs to (MUST be set for tenant isolation)"
+    },
+    "dimensions": {
+      "type": "object",
+      "description": "Dimension values for grouping (e.g., status, widgetTypeId)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Metric values to aggregate (e.g., count, duration)",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "minProperties": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event timestamp (used for time bucketing)"
+    },
+    "schemaId": {
+      "type": "string",
+      "pattern": "^analytics\\.[a-z0-9_]+\\.[a-z0-9_]+\\.v[0-9]+$",
+      "description": "Analytics schema identifier"
+    }
+  }
+}

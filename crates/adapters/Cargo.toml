@@ -1,0 +1,24 @@
+[package]
+name = "atlas-platform-adapters"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+atlas-core.workspace = true
+atlas-platform-runtime.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true, optional = true }
+
+[features]
+default = []
+postgres = ["sqlx", "atlas-platform-runtime/postgres"]
+
+[dev-dependencies]
+chrono.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+futures.workspace = true

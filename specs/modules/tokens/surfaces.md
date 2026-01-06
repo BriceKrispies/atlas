@@ -1,0 +1,46 @@
+# Tokens Module Surfaces
+
+## Tokens Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to define, edit, and manage text tokens that can be used throughout the system for dynamic content substitution
+- **Actors & Permissions:**
+  - Tenant Admin: full CRUD access to token definitions within their tenant
+- **Inputs:**
+  - Token name (e.g., `site_url`, `current_user_points`)
+  - Token value or evaluation logic (distinguishes static vs. dynamic)
+  - Token description (optional, for admin reference)
+- **Outputs:**
+  - List of all defined tokens for the tenant
+  - Preview/test capability to see token evaluation results
+- **Owned Data:**
+  - Token definitions table (name, type, value/logic, tenant_id, created_at, updated_at)
+- **Dependencies:**
+  - None for token definition
+  - Token evaluation depends on modules/points for dynamic tokens like `[current_user_points]`
+  - May depend on other system components for other dynamic tokens
+- **Rules / Invariants:**
+  - Token names must be unique within a tenant
+  - Token names should follow a consistent format (e.g., lowercase, underscores, no spaces)
+  - Static tokens have a fixed string value
+  - Dynamic tokens have evaluation logic that reads from system state
+- **Edge Cases:**
+  - Deleting a token that is currently in use in email templates (orphaned references)
+  - Renaming a token breaks existing references
+  - Dynamic token evaluation fails at runtime (user deleted, data unavailable)
+  - Circular token references (if nesting is supported)
+- **Acceptance Scenarios:**
+  - Admin creates static token `[site_url]` with value `https://example.com`
+  - Admin creates dynamic token `[current_user_points]` that reads user's point balance
+  - Admin edits token value and changes are immediately reflected in future evaluations
+  - Admin deletes unused token successfully
+  - System prevents duplicate token names within tenant
+  - Admin can search/filter token list
+- **TODO / Open Questions:**
+  - How is the evaluation logic for dynamic tokens defined? (UI with dropdown of predefined options? script editor? configuration?)
+  - Is there a preview/test feature to see token output before saving?
+  - Can tokens accept parameters or are they purely placeholder-based?
+  - What happens to email templates or other content when a token is deleted?
+  - Is there a warning system for unused or broken tokens?
+  - Are there built-in/system-provided tokens that cannot be edited?

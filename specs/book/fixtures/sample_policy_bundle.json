@@ -1,0 +1,66 @@
+{
+  "$comment": "Sample ABAC policy bundle demonstrating deny-overrides-allow semantics",
+  "policies": [
+    {
+      "policyId": "allow-admin-all",
+      "effect": "allow",
+      "principals": {
+        "roles": ["admin"]
+      },
+      "actions": ["*"],
+      "resources": ["*"],
+      "condition": null
+    },
+    {
+      "policyId": "allow-editor-pages",
+      "effect": "allow",
+      "principals": {
+        "roles": ["editor"]
+      },
+      "actions": [
+        "ContentPages.Page.Create",
+        "ContentPages.Page.Update",
+        "ContentPages.Page.Search"
+      ],
+      "resources": [
+        {
+          "resourceType": "Page"
+        }
+      ],
+      "condition": null
+    },
+    {
+      "policyId": "deny-analytics-to-viewers",
+      "effect": "deny",
+      "principals": {
+        "roles": ["viewer"]
+      },
+      "actions": ["Analytics.Query"],
+      "resources": [
+        {
+          "resourceType": "AnalyticsDashboard"
+        }
+      ],
+      "condition": null,
+      "$comment": "This DENY rule overrides any ALLOW rules due to deny-overrides-allow semantics"
+    },
+    {
+      "policyId": "deny-quarantined-tenants",
+      "effect": "deny",
+      "principals": {
+        "attributes": {
+          "tenantStatus": "quarantined"
+        }
+      },
+      "actions": ["*"],
+      "resources": ["*"],
+      "condition": null,
+      "$comment": "Quarantined tenants cannot perform any actions"
+    }
+  ],
+  "evaluationSemantics": {
+    "mode": "deny-overrides-allow",
+    "defaultDecision": "deny",
+    "description": "Any matching deny rule causes denial regardless of allow rules. If no deny matches and at least one allow matches, access is granted. Otherwise denied."
+  }
+}

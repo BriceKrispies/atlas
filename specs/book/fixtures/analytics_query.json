@@ -1,0 +1,25 @@
+{
+  "$comment": "Analytics query for page creation metrics",
+  "querySpec": {
+    "eventType": "ContentPages.page_created",
+    "dimensions": ["status"],
+    "timeRange": {
+      "start": "2025-01-01T12:00:00.000Z",
+      "end": "2025-01-01T13:00:00.000Z"
+    },
+    "aggregationType": "count",
+    "metricName": null,
+    "bucketSize": "5m"
+  },
+  "executionContext": {
+    "tenantId": "tenant-001",
+    "principalId": "principal-admin-1",
+    "correlationId": "corr-analytics-001"
+  },
+  "$semantics": {
+    "tenant_scoping": "Query is implicitly scoped to tenantId",
+    "time_bucketing": "Events are grouped into 5-minute buckets aligned to epoch",
+    "dimension_grouping": "Results are further grouped by specified dimensions",
+    "aggregation": "count aggregates events within each bucket+dimension combination"
+  }
+}

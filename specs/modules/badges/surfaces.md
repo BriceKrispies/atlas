@@ -1,0 +1,71 @@
+# Badges Module Surfaces
+
+## Badges Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin (configuration) / End User (view awards, possibly)
+- **Purpose:** Allow admins to define badge rules based on intents/roles, configure point rewards and email notifications, and track user badge awards
+- **Actors & Permissions:**
+  - Tenant Admin: create/edit badge definitions, view all badge awards, manually award badges (possibly)
+  - End User: view their own earned badges (possibly, if this page includes user-facing component)
+- **Inputs:**
+  - Badge name and description
+  - Badge criteria: intent type and count (e.g., "10 file_uploaded intents") OR role requirement
+  - Point reward amount
+  - Badge image selection (from media library)
+  - Email template selection (for award notification)
+- **Outputs:**
+  - List of all badge definitions
+  - Badge award history (which users earned which badges)
+  - Badge evaluation status (real-time or batch)
+  - Email send confirmation for badge awards
+- **Owned Data:**
+  - Badges table (badge_id, name, description, criteria_json, points_reward, image_file_id, email_template_id, tenant_id)
+  - Badge awards table (award_id, user_id, badge_id, awarded_at, points_granted, tenant_id)
+- **Dependencies:**
+  - **modules/audit** — queries intents to evaluate badge criteria
+  - **modules/points** — awards points when badge is earned
+  - **modules/comms** — sends email notification using template
+  - **modules/content** — selects badge image from media library
+  - **Role system** — checks user roles for role-based badges
+- **Rules / Invariants:**
+  - Badge criteria can be intent-based (count of specific intent type) or role-based
+  - Badge awards trigger point grants and email sends
+  - Badge images must exist in media library
+  - Email template must exist in comms module
+  - Badge evaluation respects tenant boundaries
+  - Each badge award generates an intent for audit
+- **Edge Cases:**
+  - Badge criteria met but email send fails (retry? award anyway?)
+  - Badge image deleted from media library (broken image reference)
+  - Email template deleted (cannot send notification)
+  - User earns same badge multiple times (if allowed, or prevent duplicates?)
+  - Badge criteria changed after some users already earned it (retroactive revocation?)
+  - User deleted but badge awards remain in history
+  - Very complex criteria (multiple intent types, thresholds) — how to express in UI?
+  - Badge evaluation performance with millions of intents
+- **Acceptance Scenarios:**
+  - Admin creates badge "File Master" with criteria: "10 file_uploaded intents"
+  - Admin sets point reward to 100 and selects badge image from media library
+  - Admin selects email template "Badge Award Notification"
+  - User uploads 10th file → badge evaluation triggered
+  - Badges module queries audit, finds 10 "file_uploaded" intents for user
+  - Badge awarded to user, 100 points granted, email sent
+  - Email content: "Congratulations! You earned the File Master badge and 100 points"
+  - Badge award recorded in badge awards table and as "badge_awarded" intent
+  - Admin views badge award history and sees user earned "File Master" on [date]
+  - Admin creates role-based badge "Manager Badge" with criteria: "User has role 'Manager'"
+  - User promoted to Manager → badge evaluation triggered, badge awarded
+- **TODO / Open Questions:**
+  - Is badge evaluation real-time (on every intent) or batch (nightly)?
+  - Can admins manually trigger badge evaluation for specific users?
+  - Can admins manually award badges (bypass criteria)?
+  - Can badges be revoked or expired?
+  - Can users earn the same badge multiple times, or is it one-time only?
+  - Is there a user-facing component on this page (users see their earned badges)?
+  - Are there badge tiers or progressive criteria (Bronze, Silver, Gold)?
+  - Can criteria be combined (e.g., "10 intents AND has role X")?
+  - What is the UI for defining criteria? (form builder, JSON, wizard?)
+  - Are there badge prerequisites (must earn Badge A before eligible for Badge B)?
+  - Is there a badge display widget for user profiles or dashboards?
+  - How are complex criteria expressed and evaluated?

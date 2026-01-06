@@ -1,0 +1,368 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/module-manifest.v2.json",
+  "title": "ModuleManifest",
+  "description": "Module capability declaration and governance manifest",
+  "type": "object",
+  "required": ["manifestVersion", "moduleId", "displayName", "version", "moduleType"],
+  "additionalProperties": false,
+  "properties": {
+    "manifestVersion": {
+      "type": "integer",
+      "description": "Manifest schema version for forward compatibility",
+      "enum": [2]
+    },
+
+    "moduleId": {
+      "type": "string",
+      "description": "Unique module identifier",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable module name",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "description": "Module version (semver recommended)",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+
+    "moduleType": {
+      "type": "array",
+      "description": "Declares which capabilities this module participates in",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["ui", "api", "worker", "projection", "hybrid"]
+      },
+      "uniqueItems": true
+    },
+
+    "capabilities": {
+      "type": "array",
+      "description": "Capability tags for this module",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+
+    "actions": {
+      "type": "array",
+      "description": "Actions exposed by this module (used for authorization/auditing)",
+      "items": { "$ref": "#/$defs/action" },
+      "default": []
+    },
+
+    "resources": {
+      "type": "array",
+      "description": "Resource types declared/owned by this module",
+      "items": { "$ref": "#/$defs/resource" },
+      "default": []
+    },
+
+    "events": {
+      "type": "object",
+      "description": "Event contracts published/consumed by this module",
+      "additionalProperties": false,
+      "properties": {
+        "publishes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/eventContract" },
+          "default": []
+        },
+        "consumes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/eventContract" },
+          "default": []
+        }
+      },
+      "default": { "publishes": [], "consumes": [] }
+    },
+
+    "projections": {
+      "type": "array",
+      "description": "Read model projections maintained by this module",
+      "items": { "$ref": "#/$defs/projection" },
+      "default": []
+    },
+
+    "migrations": {
+      "type": "array",
+      "description": "Database migration declarations for control-plane and/or tenant DBs",
+      "items": { "$ref": "#/$defs/migration" },
+      "default": []
+    },
+
+    "uiRoutes": {
+      "type": "array",
+      "description": "UI route declarations",
+      "items": { "$ref": "#/$defs/uiRoute" },
+      "default": []
+    },
+
+    "jobs": {
+      "type": "array",
+      "description": "Background job/worker declarations",
+      "items": { "$ref": "#/$defs/job" },
+      "default": []
+    },
+
+    "cacheArtifacts": {
+      "type": "array",
+      "description": "Cache artifact declarations",
+      "items": { "$ref": "#/$defs/cacheArtifact" },
+      "default": []
+    }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "moduleType": { "contains": { "const": "ui" } } } },
+      "then": { "required": ["uiRoutes"] }
+    },
+    {
+      "if": { "properties": { "moduleType": { "contains": { "const": "projection" } } } },
+      "then": { "required": ["projections"] }
+    },
+    {
+      "if": { "properties": { "moduleType": { "contains": { "const": "worker" } } } },
+      "then": { "required": ["jobs"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "moduleType": {
+            "anyOf": [
+              { "contains": { "const": "api" } },
+              { "contains": { "const": "hybrid" } }
+            ]
+          }
+        }
+      },
+      "then": {
+        "description": "API-ish modules should declare at least one action (or explicitly choose to be action-less)",
+        "properties": {
+          "actions": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+
+  "$defs": {
+    "action": {
+      "type": "object",
+      "required": ["actionId", "resourceType", "verb", "auditLevel"],
+      "additionalProperties": false,
+      "properties": {
+        "actionId": { "type": "string", "minLength": 1 },
+        "resourceType": { "type": "string", "minLength": 1 },
+        "verb": { "type": "string", "minLength": 1 },
+        "defaultPolicyHint": { "type": "string" },
+        "auditLevel": { "type": "string", "enum": ["INFO", "SENSITIVE"] }
+      }
+    },
+
+    "resource": {
+      "type": "object",
+      "required": ["resourceType", "ownership"],
+      "additionalProperties": false,
+      "properties": {
+        "resourceType": { "type": "string", "minLength": 1 },
+        "attributeSchemaId": { "type": "string", "minLength": 1 },
+        "ownership": {
+          "type": "string",
+          "enum": ["module", "platform", "external", "shared"]
+        }
+      }
+    },
+
+    "eventContract": {
+      "type": "object",
+      "required": ["eventType", "category", "schemaId", "compatibility"],
+      "additionalProperties": false,
+      "properties": {
+        "eventType": {
+          "type": "string",
+          "description": "Namespaced event type, e.g. Atlas.CMS.Page.Created",
+          "pattern": "^[A-Za-z0-9]+(\\.[A-Za-z0-9]+)+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["UI_INTENT", "DOMAIN", "AUDIT", "SYSTEM"]
+        },
+        "schemaId": { "type": "string", "minLength": 1 },
+        "schemaVersion": {
+          "type": "string",
+          "description": "Optional schema version hint (if not embedded in schemaId)",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "compatibility": {
+          "type": "string",
+          "enum": ["BACKWARD", "STRICT"]
+        },
+        "streamHint": {
+          "type": "string",
+          "description": "Optional hint for transport mapping (e.g., Kafka topic or logical stream)",
+          "minLength": 1
+        },
+        "partitionKeyHint": {
+          "type": "string",
+          "description": "Optional hint for partitioning (e.g. TENANT_ID, RESOURCE_ID)",
+          "minLength": 1
+        }
+      }
+    },
+
+    "projection": {
+      "type": "object",
+      "required": ["projectionName", "inputEvents", "outputModel", "rebuildable"],
+      "additionalProperties": false,
+      "properties": {
+        "projectionName": { "type": "string", "minLength": 1 },
+        "inputEvents": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "outputModel": { "type": "string", "minLength": 1 },
+        "rebuildable": { "type": "boolean" },
+        "storeHint": {
+          "type": "string",
+          "description": "Optional hint for where this projection is stored (e.g. TENANT_DB, REDIS, OPENSEARCH)",
+          "minLength": 1
+        }
+      }
+    },
+
+    "migration": {
+      "type": "object",
+      "required": ["migrationId", "appliesTo", "engine"],
+      "additionalProperties": false,
+      "properties": {
+        "migrationId": {
+          "type": "string",
+          "description": "Stable identifier (often filename-like)",
+          "minLength": 1
+        },
+        "appliesTo": {
+          "type": "string",
+          "enum": ["CONTROL_PLANE_DB", "TENANT_DB"]
+        },
+        "engine": {
+          "type": "string",
+          "description": "Migration engine/tool identifier (e.g. sqlx, refinery, flyway)",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path to migration file/dir",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer",
+          "description": "Optional explicit ordering value if your engine needs it"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Optional checksum of migration content for drift detection",
+          "minLength": 1
+        }
+      }
+    },
+
+    "uiRoute": {
+      "type": "object",
+      "required": ["path", "routeId"],
+      "additionalProperties": false,
+      "properties": {
+        "routeId": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "componentId": {
+          "type": "string",
+          "description": "Frontend component identifier",
+          "minLength": 1
+        },
+        "navLabel": { "type": "string" },
+        "requiredCapabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
+      }
+    },
+
+    "job": {
+      "type": "object",
+      "required": ["jobId", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["SCHEDULED", "EVENT_DRIVEN", "AD_HOC"]
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Cron-like schedule string for SCHEDULED jobs"
+        },
+        "triggerEvent": {
+          "type": "string",
+          "description": "Event type for EVENT_DRIVEN jobs",
+          "minLength": 1
+        },
+        "concurrency": { "type": "integer", "minimum": 1, "default": 1 },
+        "retryPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxAttempts": { "type": "integer", "minimum": 0, "default": 3 },
+            "backoffSeconds": { "type": "integer", "minimum": 0, "default": 5 }
+          },
+          "default": { "maxAttempts": 3, "backoffSeconds": 5 }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "SCHEDULED" } } },
+          "then": { "required": ["schedule"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "EVENT_DRIVEN" } } },
+          "then": { "required": ["triggerEvent"] }
+        }
+      ]
+    },
+
+    "cacheArtifact": {
+      "type": "object",
+      "required": ["artifactId", "varyBy", "ttlSeconds", "tags", "privacy"],
+      "additionalProperties": false,
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1 },
+        "varyBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["TENANT", "LOCALE", "ROLE", "USER", "ABAC_CONTEXT", "NONE"]
+          },
+          "default": ["TENANT"]
+        },
+        "ttlSeconds": { "type": "integer", "minimum": 0 },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "privacy": {
+          "type": "string",
+          "enum": ["PUBLIC", "TENANT", "USER", "ROLE_SCOPED"]
+        }
+      }
+    }
+  }
+}

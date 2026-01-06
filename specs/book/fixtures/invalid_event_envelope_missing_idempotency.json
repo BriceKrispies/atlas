@@ -1,0 +1,16 @@
+{
+  "$comment": "This envelope is INVALID because it has empty idempotencyKey",
+  "eventId": "evt-20250101-missing",
+  "eventType": "ContentPages.PageCreated",
+  "schemaId": "domain.contentpages.page.created.v1",
+  "schemaVersion": 1,
+  "occurredAt": "2025-01-01T12:00:00.000Z",
+  "tenantId": "tenant-001",
+  "correlationId": "corr-xyz789",
+  "idempotencyKey": "",
+  "payload": {
+    "pageId": "page-001",
+    "slug": "welcome",
+    "title": "Welcome Page"
+  }
+}

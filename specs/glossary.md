@@ -1,0 +1,56 @@
+# Glossary
+
+## Core Concepts
+
+**Tenant**
+A single customer organization using the platform. All data and configuration is scoped to a tenant boundary.
+
+**Tenant Admin**
+A user with elevated permissions within their tenant, able to configure tenant-wide settings, manage users, and access administrative pages.
+
+**End User**
+A regular user within a tenant with standard permissions.
+
+**Business Unit**
+A named collection of users and/or other business units within a tenant. Used for organizing users and targeting communications/permissions.
+
+**Intent**
+A recorded user activity or action within the system. Intents are the foundation for history tracking, badge awards, and analytics.
+
+**Token**
+A named placeholder (e.g., `[site_url]`, `[current_user_points]`) that can be embedded in text and evaluated at runtime to produce dynamic content. Tokens can be static or dynamic (reading from system state).
+
+**Email Template**
+A reusable email layout saved by admins, available for use by any part of the system when sending emails. May contain tokens.
+
+**Widget**
+A configurable UI component that can be embedded in various contexts. Typically has tenant-specific configuration.
+
+**Page**
+A full standalone UI surface, typically accessible via navigation.
+
+**Point**
+A numeric reward unit tracked per user. Points have a configurable monetary value (default: 1 point ≈ 50 cents).
+
+**Badge**
+An achievement awarded to a user based on intents or roles. Badges may include a visual image (from media library) and point rewards.
+
+**Media Library**
+A tenant-scoped file storage system. Files can be private (tenant-only) or public (linkable). Public files have placeholders if reverted to private.
+
+**Spreadsheet Upload**
+A mechanism for bulk data import via CSV or XLSX files, with validation and dry-run capabilities.
+
+## System Constructs
+
+**Plane**
+The access level or context for a UI surface:
+- **Tenant Admin** — accessible only to tenant administrators
+- **End User** — accessible to regular users within a tenant
+- **Control Plane** — platform-level administration (cross-tenant)
+
+**Dry Run**
+A validation mode where an operation is simulated but not committed, allowing users to preview results and catch errors.
+
+**History**
+Immutable record of past events, intents, or system actions. Typically read-only and filterable.
