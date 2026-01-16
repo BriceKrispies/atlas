@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "spec_validate"
+path = "src/lib.rs"
+
 [[bin]]
 name = "spec_validate"
 path = "src/main.rs"

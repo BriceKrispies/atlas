@@ -17,6 +17,16 @@
       "description": "Idempotency key is missing, empty, or malformed"
     },
     {
+      "code": "IDEMPOTENCY_CONFLICT",
+      "category": "VALIDATION",
+      "description": "A different request with the same idempotency key has already been processed"
+    },
+    {
+      "code": "TENANT_MISMATCH",
+      "category": "TENANT",
+      "description": "Request tenant does not match the authenticated principal's tenant"
+    },
+    {
       "code": "INVALID_MANIFEST",
       "category": "VALIDATION",
       "description": "Module manifest is not a valid object or has incorrect type"

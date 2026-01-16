@@ -22,8 +22,15 @@ pub type PortResult<T> = Result<T, PortError>;
 /// Event store port (append-only event log)
 #[async_trait]
 pub trait EventStore: Send + Sync {
-    /// Append event to stream (enforces idempotency via idempotency_key)
-    async fn append(&self, envelope: &EventEnvelope) -> PortResult<()>;
+    /// Append event to stream (enforces idempotency via idempotency_key).
+    ///
+    /// Returns the event_id associated with the idempotency_key:
+    /// - If this is a new idempotency_key: stores the event and returns envelope.event_id
+    /// - If the idempotency_key already exists: returns the ORIGINAL event_id (idempotent replay)
+    ///
+    /// This enables proper idempotency semantics where duplicate requests return
+    /// the cached result rather than failing.
+    async fn append(&self, envelope: &EventEnvelope) -> PortResult<String>;
 
     /// Get event by ID
     async fn get_event(&self, event_id: &str) -> PortResult<EventEnvelope>;

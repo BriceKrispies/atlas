@@ -87,12 +87,17 @@ async fn test_idempotency_with_different_payload_same_key() {
     let mut payload1 = intent_with_idempotency_key(idempotency_key.clone());
     let mut payload2 = intent_with_idempotency_key(idempotency_key.clone());
 
-    // Modify the payload content
+    // Modify the payload content (must still include required authz fields)
     payload2.payload = serde_json::json!({
-        "page_id": "different-page",
+        // Required for authorization
+        "actionId": "ContentPages.Page.Create",
+        "resourceType": "Page",
+        "resourceId": null,
+        // Different action-specific data
+        "pageId": "different-page",
         "title": "Different Title",
         "content": "Different content",
-        "author_id": "different-author",
+        "authorId": "different-author",
         "status": "published"
     });
 

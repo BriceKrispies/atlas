@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
     // Load sample module manifest from fixtures
     tracing::info!("Loading sample module manifest...");
-    let manifest_path = "../../specs/fixtures/sample_module_manifest.json";
+    let manifest_path = "../../specs/fixtures/module_manifest__valid__content_pages.json";
     let manifest_content =
         fs::read_to_string(manifest_path).context("Failed to read sample module manifest")?;
     let mut manifest: serde_json::Value = serde_json::from_str(&manifest_content)?;
@@ -101,10 +101,10 @@ async fn main() -> Result<()> {
     // Insert sample schemas from specs directory
     tracing::info!("Inserting schema registry entries...");
     let schema_files = vec![
-        ("event_envelope", "specs/event_envelope.schema.json"),
-        ("module_manifest", "specs/module_manifest.schema.json"),
-        ("policy_ast", "specs/policy_ast.schema.json"),
-        ("cache_policy", "specs/cache_policy.schema.json"),
+        ("event_envelope", "../../specs/schemas/contracts/event_envelope.schema.json"),
+        ("module_manifest", "../../specs/schemas/contracts/module_manifest.schema.json"),
+        ("policy_ast", "../../specs/schemas/contracts/policy_ast.schema.json"),
+        ("cache_policy", "../../specs/schemas/contracts/cache_policy.schema.json"),
     ];
 
     for (schema_id, path) in schema_files {

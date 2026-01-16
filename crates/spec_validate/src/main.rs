@@ -1,191 +1,220 @@
-//! Spec validation tool - validates golden fixtures against domain types.
+//! Spec Validation CLI
 //!
-//! Loads fixtures from /specs/fixtures and validates:
-//! - JSON parsing succeeds
-//! - Required fields are present
-//! - Invariants are satisfied (e.g., idempotencyKey for events)
+//! Validates golden fixtures against atlas_core domain types and validation rules.
+//!
+//! ## Usage
+//!
+//! ```bash
+//! # Validate all fixtures
+//! cargo run -p spec_validate
+//!
+//! # Filter by kind
+//! cargo run -p spec_validate -- --kind event_envelope
+//! cargo run -p spec_validate -- --kind event_envelope --kind module_manifest
+//!
+//! # Filter by expectation
+//! cargo run -p spec_validate -- --expect valid
+//! cargo run -p spec_validate -- --expect invalid
+//!
+//! # List discovered fixtures
+//! cargo run -p spec_validate -- --list
+//! ```
 
-use anyhow::{Context, Result};
-use atlas_core::types::{AnalyticsEvent, EventEnvelope, ModuleManifest, SearchDocument};
-use atlas_core::validation::validate_event_envelope;
-use serde_json::Value;
-use std::fs;
-use std::path::{Path, PathBuf};
+use spec_validate::discover::{self, Expect, Kind};
+use spec_validate::{run_validation, Outcome, RunOptions};
+use std::env;
+use std::path::PathBuf;
+use std::process::ExitCode;
 
-fn main() -> Result<()> {
-    println!("=== Spec Validation ===\n");
+fn main() -> ExitCode {
+    let args = parse_args();
+
+    if args.help {
+        print_help();
+        return ExitCode::SUCCESS;
+    }
 
     let fixtures_dir = PathBuf::from("specs/fixtures");
     if !fixtures_dir.exists() {
-        anyhow::bail!("Fixtures directory not found: {}", fixtures_dir.display());
+        eprintln!("Error: Fixtures directory not found: {}", fixtures_dir.display());
+        return ExitCode::FAILURE;
     }
 
-    let mut total = 0;
-    let mut passed = 0;
-    let mut failed = 0;
+    // Discover fixtures
+    let discovery = match discover::discover(&fixtures_dir) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error: Failed to discover fixtures: {}", e);
+            return ExitCode::FAILURE;
+        }
+    };
 
-    // Validate event envelope fixtures
-    let event_fixtures = vec![
-        "valid_event_envelope.json",
-        "sample_page_create_intent.json",
-        "expected_page_created_event.json",
-    ];
+    // Print warnings for ignored files
+    if !discovery.ignored.is_empty() {
+        eprintln!("\nWarning: {} JSON file(s) ignored (filename doesn't match convention):",
+            discovery.ignored.len());
+        for path in &discovery.ignored {
+            eprintln!("  - {}", path.display());
+        }
+        eprintln!();
+    }
 
-    for fixture_name in event_fixtures {
-        total += 1;
-        print!("Validating {} ... ", fixture_name);
-        match validate_event_fixture(&fixtures_dir, fixture_name) {
-            Ok(_) => {
-                println!("✓ PASS");
-                passed += 1;
+    // Handle --list
+    if args.list {
+        println!("Discovered {} fixture(s):\n", discovery.cases.len());
+        for case in &discovery.cases {
+            let mark = match case.expect {
+                Expect::Valid => "+",
+                Expect::Invalid => "-",
+            };
+            println!("  [{}] {} :: {}", mark, case.kind, case.name);
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    // Build run options
+    let options = RunOptions {
+        kinds: args.kinds,
+        expect: args.expect,
+    };
+
+    // Run validation
+    println!("=== Spec Validation ===\n");
+
+    let summary = run_validation(&discovery.cases, &options);
+
+    // Print results
+    for result in &summary.results {
+        let status = match &result.outcome {
+            Outcome::Pass => {
+                let suffix = if result.case.expect == Expect::Invalid {
+                    " (correctly rejected)"
+                } else {
+                    ""
+                };
+                format!("\x1b[32m\u{2713} PASS{}\x1b[0m", suffix)
             }
-            Err(e) => {
-                println!("✗ FAIL: {}", e);
-                failed += 1;
-            }
-        }
+            Outcome::Fail(msg) => format!("\x1b[31m\u{2717} FAIL: {}\x1b[0m", msg),
+        };
+        println!("{} ... {}", result.case.id(), status);
     }
 
-    // Validate invalid envelope (should fail parsing but succeed as test)
-    total += 1;
-    print!("Validating invalid_event_envelope_missing_idempotency.json ... ");
-    match validate_invalid_event_fixture(
-        &fixtures_dir,
-        "invalid_event_envelope_missing_idempotency.json",
-    ) {
-        Ok(_) => {
-            println!("✓ PASS (correctly rejected)");
-            passed += 1;
-        }
-        Err(e) => {
-            println!("✗ FAIL: {}", e);
-            failed += 1;
-        }
-    }
-
-    // Validate module manifest
-    total += 1;
-    print!("Validating sample_module_manifest.json ... ");
-    match validate_module_manifest_fixture(&fixtures_dir, "sample_module_manifest.json") {
-        Ok(_) => {
-            println!("✓ PASS");
-            passed += 1;
-        }
-        Err(e) => {
-            println!("✗ FAIL: {}", e);
-            failed += 1;
-        }
-    }
-
-    // Validate search documents
-    total += 1;
-    print!("Validating search_documents.json ... ");
-    match validate_search_documents_fixture(&fixtures_dir, "search_documents.json") {
-        Ok(_) => {
-            println!("✓ PASS");
-            passed += 1;
-        }
-        Err(e) => {
-            println!("✗ FAIL: {}", e);
-            failed += 1;
-        }
-    }
-
-    // Validate analytics events
-    total += 1;
-    print!("Validating analytics_events.json ... ");
-    match validate_analytics_events_fixture(&fixtures_dir, "analytics_events.json") {
-        Ok(_) => {
-            println!("✓ PASS");
-            passed += 1;
-        }
-        Err(e) => {
-            println!("✗ FAIL: {}", e);
-            failed += 1;
-        }
-    }
-
+    // Print summary
     println!("\n=== Summary ===");
-    println!("Total:  {}", total);
-    println!("Passed: {}", passed);
-    println!("Failed: {}", failed);
+    println!("Total:  {}", summary.total);
+    println!("Passed: {}", summary.passed);
+    println!("Failed: {}", summary.failed);
 
-    if failed > 0 {
-        anyhow::bail!("{} fixtures failed validation", failed);
+    if summary.is_success() {
+        println!("\n\x1b[32m\u{2713} All fixtures validated successfully\x1b[0m");
+        ExitCode::SUCCESS
+    } else {
+        println!("\n\x1b[31m\u{2717} {} fixture(s) failed validation\x1b[0m", summary.failed);
+        ExitCode::FAILURE
     }
-
-    println!("\n✓ All fixtures validated successfully");
-    Ok(())
 }
 
-fn load_fixture(fixtures_dir: &Path, filename: &str) -> Result<Value> {
-    let path = fixtures_dir.join(filename);
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read fixture: {}", path.display()))?;
-    let value: Value = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse JSON: {}", path.display()))?;
-    Ok(value)
+#[derive(Debug, Default)]
+struct Args {
+    help: bool,
+    list: bool,
+    kinds: Vec<Kind>,
+    expect: Option<Expect>,
 }
 
-fn strip_doc_fields(mut value: Value) -> Value {
-    if let Some(obj) = value.as_object_mut() {
-        obj.retain(|k, _| !k.starts_with('$'));
-        for v in obj.values_mut() {
-            *v = strip_doc_fields(v.clone());
+fn parse_args() -> Args {
+    let mut args = Args::default();
+    let mut argv: Vec<String> = env::args().skip(1).collect();
+
+    while !argv.is_empty() {
+        let arg = argv.remove(0);
+        match arg.as_str() {
+            "-h" | "--help" => args.help = true,
+            "-l" | "--list" => args.list = true,
+            "-k" | "--kind" => {
+                if let Some(value) = argv.first() {
+                    if let Some(kind) = Kind::from_str(value) {
+                        args.kinds.push(kind);
+                        argv.remove(0);
+                    } else {
+                        eprintln!("Warning: Unknown kind '{}', ignoring", value);
+                        argv.remove(0);
+                    }
+                }
+            }
+            "-e" | "--expect" => {
+                if let Some(value) = argv.first() {
+                    if let Some(expect) = Expect::from_str(value) {
+                        args.expect = Some(expect);
+                        argv.remove(0);
+                    } else {
+                        eprintln!("Warning: Unknown expect '{}', ignoring", value);
+                        argv.remove(0);
+                    }
+                }
+            }
+            other => {
+                // Handle --kind=value and --expect=value forms
+                if let Some(rest) = other.strip_prefix("--kind=") {
+                    if let Some(kind) = Kind::from_str(rest) {
+                        args.kinds.push(kind);
+                    } else {
+                        eprintln!("Warning: Unknown kind '{}', ignoring", rest);
+                    }
+                } else if let Some(rest) = other.strip_prefix("--expect=") {
+                    if let Some(expect) = Expect::from_str(rest) {
+                        args.expect = Some(expect);
+                    } else {
+                        eprintln!("Warning: Unknown expect '{}', ignoring", rest);
+                    }
+                } else {
+                    eprintln!("Warning: Unknown argument '{}', ignoring", other);
+                }
+            }
         }
-    } else if let Some(arr) = value.as_array_mut() {
-        for v in arr.iter_mut() {
-            *v = strip_doc_fields(v.clone());
-        }
     }
-    value
+
+    args
 }
 
-fn validate_event_fixture(fixtures_dir: &Path, filename: &str) -> Result<()> {
-    let value = load_fixture(fixtures_dir, filename)?;
-    let value = strip_doc_fields(value);
-    let envelope: EventEnvelope =
-        serde_json::from_value(value).context("Failed to deserialize EventEnvelope")?;
-    validate_event_envelope(&envelope).context("EventEnvelope validation failed")?;
-    Ok(())
-}
+fn print_help() {
+    println!(
+        r#"spec_validate - Validate golden fixtures against domain types
 
-fn validate_invalid_event_fixture(fixtures_dir: &Path, filename: &str) -> Result<()> {
-    let value = load_fixture(fixtures_dir, filename)?;
-    let value = strip_doc_fields(value);
-    let envelope: EventEnvelope =
-        serde_json::from_value(value).context("Failed to deserialize EventEnvelope")?;
-    // This should fail validation
-    match validate_event_envelope(&envelope) {
-        Ok(_) => anyhow::bail!("Expected validation to fail but it passed"),
-        Err(_) => Ok(()),
-    }
-}
+USAGE:
+    cargo run -p spec_validate [OPTIONS]
 
-fn validate_module_manifest_fixture(fixtures_dir: &Path, filename: &str) -> Result<()> {
-    let value = load_fixture(fixtures_dir, filename)?;
-    let value = strip_doc_fields(value);
-    let _manifest: ModuleManifest =
-        serde_json::from_value(value).context("Failed to deserialize ModuleManifest")?;
-    Ok(())
-}
+OPTIONS:
+    -h, --help              Print this help message
+    -l, --list              List discovered fixtures without validating
+    -k, --kind <KIND>       Filter by kind (repeatable)
+    -e, --expect <EXPECT>   Filter by expectation
 
-fn validate_search_documents_fixture(fixtures_dir: &Path, filename: &str) -> Result<()> {
-    let value = load_fixture(fixtures_dir, filename)?;
-    let value = strip_doc_fields(value);
-    let obj = value.as_object().context("Expected object at root")?;
-    let docs = obj.get("documents").context("Missing 'documents' field")?;
-    let _documents: Vec<SearchDocument> = serde_json::from_value(docs.clone())
-        .context("Failed to deserialize SearchDocument array")?;
-    Ok(())
-}
+KINDS:
+    event_envelope          Event envelope fixtures
+    module_manifest         Module manifest fixtures
+    search_documents        Search document fixtures
+    analytics_events        Analytics event fixtures
 
-fn validate_analytics_events_fixture(fixtures_dir: &Path, filename: &str) -> Result<()> {
-    let value = load_fixture(fixtures_dir, filename)?;
-    let value = strip_doc_fields(value);
-    let obj = value.as_object().context("Expected object at root")?;
-    let events = obj.get("events").context("Missing 'events' field")?;
-    let _events: Vec<AnalyticsEvent> = serde_json::from_value(events.clone())
-        .context("Failed to deserialize AnalyticsEvent array")?;
-    Ok(())
+EXPECTS:
+    valid                   Fixtures expected to pass validation
+    invalid                 Fixtures expected to fail validation
+
+FILENAME CONVENTION:
+    <kind>__<expect>__<name>.json
+
+EXAMPLES:
+    # Validate all fixtures
+    cargo run -p spec_validate
+
+    # Validate only event envelopes
+    cargo run -p spec_validate -- --kind event_envelope
+
+    # Validate only invalid fixtures
+    cargo run -p spec_validate -- --expect invalid
+
+    # List all discovered fixtures
+    cargo run -p spec_validate -- --list
+"#
+    );
 }

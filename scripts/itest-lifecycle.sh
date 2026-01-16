@@ -6,11 +6,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/infra/compose/docker-compose.itest.yml"
+BAKE_FILE="$PROJECT_ROOT/infra/compose/docker-bake.itest.hcl"
 ENV_FILE="$PROJECT_ROOT/infra/compose/.env.itest"
 
 # Use docker by default, override with CONTAINER_RUNTIME env var
 CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
 COMPOSE_CMD="$CONTAINER_RUNTIME compose"
+BUILDX_CMD="$CONTAINER_RUNTIME buildx"
 
 # Support for compose profiles (e.g., obs for observability stack)
 # Can be set via ITEST_PROFILE env var or second argument
@@ -81,11 +83,25 @@ itest_up() {
     check_port_available 3000 || log_warn "Ingress port 3000 may conflict"
     check_port_available 8080 || log_warn "Dozzle port 8080 may conflict"
 
-    # Build images
-    log_info "Building application images (this may take a while on first run)..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" $PROFILE_FLAG build
+    # Build images using buildx bake for parallel builds and better caching
+    log_info "Building application images (parallel via buildx bake)..."
+    echo "═══════════════════════════════════════════════════════════"
 
-    # Start stack
+    # Change to project root for correct build context
+    pushd "$PROJECT_ROOT" > /dev/null
+
+    # Use buildx bake for faster parallel builds with progress output
+    # --progress=plain shows full build output including cargo progress
+    # BUILDX_BAKE_ENTITLEMENTS_FS=0 disables filesystem permission prompts on Windows
+    BUILDX_BAKE_ENTITLEMENTS_FS=0 $BUILDX_CMD bake -f "$BAKE_FILE" --progress=plain --load
+
+    popd > /dev/null
+
+    echo "═══════════════════════════════════════════════════════════"
+    log_success "Image build completed"
+
+
+    # Start stack using pre-built images
     log_info "Starting containers..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" $PROFILE_FLAG up -d
 

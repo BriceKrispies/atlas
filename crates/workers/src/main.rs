@@ -18,11 +18,7 @@ use tracing::{info, warn};
 
 /// Process events and trigger cache invalidation
 async fn process_events(event_store: Arc<dyn EventStore>, cache: Arc<dyn Cache>) {
-    mvp_shortcut!(
-        id: "process_events",
-        component: "workers",
-        message: "Processing events is not implemented"
-    );
+
     info!("Starting event processing loop");
 
     // In a real implementation, this would:

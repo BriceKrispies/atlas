@@ -1,0 +1,121 @@
+# Atlas Local Development Stack
+# Runs ingress + Keycloak on a shared network for local OIDC/OAuth2 development.
+#
+# Usage:
+#   docker compose -f compose.dev.yml up -d
+#
+# Access:
+#   Ingress:          http://localhost:3000
+#   Keycloak Admin:   http://localhost:8081/admin (admin/admin)
+#   Debug Whoami:     http://localhost:3000/debug/whoami (with Bearer token)
+#
+# Network:
+#   Both services run on 'atlas-dev' network (compose-managed, not external).
+#   Ingress reaches Keycloak at: http://keycloak:8080
+#
+# Token Issuer:
+#   Tokens are minted with issuer: http://localhost:8081/realms/<realm>
+#   Ingress validates the 'iss' claim against OIDC_ISSUER_URL.
+#   JWKS is fetched from OIDC_JWKS_URL (internal Docker network).
+
+services:
+  # ==========================================================================
+  # Identity Provider
+  # ==========================================================================
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: atlas-dev-keycloak
+    command: start-dev
+    environment:
+      # Admin credentials
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Hostname configuration for consistent issuer URLs
+      # Tokens will have iss: http://localhost:8081/realms/<realm>
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8081
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      # Host port 8081 -> Container port 8080 (port 8080 used by Dozzle)
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      # Keycloak 26+ exposes health on management port 9000
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3; cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - atlas-dev
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Ingress Service
+  # ==========================================================================
+
+  ingress:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.ingress
+      args:
+        # Enable test-auth feature for debug endpoints
+        CARGO_FEATURES: test-auth
+    container_name: atlas-dev-ingress
+    environment:
+      # Runtime configuration
+      RUST_LOG: ${RUST_LOG:-info,atlas_platform_ingress=debug}
+      TENANT_ID: ${TENANT_ID:-tenant-dev}
+      # Control plane disabled for lightweight dev (uses in-memory)
+      CONTROL_PLANE_ENABLED: "false"
+      # Enable test auth for X-Debug-Principal header
+      TEST_AUTH_ENABLED: "true"
+      # Enable /debug/whoami endpoint
+      DEBUG_AUTH_ENDPOINT_ENABLED: "true"
+      # OIDC Configuration for JWT validation
+      # IMPORTANT: Issuer URL must EXACTLY match the 'iss' claim in Keycloak tokens
+      # Keycloak is configured with KC_HOSTNAME=localhost KC_HOSTNAME_PORT=8081
+      # So tokens have iss=http://localhost:8081/realms/atlas
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://localhost:8081/realms/atlas}
+      # JWKS URL is where ingress fetches public keys from INSIDE Docker
+      # We use the internal docker network name (keycloak:8080)
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/atlas/protocol/openid-connect/certs}
+      # Audience must match the 'aud' claim in tokens (Keycloak default is "account")
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-account}
+    ports:
+      - "${INGRESS_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - atlas-dev
+    restart: unless-stopped
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+
+networks:
+  # Compose-managed network for local development (NOT external)
+  atlas-dev:
+    driver: bridge
+    name: atlas-dev
+
+# ==========================================================================
+# Volumes
+# ==========================================================================
+
+volumes:
+  keycloak_data:
+    name: atlas-dev-keycloak-data

@@ -10,6 +10,20 @@ pub struct TestConfig {
     pub test_tenant_id: String,
     pub http_timeout: Duration,
     pub retry_attempts: u32,
+    /// Debug principal header value for test auth mode (e.g., "user:test-user")
+    /// When set, this is sent as X-Debug-Principal header for authenticated requests.
+    pub test_principal: Option<String>,
+    /// Keycloak configuration for OIDC authentication tests
+    pub keycloak: Option<KeycloakConfig>,
+}
+
+/// Keycloak OIDC configuration for authentication tests
+#[derive(Debug, Clone)]
+pub struct KeycloakConfig {
+    pub base_url: String,
+    pub realm: String,
+    pub client_id: String,
+    pub client_secret: String,
 }
 
 impl TestConfig {
@@ -24,6 +38,19 @@ impl TestConfig {
 
         // Attempt to load env file (OK if it doesn't exist)
         dotenvy::from_filename(env_file).ok();
+
+        // Load Keycloak config if client secret is provided
+        let keycloak = env::var("KEYCLOAK_CLIENT_SECRET").ok().map(|secret| {
+            KeycloakConfig {
+                base_url: env::var("KEYCLOAK_BASE_URL")
+                    .unwrap_or_else(|_| "http://localhost:8081".to_string()),
+                realm: env::var("KEYCLOAK_REALM")
+                    .unwrap_or_else(|_| "atlas".to_string()),
+                client_id: env::var("KEYCLOAK_CLIENT_ID")
+                    .unwrap_or_else(|_| "atlas-s2s".to_string()),
+                client_secret: secret,
+            }
+        });
 
         Self {
             ingress_base_url: env::var("INGRESS_BASE_URL")
@@ -44,6 +71,14 @@ impl TestConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3),
+            // Default to a test principal for authenticated requests
+            // Format: "type:id:tenant_id" (e.g., "user:test-user:tenant-itest-001")
+            // The tenant must match the payload's tenant_id for tenant isolation
+            test_principal: env::var("TEST_PRINCIPAL").ok().or_else(|| {
+                // Default to a test user with the test tenant
+                Some("user:integration-test-user:tenant-itest-001".to_string())
+            }),
+            keycloak,
         }
     }
 }

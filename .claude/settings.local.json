@@ -36,7 +36,14 @@
       "Bash(git config core.autocrlf)",
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(cargo doc:*)",
+      "Bash(dir \"C:\\\\dev\\\\atlas\\\\crates\\\\ingress\" /s)",
+      "Bash(make itest-test:*)",
+      "Bash(make itest-build:*)",
+      "Bash(docker network inspect:*)",
+      "Bash(git mv:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

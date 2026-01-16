@@ -13,6 +13,10 @@
 
 # Cross-Cutting Concerns
 
+- [atlasctl](crosscut/atlasctl.md)
+- [Authentication](crosscut/authn.md)
+- [Authorization](crosscut/authz.md)
+- [Errors](crosscut/errors.md)
 - [Events](crosscut/events.md)
 - [Security](crosscut/security.md)
 - [Storage](crosscut/storage.md)

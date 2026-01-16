@@ -23,8 +23,15 @@ COPY apps/ ./apps/
 COPY tools/ ./tools/
 COPY tests/ ./tests/
 
-# Build application
-RUN cargo build --release -p atlas-platform-ingress
+# Build argument for optional features (e.g., test-auth for integration tests)
+ARG CARGO_FEATURES=""
+
+# Build application with optional features
+RUN if [ -n "$CARGO_FEATURES" ]; then \
+      cargo build --release -p atlas-platform-ingress --features "$CARGO_FEATURES"; \
+    else \
+      cargo build --release -p atlas-platform-ingress; \
+    fi
 
 # Stage 2: Runtime - minimal Debian image
 FROM debian:trixie-slim

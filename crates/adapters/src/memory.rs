@@ -30,25 +30,21 @@ impl Default for InMemoryEventStore {
 
 #[async_trait]
 impl EventStore for InMemoryEventStore {
-    async fn append(&self, envelope: &EventEnvelope) -> PortResult<()> {
+    async fn append(&self, envelope: &EventEnvelope) -> PortResult<String> {
         let mut keys = self.idempotency_keys.write().unwrap();
 
         // Invariant I3: Enforce idempotency
+        // If idempotency_key already exists, return the ORIGINAL event_id (idempotent replay)
         if let Some(existing_id) = keys.get(&envelope.idempotency_key) {
-            if existing_id == &envelope.event_id {
-                // Same event, return success (idempotent)
-                return Ok(());
-            } else {
-                return Err(PortError::Duplicate(format!(
-                    "idempotency key {} already used by event {}",
-                    envelope.idempotency_key, existing_id
-                )));
-            }
+            // Return the original event_id - this is proper idempotency semantics
+            // The second request gets the same response as the first
+            return Ok(existing_id.clone());
         }
 
+        // New idempotency key - store the event
         keys.insert(envelope.idempotency_key.clone(), envelope.event_id.clone());
         self.events.write().unwrap().push(envelope.clone());
-        Ok(())
+        Ok(envelope.event_id.clone())
     }
 
     async fn get_event(&self, event_id: &str) -> PortResult<EventEnvelope> {
@@ -349,16 +345,21 @@ mod tests {
             payload: serde_json::json!({}),
         };
 
-        // First append succeeds
-        assert!(store.append(&envelope).await.is_ok());
+        // First append succeeds and returns the event_id
+        let result1 = store.append(&envelope).await.unwrap();
+        assert_eq!(result1, "evt-123");
 
         // Second append with same idempotency key succeeds (idempotent)
-        assert!(store.append(&envelope).await.is_ok());
+        // and returns the SAME event_id
+        let result2 = store.append(&envelope).await.unwrap();
+        assert_eq!(result2, "evt-123");
 
-        // Different event with same idempotency key fails
+        // Different event with same idempotency key ALSO succeeds
+        // but returns the ORIGINAL event_id (idempotent replay)
         let mut envelope2 = envelope.clone();
         envelope2.event_id = "evt-456".to_string();
-        assert!(store.append(&envelope2).await.is_err());
+        let result3 = store.append(&envelope2).await.unwrap();
+        assert_eq!(result3, "evt-123"); // Returns original, not the new one
     }
 
     #[tokio::test]

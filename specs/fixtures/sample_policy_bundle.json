@@ -1,66 +1,179 @@
 {
-  "$comment": "Sample ABAC policy bundle demonstrating deny-overrides-allow semantics",
+  "$comment": "Sample Cedar policy bundle demonstrating forbid-overrides-permit semantics (deny-overrides-allow in Cedar terminology)",
+  "policySetId": "tenant-001-policies-v1",
+  "tenantId": "tenant-001",
+  "version": 1,
   "policies": [
     {
-      "policyId": "allow-admin-all",
-      "effect": "allow",
-      "principals": {
-        "roles": ["admin"]
+      "policyId": "permit-admin-all",
+      "effect": "permit",
+      "principal": {
+        "op": "in",
+        "entity": "Role::\"admin\""
       },
-      "actions": ["*"],
-      "resources": ["*"],
-      "condition": null
+      "action": {
+        "op": "All"
+      },
+      "resource": {
+        "op": "All"
+      },
+      "conditions": [],
+      "annotations": {
+        "description": "Admins have unrestricted access to all actions and resources"
+      }
     },
     {
-      "policyId": "allow-editor-pages",
-      "effect": "allow",
-      "principals": {
-        "roles": ["editor"]
+      "policyId": "permit-editor-pages",
+      "effect": "permit",
+      "principal": {
+        "op": "in",
+        "entity": "Role::\"editor\""
       },
-      "actions": [
-        "ContentPages.Page.Create",
-        "ContentPages.Page.Update",
-        "ContentPages.Page.Search"
-      ],
-      "resources": [
+      "action": {
+        "op": "in",
+        "entity": "Action::\"ContentPages.Page.Create\""
+      },
+      "resource": {
+        "op": "in",
+        "entityType": "Page"
+      },
+      "conditions": [],
+      "annotations": {
+        "description": "Editors can create, update, and search pages"
+      }
+    },
+    {
+      "policyId": "permit-editor-pages-update",
+      "effect": "permit",
+      "principal": {
+        "op": "in",
+        "entity": "Role::\"editor\""
+      },
+      "action": {
+        "op": "in",
+        "entity": "Action::\"ContentPages.Page.Update\""
+      },
+      "resource": {
+        "op": "in",
+        "entityType": "Page"
+      },
+      "conditions": [],
+      "annotations": {
+        "description": "Editors can update pages"
+      }
+    },
+    {
+      "policyId": "permit-editor-pages-search",
+      "effect": "permit",
+      "principal": {
+        "op": "in",
+        "entity": "Role::\"editor\""
+      },
+      "action": {
+        "op": "in",
+        "entity": "Action::\"ContentPages.Page.Search\""
+      },
+      "resource": {
+        "op": "in",
+        "entityType": "Page"
+      },
+      "conditions": [],
+      "annotations": {
+        "description": "Editors can search pages"
+      }
+    },
+    {
+      "policyId": "forbid-analytics-to-viewers",
+      "effect": "forbid",
+      "principal": {
+        "op": "in",
+        "entity": "Role::\"viewer\""
+      },
+      "action": {
+        "op": "==",
+        "entity": "Action::\"Analytics.Query\""
+      },
+      "resource": {
+        "op": "in",
+        "entityType": "AnalyticsDashboard"
+      },
+      "conditions": [],
+      "annotations": {
+        "description": "This FORBID policy overrides any PERMIT policies due to Cedar's forbid-overrides-permit semantics",
+        "compliance": "Analytics access restricted to non-viewer roles"
+      }
+    },
+    {
+      "policyId": "forbid-quarantined-tenants",
+      "effect": "forbid",
+      "principal": {
+        "op": "All"
+      },
+      "action": {
+        "op": "All"
+      },
+      "resource": {
+        "op": "All"
+      },
+      "conditions": [
         {
-          "resourceType": "Page"
+          "type": "comparison",
+          "op": "==",
+          "left": {
+            "type": "attribute",
+            "entity": "context",
+            "attr": "tenantStatus"
+          },
+          "right": {
+            "type": "literal",
+            "value": "quarantined"
+          }
         }
       ],
-      "condition": null
+      "annotations": {
+        "description": "Quarantined tenants cannot perform any actions",
+        "severity": "CRITICAL"
+      }
     },
     {
-      "policyId": "deny-analytics-to-viewers",
-      "effect": "deny",
-      "principals": {
-        "roles": ["viewer"]
+      "policyId": "permit-owner-edit-own-pages",
+      "effect": "permit",
+      "principal": {
+        "op": "All"
       },
-      "actions": ["Analytics.Query"],
-      "resources": [
+      "action": {
+        "op": "in",
+        "entity": "Action::\"ContentPages.Page.Update\""
+      },
+      "resource": {
+        "op": "in",
+        "entityType": "Page"
+      },
+      "conditions": [
         {
-          "resourceType": "AnalyticsDashboard"
+          "type": "comparison",
+          "op": "==",
+          "left": {
+            "type": "attribute",
+            "entity": "principal",
+            "attr": "userId"
+          },
+          "right": {
+            "type": "attribute",
+            "entity": "resource",
+            "attr": "owner"
+          }
         }
       ],
-      "condition": null,
-      "$comment": "This DENY rule overrides any ALLOW rules due to deny-overrides-allow semantics"
-    },
-    {
-      "policyId": "deny-quarantined-tenants",
-      "effect": "deny",
-      "principals": {
-        "attributes": {
-          "tenantStatus": "quarantined"
-        }
-      },
-      "actions": ["*"],
-      "resources": ["*"],
-      "condition": null,
-      "$comment": "Quarantined tenants cannot perform any actions"
+      "annotations": {
+        "description": "Users can edit pages they own, even without editor role"
+      }
     }
   ],
   "evaluationSemantics": {
-    "mode": "deny-overrides-allow",
+    "mode": "forbid-overrides-permit",
     "defaultDecision": "deny",
-    "description": "Any matching deny rule causes denial regardless of allow rules. If no deny matches and at least one allow matches, access is granted. Otherwise denied."
-  }
+    "description": "Cedar evaluation: Any matching FORBID policy causes denial regardless of PERMIT policies. If no FORBID matches and at least one PERMIT matches, access is granted. Otherwise denied."
+  },
+  "$schema": "Cedar policies represented as JSON for storage and transmission. Runtime evaluation uses Cedar policy evaluation engine."
 }

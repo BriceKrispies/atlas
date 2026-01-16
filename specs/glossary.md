@@ -54,3 +54,26 @@ A validation mode where an operation is simulated but not committed, allowing us
 
 **History**
 Immutable record of past events, intents, or system actions. Typically read-only and filterable.
+
+## Authentication & Authorization
+
+**Principal**
+The authenticated identity making a request. Contains principalId, tenantId, roles, and ABAC attributes. Can be a user principal (interactive user) or service principal (API key, system service).
+
+**PrincipalId**
+Unique identifier for a principal. Format: `principal-{source}-{id}` (e.g., `principal-user-123`, `principal-service-analytics`).
+
+**Authentication (AuthN)**
+The process of verifying identity and constructing a Principal object from provider credentials (OIDC, SAML, API keys). Performed by ingress gateway before any business logic.
+
+**Authorization (AuthZ)**
+The process of determining whether a Principal is allowed to perform an Action on a Resource. Uses Cedar policy language for hybrid RBAC + ABAC with forbid-overrides-permit semantics. Enforced at ingress before dispatch.
+
+**Action**
+A named operation in the system. Format: `{ModuleId}.{ResourceType}.{Verb}` (e.g., `ContentPages.Page.Create`). Declared in module manifests and registered in action registry. Represented as Cedar Action entities.
+
+**Policy**
+A Cedar authorization rule defining permit or forbid decisions based on principal scope, action scope, resource scope, and optional conditions. Policies stored per-tenant and evaluated by Cedar authorization engine.
+
+**Cedar**
+Industry-standard authorization policy language from AWS. Used for all authorization decisions. Supports expressive policies with principal/action/resource scoping and attribute-based conditions.

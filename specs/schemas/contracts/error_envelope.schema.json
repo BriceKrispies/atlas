@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/error-envelope.v1.json",
+  "title": "ErrorEnvelope",
+  "description": "Standard error response envelope for all Atlas API errors. See specs/crosscut/errors.md for failure semantics contract.",
+  "type": "object",
+  "required": ["error"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "correlationId", "supportId"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code from error_taxonomy.json",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "examples": ["UNAUTHORIZED", "INVALID_IDEMPOTENCY_KEY", "IDEMPOTENCY_CONFLICT"]
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message safe for external display. MUST NOT contain internal details, stack traces, or sensitive information.",
+          "minLength": 1
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Request correlation ID for distributed tracing (INV-ERR-01)",
+          "minLength": 1
+        },
+        "supportId": {
+          "type": "string",
+          "description": "Opaque support identifier that maps to internal diagnostic records (INV-ERR-01). Used by support teams to locate detailed logs.",
+          "pattern": "^[a-f0-9-]+$"
+        }
+      }
+    }
+  },
+  "$comment": "This schema enforces INV-ERR-04 (Structured Response) from specs/crosscut/errors.md. All error responses from Atlas APIs MUST conform to this envelope."
+}

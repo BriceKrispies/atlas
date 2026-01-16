@@ -4,6 +4,7 @@ mod tenant;
 mod reset;
 mod quickstart;
 mod status;
+mod keycloak;
 
 pub use up::UpCommand;
 pub use seed::SeedControlCommand;
@@ -11,6 +12,7 @@ pub use tenant::{TenantCreateCommand, TenantDeleteCommand};
 pub use reset::ResetCommand;
 pub use quickstart::QuickstartCommand;
 pub use status::StatusCommand;
+pub use keycloak::KeycloakSetupCommand;
 
 use crate::commands::Command;
 use anyhow::Result;
@@ -44,6 +46,9 @@ enum DevSubcommands {
 
     #[command(about = "Show dev environment status")]
     Status(StatusCommand),
+
+    #[command(about = "Setup Keycloak realm, clients, and test user")]
+    Keycloak(KeycloakSetupCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -67,6 +72,7 @@ impl Command for DevCommand {
             DevSubcommands::Reset(cmd) => cmd.execute(),
             DevSubcommands::Quickstart(cmd) => cmd.execute(),
             DevSubcommands::Status(cmd) => cmd.execute(),
+            DevSubcommands::Keycloak(cmd) => cmd.execute(),
         }
     }
 }

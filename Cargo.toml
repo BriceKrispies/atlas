@@ -10,6 +10,8 @@ members = [
     "crates/workers",
     "crates/spec_validate",
     "crates/control_plane_db",
+    "crates/atlas-compiler",
+    "crates/atlasctl",
     "tools/cli",
     "apps/control-plane",
 
@@ -29,6 +31,7 @@ atlas-core = { path = "crates/core" }
 atlas-diagnostics = { path = "crates/diagnostics" }
 atlas-platform-runtime = { path = "crates/runtime" }
 atlas-platform-adapters = { path = "crates/adapters" }
+atlas-compiler = { path = "crates/atlas-compiler" }
 
 # Common dependencies
 serde = { version = "1.0", features = ["derive"] }
@@ -45,8 +48,8 @@ futures = "0.3"
 
 # HTTP server
 axum = "0.7"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
 
 # Logging
 tracing = "0.1"

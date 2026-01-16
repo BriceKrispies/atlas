@@ -9,6 +9,7 @@ The test suite validates:
 - **Intent submission** - Core API functionality for event submission
 - **Idempotency** - Invariant I3 enforcement (duplicate keys return same event)
 - **Authorization** - Policy-based access control (Invariant I2)
+- **Authentication** - OIDC/JWT token validation with Keycloak (Invariant I1)
 - **Observability** - Metrics collection and instrumentation
 
 ## Directory Structure
@@ -24,12 +25,14 @@ tests/blackbox/
 │   ├── client.rs          # HTTP client wrapper
 │   ├── config.rs          # Environment-based configuration
 │   ├── fixtures.rs        # Test data builders
-│   └── assertions.rs      # Custom test assertions
+│   ├── assertions.rs      # Custom test assertions
+│   └── keycloak.rs        # Keycloak OIDC client for auth tests
 └── suites/                # Test suites
     ├── health_test.rs              # Smoke tests
     ├── intent_submission_test.rs   # Core API tests
     ├── idempotency_test.rs         # Idempotency tests
     ├── authorization_test.rs       # Authorization tests
+    ├── authentication_test.rs      # OIDC/JWT auth tests
     └── observability_test.rs       # Metrics tests
 ```
 
@@ -56,11 +59,12 @@ tests/blackbox/
 3. **Run a specific test suite:**
    ```bash
    cd tests/blackbox
-   cargo test health
-   cargo test intent_submission
-   cargo test idempotency
-   cargo test authorization
-   cargo test observability
+   cargo test --test health
+   cargo test --test intent_submission
+   cargo test --test idempotency
+   cargo test --test authorization
+   cargo test --test authentication
+   cargo test --test observability
    ```
 
 4. **Stop the stack:**
@@ -81,6 +85,12 @@ PROMETHEUS_BASE_URL=http://localhost:9090
 TEST_TENANT_ID=tenant-itest-001
 HTTP_TIMEOUT_SECONDS=5
 RETRY_ATTEMPTS=3
+
+# Keycloak OIDC (for authentication tests)
+KEYCLOAK_BASE_URL=http://localhost:8081
+KEYCLOAK_REALM=atlas
+KEYCLOAK_CLIENT_ID=atlas-s2s
+KEYCLOAK_CLIENT_SECRET=<your-client-secret>
 ```
 
 ### AWS Configuration (`.env.aws`)
@@ -187,6 +197,30 @@ Validates Invariant I2:
 - Authorized actions succeed
 - Unauthorized actions return 403
 - Policy evaluation metrics are recorded
+
+### Authentication Tests
+
+Validates OIDC/JWT authentication (Invariant I1):
+- Missing token returns 401 Unauthorized
+- Invalid/malformed tokens return 401
+- Expired tokens return 401
+- Valid Keycloak tokens return 200 with principal info
+- Principal extraction works correctly (iss, sub, azp claims)
+- X-Debug-Principal header works in test mode
+
+**Requirements:** Keycloak must be running with the `atlas` realm and `atlas-s2s` client.
+
+**Running authentication tests:**
+```bash
+# Start the dev stack (includes Keycloak)
+docker compose -f infra/compose/compose.dev.yml up -d
+
+# Run auth tests
+cd tests/blackbox
+cargo test --test authentication -- --nocapture
+```
+
+**Expected runtime:** ~2-5 seconds (includes real HTTP calls to Keycloak)
 
 ### Observability Tests
 
@@ -344,6 +378,7 @@ Typical test execution times (local):
 - Intent submission tests: ~500ms
 - Idempotency tests: ~2s (multiple submissions)
 - Authorization tests: ~300ms
+- Authentication tests: ~2-5s (real Keycloak token minting)
 - Observability tests: ~400ms
 
-**Total:** ~5-10 seconds for full suite
+**Total:** ~10-15 seconds for full suite

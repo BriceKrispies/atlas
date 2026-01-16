@@ -8,7 +8,11 @@ This directory contains formal specifications for the Atlas platform, organized 
 /specs
   README.md           — this file
   glossary.md         — key terms and definitions
+  error_taxonomy.json — canonical error codes and categories
   /crosscut           — system-wide patterns and constraints
+    authn.md
+    authz.md
+    errors.md         — failure semantics and error contract
     tenancy.md
     security.md
     events.md

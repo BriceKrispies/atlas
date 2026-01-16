@@ -1,0 +1,68 @@
+# Keycloak Identity Provider - Standalone
+# Provides OpenID Connect / OAuth2 authentication for the Atlas platform.
+#
+# For full local dev stack (ingress + keycloak), use compose.dev.yml instead.
+#
+# Usage:
+#   docker compose -f compose.keycloak.yml up -d
+#
+# Access:
+#   From host:    http://localhost:8081
+#   From containers on atlas-dev network: http://keycloak:8080
+#
+# Admin Console:
+#   URL:      http://localhost:8081/admin
+#   Username: admin
+#   Password: admin
+#
+# Notes:
+#   - Port 8081 is used on host because Dozzle already uses 8080
+#   - Uses atlas-dev network (compose-managed, NOT external)
+#   - Data persists in the keycloak_data volume
+#   - Issuer URL in tokens: http://keycloak:8080/realms/<realm>
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: atlas-keycloak
+    command: start-dev
+    environment:
+      # Admin credentials for local development
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Hostname configuration for consistent issuer URLs
+      # Ensures tokens have iss: http://keycloak:8080/realms/<realm>
+      # regardless of which host the request comes from
+      KC_HOSTNAME: keycloak
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      # Host port 8081 -> Container port 8080 (Keycloak default)
+      # Note: Port 8080 is unavailable on host (Dozzle uses it)
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      # Keycloak 26+ exposes health on management port 9000
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3; cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - atlas-dev
+    restart: unless-stopped
+
+networks:
+  # Compose-managed network for local development (NOT external)
+  # Other services can join this network to reach Keycloak at http://keycloak:8080
+  atlas-dev:
+    driver: bridge
+    name: atlas-dev
+
+volumes:
+  keycloak_data:
+    name: atlas-keycloak-data

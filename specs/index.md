@@ -8,7 +8,7 @@ All platform documentation lives in this `/specs` directory. Use the navigation 
 
 - **[Overview](README.md)** — Structure and organization of specs
 - **[Glossary](glossary.md)** — Core terminology
-- **Cross-Cutting Concerns** — System-wide patterns (tenancy, security, events, storage)
+- **Cross-Cutting Concerns** — System-wide patterns (authentication, authorization, tenancy, security, events, storage)
 - **Modules** — Feature specifications organized by module
 - **Data Schemas** — Conceptual data models
 

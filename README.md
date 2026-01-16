@@ -42,6 +42,64 @@ crates/
 └── spec_validate/     # Fixture validation binary
 ```
 
+## Controller Client: atlasctl
+
+`atlasctl` is the operator/controller client for interacting with the Atlas platform. It provides a consistent interface for administrative and diagnostic operations without requiring ad-hoc scripts or direct database access.
+
+### Quick Start
+
+```bash
+# Build
+cargo build -p atlasctl
+
+# View help
+cargo run -p atlasctl -- --help
+
+# Check ingress health
+cargo run -p atlasctl -- status --base-url http://localhost:3000
+
+# Submit an intent (with test auth)
+cargo run -p atlasctl -- invoke TestAction \
+  --tenant tenant-001 \
+  --as user:123:tenant-001 \
+  --data '{"actionId": "Test.Action", "resourceType": "Resource"}'
+```
+
+### Key Invariant
+
+`atlasctl` is an **HTTP client only**. It interacts with the system over the same public surfaces as other clients:
+
+- All requests go through **ingress** or the **control plane API**
+- No direct database access
+- No linking of server runtime crates
+- Full authentication and authorization enforcement applies
+
+This ensures `atlasctl` cannot bypass platform invariants (I1, I2) and all operations remain auditable and traceable.
+
+### Available Commands
+
+| Command | Status | Description |
+|---------|--------|-------------|
+| `status` | Implemented | Check ingress service health |
+| `invoke <ACTION>` | Implemented | Submit an intent to the platform |
+| `actions list` | Stub | List actions (pending discovery endpoint) |
+| `trace <ID>` | Stub | Trace by correlation ID (pending trace endpoint) |
+
+### Where to Learn More
+
+- **Crate README**: [`crates/atlasctl/README.md`](crates/atlasctl/README.md)
+- **Specification**: [`specs/crosscut/atlasctl.md`](specs/crosscut/atlasctl.md) for invariants and constraints
+- **Help**: `cargo run -p atlasctl -- --help`
+
+### Relationship to Atlas CLI
+
+The existing [`tools/cli`](tools/cli/README.md) (`atlas` command) is a **development scaffolding tool** for creating services and managing local dev environments. `atlasctl` is distinct — it is an **operator client** for interacting with a running Atlas deployment.
+
+| Tool | Purpose | Target |
+|------|---------|--------|
+| `atlas` (tools/cli) | Dev scaffolding, local env management | Development workflow |
+| `atlasctl` (crates/atlasctl) | Runtime control plane operations | Running Atlas deployment |
+
 ## Control Plane Registry
 
 The Control Plane Registry is a centralized Postgres database that stores:

@@ -83,13 +83,14 @@ impl TestClient {
     pub async fn submit_intent(&self, payload: IntentPayload) -> Result<IntentResponse> {
         let url = format!("{}/api/v1/intents", self.config.ingress_base_url);
 
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await
-            .context("Failed to send intent request")?;
+        let mut request = self.http_client.post(&url).json(&payload);
+
+        // Add test auth header if configured
+        if let Some(ref test_principal) = self.config.test_principal {
+            request = request.header("X-Debug-Principal", test_principal);
+        }
+
+        let response = request.send().await.context("Failed to send intent request")?;
 
         let status = response.status();
         let body = response
@@ -108,13 +109,14 @@ impl TestClient {
     pub async fn submit_intent_raw(&self, payload: IntentPayload) -> Result<RawResponse> {
         let url = format!("{}/api/v1/intents", self.config.ingress_base_url);
 
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await
-            .context("Failed to send intent request")?;
+        let mut request = self.http_client.post(&url).json(&payload);
+
+        // Add test auth header if configured
+        if let Some(ref test_principal) = self.config.test_principal {
+            request = request.header("X-Debug-Principal", test_principal);
+        }
+
+        let response = request.send().await.context("Failed to send intent request")?;
 
         let status = response.status().as_u16();
         let headers = response
@@ -152,6 +154,71 @@ impl TestClient {
         Ok(())
     }
 
+    /// Liveness probe endpoint - GET /healthz
+    ///
+    /// Returns 200 OK if the process is running and can serve HTTP.
+    /// Does NOT check external dependencies.
+    pub async fn liveness_check(&self) -> Result<RawResponse> {
+        let url = format!("{}/healthz", self.config.ingress_base_url);
+
+        let response = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to send liveness check request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    /// Readiness probe endpoint - GET /readyz
+    ///
+    /// Returns 200 OK when the service is ready to receive traffic.
+    /// Checks schema registry and policy availability.
+    /// Returns 503 Service Unavailable if dependencies are not ready.
+    pub async fn readiness_check(&self) -> Result<RawResponse> {
+        let url = format!("{}/readyz", self.config.ingress_base_url);
+
+        let response = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to send readiness check request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
     /// Get Prometheus metrics from the ingress service
     pub async fn get_metrics(&self) -> Result<PrometheusMetrics> {
         let url = format!("{}/metrics", self.config.ingress_base_url);
@@ -174,6 +241,76 @@ impl TestClient {
     /// Get the test configuration
     pub fn config(&self) -> &TestConfig {
         &self.config
+    }
+
+    /// Call the /debug/whoami endpoint with an optional Bearer token.
+    ///
+    /// This is used for authentication testing:
+    /// - No token: Should return 401
+    /// - Invalid token: Should return 401
+    /// - Valid token: Should return 200 with principal info
+    pub async fn whoami(&self, bearer_token: Option<&str>) -> Result<RawResponse> {
+        let url = format!("{}/debug/whoami", self.config.ingress_base_url);
+
+        let mut request = self.http_client.get(&url);
+
+        if let Some(token) = bearer_token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send whoami request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    /// Call the /debug/whoami endpoint with X-Debug-Principal header.
+    ///
+    /// This is used for testing the test-auth mode.
+    pub async fn whoami_with_debug_principal(&self, principal: &str) -> Result<RawResponse> {
+        let url = format!("{}/debug/whoami", self.config.ingress_base_url);
+
+        let response = self
+            .http_client
+            .get(&url)
+            .header("X-Debug-Principal", principal)
+            .send()
+            .await
+            .context("Failed to send whoami request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
     }
 }
 

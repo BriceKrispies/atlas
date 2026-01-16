@@ -26,6 +26,37 @@ services:
       - atlas-itest-network
     restart: unless-stopped
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: atlas-itest-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Hostname configuration for consistent issuer URLs
+      # Internal: http://keycloak:8080/realms/atlas (used by ingress)
+      # External: http://localhost:8081/realms/atlas (used by tests)
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8081
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - atlas-itest-keycloak-data:/opt/keycloak/data
+      - ./config/keycloak/atlas-realm.json:/opt/keycloak/data/import/atlas-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; echo -e 'GET /health/ready HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - atlas-itest-network
+    restart: unless-stopped
+
   # ============================================================================
   # Database Migration & Seeding (One-shot services)
   # ============================================================================
@@ -79,9 +110,8 @@ services:
   # ============================================================================
 
   control-plane:
-    build:
-      context: ../../
-      dockerfile: apps/control-plane/Dockerfile
+    # Image built by: docker buildx bake -f docker-bake.itest.hcl
+    image: atlas-platform-control-plane:itest
     container_name: atlas-itest-control-plane
     environment:
       PORT: ${CONTROL_PLANE_PORT}
@@ -106,9 +136,9 @@ services:
     restart: unless-stopped
 
   ingress:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.ingress
+    # Image built by: docker buildx bake -f docker-bake.itest.hcl
+    # (includes test-auth feature via CARGO_FEATURES_INGRESS variable)
+    image: atlas-platform-ingress:itest
     container_name: atlas-itest-ingress
     environment:
       CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
@@ -116,6 +146,17 @@ services:
       TENANT_ID: ${TENANT_ID}
       RUST_LOG: ${RUST_LOG}
       METRICS_ADDR: ${METRICS_ADDR}
+      # Enable test auth mode for X-Debug-Principal header
+      TEST_AUTH_ENABLED: "true"
+      # Enable /debug/whoami endpoint for authentication blackbox tests
+      DEBUG_AUTH_ENDPOINT_ENABLED: "true"
+      # OIDC configuration for JWT validation
+      # Issuer URL must match the 'iss' claim in tokens from Keycloak
+      OIDC_ISSUER_URL: http://localhost:8081/realms/atlas
+      # JWKS URL for fetching public keys (internal Docker network)
+      OIDC_JWKS_URL: http://keycloak:8080/realms/atlas/protocol/openid-connect/certs
+      # Expected audience in tokens
+      OIDC_AUDIENCE: account
     ports:
       - "${INGRESS_PORT}:3000"
     healthcheck:
@@ -129,14 +170,15 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
     networks:
       - atlas-itest-network
     restart: unless-stopped
 
   workers:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.workers
+    # Image built by: docker buildx bake -f docker-bake.itest.hcl
+    image: atlas-platform-workers:itest
     container_name: atlas-itest-workers
     environment:
       CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
@@ -282,6 +324,8 @@ networks:
 volumes:
   atlas-itest-postgres-data:
     name: atlas-itest-postgres-data
+  atlas-itest-keycloak-data:
+    name: atlas-itest-keycloak-data
   atlas-itest-grafana-data:
     name: atlas-itest-grafana-data
   atlas-itest-prometheus-data:

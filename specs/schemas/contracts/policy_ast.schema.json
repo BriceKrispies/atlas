@@ -1,90 +1,238 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/policy-ast.v1.json",
-  "title": "PolicyAST",
-  "description": "Abstract syntax tree for ABAC policy expressions",
-  "definitions": {
-    "policyExpression": {
+  "$id": "https://atlas-platform.example.com/schemas/cedar-policy.v1.json",
+  "$comment": "Cedar policy representation for Atlas authorization engine",
+  "title": "CedarPolicy",
+  "description": "Cedar-based authorization policy for ABAC evaluation. Policies are expressed in Cedar's policy language syntax.",
+  "type": "object",
+  "required": ["policyId", "effect", "principal", "action", "resource"],
+  "additionalProperties": false,
+  "properties": {
+    "policyId": {
+      "type": "string",
+      "description": "Unique policy identifier within tenant",
+      "minLength": 1
+    },
+    "effect": {
+      "type": "string",
+      "description": "Policy effect: permit (allow) or forbid (deny)",
+      "enum": ["permit", "forbid"]
+    },
+    "principal": {
+      "description": "Principal scope clause (who this policy applies to)",
       "oneOf": [
         {
           "type": "object",
-          "required": ["type", "value"],
+          "description": "Principal matches specific entity or hierarchy",
+          "required": ["op"],
           "additionalProperties": false,
           "properties": {
-            "type": {
-              "const": "literal"
+            "op": {
+              "type": "string",
+              "enum": ["==", "in"]
             },
-            "value": {
-              "type": "boolean"
+            "entity": {
+              "type": "string",
+              "description": "Cedar entity reference (e.g., 'User::\"user-123\"', 'Role::\"admin\"')",
+              "minLength": 1
+            },
+            "entityType": {
+              "type": "string",
+              "description": "Entity type for 'in' hierarchical matching"
             }
           }
         },
         {
           "type": "object",
-          "required": ["type", "left", "right"],
+          "description": "All principals",
+          "required": ["op"],
           "additionalProperties": false,
           "properties": {
-            "type": {
-              "const": "equals"
-            },
-            "left": {
-              "$ref": "#/definitions/policyValue"
-            },
-            "right": {
-              "$ref": "#/definitions/policyValue"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["type", "operand"],
-          "additionalProperties": false,
-          "properties": {
-            "type": {
-              "const": "not"
-            },
-            "operand": {
-              "$ref": "#/definitions/policyExpression"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["type", "operands"],
-          "additionalProperties": false,
-          "properties": {
-            "type": {
-              "const": "and"
-            },
-            "operands": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/policyExpression"
-              },
-              "minItems": 1
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": ["type", "operands"],
-          "additionalProperties": false,
-          "properties": {
-            "type": {
-              "const": "or"
-            },
-            "operands": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/policyExpression"
-              },
-              "minItems": 1
+            "op": {
+              "type": "string",
+              "enum": ["All"]
             }
           }
         }
       ]
     },
-    "policyValue": {
+    "action": {
+      "description": "Action scope clause (what operation)",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Action matches specific action or action group",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": ["==", "in"]
+            },
+            "entity": {
+              "type": "string",
+              "description": "Cedar action entity (e.g., 'Action::\"ContentPages.Page.Create\"')",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "All actions",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": ["All"]
+            }
+          }
+        }
+      ]
+    },
+    "resource": {
+      "description": "Resource scope clause (what entity is acted upon)",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Resource matches specific entity or hierarchy",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": ["==", "in"]
+            },
+            "entity": {
+              "type": "string",
+              "description": "Cedar resource entity (e.g., 'Page::\"page-001\"', 'ResourceType::\"Page\"')",
+              "minLength": 1
+            },
+            "entityType": {
+              "type": "string",
+              "description": "Entity type for 'in' hierarchical matching"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "All resources",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": ["All"]
+            }
+          }
+        }
+      ]
+    },
+    "conditions": {
+      "description": "Optional when clause with Cedar conditions",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cedarCondition"
+      },
+      "default": []
+    },
+    "annotations": {
+      "description": "Optional policy annotations (comments, metadata)",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {}
+    }
+  },
+  "$defs": {
+    "cedarCondition": {
+      "description": "Cedar condition expression for 'when' or 'unless' clauses",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Attribute access (principal.department, resource.owner, context.ipAddress)",
+          "required": ["type", "entity", "attr"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "attribute"
+            },
+            "entity": {
+              "type": "string",
+              "enum": ["principal", "resource", "context"]
+            },
+            "attr": {
+              "type": "string",
+              "description": "Attribute name to access",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Comparison operation",
+          "required": ["type", "op", "left", "right"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "comparison"
+            },
+            "op": {
+              "type": "string",
+              "enum": ["==", "!=", "<", "<=", ">", ">=", "like", "has"]
+            },
+            "left": {
+              "$ref": "#/$defs/cedarValue"
+            },
+            "right": {
+              "$ref": "#/$defs/cedarValue"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Logical operation",
+          "required": ["type", "op", "operands"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "logical"
+            },
+            "op": {
+              "type": "string",
+              "enum": ["&&", "||", "!"]
+            },
+            "operands": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/cedarCondition"
+              },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Set membership test (in operator)",
+          "required": ["type", "element", "set"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "in"
+            },
+            "element": {
+              "$ref": "#/$defs/cedarValue"
+            },
+            "set": {
+              "$ref": "#/$defs/cedarValue"
+            }
+          }
+        }
+      ]
+    },
+    "cedarValue": {
+      "description": "Cedar value (literal, attribute reference, or expression)",
       "oneOf": [
         {
           "type": "object",
@@ -96,89 +244,32 @@
             },
             "value": {
               "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                }
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" }
               ]
             }
           }
         },
         {
           "type": "object",
-          "required": ["type", "path", "source"],
+          "required": ["type", "entity", "attr"],
           "additionalProperties": false,
           "properties": {
             "type": {
               "const": "attribute"
             },
-            "path": {
+            "entity": {
+              "type": "string",
+              "enum": ["principal", "resource", "context"]
+            },
+            "attr": {
               "type": "string",
               "minLength": 1
-            },
-            "source": {
-              "type": "string",
-              "enum": ["principal", "resource", "environment"]
             }
           }
         }
       ]
-    },
-    "policyRule": {
-      "type": "object",
-      "required": ["ruleId", "effect", "conditions"],
-      "additionalProperties": false,
-      "properties": {
-        "ruleId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "effect": {
-          "type": "string",
-          "enum": ["allow", "deny"]
-        },
-        "conditions": {
-          "$ref": "#/definitions/policyExpression"
-        },
-        "description": {
-          "type": "string"
-        }
-      }
-    },
-    "policy": {
-      "type": "object",
-      "required": ["policyId", "tenantId", "rules", "version", "status"],
-      "additionalProperties": false,
-      "properties": {
-        "policyId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "tenantId": {
-          "type": "string",
-          "minLength": 1
-        },
-        "rules": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/policyRule"
-          }
-        },
-        "version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "status": {
-          "type": "string",
-          "enum": ["active", "inactive"]
-        }
-      }
     }
-  },
-  "$ref": "#/definitions/policy"
+  }
 }

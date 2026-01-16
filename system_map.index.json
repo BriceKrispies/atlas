@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Machine-readable index of Atlas repository components and paths",
+  "version": "1.0.0",
+  "generated": "2026-01-11",
+  "workspace": {
+    "root": ".",
+    "cargo_workspace": "Cargo.toml",
+    "makefile": "Makefile",
+    "readme": "README.md"
+  },
+  "crates": {
+    "atlas-core": {
+      "path": "crates/core",
+      "type": "library",
+      "purpose": "Pure domain logic, types, policy evaluation",
+      "entry": "src/lib.rs",
+      "key_modules": ["types.rs", "policy.rs", "validation.rs", "cache.rs", "logging.rs"]
+    },
+    "atlas-platform-runtime": {
+      "path": "crates/runtime",
+      "type": "library",
+      "purpose": "Port traits (hexagonal architecture abstractions)",
+      "entry": "src/lib.rs",
+      "key_modules": ["ports.rs", "registry.rs", "cache_helpers.rs", "singleflight.rs"]
+    },
+    "atlas-platform-adapters": {
+      "path": "crates/adapters",
+      "type": "library",
+      "purpose": "Concrete implementations of port traits",
+      "entry": "src/lib.rs",
+      "key_modules": ["memory.rs", "postgres_registry.rs"]
+    },
+    "atlas-platform-ingress": {
+      "path": "crates/ingress",
+      "type": "binary",
+      "purpose": "HTTP ingress service (single chokepoint)",
+      "entry": "src/main.rs",
+      "binary_name": "ingress",
+      "key_modules": ["main.rs", "authn.rs", "authz.rs", "bootstrap.rs", "errors.rs", "metrics.rs"],
+      "http_routes": [
+        { "method": "POST", "path": "/api/v1/intents", "handler": "handle_intent" },
+        { "method": "GET", "path": "/", "handler": "health_check" },
+        { "method": "GET", "path": "/metrics", "handler": "metrics" },
+        { "method": "GET", "path": "/debug/whoami", "handler": "whoami", "feature_gated": true }
+      ]
+    },
+    "atlas-platform-workers": {
+      "path": "crates/workers",
+      "type": "binary",
+      "purpose": "Background job processor",
+      "entry": "src/main.rs",
+      "binary_name": "workers"
+    },
+    "atlas-platform-spec-validate": {
+      "path": "crates/spec_validate",
+      "type": "binary",
+      "purpose": "Fixture validation CLI",
+      "entry": "src/main.rs",
+      "binary_name": "spec_validate"
+    },
+    "atlasctl": {
+      "path": "crates/atlasctl",
+      "type": "binary",
+      "purpose": "Operator CLI client",
+      "entry": "src/main.rs",
+      "binary_name": "atlasctl",
+      "commands": ["status", "invoke", "actions", "trace"]
+    },
+    "atlas-platform-control-plane-db": {
+      "path": "crates/control_plane_db",
+      "type": "library+binaries",
+      "purpose": "Database migrations and seeds",
+      "entry": "src/lib.rs",
+      "binaries": ["migrate", "seed"],
+      "migrations_dir": "migrations"
+    },
+    "atlas-diagnostics": {
+      "path": "crates/diagnostics",
+      "type": "library",
+      "purpose": "Logging, tracing, metrics setup"
+    },
+    "atlas-compiler": {
+      "path": "crates/atlas-compiler",
+      "type": "library",
+      "purpose": "UNKNOWN - empty/stub",
+      "status": "empty"
+    }
+  },
+  "apps": {
+    "control-plane": {
+      "path": "apps/control-plane",
+      "type": "binary",
+      "purpose": "Control plane HTTP API service",
+      "entry": "src/main.rs",
+      "http_routes": [
+        { "method": "GET", "path": "/healthz" },
+        { "method": "GET", "path": "/readyz" },
+        { "method": "POST", "path": "/admin/seed" },
+        { "method": "POST", "path": "/admin/tenants" },
+        { "method": "GET", "path": "/admin/tenants/:tenant_key" },
+        { "method": "DELETE", "path": "/admin/tenants/:tenant_key" }
+      ]
+    }
+  },
+  "tools": {
+    "atlas-cli": {
+      "path": "tools/cli",
+      "type": "binary",
+      "purpose": "Development scaffolding CLI",
+      "entry": "src/main.rs",
+      "commands": ["scaffold", "validate", "gen", "run", "run-all", "dev", "module"]
+    }
+  },
+  "specs": {
+    "root": "specs",
+    "index": "specs/index.md",
+    "summary": "specs/SUMMARY.md",
+    "architecture": "specs/architecture.md",
+    "normative_requirements": "specs/normative_requirements.md",
+    "glossary": "specs/glossary.md",
+    "error_taxonomy": "specs/error_taxonomy.json",
+    "crosscut": {
+      "path": "specs/crosscut",
+      "files": ["authn.md", "authz.md", "errors.md", "events.md", "security.md", "storage.md", "tenancy.md", "atlasctl.md"]
+    },
+    "modules": {
+      "path": "specs/modules",
+      "modules": ["audit", "badges", "comms", "content", "import", "org", "points", "tokens"]
+    },
+    "schemas": {
+      "conceptual": {
+        "path": "specs/schemas",
+        "files": ["audit.md", "badges.md", "comms.md", "content.md", "import.md", "org.md", "points.md", "tokens.md"]
+      },
+      "contracts": {
+        "path": "specs/schemas/contracts",
+        "files": [
+          "event_envelope.schema.json",
+          "module_manifest.schema.json",
+          "policy_ast.schema.json",
+          "cache_policy.schema.json",
+          "search_document.schema.json",
+          "search_query.schema.json",
+          "analytics_event.schema.json",
+          "analytics_query.schema.json",
+          "error_envelope.schema.json"
+        ]
+      }
+    },
+    "fixtures": {
+      "path": "specs/fixtures",
+      "naming_convention": "<kind>__<expect>__<name>.json",
+      "validatable": [
+        "event_envelope__valid__canonical.json",
+        "event_envelope__valid__page_create_intent.json",
+        "event_envelope__valid__page_created_event.json",
+        "event_envelope__invalid__missing_idempotency.json",
+        "module_manifest__valid__content_pages.json",
+        "search_documents__valid__sample.json",
+        "analytics_events__valid__sample.json"
+      ],
+      "documentation_only": [
+        "search_query.json",
+        "expected_search_results_filtered.json",
+        "analytics_query.json",
+        "expected_analytics_buckets.json",
+        "sample_policy_bundle.json"
+      ]
+    }
+  },
+  "infra": {
+    "compose": {
+      "path": "infra/compose",
+      "files": {
+        "compose.dev.yml": "Local dev with Keycloak",
+        "compose.keycloak.yml": "Standalone Keycloak",
+        "compose.control-plane.yml": "Control plane database",
+        "compose.observability.yml": "Prometheus, Grafana, Loki",
+        "docker-compose.itest.yml": "Full integration test stack"
+      },
+      "env_files": [".env.example", ".env.itest"]
+    },
+    "docker": {
+      "path": "infra/docker",
+      "dockerfiles": {
+        "Dockerfile.ingress": "Ingress service image",
+        "Dockerfile.workers": "Workers service image"
+      }
+    },
+    "k8s": {
+      "path": "infra/k8s",
+      "status": "empty"
+    },
+    "kafka": {
+      "path": "infra/kafka",
+      "status": "empty"
+    }
+  },
+  "scripts": {
+    "path": "scripts",
+    "files": {
+      "itest-lifecycle.sh": "Integration test stack lifecycle",
+      "db-lifecycle.sh": "Control plane database lifecycle",
+      "wait-for-healthy.sh": "Wait for container health",
+      "test-authn.sh": "Authentication test runner (bash)",
+      "test-authz.sh": "Authorization test runner (bash)",
+      "test-authn.ps1": "Authentication test runner (PowerShell)",
+      "test-authz.ps1": "Authorization test runner (PowerShell)"
+    }
+  },
+  "tests": {
+    "blackbox": {
+      "path": "tests/blackbox",
+      "harness": {
+        "path": "tests/blackbox/harness",
+        "modules": ["mod.rs", "client.rs", "config.rs", "fixtures.rs", "assertions.rs", "keycloak.rs"]
+      },
+      "suites": {
+        "path": "tests/blackbox/suites",
+        "files": {
+          "health_test.rs": { "test_count": 3, "validates": "Service availability" },
+          "intent_submission_test.rs": { "test_count": 5, "validates": "Core API functionality" },
+          "idempotency_test.rs": { "test_count": 4, "validates": "Invariant I3" },
+          "authorization_test.rs": { "test_count": 3, "validates": "Invariant I2" },
+          "authentication_test.rs": { "test_count": 8, "validates": "OIDC/JWT validation" },
+          "observability_test.rs": { "test_count": 5, "validates": "Metrics instrumentation" }
+        }
+      },
+      "config": {
+        ".env.local": "Local test configuration",
+        ".env.aws": "AWS test configuration"
+      }
+    }
+  },
+  "invariants": {
+    "I1": { "name": "Single Ingress Enforcement", "location": "crates/ingress/src/main.rs" },
+    "I2": { "name": "Authorization Precedes Execution", "location": "crates/ingress/src/authz.rs" },
+    "I3": { "name": "Idempotency Before Execution", "location": "crates/adapters/src/memory.rs" },
+    "I4": { "name": "Deny-Overrides-Allow", "location": "crates/core/src/policy.rs" },
+    "I5": { "name": "Correlation Propagation", "location": "Event envelope fields" },
+    "I6": { "name": "Causation Linkage", "location": "Event envelope causationId" },
+    "I7": { "name": "Tenant Isolation in Search", "location": "crates/runtime/src/ports.rs" },
+    "I8": { "name": "Permission-Filtered Search", "location": "crates/runtime/src/ports.rs" },
+    "I9": { "name": "Cache Keys Include TenantId", "location": "crates/runtime/src/ports.rs" },
+    "I10": { "name": "Event-Driven Cache Invalidation", "location": "crates/workers/src/main.rs" },
+    "I11": { "name": "Deterministic Time Bucketing", "location": "crates/runtime/src/ports.rs" },
+    "I12": { "name": "Projections Are Rebuildable", "location": "TODO in workers" }
+  },
+  "ports": {
+    "services": {
+      "ingress": 3000,
+      "control_plane": 8000,
+      "workers_metrics": 9101,
+      "postgres": 5432,
+      "keycloak": 8081
+    },
+    "observability": {
+      "prometheus": 9090,
+      "grafana": 3001,
+      "loki": 3100,
+      "dozzle": 8080,
+      "pgadmin": 5050
+    }
+  },
+  "make_targets": {
+    "build": ["build", "test", "fmt", "lint", "clean"],
+    "services": ["run-ingress", "run-workers", "spec-check"],
+    "database": ["db-up", "db-down", "db-reset", "db-migrate", "db-seed", "db-status", "db-logs"],
+    "observability": ["obs-up", "obs-down", "obs-status", "obs-logs", "obs-reset", "obs-open"],
+    "integration_tests": ["itest-up", "itest-down", "itest-restart", "itest-logs", "itest-status", "itest-clean", "itest-reset", "itest-test", "itest"]
+  }
+}

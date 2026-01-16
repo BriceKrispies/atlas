@@ -27,6 +27,10 @@ path = "suites/authorization_test.rs"
 name = "observability"
 path = "suites/observability_test.rs"
 
+[[test]]
+name = "authentication"
+path = "suites/authentication_test.rs"
+
 [dependencies]
 # HTTP client
 reqwest = { version = "0.11", features = ["json"] }

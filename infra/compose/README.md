@@ -1,4 +1,158 @@
-# Atlas Platform Observability Stack
+# Atlas Platform Infrastructure Compose
+
+Local development infrastructure for the Atlas platform.
+
+## Available Stacks
+
+| Stack | Compose File | Description |
+|-------|--------------|-------------|
+| **Local Dev** | `compose.dev.yml` | Ingress + Keycloak for local OIDC development |
+| Keycloak (standalone) | `compose.keycloak.yml` | Identity provider only |
+| Observability | `compose.observability.yml` | Prometheus, Grafana, Loki, Promtail |
+| Control Plane | `compose.control-plane.yml` | Postgres, pgAdmin, Control Plane service |
+| Integration Tests | `docker-compose.itest.yml` | Full stack for integration testing |
+
+---
+
+## Local Development with OIDC (Recommended)
+
+The `compose.dev.yml` stack runs ingress + Keycloak together on the `atlas-dev` network for seamless local OAuth2/OIDC development.
+
+### Quick Start
+
+```bash
+cd infra/compose
+
+# Start the dev stack (ingress + keycloak)
+docker compose -f compose.dev.yml up -d
+
+# View logs
+docker compose -f compose.dev.yml logs -f
+
+# Stop the stack
+docker compose -f compose.dev.yml down
+```
+
+### Access URLs
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Ingress API | http://localhost:3000 | Main API endpoint |
+| Ingress Health | http://localhost:3000/ | Health check |
+| Debug Whoami | http://localhost:3000/debug/whoami | Returns authenticated principal |
+| Keycloak Admin | http://localhost:8081/admin | Admin console (admin/admin) |
+| Keycloak OIDC | http://localhost:8081/realms/atlas | OIDC discovery endpoint |
+
+### Network Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    atlas-dev network                         │
+│  ┌─────────────┐              ┌─────────────────────────┐   │
+│  │   ingress   │─────────────▶│       keycloak          │   │
+│  │  :3000      │  http://     │  :8080                  │   │
+│  └─────────────┘  keycloak:   └─────────────────────────┘   │
+│        │          8080               │                      │
+└────────│─────────────────────────────│──────────────────────┘
+         │                             │
+    localhost:3000               localhost:8081
+         │                             │
+    ┌────▼─────────────────────────────▼────┐
+    │              Host Machine              │
+    └────────────────────────────────────────┘
+```
+
+### Setting Up Keycloak for Local Dev
+
+1. **Start the dev stack:**
+   ```bash
+   docker compose -f compose.dev.yml up -d
+   ```
+
+2. **Create a realm** (one-time setup):
+   - Open http://localhost:8081/admin
+   - Login: admin / admin
+   - Click "Create Realm"
+   - Name: `atlas`
+   - Click "Create"
+
+3. **Create a client** (one-time setup):
+   - Select realm "atlas"
+   - Go to Clients → Create client
+   - Client ID: `atlas-ingress`
+   - Client authentication: ON
+   - Service accounts roles: ON (for client credentials)
+   - Click Save
+   - Go to Credentials tab → copy the Client Secret
+
+4. **Get an access token:**
+   ```bash
+   # Client credentials grant (service-to-service)
+   curl -X POST http://localhost:8081/realms/atlas/protocol/openid-connect/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=client_credentials" \
+     -d "client_id=atlas-ingress" \
+     -d "client_secret=<your-client-secret>"
+   ```
+
+5. **Test the debug endpoint:**
+   ```bash
+   # Use the access_token from the previous response
+   curl -H "Authorization: Bearer <access_token>" \
+     http://localhost:3000/debug/whoami
+   ```
+
+### Issuer URL Consistency
+
+Tokens minted by Keycloak contain an `iss` (issuer) claim. For token validation to succeed, ingress must use the same issuer URL.
+
+**How it works:**
+- Keycloak is configured with `KC_HOSTNAME=keycloak` and `KC_HOSTNAME_PORT=8080`
+- All tokens have `iss: http://keycloak:8080/realms/atlas`
+- Ingress validates tokens against `OIDC_ISSUER_URL=http://keycloak:8080/realms/atlas`
+- Since both services are on the `atlas-dev` network, the hostname `keycloak` resolves correctly
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEYCLOAK_ADMIN` | `admin` | Keycloak admin username |
+| `KEYCLOAK_ADMIN_PASSWORD` | `admin` | Keycloak admin password |
+| `KEYCLOAK_PORT` | `8081` | Keycloak host port |
+| `INGRESS_PORT` | `3000` | Ingress host port |
+| `OIDC_ISSUER_URL` | `http://keycloak:8080/realms/atlas` | OIDC issuer for token validation |
+| `OIDC_AUDIENCE` | `atlas-ingress` | Expected audience in tokens |
+| `TENANT_ID` | `tenant-dev` | Default tenant ID |
+
+### Data Persistence
+
+Data is stored in Docker volumes:
+- `atlas-dev-keycloak-data` - Keycloak realms, clients, users
+
+To reset all data:
+```bash
+docker compose -f compose.dev.yml down -v
+```
+
+---
+
+## Keycloak Standalone
+
+If you only need Keycloak (without ingress), use `compose.keycloak.yml`:
+
+```bash
+# Start Keycloak only
+docker compose -f compose.keycloak.yml up -d
+
+# Access admin console
+open http://localhost:8081/admin
+```
+
+This is useful when running ingress locally (not in Docker) but needing Keycloak for OIDC.
+
+---
+
+## Observability Stack
 
 Local development observability with Prometheus (metrics), Loki (logs), and Grafana (visualization).
 
