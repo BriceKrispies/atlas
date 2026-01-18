@@ -27,7 +27,7 @@ A reusable email layout saved by admins, available for use by any part of the sy
 A configurable UI component that can be embedded in various contexts. Typically has tenant-specific configuration.
 
 **Page**
-A full standalone UI surface, typically accessible via navigation.
+A user-defined container composed of widget instances plus layout metadata. Pages include title, layout configuration, and an array of widget instances. The render model for a page is cacheable.
 
 **Point**
 A numeric reward unit tracked per user. Points have a configurable monetary value (default: 1 point ≈ 50 cents).
@@ -88,3 +88,57 @@ A Cedar authorization rule defining permit or forbid decisions based on principa
 
 **Cedar**
 Industry-standard authorization policy language from AWS. Used for all authorization decisions. Supports expressive policies with principal/action/resource scoping and attribute-based conditions.
+
+**Resource**
+Target of an authorization decision (e.g., Page, WidgetInstance, File). Each resource has a type, unique identifier, and ABAC attributes used in policy evaluation. Authorization decisions reference resources, not routes.
+
+**Decision**
+The result of an authorization evaluation. Contains allow or deny outcome, human-readable reason, and optionally the matched policy rules. Deny decisions must be explainable for audit and debugging purposes.
+
+**Session**
+A continuity handle for repeated requests, linking multiple operations to the same authenticated principal. Contains session ID, principal ID, and expiry metadata. Not used directly for authorization decisions.
+
+**Ingress**
+The single chokepoint that enforces validation, authentication, authorization, idempotency, and dispatch for all external requests. No module or service may expose direct external endpoints.
+
+**IdempotencyKey**
+A deduplication key ensuring repeat requests produce the same outcome without re-execution. Scoped by tenant ID, principal ID, and action ID. Required for any command that can be retried.
+
+## Event & Data Concepts
+
+**EventEnvelope**
+A canonical wrapper for all events in the system. Contains metadata fields (event ID, tenant ID, timestamp, correlation ID, causation ID, idempotency key) plus event type and payload. All domain events, UI intents, audit events, and system events share this envelope structure.
+
+**DomainEvent**
+An immutable fact emitted by command handlers representing a state change. Events are append-only and serve as the source of truth for projections and audit trails.
+
+**Projection**
+A rebuildable read model derived from event history. Projections denormalize data for query performance and can be reconstructed by replaying events. Examples include RenderPageModel for UI rendering.
+
+**RenderModel**
+A UI-ready materialization optimized for fast frontend rendering. Render models are projections specifically designed for UI consumption and are aggressively cached.
+
+**AuditEvent**
+An immutable record of sensitive operations and authorization decisions. Includes timestamp, principal, action, resource, decision, and reason. Audit events support compliance and debugging.
+
+## Caching Concepts
+
+**CacheArtifact**
+A named cacheable output of a query or materialization. Each artifact declares its cache key shape, tags for invalidation, TTL policy, vary-by dimensions (tenant, locale, role, user), and privacy level.
+
+**CacheKey**
+The key used to store and retrieve a cache artifact. Format: `{tenantId}:{artifactName}:{params}`. Tenant ID is required unless the artifact is explicitly marked PUBLIC.
+
+**Tag**
+An invalidation selector attached to cache entries. Tags like `Tenant:{id}`, `Page:{id}`, or `WidgetInstance:{id}` enable event-driven cache invalidation when entities change.
+
+## UI Composition
+
+**WidgetType**
+A widget blueprint defining the code, settings schema, and declared capabilities. Widget types are registered in the platform and can be instantiated multiple times on different pages.
+
+**WidgetInstance**
+A concrete placement of a widget type on a specific page. Contains the widget type ID, page ID, instance-specific settings, and policies for visibility and interaction.
+
+**WidgetSettings**
+Instance-specific configuration for a widget, validated against the widget type's settings schema. Settings are provided as JSON and validated at ingress.
