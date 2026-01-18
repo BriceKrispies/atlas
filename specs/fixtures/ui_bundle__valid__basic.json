@@ -1,0 +1,47 @@
+{
+  "$schema": "../schemas/contracts/ui_bundle.schema.json",
+  "$comment": "Valid UI Bundle with all required fields and common optional fields",
+  "$invariants": [
+    "INV-UI-01: platformCompatibility is declared",
+    "INV-UI-03: provides.routes has at least one entry"
+  ],
+  "bundleId": "atlas-ui-standard",
+  "version": "1.2.0",
+  "displayName": "Atlas Standard UI",
+  "description": "Default user interface bundle for Atlas platform tenants",
+  "platformCompatibility": {
+    "minVersion": "1.0.0",
+    "maxVersion": "2.0.0"
+  },
+  "status": "published",
+  "provides": {
+    "routes": [
+      "dashboard",
+      "profile",
+      "settings",
+      "announcements",
+      "badges",
+      "points-history"
+    ],
+    "widgets": [
+      "announcements-widget",
+      "messaging-widget",
+      "badges-display",
+      "points-summary"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ]
+  },
+  "entrypoints": {
+    "main": "/bundles/atlas-ui-standard/1.2.0/main.js",
+    "styles": "/bundles/atlas-ui-standard/1.2.0/styles.css"
+  },
+  "integrity": {
+    "checksum": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+    "algorithm": "sha256"
+  },
+  "createdAt": "2025-01-01T10:00:00.000Z",
+  "publishedAt": "2025-01-05T14:30:00.000Z"
+}

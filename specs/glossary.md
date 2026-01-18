@@ -55,6 +55,17 @@ A validation mode where an operation is simulated but not committed, allowing us
 **History**
 Immutable record of past events, intents, or system actions. Typically read-only and filterable.
 
+## UI Artifacts
+
+**UI Bundle**
+A versioned, deployable artifact containing compiled frontend code (routes, widgets, themes) for an Atlas tenant interface. UI Bundles are platform-global artifacts that can be selected by individual tenants. Each tenant has exactly one active bundle at any time.
+
+**Active Bundle**
+The currently selected UI Bundle for a tenant. Determines which frontend code is served to the tenant's users.
+
+**Platform Compatibility**
+A version range declared by a UI Bundle specifying which platform API versions it supports. The platform rejects activation of bundles outside the compatible range.
+
 ## Authentication & Authorization
 
 **Principal**

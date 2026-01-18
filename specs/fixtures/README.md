@@ -19,7 +19,7 @@ Validatable fixtures follow a strict naming convention:
 ```
 
 Where:
-- `kind` is one of: `event_envelope`, `module_manifest`, `search_documents`, `analytics_events`
+- `kind` is one of: `event_envelope`, `module_manifest`, `search_documents`, `analytics_events`, `ui_bundle`
 - `expect` is one of: `valid`, `invalid`
 - `name` is a freeform identifier (no double underscores allowed)
 
@@ -98,6 +98,18 @@ cargo run -p atlas-platform-spec-validate -- --help
 - eventType MUST follow Module.event_name pattern
 - eventIds MUST be unique within a batch
 
+### UI Bundles
+
+- `ui_bundle__valid__basic.json` - Valid UI Bundle with all required and common optional fields
+- `ui_bundle__invalid__missing_required_field.json` - Demonstrates violation: missing platformCompatibility
+
+**Invariants Encoded:**
+- Bundles MUST declare platformCompatibility (INV-UI-01)
+- Bundles MUST provide at least one route (INV-UI-03)
+- Published bundles MUST have publishedAt timestamp
+- bundleId MUST be kebab-case
+- version MUST be semver format
+
 ### Non-Validatable Fixtures
 
 These fixtures document query/result semantics but are not domain types:
@@ -156,3 +168,4 @@ Each fixture references its schema via `$schema` field. See:
 - `../schemas/contracts/event_envelope.schema.json`
 - `../schemas/contracts/module_manifest.schema.json`
 - `../schemas/contracts/policy_ast.schema.json`
+- `../schemas/contracts/ui_bundle.schema.json`

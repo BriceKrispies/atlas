@@ -1,0 +1,12 @@
+{
+  "$comment": "This bundle is INVALID because it is missing the required platformCompatibility field (violates INV-UI-01)",
+  "bundleId": "invalid-bundle",
+  "version": "1.0.0",
+  "displayName": "Invalid Bundle Example",
+  "status": "draft",
+  "provides": {
+    "routes": [
+      "dashboard"
+    ]
+  }
+}

@@ -43,7 +43,12 @@
       "Bash(make itest-build:*)",
       "Bash(docker network inspect:*)",
       "Bash(git mv:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(xargs:*)",
+      "Bash(npx ajv:*)",
+      "Bash(python:*)",
+      "Bash(test:*)",
+      "Bash(mdbook build:*)"
     ]
   }
 }

@@ -46,6 +46,7 @@
 | `crosscut/security.md` | Pattern specification | Role-based access patterns, permission model |
 | `crosscut/storage.md` | Pattern specification | File/media storage privacy model, placeholder behavior |
 | `crosscut/tenancy.md` | Pattern specification | Tenant boundary rules, data isolation, configuration scope |
+| `crosscut/ui.md` | Pattern specification | UI Bundle artifact model, versioning, tenant selection, observability |
 
 ### 1.3 Module Specifications
 
@@ -91,6 +92,7 @@ Each module follows pattern: `modules/<module-name>/{README.md, surfaces.md, eve
 | `schemas/contracts/search_query.schema.json` | JSON Schema | Search query with execution context for tenant isolation |
 | `schemas/contracts/analytics_event.schema.json` | JSON Schema | Analytics event for time-series aggregation |
 | `schemas/contracts/analytics_query.schema.json` | JSON Schema | Time-bucketed analytics query with dimension grouping |
+| `schemas/contracts/ui_bundle.schema.json` | JSON Schema | UI Bundle artifact descriptor with versioning and platform compatibility |
 
 ### 1.6 Fixtures (Golden Test Data)
 
@@ -109,6 +111,8 @@ Each module follows pattern: `modules/<module-name>/{README.md, surfaces.md, eve
 | `fixtures/analytics_events.json` | Example | Analytics events derived from domain events |
 | `fixtures/analytics_query.json` | Example | Time-bucketed aggregation query |
 | `fixtures/expected_analytics_buckets.json` | Example | Time-aligned buckets with dimension grouping |
+| `fixtures/ui_bundle__valid__basic.json` | Example | Valid UI Bundle with all required and common optional fields |
+| `fixtures/ui_bundle__invalid__missing_required_field.json` | Counter-example | Invalid bundle demonstrating missing platformCompatibility |
 
 ---
 
@@ -181,6 +185,9 @@ Tenant, Tenant Admin, End User, Business Unit, Intent, Token, Email Template, Wi
 
 **Defined Terms (System Constructs):**
 Plane (Tenant Admin, End User, Control Plane), Dry Run, History
+
+**Defined Terms (UI Artifacts):**
+UI Bundle, Active Bundle, Platform Compatibility
 
 ### 2.4 Module Specifications (Pattern Analysis)
 
@@ -346,6 +353,24 @@ querySpec (eventType, timeRange, aggregationType, bucketSize), executionContext 
 - bucketSize: pattern `^[0-9]+(s|m|h|d)$` (e.g., "5m", "1h", "1d")
 - metricName: string or null (null for count aggregation)
 
+#### ui_bundle.schema.json
+
+**Required Fields:**
+bundleId, version, displayName, platformCompatibility, status, provides
+
+**Optional Fields:**
+description, entrypoints, integrity, createdAt, publishedAt
+
+**Field Constraints:**
+- bundleId: string, pattern `^[a-z0-9-]+$` (kebab-case)
+- version: string, pattern `^[0-9]+\.[0-9]+\.[0-9]+$` (semver)
+- status: enum draft|published|deprecated|archived
+- platformCompatibility: object with minVersion (required) and maxVersion (optional)
+- provides: object with routes (required array), widgets (optional array), themes (optional array)
+
+**Conditional Requirements:**
+- If status is "published", publishedAt is required
+
 ### 2.7 Fixtures (Invariants Encoded)
 
 **valid_event_envelope.json:**
@@ -383,6 +408,15 @@ querySpec (eventType, timeRange, aggregationType, bucketSize), executionContext 
 - Dimension values create separate buckets
 - Aggregations are tenant-scoped
 
+**ui_bundle__valid__basic.json:**
+- Demonstrates all required fields present
+- platformCompatibility declares version range (INV-UI-01)
+- provides.routes has at least one entry (INV-UI-03)
+- status is "published" with publishedAt timestamp
+
+**ui_bundle__invalid__missing_required_field.json:**
+- Demonstrates rejection when platformCompatibility is missing
+
 ---
 
 ## 3. Stability Classification
@@ -400,6 +434,7 @@ querySpec (eventType, timeRange, aggregationType, bucketSize), executionContext 
   - search_query.schema.json — Search execution
   - analytics_event.schema.json — Analytics events
   - analytics_query.schema.json — Analytics queries
+  - ui_bundle.schema.json — UI Bundle artifact descriptor
 
 - **Fixtures in `fixtures/`:**
   - All fixture files are golden test data
@@ -780,6 +815,7 @@ This section lists **verbatim** the files and artifacts that the compiler will a
 - `schemas/contracts/search_query.schema.json`
 - `schemas/contracts/analytics_event.schema.json`
 - `schemas/contracts/analytics_query.schema.json`
+- `schemas/contracts/ui_bundle.schema.json`
 
 **Error Taxonomy:**
 - `error_taxonomy.json`
@@ -797,6 +833,8 @@ This section lists **verbatim** the files and artifacts that the compiler will a
 - `fixtures/analytics_events.json`
 - `fixtures/analytics_query.json`
 - `fixtures/expected_analytics_buckets.json`
+- `fixtures/ui_bundle__valid__basic.json`
+- `fixtures/ui_bundle__invalid__missing_required_field.json`
 
 **Module Manifest Example:**
 - `modules/content-pages.json`
@@ -811,6 +849,7 @@ This section lists **verbatim** the files and artifacts that the compiler will a
 - `crosscut/security.md`
 - `crosscut/storage.md`
 - `crosscut/tenancy.md`
+- `crosscut/ui.md`
 
 **Module Specifications (All Modules):**
 - `modules/audit/{README.md, surfaces.md, events.md}`
@@ -932,19 +971,19 @@ This inventory captures the spec surface as it exists. Notable characteristics:
 
 ## Appendix: Spec Artifact Count
 
-- **Total Files:** 67
-- **Markdown Docs:** 38
-- **JSON Schemas:** 8
-- **JSON Fixtures:** 13
+- **Total Files:** 70
+- **Markdown Docs:** 39
+- **JSON Schemas:** 9
+- **JSON Fixtures:** 15
 - **JSON Manifest Examples:** 2
 - **Deleted Generated Files:** ~100 (mdBook build artifacts, not source)
 
 **Breakdown:**
 - Root-level: 6 files
-- crosscut/: 4 files
+- crosscut/: 5 files (includes ui.md)
 - modules/: 25 files (8 modules × 3 files each + 1 manifest)
-- schemas/: 18 files (1 README + 9 conceptual schemas + 8 JSON contracts)
-- fixtures/: 14 files (1 README + 13 examples)
+- schemas/: 19 files (1 README + 9 conceptual schemas + 9 JSON contracts)
+- fixtures/: 16 files (1 README + 15 examples)
 
 ---
 
