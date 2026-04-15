@@ -1,8 +1,12 @@
 # Atlas Local Development Stack
 # Runs ingress + Keycloak on a shared network for local OIDC/OAuth2 development.
 #
+# IMPORTANT: This compose file requires environment variables to be set.
+# Use the Atlas CLI which injects all required variables, or set them manually.
+#
 # Usage:
-#   docker compose -f compose.dev.yml up -d
+#   atlas dev up  # Recommended - CLI handles all configuration
+#   docker compose -f compose.dev.yml up -d  # Manual (requires env vars)
 #
 # Access:
 #   Ingress:          http://localhost:3000
@@ -29,8 +33,8 @@ services:
     command: start-dev
     environment:
       # Admin credentials
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       # Hostname configuration for consistent issuer URLs
       # Tokens will have iss: http://localhost:8081/realms/<realm>
       KC_HOSTNAME: localhost
@@ -41,7 +45,7 @@ services:
       KC_HEALTH_ENABLED: "true"
     ports:
       # Host port 8081 -> Container port 8080 (port 8080 used by Dozzle)
-      - "${KEYCLOAK_PORT:-8081}:8080"
+      - "${KEYCLOAK_PORT}:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
     healthcheck:
@@ -68,9 +72,11 @@ services:
         CARGO_FEATURES: test-auth
     container_name: atlas-dev-ingress
     environment:
+      # Environment mode - must be "dev" for local development
+      ATLAS_ENV: ${ATLAS_ENV}
       # Runtime configuration
-      RUST_LOG: ${RUST_LOG:-info,atlas_platform_ingress=debug}
-      TENANT_ID: ${TENANT_ID:-tenant-dev}
+      RUST_LOG: ${RUST_LOG}
+      TENANT_ID: ${TENANT_ID}
       # Control plane disabled for lightweight dev (uses in-memory)
       CONTROL_PLANE_ENABLED: "false"
       # Enable test auth for X-Debug-Principal header
@@ -81,12 +87,12 @@ services:
       # IMPORTANT: Issuer URL must EXACTLY match the 'iss' claim in Keycloak tokens
       # Keycloak is configured with KC_HOSTNAME=localhost KC_HOSTNAME_PORT=8081
       # So tokens have iss=http://localhost:8081/realms/atlas
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://localhost:8081/realms/atlas}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL}
       # JWKS URL is where ingress fetches public keys from INSIDE Docker
       # We use the internal docker network name (keycloak:8080)
-      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/atlas/protocol/openid-connect/certs}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL}
       # Audience must match the 'aud' claim in tokens (Keycloak default is "account")
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-account}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE}
     ports:
       - "${INGRESS_PORT:-3000}:3000"
     healthcheck:

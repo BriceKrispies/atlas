@@ -32,6 +32,7 @@ pub fn valid_intent_payload() -> IntentPayload {
             "resourceId": null,
             // Action-specific data
             "pageId": "page-001",
+            "slug": "test-page",
             "title": "Test Page",
             "content": "This is a test page",
             "authorId": "user-test-001",
@@ -146,7 +147,58 @@ pub fn intent_for_unauthorized_action() -> IntentPayload {
             "resourceType": "Page",
             "resourceId": null,
             "pageId": "page-unauthorized",
+            "slug": "unauthorized",
             "title": "Unauthorized Page"
+        }),
+    }
+}
+
+/// Create a page-create intent with specific page details
+pub fn page_create_intent(page_id: &str, title: &str, slug: &str) -> IntentPayload {
+    IntentPayload {
+        event_id: Uuid::new_v4().to_string(),
+        event_type: "ContentPages.PageCreateRequested".to_string(),
+        schema_id: "ui.contentpages.page.create.v1".to_string(),
+        schema_version: 1,
+        occurred_at: Utc::now().to_rfc3339(),
+        tenant_id: "tenant-itest-001".to_string(),
+        correlation_id: Uuid::new_v4().to_string(),
+        idempotency_key: unique_idempotency_key("itest-page"),
+        causation_id: None,
+        principal_id: Some("user-test-001".to_string()),
+        user_id: Some("user-test-001".to_string()),
+        payload: json!({
+            "actionId": "ContentPages.Page.Create",
+            "resourceType": "Page",
+            "resourceId": null,
+            "pageId": page_id,
+            "slug": slug,
+            "title": title
+        }),
+    }
+}
+
+/// Create an intent with an unregistered action ID (for negative testing)
+pub fn intent_with_unknown_action() -> IntentPayload {
+    IntentPayload {
+        event_id: Uuid::new_v4().to_string(),
+        event_type: "Nonexistent.ActionRequested".to_string(),
+        schema_id: "ui.contentpages.page.create.v1".to_string(),
+        schema_version: 1,
+        occurred_at: Utc::now().to_rfc3339(),
+        tenant_id: "tenant-itest-001".to_string(),
+        correlation_id: Uuid::new_v4().to_string(),
+        idempotency_key: unique_idempotency_key("itest-unknown-action"),
+        causation_id: None,
+        principal_id: Some("user-test-001".to_string()),
+        user_id: Some("user-test-001".to_string()),
+        payload: json!({
+            "actionId": "Nonexistent.Action.Do",
+            "resourceType": "Page",
+            "resourceId": null,
+            "pageId": "page-xxx",
+            "slug": "xxx",
+            "title": "Should Fail"
         }),
     }
 }

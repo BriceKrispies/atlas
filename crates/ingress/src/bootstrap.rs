@@ -1,20 +1,35 @@
 //! Bootstrap logic for loading configuration from Control Plane Registry
+//!
+//! This module handles runtime configuration for the ingress service.
+//! It enforces strict-by-default behavior for production safety.
+//!
+//! # Environment Modes
+//!
+//! - **Strict (default)**: All required configuration must be explicitly set.
+//!   TENANT_ID is forbidden - tenant must come from request context (Host/JWT/header).
+//! - **Dev (ATLAS_ENV=dev)**: Allows convenience defaults for local development.
+//!   TENANT_ID can be used as a fallback for requests without tenant context.
 
 use crate::authn::{AuthConfig, OidcConfig};
 use crate::schema::{create_default_schema_registry, SchemaRegistry};
 use anyhow::{Context, Result};
+use atlas_config::{
+    atlas_env, forbid_in_strict, get_env_optional, get_env_or_dev, is_env_enabled, log_env_mode,
+    require_env, AtlasEnv,
+};
 use atlas_core::policy::PolicyEngine;
 use atlas_core::types::Policy;
 use atlas_platform_adapters::PostgresControlPlaneRegistry;
 use atlas_platform_runtime::ports::ControlPlaneRegistry;
 use atlas_platform_runtime::registry::{ActionMetadata, ActionRegistry};
 use sqlx::postgres::PgPoolOptions;
-use std::env;
 use std::sync::Arc;
 use tracing::{info, warn};
 
+#[cfg(feature = "test-auth")]
+use tracing::error;
+
 pub struct RuntimeConfig {
-    #[allow(dead_code)]
     pub action_registry: ActionRegistry,
     pub policy_engine: PolicyEngine,
     pub policies: Vec<Policy>,
@@ -30,24 +45,27 @@ pub struct RuntimeConfig {
 /// Environment variables:
 /// - `OIDC_ISSUER_URL`: Required issuer URL (must match `iss` claim in tokens)
 /// - `OIDC_JWKS_URL`: Optional explicit JWKS URL (for Docker internal networking)
-/// - `OIDC_AUDIENCE`: Required expected audience (must match `aud` claim in tokens)
+/// - `OIDC_AUDIENCE`: Required in strict mode when OIDC is enabled
 ///
 /// Returns None if OIDC is not configured (no OIDC_ISSUER_URL set).
-fn bootstrap_oidc_config() -> Option<OidcConfig> {
-    let issuer_url = match env::var("OIDC_ISSUER_URL") {
-        Ok(url) if !url.is_empty() => url,
-        _ => {
+fn bootstrap_oidc_config() -> Result<Option<OidcConfig>> {
+    let issuer_url = match get_env_optional("OIDC_ISSUER_URL") {
+        Some(url) => url,
+        None => {
             info!("OIDC_ISSUER_URL not set - OIDC authentication disabled");
-            return None;
+            return Ok(None);
         }
     };
 
-    let audience = env::var("OIDC_AUDIENCE").unwrap_or_else(|_| {
-        warn!("OIDC_AUDIENCE not set, defaulting to 'account'");
-        "account".to_string()
-    });
+    // When OIDC is enabled, audience is required in strict mode
+    let audience = get_env_or_dev("OIDC_AUDIENCE", "account").map_err(|e| {
+        anyhow::anyhow!(
+            "OIDC_AUDIENCE is required when OIDC_ISSUER_URL is set. {}",
+            e
+        )
+    })?;
 
-    let jwks_url = env::var("OIDC_JWKS_URL").ok().filter(|s| !s.is_empty());
+    let jwks_url = get_env_optional("OIDC_JWKS_URL");
 
     info!(
         "OIDC configured: issuer={}, audience={}, jwks_url={:?}",
@@ -59,7 +77,7 @@ fn bootstrap_oidc_config() -> Option<OidcConfig> {
         config = config.with_jwks_url(url);
     }
 
-    Some(config)
+    Ok(Some(config))
 }
 
 /// Bootstrap authentication configuration from environment variables.
@@ -74,23 +92,23 @@ fn bootstrap_oidc_config() -> Option<OidcConfig> {
 /// # Safety
 /// Test auth mode and debug endpoint are compile-time gated by the `test-auth` feature.
 /// Even if env vars are set to "true", they will have no effect without the feature enabled.
-pub fn bootstrap_auth_config() -> AuthConfig {
+pub fn bootstrap_auth_config() -> Result<AuthConfig> {
     // Load OIDC config (shared between test and non-test builds)
-    let oidc_config = bootstrap_oidc_config();
+    let oidc_config = bootstrap_oidc_config()?;
 
     #[cfg(feature = "test-auth")]
     {
-        let test_auth_enabled = env::var("TEST_AUTH_ENABLED")
-            .unwrap_or_else(|_| "false".to_string())
-            .parse::<bool>()
-            .unwrap_or(false);
-
-        let debug_endpoint_enabled = env::var("DEBUG_AUTH_ENDPOINT_ENABLED")
-            .unwrap_or_else(|_| "false".to_string())
-            .parse::<bool>()
-            .unwrap_or(false);
+        let test_auth_enabled = is_env_enabled("TEST_AUTH_ENABLED");
+        let debug_endpoint_enabled = is_env_enabled("DEBUG_AUTH_ENDPOINT_ENABLED");
 
         if test_auth_enabled {
+            if atlas_env().is_strict() {
+                error!(
+                    "TEST_AUTH_ENABLED=true but running in STRICT mode. \
+                     Test auth should only be used with ATLAS_ENV=dev."
+                );
+                // We still allow it (feature gate is the real protection) but warn loudly
+            }
             warn!(
                 "TEST AUTH MODE ENABLED - X-Debug-Principal header will be accepted. \
                  This should NEVER be enabled in production!"
@@ -98,6 +116,12 @@ pub fn bootstrap_auth_config() -> AuthConfig {
         }
 
         if debug_endpoint_enabled {
+            if atlas_env().is_strict() {
+                error!(
+                    "DEBUG_AUTH_ENDPOINT_ENABLED=true but running in STRICT mode. \
+                     Debug endpoint should only be used with ATLAS_ENV=dev."
+                );
+            }
             warn!(
                 "DEBUG AUTH ENDPOINT ENABLED - /debug/whoami will expose principal info. \
                  This should NEVER be enabled in production!"
@@ -112,19 +136,19 @@ pub fn bootstrap_auth_config() -> AuthConfig {
             config = config.with_oidc(oidc);
         }
 
-        config
+        Ok(config)
     }
 
     #[cfg(not(feature = "test-auth"))]
     {
         // When feature is not enabled, ignore the env vars entirely
-        if env::var("TEST_AUTH_ENABLED").is_ok() {
+        if get_env_optional("TEST_AUTH_ENABLED").is_some() {
             info!(
                 "TEST_AUTH_ENABLED env var is set but 'test-auth' feature is not enabled. \
                  Test auth mode is disabled."
             );
         }
-        if env::var("DEBUG_AUTH_ENDPOINT_ENABLED").is_ok() {
+        if get_env_optional("DEBUG_AUTH_ENDPOINT_ENABLED").is_some() {
             info!(
                 "DEBUG_AUTH_ENDPOINT_ENABLED env var is set but 'test-auth' feature is not enabled. \
                  Debug endpoint is disabled."
@@ -135,15 +159,58 @@ pub fn bootstrap_auth_config() -> AuthConfig {
         if let Some(oidc) = oidc_config {
             config = config.with_oidc(oidc);
         }
-        config
+        Ok(config)
+    }
+}
+
+/// Resolve the tenant ID for bootstrapping.
+///
+/// # Strict Mode (production)
+/// TENANT_ID environment variable is **forbidden**. Tenant must be resolved per-request
+/// from Host header, JWT claims, or X-Tenant-ID header. This function returns an error
+/// if TENANT_ID is set in strict mode.
+///
+/// # Dev Mode
+/// TENANT_ID environment variable is allowed as a convenience fallback. If not set,
+/// uses "tenant-dev" as the default. This is only for local development.
+fn resolve_bootstrap_tenant() -> Result<String> {
+    let env_mode = atlas_env();
+
+    match env_mode {
+        AtlasEnv::Strict => {
+            // In strict mode, TENANT_ID is forbidden for bootstrap
+            if let Err(e) = forbid_in_strict(
+                "TENANT_ID",
+                "Tenant must be resolved per-request in production (via Host/JWT/header). \
+                 Set ATLAS_ENV=dev for local development with a static tenant.",
+            ) {
+                return Err(anyhow::anyhow!("{}", e));
+            }
+
+            // Return a placeholder - actual tenant resolution happens per-request
+            // The ingress will reject requests that don't have proper tenant context
+            Ok("__strict_mode_no_default_tenant__".to_string())
+        }
+        AtlasEnv::Dev => {
+            let tenant_id =
+                get_env_or_dev("TENANT_ID", "tenant-dev").expect("dev mode allows defaults");
+
+            warn!(
+                tenant_id = %tenant_id,
+                "DEV MODE: Using static tenant ID for bootstrap. \
+                 In production, tenant is resolved per-request."
+            );
+
+            Ok(tenant_id)
+        }
     }
 }
 
 pub async fn bootstrap_runtime() -> Result<RuntimeConfig> {
-    let control_plane_enabled = env::var("CONTROL_PLANE_ENABLED")
-        .unwrap_or_else(|_| "false".to_string())
-        .parse::<bool>()
-        .unwrap_or(false);
+    // Log the environment mode at startup
+    log_env_mode();
+
+    let control_plane_enabled = is_env_enabled("CONTROL_PLANE_ENABLED");
 
     if !control_plane_enabled {
         info!("Control Plane Registry not enabled, using in-memory fallback");
@@ -152,8 +219,13 @@ pub async fn bootstrap_runtime() -> Result<RuntimeConfig> {
 
     info!("Control Plane Registry enabled, bootstrapping from database...");
 
-    let database_url = env::var("CONTROL_PLANE_DB_URL")
-        .context("CONTROL_PLANE_DB_URL not set but CONTROL_PLANE_ENABLED=true")?;
+    // CONTROL_PLANE_DB_URL is required when control plane is enabled
+    let database_url = require_env("CONTROL_PLANE_DB_URL").map_err(|e| {
+        anyhow::anyhow!(
+            "CONTROL_PLANE_DB_URL must be set when CONTROL_PLANE_ENABLED=true. {}",
+            e
+        )
+    })?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -163,8 +235,8 @@ pub async fn bootstrap_runtime() -> Result<RuntimeConfig> {
 
     let registry = Arc::new(PostgresControlPlaneRegistry::new(pool));
 
-    // Get tenant ID from environment (in production this would come from request context)
-    let tenant_id = env::var("TENANT_ID").unwrap_or_else(|_| "tenant-001".to_string());
+    // Resolve tenant for bootstrap (strict mode will reject this path)
+    let tenant_id = resolve_bootstrap_tenant()?;
 
     bootstrap_from_registry(registry, &tenant_id).await
 }
@@ -173,6 +245,16 @@ async fn bootstrap_from_registry(
     registry: Arc<PostgresControlPlaneRegistry>,
     tenant_id: &str,
 ) -> Result<RuntimeConfig> {
+    // In strict mode with the placeholder tenant, we can't bootstrap from registry
+    // This path shouldn't be reached in production - tenant comes per-request
+    if tenant_id == "__strict_mode_no_default_tenant__" {
+        return Err(anyhow::anyhow!(
+            "Cannot bootstrap from registry in strict mode without tenant context. \
+             The ingress service in strict mode resolves tenant per-request. \
+             If you need a static tenant for development, set ATLAS_ENV=dev."
+        ));
+    }
+
     info!("Bootstrapping runtime for tenant: {}", tenant_id);
 
     // Verify tenant exists
@@ -254,12 +336,14 @@ async fn bootstrap_from_registry(
     info!("Loaded {} policies", policies.len());
 
     let policy_engine = PolicyEngine::new();
-    let auth_config = bootstrap_auth_config();
+    let auth_config = bootstrap_auth_config()?;
 
     // Create default schema registry (schemas could also be loaded from control plane)
-    // TODO: Load schemas from control plane database when available
     let schema_registry = create_default_schema_registry();
-    info!("Schema registry initialized with {} schemas", schema_registry.len());
+    info!(
+        "Schema registry initialized with {} schemas",
+        schema_registry.len()
+    );
 
     Ok(RuntimeConfig {
         action_registry,
@@ -272,34 +356,27 @@ async fn bootstrap_from_registry(
 }
 
 fn bootstrap_in_memory() -> Result<RuntimeConfig> {
-    let auth_config = bootstrap_auth_config();
+    let auth_config = bootstrap_auth_config()?;
+    let tenant_id = resolve_bootstrap_tenant()?;
 
-    // Determine tenant behavior based on test mode
-    // In production (non-test mode), we require explicit tenant configuration
-    // In test mode, we allow a default tenant for development convenience
-    let tenant_id = if auth_config.is_test_auth_enabled() {
+    // In strict mode, we still allow in-memory bootstrap but warn
+    if atlas_env().is_strict() && tenant_id != "__strict_mode_no_default_tenant__" {
         warn!(
-            "Using in-memory configuration with default tenant (test mode). \
-             This is only acceptable in dev/test environments."
+            "Running in-memory mode in STRICT environment. \
+             This is unusual - typically strict mode uses control plane."
         );
-        env::var("TENANT_ID").unwrap_or_else(|_| "default".to_string())
+    }
+
+    // Handle the strict mode placeholder
+    let effective_tenant = if tenant_id == "__strict_mode_no_default_tenant__" {
+        warn!(
+            "STRICT MODE: No default tenant. Requests must provide tenant context \
+             via Host header, JWT claims, or X-Tenant-ID header."
+        );
+        // Use a placeholder that will cause clear errors if accidentally used
+        "__no_tenant__".to_string()
     } else {
-        // Production mode: require explicit tenant or fail fast
-        match env::var("TENANT_ID") {
-            Ok(tid) if !tid.is_empty() => {
-                info!("Using explicit tenant from TENANT_ID environment variable");
-                tid
-            }
-            _ => {
-                // In production without control plane, we still allow operation
-                // but warn that this is a degraded mode
-                warn!(
-                    "No TENANT_ID configured and control plane disabled. \
-                     Using 'default' tenant. This should be configured explicitly in production."
-                );
-                "default".to_string()
-            }
-        }
+        tenant_id
     };
 
     warn!("Using in-memory configuration (no control plane database)");
@@ -318,7 +395,7 @@ fn bootstrap_in_memory() -> Result<RuntimeConfig> {
     let policy_engine = PolicyEngine::new();
     let policies = vec![Policy {
         policy_id: "allow-all".to_string(),
-        tenant_id: tenant_id.clone(),
+        tenant_id: effective_tenant.clone(),
         rules: vec![atlas_core::types::PolicyRule {
             rule_id: "allow-all-rule".to_string(),
             effect: atlas_core::types::PolicyEffect::Allow,
@@ -330,13 +407,16 @@ fn bootstrap_in_memory() -> Result<RuntimeConfig> {
 
     // Create default schema registry with test schemas
     let schema_registry = create_default_schema_registry();
-    info!("Schema registry initialized with {} schemas", schema_registry.len());
+    info!(
+        "Schema registry initialized with {} schemas",
+        schema_registry.len()
+    );
 
     Ok(RuntimeConfig {
         action_registry,
         policy_engine,
         policies,
-        tenant_id,
+        tenant_id: effective_tenant,
         auth_config,
         schema_registry,
     })

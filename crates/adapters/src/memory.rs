@@ -63,7 +63,7 @@ impl EventStore for InMemoryEventStore {
             .read()
             .unwrap()
             .iter()
-            .filter(|e| e.tenant_id == tenant_id)
+            .filter(|e| tenant_id == "*" || e.tenant_id == tenant_id)
             .cloned()
             .collect())
     }
@@ -204,6 +204,45 @@ impl Cache for InMemoryCache {
         }
 
         Ok(count)
+    }
+}
+
+/// In-memory projection store
+#[derive(Clone)]
+pub struct InMemoryProjectionStore {
+    projections: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+}
+
+impl InMemoryProjectionStore {
+    pub fn new() -> Self {
+        Self {
+            projections: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+impl Default for InMemoryProjectionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ProjectionStore for InMemoryProjectionStore {
+    async fn get(&self, key: &str) -> PortResult<Option<serde_json::Value>> {
+        Ok(self.projections.read().unwrap().get(key).cloned())
+    }
+
+    async fn set(&self, key: &str, value: serde_json::Value) -> PortResult<()> {
+        self.projections
+            .write()
+            .unwrap()
+            .insert(key.to_string(), value);
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> PortResult<bool> {
+        Ok(self.projections.write().unwrap().remove(key).is_some())
     }
 }
 

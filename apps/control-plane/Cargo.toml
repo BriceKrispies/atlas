@@ -13,6 +13,7 @@ path = "src/main.rs"
 allow_mvp_shortcuts = ["atlas-core/allow_mvp_shortcuts"]
 
 [dependencies]
+atlas-config.workspace = true
 atlas-core.workspace = true
 atlas-diagnostics.workspace = true
 atlas-platform-control-plane-db = { path = "../../crates/control_plane_db" }

@@ -53,20 +53,26 @@ pub mod authn;
 pub mod authz;
 mod bootstrap;
 mod errors;
+pub mod events;
 mod metrics;
+mod render_tree_store;
 mod schema;
+mod sse;
+mod worker;
+mod ws;
 
 use authn::{authn_middleware, AuthConfig, Principal};
 use authz::{authorize, validate_tenant_match, AuthorizationContext, IntentAuthzRequest};
 use atlas_core::policy::Decision;
 use errors::AppError;
+use events::ServerEvent;
 use schema::SchemaValidationResult;
 use atlas_core::types::EventEnvelope;
-use atlas_platform_adapters::InMemoryEventStore;
-use atlas_platform_runtime::ports::EventStore;
+use atlas_platform_adapters::{InMemoryCache, InMemoryEventStore, InMemoryProjectionStore};
+use atlas_platform_runtime::ports::{Cache, EventStore, ProjectionStore, SetOptions};
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{Path, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::IntoResponse,
@@ -74,17 +80,23 @@ use axum::{
     Extension, Json, Router,
 };
 use bootstrap::RuntimeConfig;
+use render_tree_store::RenderTreeStore;
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 struct AppState {
     event_store: Arc<dyn EventStore>,
+    cache: Arc<dyn Cache>,
+    projection_store: Arc<dyn ProjectionStore>,
+    render_tree_store: Arc<RenderTreeStore>,
     runtime_config: Arc<RuntimeConfig>,
-    #[allow(dead_code)] // Used for potential future auth-related operations
+    #[allow(dead_code)]
     auth_config: Arc<AuthConfig>,
+    event_sender: broadcast::Sender<ServerEvent>,
 }
 
 #[tokio::main]
@@ -108,13 +120,64 @@ async fn main() {
         }
     };
 
-    let event_store = Arc::new(InMemoryEventStore::new());
+    let event_store: Arc<dyn EventStore> = Arc::new(InMemoryEventStore::new());
+    let cache: Arc<dyn Cache> = Arc::new(InMemoryCache::new());
+    let projection_store: Arc<dyn ProjectionStore> = Arc::new(InMemoryProjectionStore::new());
     let auth_config = Arc::new(runtime_config.auth_config.clone());
     let tenant_id_for_middleware = runtime_config.tenant_id.clone();
+
+    // Create Postgres-backed render tree store (for persistence across restarts).
+    // Uses the same CONTROL_PLANE_DB_URL as the control plane registry.
+    let render_tree_store = {
+        use atlas_config::get_env_optional;
+        use sqlx::postgres::PgPoolOptions;
+
+        let pool = if let Some(db_url) = get_env_optional("CONTROL_PLANE_DB_URL") {
+            match PgPoolOptions::new()
+                .max_connections(3)
+                .connect(&db_url)
+                .await
+            {
+                Ok(pool) => {
+                    info!("✓ Render tree Postgres persistence enabled");
+                    Some(pool)
+                }
+                Err(e) => {
+                    warn!(
+                        "Render tree Postgres persistence unavailable (in-memory only): {}",
+                        e
+                    );
+                    None
+                }
+            }
+        } else {
+            info!("CONTROL_PLANE_DB_URL not set — render trees will be in-memory only");
+            None
+        };
+
+        Arc::new(RenderTreeStore::new(pool))
+    };
+
+    // Broadcast channel for server-push (SSE + WebSocket)
+    let (event_sender, _) = broadcast::channel::<ServerEvent>(256);
+
+    // Spawn in-process worker loop sharing the same stores
+    tokio::spawn(worker::run_event_loop(
+        event_store.clone(),
+        cache.clone(),
+        projection_store.clone(),
+        render_tree_store.clone(),
+        event_sender.clone(),
+    ));
+
     let state = Arc::new(AppState {
         event_store,
+        cache,
+        projection_store,
+        render_tree_store,
         runtime_config,
         auth_config: auth_config.clone(),
+        event_sender,
     });
 
     // Create authn middleware closure that captures auth_config and tenant_id
@@ -128,7 +191,11 @@ async fn main() {
 
     // Routes that require authentication
     let mut authenticated_routes = Router::new()
-        .route("/api/v1/intents", post(handle_intent));
+        .route("/api/v1/intents", post(handle_intent))
+        .route("/api/v1/pages/:page_id", get(handle_query_page))
+        .route("/api/v1/pages/:page_id/render", get(handle_render_tree))
+        .route("/api/v1/events", get(sse::handle_sse))
+        .route("/ws/messaging", get(ws::handle_ws));
 
     // Conditionally add debug endpoint (only when enabled via feature + env var)
     // The route is only registered when DEBUG_AUTH_ENDPOINT_ENABLED=true
@@ -136,16 +203,22 @@ async fn main() {
     if auth_config.is_debug_endpoint_enabled() {
         info!("Registering /debug/whoami endpoint (DEBUG_AUTH_ENDPOINT_ENABLED=true)");
         authenticated_routes = authenticated_routes.route("/debug/whoami", get(debug_whoami));
+        // Test-only: clear in-memory render tree cache for a page (simulates restart)
+        authenticated_routes = authenticated_routes.route(
+            "/debug/clear-render-tree-cache/:page_id",
+            post(debug_clear_render_tree_cache),
+        );
     }
 
     let authenticated_routes = authenticated_routes.layer(authn_layer);
 
-    // Routes that don't require authentication (health, metrics)
+    // Routes that don't require authentication (health, metrics, viewer)
     let public_routes = Router::new()
         .route("/", get(health_check))
         .route("/healthz", get(liveness_check))
         .route("/readyz", get(readiness_check))
-        .route("/metrics", get(metrics_handler));
+        .route("/metrics", get(metrics_handler))
+        .route("/pages/:page_id", get(serve_viewer));
 
     // CORS configuration for local development
     // Allows browser-based frontend to call the ingress API
@@ -403,6 +476,25 @@ async fn handle_intent(
         }
     };
 
+    // Validate action is registered
+    if state
+        .runtime_config
+        .action_registry
+        .get(&authz_request.action_id)
+        .is_err()
+    {
+        metrics::HTTP_REQUESTS_TOTAL
+            .with_label_values(&[route, method, "400"])
+            .inc();
+        metrics::HTTP_REQUEST_DURATION_SECONDS
+            .with_label_values(&[route, method])
+            .observe(start.elapsed().as_secs_f64());
+        return Err(
+            AppError::unknown_action(&authz_request.action_id)
+                .with_correlation_id(&correlation_id),
+        );
+    }
+
     // Invariant I2: Authorization before execution
     // Build authorization context from extracted action/resource
     let authz_ctx = AuthorizationContext::new(authz_request, principal.tenant_id.clone());
@@ -431,6 +523,15 @@ async fn handle_intent(
             .observe(start.elapsed().as_secs_f64());
         return Err(AppError::unauthorized(&decision.reason)
             .with_correlation_id(&correlation_id));
+    }
+
+    // Populate cache invalidation tags for cache-aware events
+    let mut envelope = envelope;
+    if let Some(page_id) = envelope.payload.get("pageId").and_then(|v| v.as_str()) {
+        envelope.cache_invalidation_tags = Some(vec![
+            format!("Tenant:{}", envelope.tenant_id),
+            format!("Page:{}", page_id),
+        ]);
     }
 
     // Append to event store (returns event_id - either new or existing for idempotent replay)
@@ -468,4 +569,235 @@ async fn handle_intent(
             "principal_id": principal.id
         })),
     ))
+}
+
+async fn handle_query_page(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(page_id): Path<String>,
+) -> impl IntoResponse {
+    let start = Instant::now();
+    let route = "/api/v1/pages/:page_id";
+    let method = "GET";
+    let tenant_id = &principal.tenant_id;
+    let cache_key = format!("page:{}:{}", tenant_id, page_id);
+
+    // Check cache first
+    if let Ok(Some(cached)) = state.cache.get(&cache_key).await {
+        if let Ok(body) = serde_json::from_slice::<serde_json::Value>(&cached) {
+            metrics::CACHE_HITS_TOTAL
+                .with_label_values(&[route])
+                .inc();
+            metrics::HTTP_REQUESTS_TOTAL
+                .with_label_values(&[route, method, "200"])
+                .inc();
+            metrics::HTTP_REQUEST_DURATION_SECONDS
+                .with_label_values(&[route, method])
+                .observe(start.elapsed().as_secs_f64());
+            debug!(page_id = %page_id, "Cache HIT");
+            return (
+                StatusCode::OK,
+                [("X-Cache", "HIT")],
+                Json(body),
+            )
+                .into_response();
+        }
+    }
+
+    metrics::CACHE_MISSES_TOTAL
+        .with_label_values(&[route])
+        .inc();
+
+    // Read from projection store
+    let projection_key = format!("RenderPageModel:{}:{}", tenant_id, page_id);
+    match state.projection_store.get(&projection_key).await {
+        Ok(Some(mut model)) => {
+            // Run WASM plugin if projection has a pluginRef
+            if let Some(plugin_ref) = model.get("pluginRef").and_then(|v| v.as_str()).map(String::from) {
+                let wasm_dir = std::env::var("WASM_PLUGIN_DIR")
+                    .unwrap_or_else(|_| "./plugins".to_string());
+                let wasm_path = format!("{}/{}.wasm", wasm_dir, plugin_ref);
+
+                match tokio::fs::read(&wasm_path).await {
+                    Ok(wasm_bytes) => {
+                        match atlas_wasm_runtime::execute_plugin(&wasm_bytes, &model).await {
+                            Ok(output) => {
+                                model.as_object_mut().unwrap().insert(
+                                    "rendered".to_string(),
+                                    output,
+                                );
+                                metrics::WASM_EXECUTIONS_TOTAL
+                                    .with_label_values(&[&plugin_ref, "ok"])
+                                    .inc();
+                                debug!(plugin = %plugin_ref, "WASM plugin executed successfully");
+                            }
+                            Err(e) => {
+                                let obj = model.as_object_mut().unwrap();
+                                obj.insert("rendered".to_string(), serde_json::Value::Null);
+                                obj.insert("renderError".to_string(), serde_json::Value::String(e.to_string()));
+                                let label = if matches!(e, atlas_wasm_runtime::PluginError::Timeout) {
+                                    "timeout"
+                                } else {
+                                    "error"
+                                };
+                                metrics::WASM_EXECUTIONS_TOTAL
+                                    .with_label_values(&[&plugin_ref, label])
+                                    .inc();
+                                warn!(plugin = %plugin_ref, error = %e, "WASM plugin failed");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let obj = model.as_object_mut().unwrap();
+                        obj.insert("rendered".to_string(), serde_json::Value::Null);
+                        obj.insert("renderError".to_string(),
+                            serde_json::Value::String(format!("plugin not found: {}", e)));
+                        metrics::WASM_EXECUTIONS_TOTAL
+                            .with_label_values(&[&plugin_ref, "error"])
+                            .inc();
+                        warn!(plugin = %plugin_ref, path = %wasm_path, "WASM plugin file not found");
+                    }
+                }
+            }
+
+            // Cache the merged result
+            let serialized = serde_json::to_vec(&model).unwrap_or_default();
+            let tags = vec![
+                format!("Tenant:{}", tenant_id),
+                format!("Page:{}", page_id),
+            ];
+            let _ = state
+                .cache
+                .set(&cache_key, serialized, SetOptions::new(300, tags))
+                .await;
+
+            metrics::HTTP_REQUESTS_TOTAL
+                .with_label_values(&[route, method, "200"])
+                .inc();
+            metrics::HTTP_REQUEST_DURATION_SECONDS
+                .with_label_values(&[route, method])
+                .observe(start.elapsed().as_secs_f64());
+            debug!(page_id = %page_id, "Cache MISS, projection found");
+
+            (
+                StatusCode::OK,
+                [("X-Cache", "MISS")],
+                Json(model),
+            )
+                .into_response()
+        }
+        _ => {
+            metrics::HTTP_REQUESTS_TOTAL
+                .with_label_values(&[route, method, "404"])
+                .inc();
+            metrics::HTTP_REQUEST_DURATION_SECONDS
+                .with_label_values(&[route, method])
+                .observe(start.elapsed().as_secs_f64());
+
+            (
+                StatusCode::NOT_FOUND,
+                [("X-Cache", "MISS")],
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": format!("Page '{}' not found", page_id)
+                    }
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/v1/pages/:page_id/render — return the pre-built render tree.
+///
+/// Read path: in-memory projection store first, then Postgres fallback.
+/// Tenant isolation via authenticated principal.
+async fn handle_render_tree(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(page_id): Path<String>,
+) -> impl IntoResponse {
+    let tenant_id = &principal.tenant_id;
+    let render_key = format!("RenderTree:{}:{}", tenant_id, page_id);
+
+    // 1. Try in-memory projection store (fast path)
+    if let Ok(Some(tree)) = state.projection_store.get(&render_key).await {
+        return (StatusCode::OK, Json(tree)).into_response();
+    }
+
+    // 2. Fallback to Postgres
+    match state.render_tree_store.get(tenant_id, &page_id).await {
+        Ok(Some(tree)) => {
+            // Repopulate in-memory store for remainder of process lifetime
+            let _ = state
+                .projection_store
+                .set(&render_key, tree.clone())
+                .await;
+            debug!(page_id = %page_id, "Render tree loaded from Postgres (repopulated in-memory)");
+            (StatusCode::OK, Json(tree)).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": format!("Render tree for page '{}' not found", page_id)
+                }
+            })),
+        )
+            .into_response(),
+        Err(e) => {
+            error!(page_id = %page_id, error = %e, "Postgres render tree lookup failed");
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": format!("Render tree for page '{}' not found", page_id)
+                    }
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /pages/:page_id — serve the render tree viewer HTML.
+///
+/// Public route (no auth). The viewer fetches the render tree API with auth headers.
+async fn serve_viewer(Path(_page_id): Path<String>) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [("content-type", "text/html; charset=utf-8")],
+        include_str!("../static/viewer.html"),
+    )
+}
+
+/// POST /debug/clear-render-tree-cache/:page_id — test-only hook to simulate restart.
+///
+/// Deletes the in-memory render tree projection for a page so the read path
+/// must fall back to Postgres. Only available when compiled with `test-auth`
+/// feature AND `DEBUG_AUTH_ENDPOINT_ENABLED=true`.
+async fn debug_clear_render_tree_cache(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(page_id): Path<String>,
+) -> impl IntoResponse {
+    let tenant_id = &principal.tenant_id;
+    let render_key = format!("RenderTree:{}:{}", tenant_id, page_id);
+
+    let deleted = state
+        .projection_store
+        .delete(&render_key)
+        .await
+        .unwrap_or(false);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "cleared": deleted,
+            "key": render_key
+        })),
+    )
 }

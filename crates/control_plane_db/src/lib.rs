@@ -1,6 +1,7 @@
 //! Control Plane Database - Migrations and schema management
 
 use anyhow::{Context, Result};
+use atlas_config::require_env;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::Row;
 use std::env;
@@ -11,10 +12,17 @@ pub mod models;
 
 pub use models::*;
 
-/// Get database connection pool from environment
+/// Get database connection pool from environment.
+///
+/// Requires `CONTROL_PLANE_DB_URL` to be set. In strict mode (default),
+/// this will fail with a clear error if not set.
 pub async fn get_pool() -> Result<PgPool> {
-    let database_url = env::var("CONTROL_PLANE_DB_URL")
-        .context("CONTROL_PLANE_DB_URL environment variable not set")?;
+    let database_url = require_env("CONTROL_PLANE_DB_URL").map_err(|e| {
+        anyhow::anyhow!(
+            "CONTROL_PLANE_DB_URL is required for database connection. {}",
+            e
+        )
+    })?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)

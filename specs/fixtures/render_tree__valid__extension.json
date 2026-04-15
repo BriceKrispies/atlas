@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "type": "heading",
+      "props": { "level": 1 },
+      "children": [
+        { "type": "text", "props": { "content": "My Page" } }
+      ]
+    },
+    {
+      "type": "x-page-meta",
+      "props": { "page_id": "page-123", "slug": "my-page" },
+      "children": [
+        { "type": "text", "props": { "content": "page-123" } }
+      ],
+      "fallback": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "emphasis",
+              "children": [
+                { "type": "text", "props": { "content": "Page: page-123 | Slug: /my-page" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

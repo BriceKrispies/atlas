@@ -22,7 +22,7 @@ A UI Bundle is:
 ## What a UI Bundle Is NOT
 
 A UI Bundle is NOT:
-- Source code (React, Vue, etc.)—only compiled/bundled output
+- Source code—only compiled/bundled output
 - Tenant data or configuration—that remains in the database
 - Navigation structure—nav is platform data, not bundle code
 - Per-tenant customizations—bundles are shared artifacts

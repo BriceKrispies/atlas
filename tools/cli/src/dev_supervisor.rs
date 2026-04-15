@@ -1,20 +1,116 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+/// Default environment variables for local development.
+/// These are injected by the CLI when starting compose in dev mode.
+pub struct DevEnvConfig {
+    // Core settings
+    pub atlas_env: &'static str,
+
+    // Postgres settings
+    pub postgres_db: &'static str,
+    pub postgres_user: &'static str,
+    pub postgres_password: &'static str,
+    pub postgres_port: &'static str,
+
+    // pgAdmin settings
+    pub pgadmin_email: &'static str,
+    pub pgadmin_password: &'static str,
+    pub pgadmin_port: &'static str,
+
+    // Control plane settings
+    pub control_plane_port: &'static str,
+    pub rust_log: &'static str,
+
+    // Tenant ID for dev mode (only used in dev)
+    pub tenant_id: &'static str,
+
+    // Keycloak settings
+    pub keycloak_admin: &'static str,
+    pub keycloak_admin_password: &'static str,
+    pub keycloak_port: &'static str,
+
+    // OIDC settings (for dev)
+    pub oidc_issuer_url: &'static str,
+    pub oidc_jwks_url: &'static str,
+    pub oidc_audience: &'static str,
+}
+
+impl Default for DevEnvConfig {
+    fn default() -> Self {
+        Self {
+            atlas_env: "dev",
+            postgres_db: "control_plane",
+            postgres_user: "atlas_platform",
+            postgres_password: "local_dev_password",
+            postgres_port: "5433",
+            pgadmin_email: "admin@example.com",
+            pgadmin_password: "admin",
+            pgadmin_port: "5050",
+            control_plane_port: "8000",
+            rust_log: "info",
+            tenant_id: "tenant-dev",
+            keycloak_admin: "admin",
+            keycloak_admin_password: "admin",
+            keycloak_port: "8081",
+            oidc_issuer_url: "http://localhost:8081/realms/atlas",
+            oidc_jwks_url: "http://keycloak:8080/realms/atlas/protocol/openid-connect/certs",
+            oidc_audience: "account",
+        }
+    }
+}
+
+impl DevEnvConfig {
+    /// Returns all environment variables as a vector of (key, value) pairs.
+    pub fn as_env_pairs(&self) -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("ATLAS_ENV", self.atlas_env),
+            ("POSTGRES_DB", self.postgres_db),
+            ("POSTGRES_USER", self.postgres_user),
+            ("POSTGRES_PASSWORD", self.postgres_password),
+            ("POSTGRES_PORT", self.postgres_port),
+            ("PGADMIN_DEFAULT_EMAIL", self.pgadmin_email),
+            ("PGADMIN_DEFAULT_PASSWORD", self.pgadmin_password),
+            ("PGADMIN_PORT", self.pgadmin_port),
+            ("CONTROL_PLANE_PORT", self.control_plane_port),
+            ("RUST_LOG", self.rust_log),
+            ("TENANT_ID", self.tenant_id),
+            ("KEYCLOAK_ADMIN", self.keycloak_admin),
+            ("KEYCLOAK_ADMIN_PASSWORD", self.keycloak_admin_password),
+            ("KEYCLOAK_PORT", self.keycloak_port),
+            ("OIDC_ISSUER_URL", self.oidc_issuer_url),
+            ("OIDC_JWKS_URL", self.oidc_jwks_url),
+            ("OIDC_AUDIENCE", self.oidc_audience),
+        ]
+    }
+
+    /// Returns the control plane database URL.
+    pub fn control_plane_db_url(&self) -> String {
+        format!(
+            "postgres://{}:{}@localhost:{}/{}",
+            self.postgres_user, self.postgres_password, self.postgres_port, self.postgres_db
+        )
+    }
+}
+
 pub struct DevSupervisor {
     dev_dir: PathBuf,
+    env_config: DevEnvConfig,
 }
 
 impl DevSupervisor {
     pub fn new() -> Result<Self> {
         let dev_dir = PathBuf::from(".dev");
         fs::create_dir_all(&dev_dir)?;
-        Ok(Self { dev_dir })
+        Ok(Self {
+            dev_dir,
+            env_config: DevEnvConfig::default(),
+        })
     }
 
     pub fn detect_container_runtime(&self) -> String {
@@ -45,7 +141,8 @@ impl DevSupervisor {
         "docker".to_string()
     }
 
-    pub fn is_compose_running(&self) -> bool {
+    /// Create a compose command with all dev environment variables injected.
+    fn compose_command(&self) -> Command {
         let runtime = self.detect_container_runtime();
         let compose_cmd = if runtime == "podman" {
             "podman-compose"
@@ -53,16 +150,32 @@ impl DevSupervisor {
             "docker-compose"
         };
 
-        let output = Command::new(compose_cmd)
-            .args([
-                "-f",
-                "infra/compose/compose.control-plane.yml",
-                "--env-file",
-                "infra/compose/.env",
-                "ps",
-                "-q",
-                "postgres",
-            ])
+        let mut cmd = Command::new(compose_cmd);
+        cmd.args(["-f", "infra/compose/compose.control-plane.yml"]);
+
+        // Inject all dev environment variables
+        for (key, value) in self.env_config.as_env_pairs() {
+            cmd.env(key, value);
+        }
+
+        // Also set the derived DB URL
+        cmd.env(
+            "CONTROL_PLANE_DB_URL",
+            format!(
+                "postgres://{}:{}@postgres:5432/{}",
+                self.env_config.postgres_user,
+                self.env_config.postgres_password,
+                self.env_config.postgres_db
+            ),
+        );
+
+        cmd
+    }
+
+    pub fn is_compose_running(&self) -> bool {
+        let output = self
+            .compose_command()
+            .args(["ps", "-q", "postgres"])
             .output();
 
         if let Ok(output) = output {
@@ -75,41 +188,19 @@ impl DevSupervisor {
     pub fn start_compose(&self, detach: bool) -> Result<()> {
         let runtime = self.detect_container_runtime();
         println!("{} Using container runtime: {}", "→".cyan(), runtime);
+        println!(
+            "{} Starting services with ATLAS_ENV=dev...",
+            "→".cyan()
+        );
 
-        let compose_cmd = if runtime == "podman" {
-            "podman-compose"
-        } else {
-            "docker-compose"
-        };
-
-        let env_file = Path::new("infra/compose/.env");
-        if !env_file.exists() {
-            println!(
-                "{} Copying .env.example to .env...",
-                "→".cyan()
-            );
-            fs::copy("infra/compose/.env.example", "infra/compose/.env")?;
-        }
-
-        println!("{} Starting services...", "→".cyan());
-
-        let mut cmd = Command::new(compose_cmd);
-        cmd.args([
-            "-f",
-            "infra/compose/compose.control-plane.yml",
-            "--env-file",
-            "infra/compose/.env",
-            "up",
-            "--build",
-        ]);
+        let mut cmd = self.compose_command();
+        cmd.args(["up", "--build"]);
 
         if detach {
             cmd.arg("-d");
         }
 
-        let status = cmd
-            .status()
-            .context("Failed to start docker-compose")?;
+        let status = cmd.status().context("Failed to start docker-compose")?;
 
         if !status.success() {
             anyhow::bail!("docker-compose exited with error");
@@ -133,23 +224,10 @@ impl DevSupervisor {
     }
 
     pub fn stop_compose(&self) -> Result<()> {
-        let runtime = self.detect_container_runtime();
-        let compose_cmd = if runtime == "podman" {
-            "podman-compose"
-        } else {
-            "docker-compose"
-        };
-
         println!("{} Stopping containers...", "→".cyan());
 
-        Command::new(compose_cmd)
-            .args([
-                "-f",
-                "infra/compose/compose.control-plane.yml",
-                "--env-file",
-                "infra/compose/.env",
-                "down",
-            ])
+        self.compose_command()
+            .arg("down")
             .status()
             .context("Failed to stop docker-compose")?;
 
@@ -187,9 +265,9 @@ impl DevSupervisor {
                 container_name,
                 "psql",
                 "-U",
-                "atlas_platform",
+                self.env_config.postgres_user,
                 "-d",
-                "control_plane",
+                self.env_config.postgres_db,
                 "-c",
                 "SELECT 1",
             ])
@@ -208,6 +286,8 @@ impl DevSupervisor {
 
         let runtime = self.detect_container_runtime();
         let container_name = "atlas-platform-control-plane-db";
+        let postgres_user = self.env_config.postgres_user;
+        let postgres_db = self.env_config.postgres_db;
 
         let create_schema = Command::new(&runtime)
             .args([
@@ -215,9 +295,9 @@ impl DevSupervisor {
                 container_name,
                 "psql",
                 "-U",
-                "atlas_platform",
+                postgres_user,
                 "-d",
-                "control_plane",
+                postgres_db,
                 "-c",
                 "CREATE SCHEMA IF NOT EXISTS control_plane; \
                  CREATE TABLE IF NOT EXISTS control_plane._migrations (\
@@ -230,7 +310,10 @@ impl DevSupervisor {
             .context("Failed to create schema and migrations table")?;
 
         if !create_schema.status.success() {
-            anyhow::bail!("Failed to create schema: {}", String::from_utf8_lossy(&create_schema.stderr));
+            anyhow::bail!(
+                "Failed to create schema: {}",
+                String::from_utf8_lossy(&create_schema.stderr)
+            );
         }
 
         let mut migration_files: Vec<_> = std::fs::read_dir(migrations_dir)?
@@ -250,11 +333,14 @@ impl DevSupervisor {
                     container_name,
                     "psql",
                     "-U",
-                    "atlas_platform",
+                    postgres_user,
                     "-d",
-                    "control_plane",
+                    postgres_db,
                     "-tAc",
-                    &format!("SELECT COUNT(*) FROM control_plane._migrations WHERE filename = '{}'", filename),
+                    &format!(
+                        "SELECT COUNT(*) FROM control_plane._migrations WHERE filename = '{}'",
+                        filename
+                    ),
                 ])
                 .output()?;
 
@@ -271,16 +357,20 @@ impl DevSupervisor {
                     container_name,
                     "psql",
                     "-U",
-                    "atlas_platform",
+                    postgres_user,
                     "-d",
-                    "control_plane",
+                    postgres_db,
                     "-c",
                     &sql_content,
                 ])
                 .output()?;
 
             if !exec_sql.status.success() {
-                anyhow::bail!("Migration {} failed: {}", filename, String::from_utf8_lossy(&exec_sql.stderr));
+                anyhow::bail!(
+                    "Migration {} failed: {}",
+                    filename,
+                    String::from_utf8_lossy(&exec_sql.stderr)
+                );
             }
 
             let record = Command::new(&runtime)
@@ -289,16 +379,22 @@ impl DevSupervisor {
                     container_name,
                     "psql",
                     "-U",
-                    "atlas_platform",
+                    postgres_user,
                     "-d",
-                    "control_plane",
+                    postgres_db,
                     "-c",
-                    &format!("INSERT INTO control_plane._migrations (filename) VALUES ('{}')", filename),
+                    &format!(
+                        "INSERT INTO control_plane._migrations (filename) VALUES ('{}')",
+                        filename
+                    ),
                 ])
                 .output()?;
 
             if !record.status.success() {
-                anyhow::bail!("Failed to record migration: {}", String::from_utf8_lossy(&record.stderr));
+                anyhow::bail!(
+                    "Failed to record migration: {}",
+                    String::from_utf8_lossy(&record.stderr)
+                );
             }
         }
 
@@ -353,5 +449,32 @@ impl DevSupervisor {
             .context("Failed to get container logs")?;
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Print the dev environment configuration for reference.
+    pub fn print_dev_config(&self) {
+        println!("\n{} Dev environment configuration:", "ℹ".blue());
+        println!("  ATLAS_ENV=dev");
+        println!(
+            "  POSTGRES_DB={}",
+            self.env_config.postgres_db
+        );
+        println!(
+            "  POSTGRES_USER={}",
+            self.env_config.postgres_user
+        );
+        println!(
+            "  POSTGRES_PORT={}",
+            self.env_config.postgres_port
+        );
+        println!(
+            "  TENANT_ID={}",
+            self.env_config.tenant_id
+        );
+        println!(
+            "  CONTROL_PLANE_DB_URL={}",
+            self.env_config.control_plane_db_url()
+        );
+        println!();
     }
 }

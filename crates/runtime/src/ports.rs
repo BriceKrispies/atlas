@@ -113,6 +113,19 @@ pub struct TimeBucket {
     pub value: f64,
 }
 
+/// Projection store port — persists read-model projections built from events
+#[async_trait]
+pub trait ProjectionStore: Send + Sync {
+    /// Get a projection by key (e.g. "RenderPageModel:{tenantId}:{pageId}")
+    async fn get(&self, key: &str) -> PortResult<Option<serde_json::Value>>;
+
+    /// Set (upsert) a projection by key
+    async fn set(&self, key: &str, value: serde_json::Value) -> PortResult<()>;
+
+    /// Delete a projection by key. Returns true if the key existed.
+    async fn delete(&self, key: &str) -> PortResult<bool>;
+}
+
 /// Control Plane Registry port - provides module manifests, schemas, and policies
 #[async_trait]
 pub trait ControlPlaneRegistry: Send + Sync {

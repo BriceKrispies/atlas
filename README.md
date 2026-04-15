@@ -36,10 +36,14 @@ crates/
 ├── core/              # Pure domain logic, policy evaluation, schema validation
 ├── runtime/           # Ports, action registry, projection abstractions
 ├── adapters/          # Adapters (in-memory and postgres implementations)
+├── wasm_runtime/      # WASM plugin executor (zero-authority sandbox, render tree validation)
+├── atlas_config/      # Environment configuration (AtlasEnv, strict/dev modes)
 ├── control_plane_db/  # Database migrations and seed scripts
-├── ingress/           # HTTP ingress binary (single chokepoint)
-├── workers/           # Background job runner binary
+├── ingress/           # HTTP ingress binary (single chokepoint + in-process worker)
+├── workers/           # Background job runner binary (standalone)
 └── spec_validate/     # Fixture validation binary
+plugins/
+└── demo-transform/    # Demo WASM plugin (no_std, emits render tree IR)
 ```
 
 ## Controller Client: atlasctl
@@ -368,6 +372,8 @@ The black-box tests are located in `tests/blackbox/` and validate:
 - **Idempotency Tests** - Invariant I3 enforcement
 - **Authorization Tests** - Policy-based access control (Invariant I2)
 - **Observability Tests** - Metrics instrumentation
+- **Closed Loop Tests** - Intent → projection → query pipeline
+- **Render Tree Tests** - WASM plugin render tree end-to-end
 
 All tests interact with the ingress service via HTTP only, treating the system as a black box.
 
@@ -395,6 +401,8 @@ cargo test intent_submission
 cargo test idempotency
 cargo test authorization
 cargo test observability
+cargo test closed_loop
+cargo test render_tree
 
 # Run with verbose output
 cd tests/blackbox
@@ -486,6 +494,13 @@ cargo clippy             # Lint code
 cargo run -p ingress     # Run ingress service
 cargo run -p workers     # Run workers service
 cargo run -p spec_validate  # Validate fixtures
+
+# Build WASM plugin (requires wasm32-unknown-unknown target)
+rustup target add wasm32-unknown-unknown
+cargo build --manifest-path plugins/demo-transform/Cargo.toml --target wasm32-unknown-unknown --release
+
+# Run WASM runtime tests (requires plugin built first)
+cargo test -p atlas-wasm-runtime
 ```
 
 ## License

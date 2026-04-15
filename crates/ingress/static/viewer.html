@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas Page Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #1a1a1a; background: #fafafa; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; border-bottom: 2px solid #333; padding-bottom: 0.25rem; }
+  h2 { font-size: 1.5rem; margin: 1.5rem 0 0.5rem; }
+  h3 { font-size: 1.25rem; margin: 1.25rem 0 0.4rem; }
+  h4, h5, h6 { font-size: 1.1rem; margin: 1rem 0 0.3rem; }
+  p { margin: 0.75rem 0; line-height: 1.6; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+  code { background: #e8e8e8; padding: 0.15rem 0.35rem; border-radius: 3px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; }
+  pre { background: #2d2d2d; color: #f0f0f0; padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 1rem 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; line-height: 1.5; }
+  blockquote { border-left: 4px solid #666; padding-left: 1rem; margin: 1rem 0; color: #555; }
+  ul, ol { margin: 0.75rem 0; padding-left: 2rem; }
+  li { margin: 0.3rem 0; line-height: 1.5; }
+  hr { border: none; border-top: 1px solid #ccc; margin: 1.5rem 0; }
+  a { color: #0066cc; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; height: auto; border-radius: 4px; margin: 0.5rem 0; }
+  .error-panel { background: #fff0f0; border: 2px solid #cc3333; border-radius: 6px; padding: 1.5rem; margin: 2rem 0; }
+  .error-panel h2 { color: #cc3333; margin-top: 0; }
+  .error-panel pre { background: #ffeeee; color: #880000; }
+  .unknown-node { border: 2px dashed #ff9900; border-radius: 6px; padding: 0.75rem; margin: 0.75rem 0; background: #fff8ee; }
+  .unknown-node .node-label { font-size: 0.75rem; font-weight: 700; color: #cc7700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+  .unknown-node .node-props { font-size: 0.75rem; color: #888; font-family: monospace; }
+  .loading { text-align: center; padding: 4rem; color: #888; }
+  .meta { font-size: 0.8rem; color: #999; margin-bottom: 2rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+<div id="root"><div class="loading">Loading render tree...</div></div>
+<script>
+(function() {
+  const pageId = window.location.pathname.split('/pages/')[1];
+  if (!pageId) {
+    document.getElementById('root').innerHTML = '<div class="error-panel"><h2>No page ID</h2><p>URL must be /pages/:pageId</p></div>';
+    return;
+  }
+
+  // In test-auth mode, use debug principal header
+  const TENANT = 'tenant-itest-001';
+  const headers = {
+    'X-Debug-Principal': 'user:viewer:' + TENANT
+  };
+
+  fetch('/api/v1/pages/' + encodeURIComponent(pageId) + '/render', { headers: headers })
+    .then(function(res) {
+      if (!res.ok) return res.json().then(function(err) { throw err; });
+      return res.json();
+    })
+    .then(function(tree) {
+      var root = document.getElementById('root');
+      root.innerHTML = '';
+
+      // Check for render error (stored by worker on WASM failure)
+      if (tree.renderError) {
+        root.innerHTML = '<div class="error-panel"><h2>Render Error</h2><pre>' + esc(tree.renderError) + '</pre></div>';
+        return;
+      }
+
+      // Validate it looks like a render tree
+      if (!tree.version || !tree.nodes) {
+        root.innerHTML = '<div class="error-panel"><h2>Invalid Render Tree</h2><pre>' + esc(JSON.stringify(tree, null, 2)) + '</pre></div>';
+        return;
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = 'Render tree v' + tree.version + ' | ' + tree.nodes.length + ' top-level nodes | page: ' + pageId;
+      root.appendChild(meta);
+
+      tree.nodes.forEach(function(node) {
+        root.appendChild(renderNode(node));
+      });
+    })
+    .catch(function(err) {
+      var msg = (err && err.error && err.error.message) || (err && err.message) || JSON.stringify(err);
+      document.getElementById('root').innerHTML = '<div class="error-panel"><h2>Failed to load render tree</h2><pre>' + esc(msg) + '</pre></div>';
+    });
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function renderNode(node) {
+    if (!node || !node.type) {
+      return document.createTextNode('');
+    }
+
+    // Extension nodes: render fallback if we don't recognize them
+    if (node.type.startsWith('x-')) {
+      return renderExtension(node);
+    }
+
+    switch (node.type) {
+      case 'text': return document.createTextNode((node.props && node.props.content) || '');
+      case 'heading': return renderContainer(headingTag(node.props && node.props.level), node);
+      case 'paragraph': return renderContainer('p', node);
+      case 'strong': return renderContainer('strong', node);
+      case 'emphasis': return renderContainer('em', node);
+      case 'code': return renderContainer('code', node);
+      case 'link': return renderLink(node);
+      case 'image': return renderImage(node);
+      case 'divider': return document.createElement('hr');
+      case 'code_block': return renderCodeBlock(node);
+      case 'blockquote': return renderContainer('blockquote', node);
+      case 'list': return renderList(node);
+      case 'list_item': return renderContainer('li', node);
+      case 'block': return renderContainer('div', node);
+      default: return renderUnknown(node);
+    }
+  }
+
+  function headingTag(level) {
+    var n = parseInt(level) || 1;
+    if (n < 1) n = 1;
+    if (n > 6) n = 6;
+    return 'h' + n;
+  }
+
+  function renderContainer(tag, node) {
+    var el = document.createElement(tag);
+    (node.children || []).forEach(function(child) {
+      el.appendChild(renderNode(child));
+    });
+    return el;
+  }
+
+  function renderLink(node) {
+    var a = document.createElement('a');
+    a.href = (node.props && node.props.href) || '#';
+    if (node.props && node.props.title) a.title = node.props.title;
+    (node.children || []).forEach(function(child) {
+      a.appendChild(renderNode(child));
+    });
+    return a;
+  }
+
+  function renderImage(node) {
+    var img = document.createElement('img');
+    img.src = (node.props && node.props.src) || '';
+    img.alt = (node.props && node.props.alt) || '';
+    return img;
+  }
+
+  function renderCodeBlock(node) {
+    var pre = document.createElement('pre');
+    var code = document.createElement('code');
+    (node.children || []).forEach(function(child) {
+      code.appendChild(renderNode(child));
+    });
+    pre.appendChild(code);
+    return pre;
+  }
+
+  function renderList(node) {
+    var tag = (node.props && node.props.ordered) ? 'ol' : 'ul';
+    var el = document.createElement(tag);
+    (node.children || []).forEach(function(child) {
+      el.appendChild(renderNode(child));
+    });
+    return el;
+  }
+
+  function renderExtension(node) {
+    // Render fallback content for unknown extensions
+    if (node.fallback && node.fallback.length > 0) {
+      var wrapper = document.createElement('div');
+      node.fallback.forEach(function(child) {
+        wrapper.appendChild(renderNode(child));
+      });
+      return wrapper;
+    }
+    return renderUnknown(node);
+  }
+
+  function renderUnknown(node) {
+    var box = document.createElement('div');
+    box.className = 'unknown-node';
+    var label = document.createElement('div');
+    label.className = 'node-label';
+    label.textContent = node.type;
+    box.appendChild(label);
+    if (node.props) {
+      var props = document.createElement('div');
+      props.className = 'node-props';
+      props.textContent = JSON.stringify(node.props);
+      box.appendChild(props);
+    }
+    if (node.children) {
+      node.children.forEach(function(child) {
+        box.appendChild(renderNode(child));
+      });
+    }
+    return box;
+  }
+})();
+</script>
+</body>
+</html>

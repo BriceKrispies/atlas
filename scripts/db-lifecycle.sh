@@ -14,7 +14,7 @@ WAIT_INTERVAL=1
 
 # Database connection settings
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
+DB_PORT="${DB_PORT:-5433}"
 DB_USER="${DB_USER:-atlas_platform}"
 DB_NAME="${DB_NAME:-control_plane}"
 
@@ -179,7 +179,7 @@ Commands:
 Environment Variables:
     CONTAINER_RUNTIME    Container runtime to use (default: podman)
     DB_HOST             Database host (default: localhost)
-    DB_PORT             Database port (default: 5432)
+    DB_PORT             Database port (default: 5433)
     DB_USER             Database user (default: rusty_cms)
     DB_NAME             Database name (default: control_plane)
 

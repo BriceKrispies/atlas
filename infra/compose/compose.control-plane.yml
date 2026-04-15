@@ -1,11 +1,20 @@
 # Control Plane Database - Postgres + pgAdmin
 # Compatible with both podman-compose (default) and docker-compose
+#
+# IMPORTANT: This compose file requires environment variables to be set.
+# Use the Atlas CLI (`atlas dev up`) which injects all required variables,
+# or set them manually in your shell before running docker-compose.
+#
+# Required environment variables:
+#   POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+#   CONTROL_PLANE_DB_URL
+#
 # Usage:
-#   make db-up              # Uses docker-compose by default
-#   CONTAINER_RUNTIME=docker make db-up  # Uses docker-compose
+#   atlas dev up              # Recommended - CLI handles all configuration
+#   make db-up                # Uses docker-compose with env vars from CLI
 #
 # Access:
-#   Postgres: localhost:5432
+#   Postgres: localhost:5433
 #   pgAdmin:  http://localhost:5050
 
 services:
@@ -13,16 +22,16 @@ services:
     image: postgres:16-alpine
     container_name: atlas-platform-control-plane-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-control_plane}
-      POSTGRES_USER: ${POSTGRES_USER:-atlas_platform}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST_AUTH_METHOD: md5
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas_platform} -d ${POSTGRES_DB:-control_plane}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,7 +45,7 @@ services:
     volumes:
       - ../../:/workspace
     environment:
-      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
     command: >
       bash -c "
       cargo run -p atlas-platform-control-plane-db --bin migrate
@@ -56,7 +65,7 @@ services:
     volumes:
       - ../../:/workspace
     environment:
-      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
     command: >
       bash -c "
       cargo run -p atlas-platform-control-plane-db --bin seed
@@ -75,14 +84,10 @@ services:
       dockerfile: apps/control-plane/Dockerfile
     container_name: atlas-platform-control-plane
     environment:
-      CONTROL_PLANE_DB_URL: postgres://${POSTGRES_USER:-atlas_platform}:${POSTGRES_PASSWORD:-local_dev_password}@postgres:5432/${POSTGRES_DB:-control_plane}
+      ATLAS_ENV: ${ATLAS_ENV:-strict}
+      CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
       PORT: 8000
-      RUST_LOG: info
-      ENVIRONMENT: dev
-      DEV_DB_HOST: postgres
-      DEV_DB_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-atlas_platform}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
+      RUST_LOG: ${RUST_LOG:-info}
     ports:
       - "8000:8000"
     depends_on:
@@ -96,8 +101,8 @@ services:
     image: dpage/pgadmin4:latest
     container_name: atlas-platform-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:

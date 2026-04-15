@@ -1,15 +1,58 @@
 # Project Progress
 
+## Environment Configuration Refactor (2026-01-25)
+
+Removed all `.env` files and `dotenvy` dependency. The system is now **strict by default** (production behavior) unless explicitly put into dev mode.
+
+### What Changed
+
+1. **Created `atlas-config` crate** (`crates/atlas_config/`)
+   - `AtlasEnv` enum: `Dev` or `Strict` (default)
+   - `atlas_env()`: Returns `Strict` unless `ATLAS_ENV=dev`
+   - `require_env(key)`: Fails with clear error if env var missing
+   - `get_env_or_dev(key, default)`: Uses default only in dev mode
+   - `forbid_in_strict(key, reason)`: Prevents certain vars in production
+
+2. **Removed all `.env` files**
+   - `infra/compose/.env`, `.env.example`, `.env.itest`
+   - `tests/blackbox/.env.local`, `.env.aws`
+
+3. **Removed `dotenvy` dependency** from test harness
+
+4. **Updated CLI** - Injects all env vars directly, sets `ATLAS_ENV=dev`
+
+5. **Updated docker-compose files** - Removed `${VAR:-default}` patterns
+
+6. **Updated ingress bootstrap** - `TENANT_ID` forbidden in strict mode
+
+### How to Run Dev
+
+```bash
+# Start the dev stack (recommended - handles all configuration)
+atlas dev up
+
+# For integration tests
+make itest-up
+make itest-test
+```
+
+### Environment Modes
+
+- **Strict (default)**: All required config must be set; `TENANT_ID` forbidden
+- **Dev (`ATLAS_ENV=dev`)**: Allows fallback defaults; CLI sets this automatically
+
+---
+
 ## Snapshot
 
-- **Last updated:** 2026-01-16
-- **Current state:** Core ingress pipeline (authn/authz/idempotency/schema validation) is implemented and tested. OIDC/JWT validation is functional with Keycloak. Workers, projections, and Cedar policy migration are stubbed. All 8 feature modules are spec-only.
+- **Last updated:** 2026-02-10
+- **Current state:** Core ingress pipeline (authn/authz/idempotency/schema validation) is implemented and tested. OIDC/JWT validation is functional with Keycloak. WASM plugin runtime and render tree IR are implemented with end-to-end demo. Workers build projections and render trees. All 8 feature modules are spec-only.
 
 ## Now Working
 
-- **Schema Validation:** Just completed - validates intent payloads against JSON schemas at ingress (`crates/ingress/src/schema.rs`)
+- **Render Tree IR + WASM Demo Slice:** End-to-end: create a page via intent, WASM plugin produces render tree, worker persists it, viewer renders it in the browser.
+- **Schema Validation:** Validates intent payloads against JSON schemas at ingress (`crates/ingress/src/schema.rs`)
 - **OIDC/JWT Authentication:** JWT validation via JWKS fetching (`crates/ingress/src/authn.rs:498-758`)
-- **Debug/whoami endpoint:** For validating OAuth2 token parsing locally (`crates/ingress/src/main.rs:196-213`)
 
 ## Done (Proof)
 
@@ -73,6 +116,47 @@
 - **Tests:** `test_event_store_idempotency`, `test_cache_tag_invalidation`, `test_search_tenant_isolation`
 - **Proof:** All port traits have working in-memory implementations
 
+### WASM Plugin Runtime (Zero-Authority Sandbox)
+- **Status:** Implemented + proven
+- **Files:**
+  - `crates/wasm_runtime/src/lib.rs` — Plugin executor (zero imports, bounded memory/fuel/timeout)
+  - `crates/wasm_runtime/src/render_tree.rs` — Render tree IR validator (V1–V17)
+  - `plugins/demo-transform/src/lib.rs` — Demo WASM plugin (`no_std`, emits render tree)
+- **Tests:** `cargo test -p atlas-wasm-runtime` (24 tests)
+  - `test_execute_demo_plugin` — End-to-end: loads WASM, executes, validates render tree output
+  - `test_module_with_imports_rejected` — Zero-authority enforcement
+  - `test_fuel_exhaustion` — Bounded compute
+  - `test_invalid_output_json` — Output validation
+  - 20 render tree validation tests (V1–V17 coverage)
+- **Proof:** WASM plugin produces structured render tree IR, validated before caching/delivery. No raw HTML.
+- **Constraints enforced:** Zero host imports, 16 MB memory, 1M fuel, 5s timeout, fresh Store per invocation
+
+### Render Tree IR
+- **Status:** Implemented + proven
+- **Files:**
+  - `specs/schemas/contracts/render_tree.schema.json` — JSON Schema for the render tree format
+  - `specs/fixtures/render_tree__valid__basic.json` — Golden fixture: heading + paragraph
+  - `specs/fixtures/render_tree__valid__extension.json` — Golden fixture: extension with fallback
+  - `crates/wasm_runtime/src/render_tree.rs` — Validator implementing 17 rules
+- **Validation rules:** Version check (V1), non-empty nodes (V2), type presence (V3), known type or `x-` prefix (V4), flat primitive props (V5), required prop validation (V6), leaf node child prohibition (V7), nesting rules (V8), extension fallback required (V9), primitive-only fallback (V10), link URL schemes (V11), image URL schemes (V12), max depth 64 (V13), max 10k nodes (V14), max 1MB serialized (V15), max 100KB prop value (V16), non-empty text content (V17)
+- **Node types:** 14 primitives in 4 categories (leaf: text, image, divider; block: heading, paragraph, code_block, blockquote, list, list_item, block; inline: strong, emphasis, code, link) + `x-` extensions with mandatory fallback
+
+### Worker Projection Building + WASM Execution
+- **Status:** Implemented + proven
+- **Files:**
+  - `crates/ingress/src/worker.rs` — In-process event loop, builds RenderPageModel and RenderTree projections
+- **Tests:** `tests/blackbox/suites/closed_loop_test.rs`, `tests/blackbox/suites/render_tree_test.rs`
+- **Proof:** Worker processes PageCreateRequested events, executes WASM plugin, stores validated render tree in projection store. On WASM failure, stores `renderError`. Pages without pluginRef get a default render tree.
+
+### Render Tree Read API + Viewer
+- **Status:** Implemented + proven
+- **Files:**
+  - `crates/ingress/src/main.rs` — `GET /api/v1/pages/:page_id/render` (authenticated), `GET /pages/:page_id` (public viewer)
+  - `crates/ingress/static/viewer.html` — Frontend render tree viewer (all 14 primitives + unknown node placeholders + error panels)
+- **Tests:** `tests/blackbox/suites/render_tree_test.rs` (1 test)
+  - `test_page_create_produces_render_tree_with_heading` — Creates page, polls for render tree, asserts heading node
+- **Proof:** Browser renders UI produced by WASM plugin via render tree IR. No raw HTML in the pipeline.
+
 ### Schema Validation at Ingress
 - **Status:** Implemented + proven
 - **Files:** `crates/ingress/src/schema.rs`, `crates/ingress/src/main.rs:227-267`, `crates/ingress/src/errors.rs:197-212`
@@ -125,9 +209,9 @@
 ## Stubbed / TODO
 
 ### Workers / Projections
-- **Status:** Stubbed
-- **Files:** `crates/workers/src/main.rs:70-73`
-- **Notes:** Comments: "TODO: Apply event to projections", "TODO: Trigger derived analytics events", "TODO: Trigger scheduled jobs"
+- **Status:** Partially implemented
+- **Files:** `crates/ingress/src/worker.rs` (in-process loop), `crates/workers/src/main.rs` (standalone binary, still stubbed)
+- **Notes:** In-process worker loop builds RenderPageModel + RenderTree projections with WASM execution. Standalone workers binary still has TODOs for analytics, scheduled jobs.
 
 ### Cedar Policy Language
 - **Status:** Stubbed (using simpler policy engine)
@@ -205,9 +289,14 @@ This would:
 | AnalyticsStore Port | Done | `crates/runtime/src/ports.rs` | None | Minimal impl |
 | ControlPlaneRegistry | Done | `crates/adapters/src/postgres_registry.rs` | Manual | Postgres adapter |
 | DB Migrations | Done | `crates/control_plane_db/migrations/` | Manual | 3 migration files |
-| Workers Service | Stubbed | `crates/workers/src/main.rs` | None | Heartbeat + TODO |
+| WASM Plugin Runtime | Done | `crates/wasm_runtime/src/lib.rs` | 24 unit tests | Zero-authority sandbox |
+| Render Tree IR | Done | `crates/wasm_runtime/src/render_tree.rs` | 20 unit tests | V1–V17 validation |
+| Demo WASM Plugin | Done | `plugins/demo-transform/src/lib.rs` | via wasm_runtime tests | `no_std`, render tree output |
+| Render Tree Viewer | Done | `crates/ingress/static/viewer.html` | render_tree_test.rs | 14 primitives + extensions |
+| In-Process Worker | Done | `crates/ingress/src/worker.rs` | closed_loop_test.rs | Projections + WASM execution |
+| Workers Service | Stubbed | `crates/workers/src/main.rs` | None | Standalone binary, heartbeat + TODO |
 | Spec Validator | Done | `crates/spec_validate/` | `make spec-check` | 4 fixture kinds |
-| Black-box Test Harness | Done | `tests/blackbox/harness/` | 6 test suites | 30+ tests total |
+| Black-box Test Harness | Done | `tests/blackbox/harness/` | 8 test suites | 35+ tests total |
 | atlasctl CLI | Partial | `crates/atlasctl/` | None | status/invoke work |
 | Feature Modules | Missing | `specs/modules/*/` | None | Spec only |
 | Cedar Policies | Stubbed | `specs/schemas/contracts/policy_ast.schema.json` | None | Using simpler engine |

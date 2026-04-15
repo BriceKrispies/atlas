@@ -14,11 +14,8 @@
     "actionId": "ContentPages.Page.Create",
     "resourceType": "Page",
     "resourceId": null,
-    "payload": {
-      "pageId": "page-001",
-      "slug": "welcome",
-      "title": "Welcome Page"
-    },
-    "idempotencyKey": "unique-key-page-create-001"
+    "pageId": "page-001",
+    "slug": "welcome",
+    "title": "Welcome Page"
   }
 }

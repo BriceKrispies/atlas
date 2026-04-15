@@ -1,22 +1,21 @@
 mod handlers;
 
 use anyhow::Result;
+use atlas_config::{get_env_or_dev, log_env_mode};
 use atlas_platform_control_plane_db::get_pool;
 use axum::{
     routing::{delete, get, post},
     Router,
 };
-use std::env;
 use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     atlas_core::init_observability();
+    log_env_mode();
 
-    let port = env::var("PORT")
-        .unwrap_or_else(|_| "8000".to_string())
-        .parse::<u16>()?;
+    let port = get_env_or_dev("PORT", "8000")?.parse::<u16>()?;
 
     let pool = get_pool().await?;
 

@@ -281,6 +281,148 @@ impl TestClient {
         })
     }
 
+    /// Query a page by ID using the default test principal
+    pub async fn query_page(&self, page_id: &str) -> Result<RawResponse> {
+        let url = format!("{}/api/v1/pages/{}", self.config.ingress_base_url, page_id);
+
+        let mut request = self.http_client.get(&url);
+
+        if let Some(ref test_principal) = self.config.test_principal {
+            request = request.header("X-Debug-Principal", test_principal);
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send query page request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    /// Query a page's render tree by ID
+    pub async fn query_render_tree(&self, page_id: &str) -> Result<RawResponse> {
+        let url = format!(
+            "{}/api/v1/pages/{}/render",
+            self.config.ingress_base_url, page_id
+        );
+
+        let mut request = self.http_client.get(&url);
+
+        if let Some(ref test_principal) = self.config.test_principal {
+            request = request.header("X-Debug-Principal", test_principal);
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send render tree request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    /// Query a page as a specific tenant principal
+    pub async fn query_page_as_tenant(
+        &self,
+        page_id: &str,
+        tenant_principal: &str,
+    ) -> Result<RawResponse> {
+        let url = format!("{}/api/v1/pages/{}", self.config.ingress_base_url, page_id);
+
+        let response = self
+            .http_client
+            .get(&url)
+            .header("X-Debug-Principal", tenant_principal)
+            .send()
+            .await
+            .context("Failed to send query page request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    /// Clear the in-memory render tree cache for a page (test-only hook).
+    ///
+    /// Simulates a process restart by removing the in-memory render tree
+    /// for the given page. Requires DEBUG_AUTH_ENDPOINT_ENABLED=true.
+    pub async fn clear_render_tree_cache(&self, page_id: &str) -> Result<RawResponse> {
+        let url = format!(
+            "{}/debug/clear-render-tree-cache/{}",
+            self.config.ingress_base_url, page_id
+        );
+
+        let mut request = self.http_client.post(&url);
+
+        if let Some(ref test_principal) = self.config.test_principal {
+            request = request.header("X-Debug-Principal", test_principal);
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to send clear-render-tree-cache request")?;
+
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
+
+        Ok(RawResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+
     /// Call the /debug/whoami endpoint with X-Debug-Principal header.
     ///
     /// This is used for testing the test-auth mode.

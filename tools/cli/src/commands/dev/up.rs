@@ -36,7 +36,7 @@ impl Command for UpCommand {
             println!("\n{}", "Development environment is ready!".green().bold());
             println!("\n{}", "Services:".bold());
             println!("  Control Plane API: http://localhost:8000");
-            println!("  PostgreSQL:        localhost:5432");
+            println!("  PostgreSQL:        localhost:5433");
             println!("  pgAdmin:           http://localhost:5050");
             println!("\n{}", "Logs:".bold());
             println!("  atlas dev status --logs");

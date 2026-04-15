@@ -4,7 +4,6 @@ use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
 use std::fs;
-use std::process::Command as StdCommand;
 
 #[derive(Debug, Args)]
 pub struct ResetCommand {
@@ -17,13 +16,13 @@ impl Command for ResetCommand {
         if !self.yes {
             println!(
                 "{}",
-                "⚠️  This will destroy all local dev data:".yellow().bold()
+                "Warning: This will destroy all local dev data:".yellow().bold()
             );
-            println!("  • Stop all running services");
-            println!("  • Drop control plane database");
-            println!("  • Drop all tenant databases");
-            println!("  • Remove docker volumes");
-            println!("  • Clear .dev directory");
+            println!("  - Stop all running services");
+            println!("  - Drop control plane database");
+            println!("  - Drop all tenant databases");
+            println!("  - Remove docker volumes");
+            println!("  - Clear .dev directory");
             println!("\nRun with --yes to confirm");
             return Ok(());
         }
@@ -36,6 +35,8 @@ impl Command for ResetCommand {
         supervisor.stop_compose().ok();
 
         println!("{} Removing docker volumes...", "→".cyan());
+        // Use the supervisor's compose command which injects all env vars
+        // This ensures we don't need --env-file
         let runtime = supervisor.detect_container_runtime();
         let compose_cmd = if runtime == "podman" {
             "podman-compose"
@@ -43,17 +44,27 @@ impl Command for ResetCommand {
             "docker-compose"
         };
 
-        StdCommand::new(compose_cmd)
-            .args([
-                "-f",
-                "infra/compose/compose.control-plane.yml",
-                "--env-file",
-                "infra/compose/.env",
-                "down",
-                "-v",
-            ])
-            .status()
-            .ok();
+        // Build command with dev env vars
+        let mut cmd = std::process::Command::new(compose_cmd);
+        cmd.args([
+            "-f",
+            "infra/compose/compose.control-plane.yml",
+            "down",
+            "-v",
+        ]);
+
+        // Inject minimal required env vars for compose to work
+        cmd.env("POSTGRES_DB", "control_plane");
+        cmd.env("POSTGRES_USER", "atlas_platform");
+        cmd.env("POSTGRES_PASSWORD", "local_dev_password");
+        cmd.env("PGADMIN_DEFAULT_EMAIL", "admin@example.com");
+        cmd.env("PGADMIN_DEFAULT_PASSWORD", "admin");
+        cmd.env(
+            "CONTROL_PLANE_DB_URL",
+            "postgres://atlas_platform:local_dev_password@postgres:5432/control_plane",
+        );
+
+        cmd.status().ok();
 
         println!("{} Clearing .dev directory...", "→".cyan());
         if fs::metadata(".dev").is_ok() {

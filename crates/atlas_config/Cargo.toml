@@ -1,0 +1,11 @@
+[package]
+name = "atlas-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Environment configuration and strict mode handling for Atlas services"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true

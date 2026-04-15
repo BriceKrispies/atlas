@@ -160,6 +160,7 @@ pub fn create_default_schema_registry() -> Arc<SchemaRegistry> {
             "resourceId": { "type": ["string", "null"] },
             "pageId": { "type": "string" },
             "title": { "type": "string" },
+            "slug": { "type": "string" },
             "content": { "type": "string" },
             "authorId": { "type": "string" },
             "status": {
@@ -167,7 +168,7 @@ pub fn create_default_schema_registry() -> Arc<SchemaRegistry> {
                 "enum": ["draft", "published", "archived"]
             }
         },
-        "required": ["actionId", "resourceType", "pageId", "title"]
+        "required": ["actionId", "resourceType", "pageId", "title", "slug"]
     });
 
     if let Err(e) = registry.register("ui.contentpages.page.create.v1", 1, &page_create_schema) {
@@ -292,7 +293,8 @@ mod tests {
             "resourceType": "Page",
             "resourceId": null,
             "pageId": "page-001",
-            "title": "Test Page"
+            "title": "Test Page",
+            "slug": "test-page"
         });
 
         let result = registry.validate("ui.contentpages.page.create.v1", 1, &payload);

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Machine-readable index of Atlas repository components and paths",
   "version": "1.0.0",
-  "generated": "2026-01-11",
+  "generated": "2026-02-10",
   "workspace": {
     "root": ".",
     "cargo_workspace": "Cargo.toml",
@@ -37,10 +37,16 @@
       "purpose": "HTTP ingress service (single chokepoint)",
       "entry": "src/main.rs",
       "binary_name": "ingress",
-      "key_modules": ["main.rs", "authn.rs", "authz.rs", "bootstrap.rs", "errors.rs", "metrics.rs"],
+      "key_modules": ["main.rs", "authn.rs", "authz.rs", "bootstrap.rs", "errors.rs", "metrics.rs", "worker.rs", "schema.rs"],
+      "static_assets": ["static/viewer.html"],
       "http_routes": [
         { "method": "POST", "path": "/api/v1/intents", "handler": "handle_intent" },
+        { "method": "GET", "path": "/api/v1/pages/:page_id", "handler": "handle_query_page" },
+        { "method": "GET", "path": "/api/v1/pages/:page_id/render", "handler": "handle_render_tree" },
+        { "method": "GET", "path": "/pages/:page_id", "handler": "serve_viewer", "auth": false },
         { "method": "GET", "path": "/", "handler": "health_check" },
+        { "method": "GET", "path": "/healthz", "handler": "liveness_check", "auth": false },
+        { "method": "GET", "path": "/readyz", "handler": "readiness_check", "auth": false },
         { "method": "GET", "path": "/metrics", "handler": "metrics" },
         { "method": "GET", "path": "/debug/whoami", "handler": "whoami", "feature_gated": true }
       ]
@@ -80,6 +86,20 @@
       "type": "library",
       "purpose": "Logging, tracing, metrics setup"
     },
+    "atlas-wasm-runtime": {
+      "path": "crates/wasm_runtime",
+      "type": "library",
+      "purpose": "WASM plugin executor (zero-authority sandbox)",
+      "entry": "src/lib.rs",
+      "key_modules": ["lib.rs", "render_tree.rs"],
+      "constraints": "Zero host imports, 16MB memory, 1M fuel, 5s timeout, fresh Store per invocation"
+    },
+    "atlas-config": {
+      "path": "crates/atlas_config",
+      "type": "library",
+      "purpose": "Environment configuration (AtlasEnv, strict/dev modes)",
+      "entry": "src/lib.rs"
+    },
     "atlas-compiler": {
       "path": "crates/atlas-compiler",
       "type": "library",
@@ -101,6 +121,16 @@
         { "method": "GET", "path": "/admin/tenants/:tenant_key" },
         { "method": "DELETE", "path": "/admin/tenants/:tenant_key" }
       ]
+    }
+  },
+  "plugins": {
+    "demo-transform": {
+      "path": "plugins/demo-transform",
+      "type": "wasm-plugin",
+      "purpose": "Demo WASM plugin (no_std, emits render tree IR)",
+      "entry": "src/lib.rs",
+      "target": "wasm32-unknown-unknown",
+      "build": "cargo build --manifest-path plugins/demo-transform/Cargo.toml --target wasm32-unknown-unknown --release"
     }
   },
   "tools": {
@@ -144,7 +174,9 @@
           "search_query.schema.json",
           "analytics_event.schema.json",
           "analytics_query.schema.json",
-          "error_envelope.schema.json"
+          "error_envelope.schema.json",
+          "render_tree.schema.json",
+          "page_create_intent_payload.schema.json"
         ]
       }
     },
@@ -155,10 +187,13 @@
         "event_envelope__valid__canonical.json",
         "event_envelope__valid__page_create_intent.json",
         "event_envelope__valid__page_created_event.json",
+        "event_envelope__valid__page_created_projection.json",
         "event_envelope__invalid__missing_idempotency.json",
         "module_manifest__valid__content_pages.json",
         "search_documents__valid__sample.json",
-        "analytics_events__valid__sample.json"
+        "analytics_events__valid__sample.json",
+        "render_tree__valid__basic.json",
+        "render_tree__valid__extension.json"
       ],
       "documentation_only": [
         "search_query.json",
@@ -179,7 +214,7 @@
         "compose.observability.yml": "Prometheus, Grafana, Loki",
         "docker-compose.itest.yml": "Full integration test stack"
       },
-      "env_files": [".env.example", ".env.itest"]
+      "env_files": [".env.itest"]
     },
     "docker": {
       "path": "infra/docker",
@@ -224,12 +259,13 @@
           "idempotency_test.rs": { "test_count": 4, "validates": "Invariant I3" },
           "authorization_test.rs": { "test_count": 3, "validates": "Invariant I2" },
           "authentication_test.rs": { "test_count": 8, "validates": "OIDC/JWT validation" },
-          "observability_test.rs": { "test_count": 5, "validates": "Metrics instrumentation" }
+          "observability_test.rs": { "test_count": 5, "validates": "Metrics instrumentation" },
+          "closed_loop_test.rs": { "test_count": 4, "validates": "Intent to projection pipeline" },
+          "render_tree_test.rs": { "test_count": 1, "validates": "WASM render tree end-to-end" }
         }
       },
       "config": {
-        ".env.local": "Local test configuration",
-        ".env.aws": "AWS test configuration"
+        "note": "Configuration via ATLAS_ENV=dev and env vars (no .env files)"
       }
     }
   },
@@ -243,9 +279,9 @@
     "I7": { "name": "Tenant Isolation in Search", "location": "crates/runtime/src/ports.rs" },
     "I8": { "name": "Permission-Filtered Search", "location": "crates/runtime/src/ports.rs" },
     "I9": { "name": "Cache Keys Include TenantId", "location": "crates/runtime/src/ports.rs" },
-    "I10": { "name": "Event-Driven Cache Invalidation", "location": "crates/workers/src/main.rs" },
+    "I10": { "name": "Event-Driven Cache Invalidation", "location": "crates/workers/src/main.rs, crates/ingress/src/worker.rs" },
     "I11": { "name": "Deterministic Time Bucketing", "location": "crates/runtime/src/ports.rs" },
-    "I12": { "name": "Projections Are Rebuildable", "location": "TODO in workers" }
+    "I12": { "name": "Projections Are Rebuildable", "location": "crates/ingress/src/worker.rs" }
   },
   "ports": {
     "services": {

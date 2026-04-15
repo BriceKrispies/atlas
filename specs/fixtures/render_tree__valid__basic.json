@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "type": "heading",
+      "props": { "level": 1 },
+      "children": [
+        { "type": "text", "props": { "content": "My Page" } }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        { "type": "text", "props": { "content": "Page: page-123 | Slug: /my-page" } }
+      ]
+    }
+  ]
+}

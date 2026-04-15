@@ -50,11 +50,15 @@ atlas/
 │   ├── adapters/              # Concrete implementations (in-memory, postgres)
 │   ├── ingress/               # HTTP ingress binary (single chokepoint)
 │   ├── workers/               # Background job processor binary
+│   ├── wasm_runtime/          # WASM plugin executor (zero-authority sandbox)
+│   ├── atlas_config/          # Environment configuration (AtlasEnv, strict/dev modes)
 │   ├── spec_validate/         # Fixture validation CLI
 │   ├── atlasctl/              # Operator CLI client
 │   ├── control_plane_db/      # Database migrations and seeds
 │   ├── diagnostics/           # Logging, tracing, metrics setup
 │   └── atlas-compiler/        # EMPTY/STUB - future use
+├── plugins/
+│   └── demo-transform/        # Demo WASM plugin (no_std, emits render tree IR)
 ├── apps/
 │   └── control-plane/         # Control plane HTTP API service
 ├── specs/                     # Specifications (source of truth)
@@ -69,7 +73,7 @@ atlas/
 │   └── kafka/                 # EMPTY - placeholder for Kafka config
 ├── scripts/                   # Shell scripts for lifecycle management
 ├── tests/
-│   └── blackbox/              # Black-box integration tests (28 tests, 6 suites)
+│   └── blackbox/              # Black-box integration tests (35+ tests, 8 suites)
 ├── tools/
 │   └── cli/                   # Development scaffolding CLI (`atlas` command)
 ├── Cargo.toml                 # Workspace definition
@@ -100,9 +104,9 @@ atlas/
 
 | Type | Location | Count |
 |------|----------|-------|
-| JSON Schema contracts | `specs/schemas/contracts/*.schema.json` | 9 schemas |
+| JSON Schema contracts | `specs/schemas/contracts/*.schema.json` | 10 schemas (incl. render_tree) |
 | Conceptual schemas | `specs/schemas/*.md` | 8 files |
-| Fixtures (golden examples) | `specs/fixtures/*.json` | 13 files |
+| Fixtures (golden examples) | `specs/fixtures/*.json` | 15 files |
 | Module specifications | `specs/modules/*/` | 8 modules |
 | Cross-cutting specs | `specs/crosscut/*.md` | 8 files |
 
@@ -114,8 +118,12 @@ atlas/
 | Port traits | `crates/runtime/src/ports.rs` | EventStore, Cache, SearchEngine, etc. |
 | In-memory adapters | `crates/adapters/src/memory.rs` | InMemoryEventStore, InMemoryCache |
 | Postgres adapter | `crates/adapters/src/postgres_registry.rs` | PostgresControlPlaneRegistry |
-| Ingress HTTP | `crates/ingress/src/main.rs` | Routes: `/api/v1/intents`, `/`, `/metrics` |
-| Workers | `crates/workers/src/main.rs` | Background event processor |
+| WASM plugin runtime | `crates/wasm_runtime/src/lib.rs` | Zero-authority sandbox (wasmtime) |
+| Render tree validator | `crates/wasm_runtime/src/render_tree.rs` | V1–V17 validation rules |
+| Ingress HTTP | `crates/ingress/src/main.rs` | Routes: `/api/v1/intents`, `/api/v1/pages/:id/render`, `/`, `/metrics` |
+| In-process worker | `crates/ingress/src/worker.rs` | Event loop: projections + WASM execution |
+| Workers | `crates/workers/src/main.rs` | Background event processor (standalone binary) |
+| Render tree viewer | `crates/ingress/static/viewer.html` | Frontend: renders render tree IR to DOM |
 | Control Plane API | `apps/control-plane/src/main.rs` | Admin routes: `/healthz`, `/admin/*` |
 
 **Evidence**:
@@ -168,13 +176,31 @@ Trace of a typical request from edge to domain (based on `crates/ingress/src/mai
    └── Returns { event_id, tenant_id }
 ```
 
-**Workers Processing** (background, `crates/workers/src/main.rs`):
+**Workers Processing** (in-process, `crates/ingress/src/worker.rs`):
+```
+1. Poll EventStore for new events (every 2s)
+2. Extract page data from event payload (pageId, title, slug)
+3. Build RenderPageModel projection (tenant-scoped key)
+4. Execute WASM plugin (if pluginRef present) → render tree IR
+5. Validate render tree (V1–V17) → store in ProjectionStore
+6. On WASM failure: store { "renderError": "..." }
+7. Pages without pluginRef get default render tree (heading + paragraph)
+```
+
+**Render Tree Query** (`GET /api/v1/pages/:page_id/render`):
+```
+1. Authenticate principal (authn middleware)
+2. Extract tenant_id from principal
+3. Look up RenderTree:{tenant_id}:{page_id} in ProjectionStore
+4. Return JSON render tree (200) or NOT_FOUND (404)
+```
+
+**Standalone Workers** (background, `crates/workers/src/main.rs`):
 ```
 1. Poll EventStore for new events
 2. Extract cache_invalidation_tags from event payload
 3. Invalidate cache by tags (I10)
-4. TODO: Apply to projections (I12)
-5. TODO: Trigger analytics, jobs
+4. TODO: Trigger analytics, jobs
 ```
 
 **Evidence**:
@@ -281,7 +307,7 @@ Example manifest: `specs/modules/content-pages.json`
 | Test harness | `tests/blackbox/harness/` |
 | Configuration | `tests/blackbox/.env.local` |
 
-**Test Suites (28 tests total)**:
+**Test Suites (35+ tests total)**:
 
 | Suite | Tests | Validates |
 |-------|-------|-----------|
@@ -291,6 +317,8 @@ Example manifest: `specs/modules/content-pages.json`
 | authorization_test.rs | 3 | Invariant I2 (policy-based access) |
 | authentication_test.rs | 8 | OIDC/JWT validation |
 | observability_test.rs | 5 | Metrics instrumentation |
+| closed_loop_test.rs | 4 | Intent → projection → query pipeline |
+| render_tree_test.rs | 1 | WASM render tree end-to-end |
 
 **Commands**:
 ```bash
@@ -418,8 +446,10 @@ make itest-down
 | Add new event type | 1. Define in `crates/core/src/types.rs`<br>2. Add to module manifest events<br>3. Add fixture: `specs/fixtures/event_envelope__valid__*.json` |
 | Add new port/adapter | 1. Port trait: `crates/runtime/src/ports.rs`<br>2. In-memory: `crates/adapters/src/memory.rs`<br>3. Postgres: `crates/adapters/src/postgres_registry.rs` |
 | Add new HTTP endpoint | 1. Ingress: `crates/ingress/src/main.rs` (Router)<br>2. Control plane: `apps/control-plane/src/main.rs` |
+| Add/modify WASM plugin | 1. Plugin source: `plugins/<name>/src/lib.rs`<br>2. Build: `cargo build --manifest-path plugins/<name>/Cargo.toml --target wasm32-unknown-unknown --release`<br>3. Copy `.wasm` to plugin dir |
+| Add render tree node type | 1. Validator: `crates/wasm_runtime/src/render_tree.rs` (add to type arrays + props)<br>2. Viewer: `crates/ingress/static/viewer.html` (add renderer) |
 | Add database migration | 1. SQL file: `crates/control_plane_db/migrations/`<br>2. Run: `make db-migrate` |
-| Add integration test | 1. New suite: `tests/blackbox/suites/*_test.rs`<br>2. Harness helpers: `tests/blackbox/harness/` |
+| Add integration test | 1. New suite: `tests/blackbox/suites/*_test.rs`<br>2. Harness helpers: `tests/blackbox/harness/`<br>3. Register in `tests/blackbox/Cargo.toml` |
 | Add cross-cutting spec | `specs/crosscut/<concern>.md` |
 | Add new module spec | 1. Dir: `specs/modules/<module>/`<br>2. Files: README.md, surfaces.md, events.md |
 
@@ -463,9 +493,9 @@ make itest-down
 | I7 | Tenant Isolation in Search | `crates/runtime/src/ports.rs:SearchEngine` |
 | I8 | Permission-Filtered Search | `crates/runtime/src/ports.rs:SearchEngine` |
 | I9 | Cache Keys Include TenantId | `crates/runtime/src/ports.rs:Cache` |
-| I10 | Event-Driven Cache Invalidation | `crates/workers/src/main.rs` |
+| I10 | Event-Driven Cache Invalidation | `crates/workers/src/main.rs`, `crates/ingress/src/worker.rs` |
 | I11 | Deterministic Time Bucketing | `crates/runtime/src/ports.rs:AnalyticsStore` |
-| I12 | Projections Are Rebuildable | TODO in workers |
+| I12 | Projections Are Rebuildable | `crates/ingress/src/worker.rs` (in-process loop rebuilds from events) |
 
 **Evidence**:
 - `specs/architecture.md:73-277` (invariant definitions)
@@ -473,4 +503,4 @@ make itest-down
 
 ---
 
-*Generated from repository exploration. Last updated: 2026-01-11*
+*Generated from repository exploration. Last updated: 2026-02-10*

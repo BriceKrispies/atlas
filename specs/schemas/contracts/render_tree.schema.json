@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/render-tree.v1.json",
+  "title": "RenderTree",
+  "description": "Structured render tree IR produced by WASM plugins. Pure-data, frontend-agnostic, validated by the platform before caching or delivery.",
+  "type": "object",
+  "required": ["version", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Renderers MUST reject versions they don't support."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/RenderNode" },
+      "description": "Top-level content nodes. Order is significant. Block-level nodes only."
+    }
+  },
+  "definitions": {
+    "RenderNode": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Node type identifier. Primitives are unqualified; extensions use x- prefix."
+        },
+        "props": {
+          "type": "object",
+          "description": "Type-specific properties. Values must be JSON primitives only.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/RenderNode" },
+          "description": "Child nodes. Absent on leaf nodes, present on container nodes."
+        },
+        "fallback": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/RenderNode" },
+          "description": "Required on x- extension nodes. Must contain only primitive nodes."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

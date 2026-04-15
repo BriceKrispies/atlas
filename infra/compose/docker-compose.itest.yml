@@ -31,8 +31,8 @@ services:
     container_name: atlas-itest-keycloak
     command: start-dev --import-realm
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       # Hostname configuration for consistent issuer URLs
       # Internal: http://keycloak:8080/realms/atlas (used by ingress)
       # External: http://localhost:8081/realms/atlas (used by tests)
@@ -43,7 +43,7 @@ services:
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
     ports:
-      - "${KEYCLOAK_PORT:-8081}:8080"
+      - "${KEYCLOAK_PORT}:8080"
     volumes:
       - atlas-itest-keycloak-data:/opt/keycloak/data
       - ./config/keycloak/atlas-realm.json:/opt/keycloak/data/import/atlas-realm.json:ro
@@ -141,6 +141,7 @@ services:
     image: atlas-platform-ingress:itest
     container_name: atlas-itest-ingress
     environment:
+      ATLAS_ENV: ${ATLAS_ENV}
       CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
       CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
       TENANT_ID: ${TENANT_ID}
@@ -181,6 +182,7 @@ services:
     image: atlas-platform-workers:itest
     container_name: atlas-itest-workers
     environment:
+      ATLAS_ENV: ${ATLAS_ENV}
       CONTROL_PLANE_ENABLED: ${CONTROL_PLANE_ENABLED}
       CONTROL_PLANE_DB_URL: ${CONTROL_PLANE_DB_URL}
       TENANT_ID: ${TENANT_ID}

@@ -10,12 +10,13 @@ COMPOSE_CMD = $(CONTAINER_RUNTIME)-compose
 COMPOSE_FILE = infra/compose/compose.control-plane.yml
 CONTAINER_NAME = atlas-platform-control-plane-db
 
-# Database connection settings (must match .env)
+# Database connection settings
 DB_HOST ?= localhost
-DB_PORT ?= 5432
+DB_PORT ?= 5433
 DB_USER ?= atlas_platform
 DB_NAME ?= control_plane
 PGPASSWORD ?= local_dev_password
+CONTROL_PLANE_DB_URL ?= postgres://$(DB_USER):$(PGPASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)
 
 help:
 	@echo "Available targets:"
@@ -29,7 +30,7 @@ help:
 	@echo "  spec-check    - Validate golden fixtures"
 	@echo ""
 	@echo "Database targets (using $(CONTAINER_RUNTIME)):"
-	@echo "  db-up         - Start Postgres container and wait for readiness"
+	@echo "  db-up         - Start Postgres container, wait for readiness, and run migrations"
 	@echo "  db-down       - Stop Postgres container"
 	@echo "  db-status     - Check if database container is running and healthy"
 	@echo "  db-wait       - Wait for database to be ready to accept connections"
@@ -132,30 +133,50 @@ db-logs:
 	@echo "=== Database Container Logs ==="
 	@$(CONTAINER_RUNTIME) logs $(CONTAINER_NAME)
 
+db-up: export POSTGRES_DB = $(DB_NAME)
+db-up: export POSTGRES_USER = $(DB_USER)
+db-up: export POSTGRES_PASSWORD = $(PGPASSWORD)
 db-up:
 	@echo "=== Starting Postgres Container ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml up -d
+	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml up -d
 	@echo ""
 	@$(MAKE) db-wait
 	@echo ""
-	@echo "✓ Database is up and ready"
+	@$(MAKE) db-migrate
+	@echo ""
+	@echo "✓ Database is up, migrated, and ready"
 
+db-down: export POSTGRES_DB = $(DB_NAME)
+db-down: export POSTGRES_USER = $(DB_USER)
+db-down: export POSTGRES_PASSWORD = $(PGPASSWORD)
 db-down:
 	@echo "=== Stopping Postgres Container ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml down
+	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml down
 	@echo "✓ Database stopped"
 
-db-reset: db-down db-up db-migrate
+db-reset: export POSTGRES_DB = $(DB_NAME)
+db-reset: export POSTGRES_USER = $(DB_USER)
+db-reset: export POSTGRES_PASSWORD = $(PGPASSWORD)
+db-reset:
+	@echo "=== Resetting Database (down + remove volume + up + migrate) ==="
+	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml down -v
+	@echo ""
+	@$(MAKE) db-up
+	@echo ""
 	@echo "✓ Database reset complete"
 
+db-migrate: export ATLAS_ENV = dev
+db-migrate: export CONTROL_PLANE_DB_URL := $(CONTROL_PLANE_DB_URL)
 db-migrate: db-wait
 	@echo "=== Running Database Migrations ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml run --rm migrate
+	cargo run -p atlas-platform-control-plane-db --bin migrate
 	@echo "✓ Migrations complete"
 
+db-seed: export ATLAS_ENV = dev
+db-seed: export CONTROL_PLANE_DB_URL := $(CONTROL_PLANE_DB_URL)
 db-seed: db-wait
 	@echo "=== Seeding Database ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml run --rm seed
+	cargo run -p atlas-platform-control-plane-db --bin seed
 	@echo "✓ Seed complete"
 
 # Observability lifecycle targets

@@ -202,6 +202,14 @@ impl AppError {
         )
     }
 
+    /// UNKNOWN_ACTION - actionId not found in action registry
+    pub fn unknown_action(action_id: &str) -> Self {
+        Self::bad_request(
+            "UNKNOWN_ACTION",
+            format!("Action '{}' is not registered", action_id),
+        )
+    }
+
     /// SCHEMA_VALIDATION_FAILED - payload does not conform to schema
     pub fn schema_validation_failed(errors: &[String]) -> Self {
         Self::bad_request(

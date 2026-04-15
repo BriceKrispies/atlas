@@ -1,0 +1,8 @@
+{
+  "$comment": "RenderPageModel projection — built from ContentPages.PageCreateRequested event",
+  "pageId": "page-001",
+  "title": "Welcome Page",
+  "slug": "welcome",
+  "tenantId": "tenant-001",
+  "createdAt": "2025-01-01T12:00:00+00:00"
+}

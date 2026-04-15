@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas-platform.example.com/schemas/page-create-intent-payload.v1.json",
+  "title": "PageCreateIntentPayload",
+  "description": "Payload schema for ContentPages.Page.Create intents",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string" },
+    "resourceType": { "type": "string" },
+    "resourceId": { "type": ["string", "null"] },
+    "pageId": { "type": "string" },
+    "title": { "type": "string" },
+    "slug": { "type": "string" },
+    "content": { "type": "string" },
+    "authorId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published", "archived"]
+    }
+  },
+  "required": ["actionId", "resourceType", "pageId", "title", "slug"]
+}

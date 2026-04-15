@@ -1,7 +1,13 @@
-use std::env;
+use atlas_config::{atlas_env, get_env_or_dev, get_env_optional};
 use std::time::Duration;
 
-/// Test configuration loaded from environment variables
+/// Test configuration loaded from environment variables.
+///
+/// The test harness does NOT load .env files. All configuration must be provided
+/// explicitly by the test runner (CLI, CI script, or shell environment).
+///
+/// In dev mode (ATLAS_ENV=dev), sensible defaults are used for local testing.
+/// In strict mode, all required variables must be set explicitly.
 #[derive(Debug, Clone)]
 pub struct TestConfig {
     pub ingress_base_url: String,
@@ -27,57 +33,82 @@ pub struct KeycloakConfig {
 }
 
 impl TestConfig {
-    /// Load configuration from environment variables
+    /// Load configuration from environment variables.
+    ///
+    /// # Environment Variables
+    ///
+    /// Required in strict mode (have dev defaults):
+    /// - `INGRESS_BASE_URL` - Base URL for ingress service (dev: http://localhost:3000)
+    /// - `CONTROL_PLANE_BASE_URL` - Base URL for control plane (dev: http://localhost:8000)
+    /// - `PROMETHEUS_BASE_URL` - Base URL for Prometheus (dev: http://localhost:9090)
+    /// - `TEST_TENANT_ID` - Tenant ID for test requests (dev: tenant-itest-001)
+    ///
+    /// Optional:
+    /// - `HTTP_TIMEOUT_SECONDS` - Request timeout in seconds (default: 5)
+    /// - `RETRY_ATTEMPTS` - Number of retry attempts (default: 3)
+    /// - `TEST_PRINCIPAL` - Debug principal for authenticated requests
+    /// - `KEYCLOAK_CLIENT_SECRET` - If set, enables Keycloak auth tests
+    /// - `KEYCLOAK_BASE_URL` - Keycloak URL (dev: http://localhost:8081)
+    /// - `KEYCLOAK_REALM` - Keycloak realm (dev: atlas)
+    /// - `KEYCLOAK_CLIENT_ID` - Keycloak client ID (dev: atlas-s2s)
+    ///
+    /// # Panics
+    ///
+    /// Panics in strict mode if required environment variables are not set.
+    /// Tests should be run with ATLAS_ENV=dev or with all variables explicitly set.
     pub fn load() -> Self {
-        // Load .env file based on AWS_ENV flag
-        let env_file = if env::var("AWS_ENV").is_ok() {
-            ".env.aws"
-        } else {
-            ".env.local"
-        };
+        let env_mode = atlas_env();
 
-        // Attempt to load env file (OK if it doesn't exist)
-        dotenvy::from_filename(env_file).ok();
+        // In strict mode for tests, we still want to be helpful
+        if env_mode.is_strict() {
+            eprintln!("WARNING: Running tests in STRICT mode (ATLAS_ENV != 'dev').");
+            eprintln!("All test configuration must be explicitly set.");
+            eprintln!("For local testing, set ATLAS_ENV=dev or provide all required vars.");
+        }
 
         // Load Keycloak config if client secret is provided
-        let keycloak = env::var("KEYCLOAK_CLIENT_SECRET").ok().map(|secret| {
+        let keycloak = get_env_optional("KEYCLOAK_CLIENT_SECRET").map(|secret| {
             KeycloakConfig {
-                base_url: env::var("KEYCLOAK_BASE_URL")
-                    .unwrap_or_else(|_| "http://localhost:8081".to_string()),
-                realm: env::var("KEYCLOAK_REALM")
-                    .unwrap_or_else(|_| "atlas".to_string()),
-                client_id: env::var("KEYCLOAK_CLIENT_ID")
-                    .unwrap_or_else(|_| "atlas-s2s".to_string()),
+                base_url: get_env_or_dev("KEYCLOAK_BASE_URL", "http://localhost:8081")
+                    .expect("KEYCLOAK_BASE_URL required in strict mode when KEYCLOAK_CLIENT_SECRET is set"),
+                realm: get_env_or_dev("KEYCLOAK_REALM", "atlas")
+                    .expect("KEYCLOAK_REALM required in strict mode when KEYCLOAK_CLIENT_SECRET is set"),
+                client_id: get_env_or_dev("KEYCLOAK_CLIENT_ID", "atlas-s2s")
+                    .expect("KEYCLOAK_CLIENT_ID required in strict mode when KEYCLOAK_CLIENT_SECRET is set"),
                 client_secret: secret,
             }
         });
 
+        let test_tenant_id = get_env_or_dev("TEST_TENANT_ID", "tenant-itest-001")
+            .expect("TEST_TENANT_ID required in strict mode");
+
+        // Build default test principal using the tenant ID
+        let default_principal = format!("user:integration-test-user:{}", test_tenant_id);
+
         Self {
-            ingress_base_url: env::var("INGRESS_BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
-            control_plane_base_url: env::var("CONTROL_PLANE_BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:8000".to_string()),
-            prometheus_base_url: env::var("PROMETHEUS_BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:9090".to_string()),
-            test_tenant_id: env::var("TEST_TENANT_ID")
-                .unwrap_or_else(|_| "tenant-itest-001".to_string()),
+            ingress_base_url: get_env_or_dev("INGRESS_BASE_URL", "http://localhost:3000")
+                .expect("INGRESS_BASE_URL required in strict mode"),
+            control_plane_base_url: get_env_or_dev("CONTROL_PLANE_BASE_URL", "http://localhost:8000")
+                .expect("CONTROL_PLANE_BASE_URL required in strict mode"),
+            prometheus_base_url: get_env_or_dev("PROMETHEUS_BASE_URL", "http://localhost:9090")
+                .expect("PROMETHEUS_BASE_URL required in strict mode"),
+            test_tenant_id,
             http_timeout: Duration::from_secs(
-                env::var("HTTP_TIMEOUT_SECONDS")
-                    .ok()
+                get_env_optional("HTTP_TIMEOUT_SECONDS")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(5),
             ),
-            retry_attempts: env::var("RETRY_ATTEMPTS")
-                .ok()
+            retry_attempts: get_env_optional("RETRY_ATTEMPTS")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3),
-            // Default to a test principal for authenticated requests
-            // Format: "type:id:tenant_id" (e.g., "user:test-user:tenant-itest-001")
-            // The tenant must match the payload's tenant_id for tenant isolation
-            test_principal: env::var("TEST_PRINCIPAL").ok().or_else(|| {
-                // Default to a test user with the test tenant
-                Some("user:integration-test-user:tenant-itest-001".to_string())
-            }),
+            test_principal: get_env_optional("TEST_PRINCIPAL")
+                .or_else(|| {
+                    if env_mode.is_dev() {
+                        Some(default_principal)
+                    } else {
+                        None
+                    }
+                }),
             keycloak,
         }
     }

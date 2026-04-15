@@ -31,6 +31,18 @@ path = "suites/observability_test.rs"
 name = "authentication"
 path = "suites/authentication_test.rs"
 
+[[test]]
+name = "closed_loop"
+path = "suites/closed_loop_test.rs"
+
+[[test]]
+name = "render_tree"
+path = "suites/render_tree_test.rs"
+
+[[test]]
+name = "persistence"
+path = "suites/persistence_test.rs"
+
 [dependencies]
 # HTTP client
 reqwest = { version = "0.11", features = ["json"] }
@@ -43,7 +55,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Environment configuration
-dotenvy = "0.15"
+atlas-config.workspace = true
 
 # Error handling
 anyhow = "1.0"

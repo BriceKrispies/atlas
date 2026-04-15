@@ -1,0 +1,228 @@
+# Testing Strategy
+
+## Playwright-First Frontend Delivery
+
+Atlas frontends use **Playwright as the primary testing tool**. Unit tests exist for complex logic (state machines, data transformations) but the primary quality gate is Playwright end-to-end tests that exercise surfaces as users experience them.
+
+"Playwright-first" means:
+- Playwright tests are written **before or alongside** implementation, not after.
+- A surface is not complete until its Playwright tests pass for all required states.
+- Playwright tests are the **receipts** that prove a feature works.
+
+## What Are Receipts
+
+A **frontend receipt** is machine-verifiable proof that a feature works correctly. Receipts consist of:
+
+1. **Playwright test results**: All acceptance scenarios pass.
+2. **Telemetry event verification**: Expected telemetry events were emitted during test execution.
+3. **Accessibility audit output**: axe-core scan passes with zero violations for the surface.
+4. **Visual state coverage**: All required states (loading, empty, success, error, unauthorized) were rendered and verified.
+
+An AI agent that implements a feature produces these receipts as its deliverable. If the receipts pass, the feature is correct. If they don't, the feature is not done.
+
+## Selector Strategy
+
+### Priority Order
+
+1. **Semantic locators** (preferred when unambiguous):
+   - `page.getByRole('button', { name: 'Create page' })`
+   - `page.getByLabel('Page title')`
+   - `page.getByRole('table')`
+   - `page.getByRole('heading', { name: 'Content Pages' })`
+
+2. **Stable `data-testid`** (always available, required fallback):
+   - `page.getByTestId('admin.content.pages-list.create-button')`
+   - `page.getByTestId('admin.content.pages-list.state-loading')`
+
+### When to Use Which
+
+| Scenario | Selector |
+|----------|----------|
+| Button with visible text | `getByRole('button', { name: '...' })` |
+| Form input with label | `getByLabel('...')` |
+| State containers (loading, empty, error) | `getByTestId('{surfaceId}.state-{state}')` |
+| Parameterized rows/items | `getByTestId('{surfaceId}.row.{id}')` |
+| Elements without visible text (icon buttons) | `getByTestId(...)` |
+| Asserting a11y correctness | Semantic locators (proves the a11y is right) |
+
+### Semantic Locator vs. Stable Test ID
+
+**Semantic locators** (`getByRole`, `getByLabel`) verify that the element is accessible. If `getByRole('button', { name: 'Create page' })` works, that button is accessible to screen readers. This is a free accessibility test.
+
+**Stable test IDs** (`getByTestId`) are guaranteed to exist and never break due to text changes. They are the safety net. Every element has one, but tests should prefer semantic locators when the semantic locator is unambiguous and stable.
+
+The rule: **use semantic locators for assertions that should verify accessibility. Use test IDs for structural navigation and parameterized elements.**
+
+## Minimum Required Playwright Coverage
+
+Every surface MUST have tests covering:
+
+### 1. All Required States
+
+```javascript
+test('shows loading state', async ({ page }) => {
+  // Intercept API to delay response
+  await page.route('/api/v1/**', route =>
+    route.fulfill({ status: 200, body: '[]', headers: { 'Content-Type': 'application/json' } })
+  );
+  // Verify loading state appears
+  await expect(page.getByTestId('admin.content.pages-list.state-loading')).toBeVisible();
+});
+
+test('shows empty state when no pages exist', async ({ page }) => {
+  await mockApi(page, { pages: [] });
+  await page.goto('/admin/content/pages');
+  await expect(page.getByTestId('admin.content.pages-list.state-empty')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create your first page' })).toBeVisible();
+});
+
+test('shows success state with pages', async ({ page }) => {
+  await mockApi(page, { pages: [testPage] });
+  await page.goto('/admin/content/pages');
+  await expect(page.getByTestId('admin.content.pages-list.state-success')).toBeVisible();
+  await expect(page.getByRole('table')).toBeVisible();
+});
+
+test('shows error state on backend failure', async ({ page }) => {
+  await mockApi(page, { pages: 'error-500' });
+  await page.goto('/admin/content/pages');
+  await expect(page.getByTestId('admin.content.pages-list.state-error')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+});
+
+test('shows unauthorized state without permission', async ({ page }) => {
+  await loginAs(page, 'user-without-page-permission');
+  await page.goto('/admin/content/pages');
+  await expect(page.getByTestId('admin.content.pages-list.state-unauthorized')).toBeVisible();
+});
+```
+
+### 2. Core User Flows
+
+For each intent defined in the surface contract, at least one test that:
+- Triggers the intent
+- Verifies the UI updates correctly
+- Asserts the correct API call was made
+- Verifies the telemetry event was emitted
+
+### 3. Accessibility
+
+```javascript
+test('passes axe accessibility scan', async ({ page }) => {
+  await mockApi(page, { pages: [testPage] });
+  await page.goto('/admin/content/pages');
+  await expect(page.getByTestId('admin.content.pages-list.state-success')).toBeVisible();
+
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
+});
+```
+
+### 4. Telemetry Verification
+
+```javascript
+test('emits page-viewed telemetry on mount', async ({ page, telemetrySpy }) => {
+  await page.goto('/admin/content/pages');
+  await expect(telemetrySpy).toHaveEmitted({
+    eventName: 'admin.content.pages-list.page-viewed',
+    surfaceId: 'admin.content.pages-list',
+  });
+});
+
+test('emits create-clicked telemetry', async ({ page, telemetrySpy }) => {
+  await page.goto('/admin/content/pages');
+  await page.getByRole('button', { name: 'Create page' }).click();
+  await expect(telemetrySpy).toHaveEmitted({
+    eventName: 'admin.content.pages-list.create-clicked',
+  });
+});
+```
+
+## Shared Playwright Fixtures
+
+The `@atlas/test-fixtures` package provides:
+
+### `atlasTest` — Extended Test Fixture
+
+```javascript
+import { atlasTest as test } from '@atlas/test-fixtures';
+
+// Provides:
+// - page: standard Playwright page
+// - telemetrySpy: captures telemetry events for assertion
+// - mockApi: helper to stub Atlas API responses
+// - loginAs: helper to authenticate as different user roles
+// - assertA11y: runs axe scan and asserts zero violations
+```
+
+### `mockApi` — API Mocking
+
+```javascript
+await mockApi(page, {
+  pages: [
+    { id: 'pg_01', title: 'Welcome', slug: 'welcome', status: 'published' },
+  ],
+  // Use special strings for error states:
+  badges: 'error-500',
+  audit: 'error-403',
+});
+```
+
+### `loginAs` — Auth Simulation
+
+```javascript
+await loginAs(page, 'tenant-admin');     // Full admin role
+await loginAs(page, 'portal-user');      // Standard user
+await loginAs(page, 'no-permissions');   // Authenticated, zero permissions
+await loginAs(page, 'platform-operator'); // Super-admin
+```
+
+### `telemetrySpy` — Telemetry Capture
+
+```javascript
+// Assert specific event was emitted
+await expect(telemetrySpy).toHaveEmitted({
+  eventName: 'admin.content.pages-list.create-clicked',
+  surfaceId: 'admin.content.pages-list',
+});
+
+// Assert correlationId is consistent across related events
+const events = telemetrySpy.getByCorrelationId(correlationId);
+expect(events).toHaveLength(2); // click + api-response
+```
+
+## How AI Agents Should Create Tests
+
+### Step-by-Step
+
+1. **Read the surface contract.** Extract all acceptance scenarios, test IDs, and telemetry events.
+2. **Create the test file** at `apps/{app}/src/features/{module}/{feature}/__tests__/{surface}.spec.js`.
+3. **Write state tests first.** One test per required state (loading, empty, success, error, unauthorized).
+4. **Write acceptance scenario tests.** One test per scenario from the contract.
+5. **Write telemetry tests.** One test per telemetry event defined in the contract.
+6. **Write the a11y test.** One axe scan per primary state.
+7. **Run the tests.** They should all fail (no implementation yet). This is expected.
+8. **Implement the surface.** Make tests pass one by one.
+9. **Run all tests.** All must pass before the feature is complete.
+
+### Test File Naming
+
+```
+apps/{app}/src/features/{module}/{feature}/__tests__/{surfaceName}.spec.js
+```
+
+Example:
+```
+apps/admin/src/features/content-pages/__tests__/pages-list.spec.js
+```
+
+## What States Must Always Be Tested
+
+| State | Test Assertion |
+|-------|----------------|
+| **Loading** | Skeleton/spinner visible, `aria-busy="true"`, no stale data |
+| **Empty** | Empty state message visible, primary action available |
+| **Success** | Primary content rendered, test IDs present, key data visible |
+| **Validation Error** | Field errors visible, associated with inputs, summary if >3 |
+| **Backend Error** | Error message visible, retry button works, error logged to telemetry |
+| **Unauthorized** | Permission message visible, no sensitive data leaked |
