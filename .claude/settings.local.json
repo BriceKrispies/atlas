@@ -81,7 +81,18 @@
       "Bash(find /c/dev/atlas -name .env* -o -name *.env.example)",
       "Bash(grep -r \"KEYCLOAK\\\\|OIDC\\\\|JWT\" /c/dev/atlas --include=*.md --include=*.sh)",
       "Bash(grep -r \"INSECURE\\\\|TODO.*security\\\\|FIXME.*security\\\\|XXX.*security\" C:/dev/atlas/crates C:/dev/atlas/specs --include=*.rs --include=*.md)",
-      "Bash(grep -r \"hardcoded\\\\|test_only\\\\|debug.*password\\\\|admin.*password\" C:/dev/atlas/infra C:/dev/atlas/scripts --include=*.yml --include=*.sh --include=*.json)"
+      "Bash(grep -r \"hardcoded\\\\|test_only\\\\|debug.*password\\\\|admin.*password\" C:/dev/atlas/infra C:/dev/atlas/scripts --include=*.yml --include=*.sh --include=*.json)",
+      "Bash(npx playwright *)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(node *)",
+      "Bash(docker build *)",
+      "Bash(podman build *)",
+      "Bash(podman machine *)",
+      "Bash(taskkill //F //IM podman.exe)",
+      "Bash(podman ps *)",
+      "Bash(podman images *)",
+      "Bash(podman system *)"
     ]
   }
 }

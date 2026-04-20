@@ -1,0 +1,87 @@
+import { AtlasElement } from '@atlas/core';
+
+const styles = `
+  :host {
+    display: inline-block;
+  }
+  button {
+    font-family: var(--atlas-font-family);
+    font-size: var(--atlas-font-size-md);
+    font-weight: var(--atlas-font-weight-medium);
+    line-height: var(--atlas-line-height);
+    padding: 4px var(--atlas-space-md);
+    border: 1px solid var(--atlas-color-border);
+    border-radius: var(--atlas-radius-sm);
+    cursor: pointer;
+    background: var(--atlas-color-bg);
+    color: var(--atlas-color-text);
+    transition: background var(--atlas-transition-fast),
+                border-color var(--atlas-transition-fast);
+  }
+  button:hover {
+    background: var(--atlas-color-surface);
+    border-color: var(--atlas-color-border-strong);
+  }
+  button:active {
+    background: var(--atlas-color-surface-hover);
+  }
+  button:focus-visible {
+    outline: 2px solid var(--atlas-color-primary);
+    outline-offset: 1px;
+  }
+  :host([variant="primary"]) button {
+    background: var(--atlas-color-primary);
+    color: var(--atlas-color-text-inverse);
+    border-color: var(--atlas-color-primary);
+  }
+  :host([variant="primary"]) button:hover {
+    background: var(--atlas-color-primary-hover);
+    border-color: var(--atlas-color-primary-hover);
+  }
+  :host([variant="danger"]) button {
+    background: var(--atlas-color-bg);
+    color: var(--atlas-color-danger);
+    border-color: var(--atlas-color-border);
+  }
+  :host([variant="danger"]) button:hover {
+    background: var(--atlas-color-danger-subtle);
+    border-color: var(--atlas-color-danger);
+  }
+  :host([variant="ghost"]) button {
+    background: transparent;
+    border-color: transparent;
+    color: var(--atlas-color-text-muted);
+  }
+  :host([variant="ghost"]) button:hover {
+    background: var(--atlas-color-surface);
+    color: var(--atlas-color-text);
+  }
+  :host([size="sm"]) button {
+    font-size: var(--atlas-font-size-sm);
+    padding: 2px var(--atlas-space-sm);
+  }
+`;
+
+class AtlasButton extends AtlasElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this.shadowRoot.innerHTML = `<style>${styles}</style><button><slot></slot></button>`;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+
+    this.shadowRoot.querySelector('button').addEventListener('click', () => {
+      if (this.surfaceId && this.getAttribute('name')) {
+        this.emit(`${this.surfaceId}.${this.getAttribute('name')}-clicked`);
+      }
+    });
+  }
+
+  get label() {
+    return this.textContent?.trim() ?? '';
+  }
+}
+
+AtlasElement.define('atlas-button', AtlasButton);

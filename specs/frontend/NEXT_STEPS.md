@@ -40,7 +40,12 @@ Build the shared platform layer. Each package should have its own tests.
 - [ ] `@atlas/api-client` — typed `fetch` wrapper with `X-Correlation-Id` header injection, tenant context, timing telemetry, error normalization
 
 ### 2c. UI packages
-- [ ] `@atlas/design` — design tokens (colors, spacing, typography as CSS custom properties) + first primitives: `<atlas-button>`, `<atlas-input>`, `<atlas-select>`, `<atlas-table>`, `<atlas-dialog>`, `<atlas-toast>`, `<atlas-skeleton>`, `<atlas-error-panel>`. Every primitive extends `Component` and enforces `data-testid`, a11y attributes, and telemetry hooks.
+- [x] `@atlas/design` — design tokens as CSS custom properties (`tokens.css`) + atlas custom elements. Every element extends `AtlasElement` and auto-generates `data-testid` from `name` attribute + nearest `AtlasSurface` context.
+  - Shadow DOM (encapsulated): `<atlas-button>`, `<atlas-input>`, `<atlas-skeleton>`, `<atlas-badge>`
+  - Light DOM (layout/text): `<atlas-box>`, `<atlas-text>`, `<atlas-heading>`, `<atlas-stack>`
+  - Light DOM (table): `<atlas-table>`, `<atlas-row>`, `<atlas-table-head>`, `<atlas-table-body>`, `<atlas-table-cell>`
+  - Light DOM (navigation): `<atlas-nav>`, `<atlas-nav-item>`
+  - Future: `<atlas-select>`, `<atlas-dialog>`, `<atlas-toast>`, `<atlas-error-panel>`, `<atlas-link>`
 - [ ] `@atlas/a11y` — live region announcer, focus management utilities, skip link component
 - [ ] `@atlas/errors` — error boundary with telemetry, error state component, retry panel
 - [ ] `@atlas/loading` — skeleton components (text, table, card), spinner with `aria-busy`

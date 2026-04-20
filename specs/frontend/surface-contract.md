@@ -80,7 +80,7 @@ Every surface contract MUST include all of the following fields.
 /**
  * @typedef {Object} ElementSpec
  * @property {string} name — Element name (used in test ID)
- * @property {"button"|"input"|"select"|"checkbox"|"toggle"|"link"|"table"|"list"|"tab"|"menu"|"dialog-trigger"|"container"} type
+ * @property {"atlas-button"|"atlas-input"|"atlas-select"|"atlas-checkbox"|"atlas-toggle"|"atlas-link"|"atlas-table"|"atlas-row"|"atlas-table-head"|"atlas-table-body"|"atlas-table-cell"|"atlas-box"|"atlas-text"|"atlas-heading"|"atlas-stack"|"atlas-skeleton"|"atlas-badge"|"atlas-nav"|"atlas-nav-item"|"atlas-dialog"} type
  * @property {string} testId — Full test ID: {surfaceId}.{name}
  * @property {string} purpose — What this element does
  * @property {boolean} [parameterized] — Is this element parameterized? (e.g., row.{id})

@@ -1,0 +1,79 @@
+# =============================================================================
+# Atlas Integration Test Container
+# Single container: Postgres + Ingress + Frontend + Playwright
+# Usage: docker build -f infra/docker/Dockerfile.itest -t atlas-itest .
+#        docker run --rm -v ./test-output:/test-results -v ./test-logs:/test-logs atlas-itest
+# =============================================================================
+
+# --- Stage 1: Build Rust binaries -------------------------------------------
+FROM rust:latest AS chef
+RUN cargo install cargo-chef
+WORKDIR /build
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
+COPY apps/ ./apps/
+COPY tools/ ./tools/
+COPY tests/ ./tests/
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ ./crates/
+COPY apps/ ./apps/
+COPY tools/ ./tools/
+COPY tests/ ./tests/
+
+# Build ingress with test-auth, plus migrate and seed binaries
+RUN cargo build --release -p atlas-platform-ingress --features test-auth && \
+    cargo build --release -p atlas-platform-control-plane-db --bin migrate && \
+    cargo build --release -p atlas-platform-control-plane-db --bin seed
+
+# --- Stage 2: Runtime -------------------------------------------------------
+FROM node:22-bookworm
+
+# Install Postgres 16
+RUN apt-get update && \
+    apt-get install -y gnupg2 lsb-release curl && \
+    echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg && \
+    apt-get update && \
+    apt-get install -y postgresql-16 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Rust binaries from builder
+COPY --from=builder /build/target/release/ingress /usr/local/bin/ingress
+COPY --from=builder /build/target/release/migrate /usr/local/bin/migrate
+COPY --from=builder /build/target/release/seed /usr/local/bin/seed
+
+# Copy migration files
+COPY crates/control_plane_db/migrations/ /app/migrations/
+
+# Copy specs (fixtures + schemas needed by seed binary)
+COPY specs/fixtures/ /app/specs/fixtures/
+COPY specs/schemas/ /app/specs/schemas/
+
+# Copy frontend source
+COPY frontend/ /app/frontend/
+
+# Install frontend dependencies
+WORKDIR /app/frontend
+RUN corepack enable && corepack prepare pnpm@latest --activate && \
+    pnpm install --frozen-lockfile && \
+    npx playwright install --with-deps chromium
+
+# Create log and results directories
+RUN mkdir -p /test-logs /test-results
+
+# Copy entrypoint script
+COPY infra/docker/entrypoint-itest.sh /app/entrypoint-itest.sh
+RUN chmod +x /app/entrypoint-itest.sh
+
+WORKDIR /app
+
+ENTRYPOINT ["/app/entrypoint-itest.sh"]

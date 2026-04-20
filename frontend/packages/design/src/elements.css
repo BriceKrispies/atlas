@@ -1,0 +1,193 @@
+/* ═══════════════════════════════════════════════════════════════
+   Atlas Element Styles
+   Layer 2 + 3: base display rules and attribute-driven variants.
+   No inline styles in JS — all light DOM element styling lives here.
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* ── atlas-box ────────────────────────────────────────────────── */
+
+atlas-box {
+  display: block;
+}
+
+atlas-box[padding="xs"]  { padding: var(--atlas-space-xs); }
+atlas-box[padding="sm"]  { padding: var(--atlas-space-sm); }
+atlas-box[padding="md"]  { padding: var(--atlas-space-md); }
+atlas-box[padding="lg"]  { padding: var(--atlas-space-lg); }
+atlas-box[padding="xl"]  { padding: var(--atlas-space-xl); }
+atlas-box[padding="2xl"] { padding: var(--atlas-space-2xl); }
+
+
+/* ── atlas-text ───────────────────────────────────────────────── */
+
+atlas-text {
+  display: inline;
+  font-family: var(--atlas-font-family);
+  font-size: var(--atlas-font-size-md);
+  line-height: var(--atlas-line-height);
+  color: var(--atlas-color-text);
+}
+
+atlas-text[block] {
+  display: block;
+}
+
+atlas-text[variant="muted"]  { color: var(--atlas-color-text-muted); }
+atlas-text[variant="medium"] { font-weight: var(--atlas-font-weight-medium); }
+atlas-text[variant="small"]  { font-size: var(--atlas-font-size-sm); color: var(--atlas-color-text-muted); }
+atlas-text[variant="error"]  { color: var(--atlas-color-danger); }
+atlas-text[variant="mono"]   { font-family: var(--atlas-font-mono); font-size: var(--atlas-font-size-sm); }
+
+
+/* ── atlas-heading ────────────────────────────────────────────── */
+
+atlas-heading {
+  display: block;
+  font-family: var(--atlas-font-family);
+  line-height: var(--atlas-line-height-tight);
+  color: var(--atlas-color-text);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+atlas-heading[level="1"] { font-size: var(--atlas-font-size-xl); font-weight: var(--atlas-font-weight-semibold); }
+atlas-heading[level="2"] { font-size: var(--atlas-font-size-lg); font-weight: var(--atlas-font-weight-semibold); }
+atlas-heading[level="3"] {
+  font-size: var(--atlas-font-size-xs);
+  font-weight: var(--atlas-font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--atlas-color-text-muted);
+}
+atlas-heading[level="4"] { font-size: var(--atlas-font-size-md); font-weight: var(--atlas-font-weight-medium); }
+atlas-heading[level="5"] { font-size: var(--atlas-font-size-sm); font-weight: var(--atlas-font-weight-medium); }
+atlas-heading[level="6"] { font-size: var(--atlas-font-size-sm); font-weight: var(--atlas-font-weight-normal); color: var(--atlas-color-text-muted); }
+
+
+/* ── atlas-stack ──────────────────────────────────────────────── */
+
+atlas-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--atlas-space-md);
+}
+
+atlas-stack[direction="row"]    { flex-direction: row; }
+atlas-stack[direction="column"] { flex-direction: column; }
+
+atlas-stack[gap="none"] { gap: 0; }
+atlas-stack[gap="xs"]   { gap: var(--atlas-space-xs); }
+atlas-stack[gap="sm"]   { gap: var(--atlas-space-sm); }
+atlas-stack[gap="md"]   { gap: var(--atlas-space-md); }
+atlas-stack[gap="lg"]   { gap: var(--atlas-space-lg); }
+atlas-stack[gap="xl"]   { gap: var(--atlas-space-xl); }
+
+atlas-stack[align="start"]    { align-items: flex-start; }
+atlas-stack[align="center"]   { align-items: center; }
+atlas-stack[align="end"]      { align-items: flex-end; }
+atlas-stack[align="stretch"]  { align-items: stretch; }
+atlas-stack[align="baseline"] { align-items: baseline; }
+
+atlas-stack[justify="start"]         { justify-content: flex-start; }
+atlas-stack[justify="center"]        { justify-content: center; }
+atlas-stack[justify="end"]           { justify-content: flex-end; }
+atlas-stack[justify="space-between"] { justify-content: space-between; }
+atlas-stack[justify="space-around"]  { justify-content: space-around; }
+
+atlas-stack[wrap] { flex-wrap: wrap; }
+
+
+/* ── atlas-table ──────────────────────────────────────────────── */
+
+atlas-table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--atlas-font-family);
+  font-size: var(--atlas-font-size-md);
+}
+
+
+/* ── atlas-table-head ─────────────────────────────────────────── */
+
+atlas-table-head {
+  display: table-header-group;
+}
+
+
+/* ── atlas-table-body ─────────────────────────────────────────── */
+
+atlas-table-body {
+  display: table-row-group;
+}
+
+
+/* ── atlas-row ────────────────────────────────────────────────── */
+
+atlas-row {
+  display: table-row;
+}
+
+atlas-table-body > atlas-row:hover {
+  background: var(--atlas-color-surface);
+}
+
+
+/* ── atlas-table-cell ─────────────────────────────────────────── */
+
+atlas-table-cell {
+  display: table-cell;
+  padding: var(--atlas-space-sm) var(--atlas-space-md);
+  font-family: var(--atlas-font-family);
+  border-bottom: 1px solid var(--atlas-color-border);
+  color: var(--atlas-color-text);
+  vertical-align: middle;
+}
+
+atlas-table-cell[header] {
+  border-bottom: 2px solid var(--atlas-color-border);
+  font-weight: var(--atlas-font-weight-semibold);
+  color: var(--atlas-color-text-muted);
+  font-size: var(--atlas-font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-top: var(--atlas-space-sm);
+  padding-bottom: var(--atlas-space-sm);
+  white-space: nowrap;
+}
+
+
+/* ── atlas-nav ────────────────────────────────────────────────── */
+
+atlas-nav {
+  display: block;
+}
+
+
+/* ── atlas-nav-item ───────────────────────────────────────────── */
+
+atlas-nav-item {
+  display: block;
+  padding: var(--atlas-space-sm) var(--atlas-space-md);
+  border-radius: var(--atlas-radius-sm);
+  color: var(--atlas-color-text);
+  font-size: var(--atlas-font-size-md);
+  font-family: var(--atlas-font-family);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--atlas-transition-fast);
+}
+
+atlas-nav-item:hover {
+  background: var(--atlas-color-surface-hover);
+}
+
+atlas-nav-item[active] {
+  background: var(--atlas-color-primary);
+  color: var(--atlas-color-text-inverse);
+}
+
+atlas-nav-item[active]:hover {
+  background: var(--atlas-color-primary-hover);
+}

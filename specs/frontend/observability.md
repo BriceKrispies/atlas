@@ -133,11 +133,12 @@ To debug a user-reported issue:
 
 ```
 Surface Mount
-  → surfaceId set from Component's static surfaceId property
+  → surfaceId set from AtlasSurface's static surfaceId property
+  → data-testid auto-set to surfaceId on the surface element
   → page-viewed telemetry emitted with surfaceId
 
-User Clicks Button
-  → componentId derived from surfaceId + element name
+User Clicks Atlas Button
+  → componentId derived from surfaceId + element name attribute (auto-generated data-testid)
   → correlationId generated (UUIDv4)
   → click telemetry emitted with surfaceId, componentId, correlationId
 

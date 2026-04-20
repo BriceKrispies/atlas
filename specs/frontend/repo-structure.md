@@ -44,36 +44,35 @@ atlas/
 │   │   │       ├── channel.test.js
 │   │   │       └── offload.test.js
 │   │   │
-│   │   ├── design/                  # @atlas/design — Design system
+│   │   ├── design/                  # @atlas/design — Design system (all atlas custom elements)
 │   │   │   ├── package.json
 │   │   │   ├── src/
-│   │   │   │   ├── tokens/          # Design tokens (colors, spacing, typography)
-│   │   │   │   │   ├── colors.js
-│   │   │   │   │   ├── spacing.js
-│   │   │   │   │   ├── typography.js
-│   │   │   │   │   └── index.js
-│   │   │   │   ├── primitives/      # Base components (extend @atlas/core Component)
-│   │   │   │   │   ├── Button.js    # <atlas-button> with built-in testId, a11y, telemetry
-│   │   │   │   │   ├── Input.js     # <atlas-input> with label, error association
-│   │   │   │   │   ├── Select.js    # <atlas-select> with keyboard nav
-│   │   │   │   │   ├── Checkbox.js  # <atlas-checkbox>
-│   │   │   │   │   ├── Toggle.js    # <atlas-toggle> with aria-pressed
-│   │   │   │   │   ├── Table.js     # <atlas-table> with sorting, aria-sort
-│   │   │   │   │   ├── Dialog.js    # <atlas-dialog> with focus trap, escape-to-close
-│   │   │   │   │   ├── Toast.js     # <atlas-toast> with role="status"/"alert"
-│   │   │   │   │   ├── Skeleton.js  # <atlas-skeleton> with aria-busy
-│   │   │   │   │   ├── ErrorPanel.js # <atlas-error-panel> with retry
-│   │   │   │   │   └── index.js
-│   │   │   │   ├── layouts/         # Layout components
-│   │   │   │   │   ├── PageLayout.js
-│   │   │   │   │   ├── SidebarLayout.js
-│   │   │   │   │   ├── StackLayout.js
-│   │   │   │   │   └── index.js
-│   │   │   │   ├── styles/          # Global styles and CSS custom properties
-│   │   │   │   │   ├── reset.css
-│   │   │   │   │   ├── tokens.css   # CSS custom properties from design tokens
-│   │   │   │   │   └── primitives.css
-│   │   │   │   └── index.js
+│   │   │   │   ├── tokens.css       # CSS custom properties (colors, spacing, typography, borders)
+│   │   │   │   │
+│   │   │   │   │  # Interactive elements (Shadow DOM — encapsulated styles)
+│   │   │   │   ├── atlas-button.js  # <atlas-button> — click telemetry, variant styling
+│   │   │   │   ├── atlas-input.js   # <atlas-input> — label, type, placeholder, required
+│   │   │   │   ├── atlas-skeleton.js # <atlas-skeleton> — loading placeholder, rows attr
+│   │   │   │   ├── atlas-badge.js   # <atlas-badge> — status indicator
+│   │   │   │   │
+│   │   │   │   │  # Layout elements (Light DOM — participate in parent CSS context)
+│   │   │   │   ├── atlas-box.js     # <atlas-box> — replaces <div>, padding attr
+│   │   │   │   ├── atlas-text.js    # <atlas-text> — replaces <p>/<span>, variant attr
+│   │   │   │   ├── atlas-heading.js # <atlas-heading> — replaces <h1>-<h6>, level attr
+│   │   │   │   ├── atlas-stack.js   # <atlas-stack> — flexbox layout, direction/gap/align/justify
+│   │   │   │   │
+│   │   │   │   │  # Table elements (Light DOM — CSS display: table-*)
+│   │   │   │   ├── atlas-table.js   # <atlas-table> — display:table, role=table, label attr
+│   │   │   │   ├── atlas-row.js     # <atlas-row> — display:table-row, parameterized key
+│   │   │   │   ├── atlas-table-head.js # <atlas-table-head> — display:table-header-group
+│   │   │   │   ├── atlas-table-body.js # <atlas-table-body> — display:table-row-group
+│   │   │   │   ├── atlas-table-cell.js # <atlas-table-cell> — display:table-cell, header attr
+│   │   │   │   │
+│   │   │   │   │  # Navigation elements (Light DOM)
+│   │   │   │   ├── atlas-nav.js     # <atlas-nav> — role=navigation, label attr
+│   │   │   │   ├── atlas-nav-item.js # <atlas-nav-item> — active attr, hover effects
+│   │   │   │   │
+│   │   │   │   └── index.js         # Registers all custom elements
 │   │   │   └── __tests__/
 │   │   │
 │   │   ├── contracts/               # @atlas/contracts
@@ -201,9 +200,8 @@ atlas/
 │   │   │   │       │   │   └── PageRow.js
 │   │   │   │       │   ├── hooks/
 │   │   │   │       │   │   └── usePages.js
-│   │   │   │       │   ├── __tests__/
-│   │   │   │       │   │   ├── pages-list.spec.js
-│   │   │   │       │   │   └── page-editor.spec.js
+│   │   │   │       │   ├── pages-list.test.js    # Co-located Playwright tests
+│   │   │   │       │   ├── page-editor.test.js
 │   │   │   │       │   └── index.js
 │   │   │   │       ├── media-library/
 │   │   │   │       ├── badges/
@@ -213,7 +211,6 @@ atlas/
 │   │   │   │       ├── tokens/
 │   │   │   │       ├── import/
 │   │   │   │       └── audit/
-│   │   │   └── __tests__/           # App-level e2e tests
 │   │   │
 │   │   ├── portal/                  # @atlas/portal — End-User Portal
 │   │   │   ├── package.json
@@ -234,7 +231,6 @@ atlas/
 │   │   │   │       ├── badges/
 │   │   │   │       ├── points/
 │   │   │   │       └── messaging/
-│   │   │   └── __tests__/
 │   │   │
 │   │   ├── public/                  # @atlas/public — Public Renderer
 │   │   │   ├── package.json
@@ -248,7 +244,6 @@ atlas/
 │   │   │   │   └── features/
 │   │   │   │       ├── page-renderer/
 │   │   │   │       └── media-viewer/
-│   │   │   └── __tests__/
 │   │   │
 │   │   └── platform-control/       # @atlas/platform-control — Platform Control
 │   │       ├── package.json
@@ -267,7 +262,6 @@ atlas/
 │   │       │       ├── schemas/
 │   │       │       ├── policies/
 │   │       │       └── health/
-│   │       └── __tests__/
 │   │
 │   └── tests/
 │       └── e2e/                     # Cross-app e2e tests

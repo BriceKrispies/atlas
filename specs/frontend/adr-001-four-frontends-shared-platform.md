@@ -38,8 +38,8 @@ Atlas will implement **4 separate frontend applications** built on top of a **sh
 
 All 4 apps depend on a set of shared packages that provide:
 
-- Component system (`@atlas/core`) — tagged template rendering, signals reactivity, router, data fetching
-- Design system (`@atlas/design`) — tokens, primitives, layouts (built on `@atlas/core`)
+- Component system (`@atlas/core`) — `AtlasElement` (extends `HTMLElement`), `AtlasSurface`, tagged template rendering, signals reactivity, router, data fetching. All UI elements are web components — no raw HTML in templates.
+- Design system (`@atlas/design`) — tokens, atlas custom elements for every UI primitive (layout, text, tables, navigation, forms). Shadow DOM for encapsulated elements, Light DOM for structural elements.
 - Surface contracts (`@atlas/contracts`) — shape definitions for surface specs
 - Telemetry (`@atlas/telemetry`) — event emission, correlation ID propagation
 - Test IDs (`@atlas/test-ids`) — `testId()` helper, naming convention enforcement

@@ -1,0 +1,21 @@
+{
+  "name": "atlas-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @atlas/admin dev",
+    "sandbox": "pnpm --filter @atlas/sandbox dev",
+    "build": "pnpm --filter './apps/*' build",
+    "test": "pnpm --filter './apps/*' test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:integration": "playwright test --config playwright.itest.config.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

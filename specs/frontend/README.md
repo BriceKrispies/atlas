@@ -60,16 +60,27 @@ This is what **"scalable with receipts"** means: the system scales feature devel
 
 ### No Frameworks — We Own the Stack
 
-Atlas frontends are built with **modern vanilla JavaScript** and a custom component system (`@atlas/core`). No React, no Vue, no Angular. The component system uses tagged template literals (`html\`...\``) for rendering and signals for fine-grained reactivity. Every primitive — buttons, tables, dialogs, routing, data fetching — is built and owned by Atlas. This means `data-testid`, telemetry hooks, and ARIA attributes are enforced at the platform level, not bolted on after the fact.
+Atlas frontends are built with **modern vanilla JavaScript** and a custom web component system (`@atlas/core`). No React, no Vue, no Angular. The component system uses tagged template literals (`html\`...\``) for rendering, signals for fine-grained reactivity, and **web components** (`AtlasElement extends HTMLElement`) as the rendering primitive. Every element in a template is an atlas custom element — no raw HTML elements (`<div>`, `<p>`, `<h1>`, `<table>`, etc.) appear in `render()` output. This means `data-testid` generation is automatic (via `name` attribute + surfaceId inheritance), telemetry hooks and ARIA attributes are enforced at the platform level, not bolted on after the fact.
+
+### All Elements Are Atlas Web Components
+
+Templates use **only** atlas custom elements. There is no raw HTML in `render()` output. This ensures:
+
+1. **Every element is under atlas control** — the platform owns the rendering pipeline end-to-end.
+2. **Automatic `data-testid`** — elements with a `name` attribute auto-generate `data-testid` by combining the nearest `AtlasSurface`'s `surfaceId` with the `name` value. No manual `data-testid` wiring.
+3. **Consistent API** — developers learn one system. Interactive elements (`<atlas-button>`, `<atlas-input>`) use Shadow DOM for encapsulation. Structural elements (`<atlas-box>`, `<atlas-stack>`, `<atlas-heading>`, `<atlas-text>`, `<atlas-table>`, `<atlas-row>`, etc.) use Light DOM to participate in parent layout context.
+4. **No browser default behavior surprises** — every element's semantics are explicitly defined by the component.
 
 ## Key Concepts
 
 | Term | Definition |
 |------|------------|
-| **`@atlas/core`** | The custom component system: `Component` base class, `html` tagged templates, signals, router, `query()`, `channel()`, `offload()` |
+| **`@atlas/core`** | The web component system: `AtlasElement` (extends `HTMLElement`), `AtlasSurface` (extends `AtlasElement`), `html` tagged templates, signals, router, `query()`, `channel()`, `offload()` |
+| **AtlasElement** | Base class for all atlas custom elements. Extends `HTMLElement`. Auto-generates `data-testid` from nearest `AtlasSurface`'s `surfaceId` + own `name` attribute. |
+| **AtlasSurface** | Base class for page/widget/dialog surfaces. Extends `AtlasElement`. Declares `static surfaceId`. Provides context for child element testid generation. |
 | **Surface** | A bounded UI region (page, widget, dialog) with a formal contract |
 | **Surface Contract** | The specification for a surface: route, states, elements, test IDs, telemetry, a11y |
-| **Stable Test ID** | A `data-testid` value that is part of the contract and must not change without versioning |
+| **Stable Test ID** | A `data-testid` value auto-generated from `surfaceId` + `name` attribute. Part of the contract and must not change without versioning |
 | **Frontend Receipt** | Machine-verifiable proof that a feature works: passing Playwright tests, emitted telemetry, a11y audit |
 | **Feature Slice** | A vertical cut through the stack: contract + tests + implementation + telemetry for one feature |
 | **Shared Frontend Platform** | The common packages shared across all 4 frontends |

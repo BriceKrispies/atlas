@@ -3,9 +3,10 @@
 .PHONY: obs-up obs-down obs-logs obs-reset obs-open obs-status
 .PHONY: keycloak-up keycloak-down keycloak-status keycloak-logs keycloak-reset keycloak-open keycloak-wait
 .PHONY: itest-up itest-down itest-restart itest-logs itest-status itest-clean itest-reset itest-test itest
+.PHONY: itest-container-build itest-container-run itest-container
 
 # Container runtime configuration
-CONTAINER_RUNTIME ?= docker
+CONTAINER_RUNTIME ?= podman
 COMPOSE_CMD = $(CONTAINER_RUNTIME)-compose
 COMPOSE_FILE = infra/compose/compose.control-plane.yml
 CONTAINER_NAME = atlas-platform-control-plane-db
@@ -66,6 +67,11 @@ help:
 	@echo "  itest-reset   - Full reset (down, clean, up)"
 	@echo "  itest-test    - Run black-box integration tests"
 	@echo "  itest         - Full workflow: up + wait + test"
+	@echo ""
+	@echo "Single-container integration test:"
+	@echo "  itest-container-build  - Build the full-stack test container"
+	@echo "  itest-container-run    - Run integration tests in the container"
+	@echo "  itest-container        - Build + run (full workflow)"
 	@echo ""
 	@echo "Quick log inspection (alternative to Dozzle UI):"
 	@echo "  bash scripts/logs.sh                  - Follow all container logs"
@@ -335,6 +341,25 @@ itest: itest-up
 	@echo "→ Waiting for stack to stabilize (5s)..."
 	@sleep 5
 	@$(MAKE) itest-test
+
+# Single-container integration test (full stack in one container)
+ITEST_CONTAINER_IMAGE = atlas-itest
+
+itest-container-build:
+	@echo "=== Building Integration Test Container ==="
+	$(CONTAINER_RUNTIME) build -f infra/docker/Dockerfile.itest -t $(ITEST_CONTAINER_IMAGE) .
+
+itest-container-run:
+	@echo "=== Running Integration Test Container ==="
+	@mkdir -p test-output test-logs
+	$(CONTAINER_RUNTIME) run --rm \
+		-v $(PWD)/test-output:/test-results \
+		-v $(PWD)/test-logs:/test-logs \
+		$(ITEST_CONTAINER_IMAGE)
+
+itest-container: itest-container-build itest-container-run
+	@echo ""
+	@echo "Results: test-output/  Logs: test-logs/"
 
 # Catch-all target for itest-logs arguments
 %:

@@ -1,0 +1,16 @@
+{
+  "name": "@atlas/design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./tokens.css": "./src/tokens.css",
+    "./elements.css": "./src/elements.css",
+    "./shared-styles": "./src/shared-styles.js"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*"
+  }
+}

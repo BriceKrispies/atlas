@@ -388,9 +388,80 @@ The current policy engine is designed to be replaced with Cedar:
 - Deny-overrides-allow semantics (Cedar's default)
 - Error model and response format
 
+## Permission and Role Model
+
+Authorization decisions depend on knowing what a principal is allowed to do. The identity layer (`crosscut/identity.md`) defines the entities; this section describes how they integrate with the ABAC engine.
+
+### Permissions
+
+Permissions are system-defined capability atoms. Their `code` uses the same namespace as `actionId` in intent payloads:
+
+```
+content.pages.create
+content.pages.update
+content.pages.delete
+badges.definitions.create
+badges.awards.grant
+audit.history.view
+org.business_units.create
+```
+
+Modules declare their permissions in their manifests. When a module is enabled for a tenant, its permissions become available for role composition in that tenant.
+
+**Relationship to Policy Evaluation:**
+
+The existing ABAC engine evaluates policies against a `PolicyEvaluationContext` that includes `principal_attributes`. With the role/permission model, the principal's effective permissions (union of all permissions from all active, non-expired role assignments) are included in `principal_attributes` as a `permissions` array. Policies can then condition on specific permissions:
+
+```
+# Pseudocode for how roles feed into ABAC
+principal_attributes = {
+    "id": "user-123",
+    "type": "user",
+    "tenant_id": "tenant-001",
+    "permissions": ["content.pages.create", "content.pages.update", "badges.definitions.create"],
+    "roles": ["Content Editor", "Badge Admin"]
+}
+```
+
+The simplest policy pattern: an ALLOW rule that checks whether `principal_attributes.permissions` contains the `resource_attributes.action_id`. This replaces the current "allow-all" development policy with real permission checks.
+
+### Roles
+
+Roles are tenant-defined groupings of permissions. See `crosscut/identity.md` for the full entity definition and `schemas/identity.md` for the data model.
+
+Key integration points:
+- **Role assignment** changes invalidate the effective permissions cache for affected users
+- **Role permission** changes invalidate the effective permissions cache for ALL users with that role
+- **Module enablement** changes affect which permissions are available for role composition
+- **Default roles** (Tenant Admin, User) are created when a tenant is provisioned
+
+### Effective Permissions Resolution
+
+At authorization time, the effective permissions for a principal are resolved:
+
+```
+1. Look up User by Principal.id (idp_subject) + Principal.tenant_id
+2. Fetch all active, non-expired UserRole assignments for that user
+3. For each role, fetch all RolePermission entries
+4. Union of all permission codes = effective permissions
+5. Include in principal_attributes for policy evaluation
+```
+
+This resolution SHOULD be cached per-user. Cache invalidation triggers:
+- UserRole assigned or revoked → invalidate that user
+- RolePermission granted or revoked → invalidate all users with that role
+- User deactivated → invalidate that user (all permissions revoked)
+- Role archived → invalidate all users who had that role
+
+Cache key: `authz:permissions:{tenant_id}:{user_id}` (follows I9 — tenant in key)
+Invalidation: event-driven via tags (follows I10)
+
 ## Open Questions
 
 - How are action IDs validated against the action registry at runtime?
 - Should unknown action IDs be rejected or just logged?
 - How are policies versioned and deployed across ingress instances?
 - What is the cache invalidation strategy for compiled policies?
+- Should effective permissions be computed at auth time (per-request) or pre-computed in a projection?
+- How does the Cedar migration affect the permission/role model? (Cedar has its own role concepts)
+- Should there be a "capability check" API endpoint (given user X, can they do action Y?) for UI feature gating?

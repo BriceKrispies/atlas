@@ -2,11 +2,14 @@
 
 ## Module Overview
 
-The org module owns the organizational structure within a tenant through business units: named collections of users and/or other business units.
+The org module owns users, roles, organizational structure, and tenant-configurable user profiles. It is the tenant-facing administration layer over the identity infrastructure defined in `crosscut/identity.md`.
 
 **Data Ownership:**
 - Owns: Business units, business unit membership (user-to-unit and unit-to-unit)
-- References: User directory (external to these specs)
+- Administers (surfaces for): User, Role, UserRole, UserProfile, UserProfileSchema (entities defined in `schemas/identity.md`)
+- References: Keycloak (external IdP), Permission (system-defined, from module manifests)
+
+**Note:** The core identity entities (User, Permission, Role, UserRole, UserProfile, UserProfileSchema) are defined in `schemas/identity.md`. This module provides the admin surfaces and workflows for managing them. The business unit entities below are owned entirely by this module.
 
 **Purpose:**
 Provide organizational segmentation for permissions, messaging, and badge targeting.

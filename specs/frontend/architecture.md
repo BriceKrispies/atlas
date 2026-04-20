@@ -78,23 +78,46 @@ Surfaces include:
 
 ## The Component System: `@atlas/core`
 
-Atlas frontends use a custom component system instead of a framework. This is intentional — we own every layer of the rendering stack so that `data-testid`, telemetry, and ARIA attributes are enforced structurally, not by convention.
+Atlas frontends use a custom web component system instead of a framework. This is intentional — we own every layer of the rendering stack so that `data-testid`, telemetry, and ARIA attributes are enforced structurally, not by convention.
+
+**All elements are atlas web components.** Templates contain only atlas custom elements — no raw HTML (`<div>`, `<p>`, `<h1>`, `<table>`, etc.). This ensures every element in the render tree is under atlas control, `data-testid` is automatic, and there are no browser default behavior surprises.
+
+### Element Inventory
+
+| Element | Replaces | DOM | Purpose |
+|---------|----------|-----|---------|
+| `<atlas-box>` | `<div>` | Light | Layout container |
+| `<atlas-text>` | `<p>`, `<span>` | Light | Text content with variant styling |
+| `<atlas-heading>` | `<h1>`-`<h6>` | Light | Semantic heading with level |
+| `<atlas-stack>` | flex `<div>` | Light | Flexbox layout container |
+| `<atlas-button>` | `<button>` | Shadow | Interactive button with telemetry |
+| `<atlas-input>` | `<input>` | Shadow | Form input with label |
+| `<atlas-table>` | `<table>` | Light | Table container (CSS table display) |
+| `<atlas-row>` | `<tr>` | Light | Table row with parameterized key |
+| `<atlas-table-head>` | `<thead>` | Light | Table header group |
+| `<atlas-table-body>` | `<tbody>` | Light | Table body group |
+| `<atlas-table-cell>` | `<td>`, `<th>` | Light | Table cell (header attr for th) |
+| `<atlas-skeleton>` | loading placeholder | Shadow | Loading skeleton |
+| `<atlas-badge>` | status badge | Shadow | Status badge |
+| `<atlas-nav>` | `<nav>` | Light | Navigation landmark |
+| `<atlas-nav-item>` | nav `<button>` | Light | Navigation item |
+
+**Shadow DOM** elements encapsulate their own styles (button, input, skeleton, badge). **Light DOM** elements participate in parent CSS context (table layout, flex, grid).
 
 ### Rendering: Tagged Template Literals
 
-Templates use the `html` tagged template literal. No JSX, no build-time transform, no virtual DOM.
+Templates use the `html` tagged template literal. No JSX, no build-time transform, no virtual DOM. All elements are atlas custom elements.
 
 ```js
 import { html } from '@atlas/core';
 
-html`<section data-testid="admin.content.pages-list.state-success">
-  <h1>Content Pages</h1>
-  <button
-    data-testid="admin.content.pages-list.create-button"
-    @click=${this.handleCreate}>
-    Create page
-  </button>
-</section>`;
+html`
+  <atlas-stack direction="row" justify="space-between" align="center">
+    <atlas-heading level="1">Content Pages</atlas-heading>
+    <atlas-button name="create-button" variant="primary" @click=${this.handleCreate}>
+      Create page
+    </atlas-button>
+  </atlas-stack>`;
 ```
 
 The `html` tag provides:
@@ -122,14 +145,24 @@ pages.set([{ id: 'pg_01', title: 'Welcome' }]);
 // only the DOM node showing the count re-renders
 ```
 
-### Components
+### Web Components: AtlasElement and AtlasSurface
 
-Components are classes that extend `Component`. They declare a `surfaceId`, own signals for state, and implement a `render()` method that returns an `html` template.
+All atlas elements extend `AtlasElement` (which extends `HTMLElement`). Page/widget/dialog surfaces extend `AtlasSurface` (which extends `AtlasElement`).
+
+`AtlasElement` provides:
+- **Automatic `data-testid`** — walks up the DOM to find the nearest `AtlasSurface`, combines its `surfaceId` with the element's `name` attribute.
+- **Lifecycle hooks** — `onMount()`, `onUnmount()`, reactive `render()`.
+
+`AtlasSurface` provides:
+- **`static surfaceId`** — declares the surface's identity (e.g., `'admin.content.pages-list'`).
+- **`setState(state)`** — sets `data-state` attribute for test selectors.
+- **Context for children** — child `AtlasElement` instances inherit the `surfaceId` for testid generation.
 
 ```js
-import { Component, html, signal } from '@atlas/core';
+import { AtlasSurface, html, signal, batch } from '@atlas/core';
+import { backend } from '@atlas/api-client';
 
-export class PagesList extends Component {
+class PagesListPage extends AtlasSurface {
   static surfaceId = 'admin.content.pages-list';
 
   pages = signal([]);
@@ -138,55 +171,93 @@ export class PagesList extends Component {
 
   async onMount() {
     try {
-      const data = await this.api.get('/api/v1/pages');
-      this.pages.set(data);
+      const data = await backend.query('/pages');
+      batch(() => {
+        this.pages.set(data);
+        this.loading.set(false);
+      });
     } catch (err) {
-      this.error.set(err);
-    } finally {
-      this.loading.set(false);
+      batch(() => {
+        this.error.set(err.message);
+        this.loading.set(false);
+      });
     }
   }
 
   render() {
     if (this.loading.value) {
-      return html`<div data-testid="${this.testId}.state-loading" aria-busy="true">
-        <atlas-skeleton rows="5" />
-      </div>`;
+      this.setState('loading');
+      return html`
+        <atlas-stack direction="row" justify="space-between" align="center">
+          <atlas-heading level="1">Content Pages</atlas-heading>
+        </atlas-stack>
+        <atlas-skeleton name="skeleton" rows="5"></atlas-skeleton>
+      `;
     }
 
     if (this.error.value) {
-      return html`<div data-testid="${this.testId}.state-error" role="alert">
-        <p>Failed to load pages.</p>
-        <button @click=${() => this.onMount()}>Retry</button>
-      </div>`;
+      this.setState('error');
+      return html`
+        <atlas-heading level="1">Content Pages</atlas-heading>
+        <atlas-box padding="lg">
+          <atlas-text variant="error">Failed to load pages: ${this.error.value}</atlas-text>
+          <atlas-button name="retry-button" @click=${() => this._loadPages()}>Retry</atlas-button>
+        </atlas-box>
+      `;
     }
 
     if (this.pages.value.length === 0) {
-      return html`<div data-testid="${this.testId}.state-empty">
-        <p>No pages yet. Create your first page.</p>
-        <button
-          data-testid="${this.testId}.create-button"
-          @click=${this.handleCreate}>
-          Create page
-        </button>
-      </div>`;
+      this.setState('empty');
+      return html`
+        <atlas-box padding="xl" style="text-align:center">
+          <atlas-heading level="1">Content Pages</atlas-heading>
+          <atlas-text block variant="muted">No pages yet</atlas-text>
+          <atlas-button name="create-button" variant="primary" @click=${this.handleCreate}>
+            Create your first page
+          </atlas-button>
+        </atlas-box>
+      `;
     }
 
-    return html`<section data-testid="${this.testId}.state-success">
-      <h1>Content Pages</h1>
-      <button
-        data-testid="${this.testId}.create-button"
-        @click=${() => this.emit('admin.content.pages-list.create-clicked')}>
-        Create page
-      </button>
-      <atlas-table
-        data-testid="${this.testId}.table"
-        .rows=${this.pages.value}
-        .columns=${this.columns}
-        aria-label="Content pages" />
-    </section>`;
+    this.setState('success');
+    return html`
+      <atlas-stack direction="row" justify="space-between" align="center">
+        <atlas-heading level="1">Content Pages</atlas-heading>
+        <atlas-button name="create-button" variant="primary" @click=${this.handleCreate}>
+          Create page
+        </atlas-button>
+      </atlas-stack>
+      <atlas-table name="table" label="Content pages">
+        <atlas-table-head>
+          <atlas-row>
+            <atlas-table-cell header>Title</atlas-table-cell>
+            <atlas-table-cell header>Slug</atlas-table-cell>
+            <atlas-table-cell header>Status</atlas-table-cell>
+            <atlas-table-cell header>Updated</atlas-table-cell>
+            <atlas-table-cell header>Actions</atlas-table-cell>
+          </atlas-row>
+        </atlas-table-head>
+        <atlas-table-body>
+          ${this.pages.value.map(page => html`
+            <atlas-row name="row" key="${page.pageId}">
+              <atlas-table-cell><atlas-text variant="medium">${page.title}</atlas-text></atlas-table-cell>
+              <atlas-table-cell><atlas-text variant="muted">/${page.slug}</atlas-text></atlas-table-cell>
+              <atlas-table-cell><atlas-badge status="${page.status}">${page.status}</atlas-badge></atlas-table-cell>
+              <atlas-table-cell><atlas-text variant="muted">${formatDate(page.updatedAt)}</atlas-text></atlas-table-cell>
+              <atlas-table-cell>
+                <atlas-button name="row-delete" variant="danger" @click=${() => this._deletePage(page.pageId)}>
+                  Delete
+                </atlas-button>
+              </atlas-table-cell>
+            </atlas-row>
+          `)}
+        </atlas-table-body>
+      </atlas-table>
+    `;
   }
 }
+
+AtlasSurface.define('pages-list-page', PagesListPage);
 ```
 
 ### Lifecycle
@@ -196,6 +267,16 @@ export class PagesList extends Component {
 | `onMount()` | Component is inserted into the DOM |
 | `onUnmount()` | Component is removed from the DOM |
 | `render()` | Called on mount and whenever a signal read during render changes |
+
+### Automatic `data-testid` Generation
+
+Elements no longer need manual `data-testid` attributes. The system works automatically:
+
+1. **`AtlasSurface`** sets `data-testid` to its `surfaceId` (e.g., `admin.content.pages-list`).
+2. **`AtlasElement`** with a `name` attribute walks up the DOM to find the nearest `AtlasSurface`, then sets `data-testid` to `{surfaceId}.{name}` (e.g., `admin.content.pages-list.create-button`).
+3. **`AtlasRow`** with a `key` attribute appends the key: `{surfaceId}.{name}.{key}` (e.g., `admin.content.pages-list.row.pg_001`).
+
+This means adding a `name="create-button"` attribute to an `<atlas-button>` inside a surface automatically produces the correct stable test ID. No manual wiring needed.
 
 ### Routing
 
@@ -534,8 +615,7 @@ apps/admin/src/features/content-pages/
 │   └── PageRow.js                    # Table row component
 ├── hooks/
 │   └── usePages.js                   # Data fetching (query wrappers)
-├── __tests__/
-│   └── pages-list.spec.js           # Playwright tests
+├── pages-list.test.js               # Playwright tests (co-located)
 └── index.js                          # Public exports
 ```
 

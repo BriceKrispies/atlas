@@ -1,5 +1,174 @@
 # Organization Module Surfaces
 
+## User Directory Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to view, search, and manage all users within their tenant
+- **Actors & Permissions:**
+  - Tenant Admin: full access to user directory (view, invite, edit profile, assign roles, suspend, deactivate)
+- **Inputs:**
+  - Search queries: name, email, role, status, profile fields
+  - Pagination and sort controls
+  - Filters: by role, by status (active/suspended/deactivated), by business unit
+- **Outputs:**
+  - Paginated user list with key fields (name, email, status, roles, last active)
+  - User count and active filter summary
+- **Dependencies:**
+  - `crosscut/identity` — User entity, UserRole, UserProfile
+  - Role listing for filter dropdowns
+  - Business unit listing for filter dropdowns
+- **Rules / Invariants:**
+  - All results are tenant-scoped (I7)
+  - Deactivated users are visible but clearly marked
+  - Search across profile fields uses JSONB indexing
+- **Acceptance Scenarios:**
+  - Admin views list of all active users, sorted by name
+  - Admin searches for "smith" and sees matching users by name or email
+  - Admin filters by role "Content Editor" and sees only users with that role
+  - Admin filters by status "suspended" to review suspended accounts
+  - Admin clicks a user to navigate to User Detail Page
+
+## User Detail Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** View and manage a single user's identity, profile, roles, and organizational memberships
+- **Actors & Permissions:**
+  - Tenant Admin: view all details, edit profile, assign/revoke roles, suspend/deactivate
+- **Inputs:**
+  - Profile field edits (validated against tenant's profile schema)
+  - Role assignment/revocation selections
+  - Status change actions (suspend, reactivate, deactivate)
+- **Outputs:**
+  - User identity (name, email, status, created date, last login)
+  - User profile (tenant-configurable fields)
+  - Assigned roles with their permissions
+  - Business unit memberships
+  - Recent activity summary (from audit module)
+- **Dependencies:**
+  - `crosscut/identity` — User, UserProfile, UserRole
+  - Profile schema for form field generation
+  - Role listing for assignment
+  - Business unit membership (from org module)
+  - Audit module for recent activity
+- **Rules / Invariants:**
+  - Profile edits are validated against the tenant's active profile schema before save
+  - Status transitions follow the lifecycle (active↔suspended, active→deactivated, suspended→deactivated)
+  - Deactivation requires confirmation (irreversible, revokes all roles)
+  - Cannot deactivate yourself
+- **Edge Cases:**
+  - Editing a profile when the tenant's schema has changed since last save (revalidation)
+  - Revoking the last Tenant Admin role (must always have at least one Tenant Admin)
+  - Deactivating a user who has active time-limited role assignments
+  - User with no profile data yet (schema exists but profile not filled in)
+- **Acceptance Scenarios:**
+  - Admin views user detail page showing identity, profile, roles, and business units
+  - Admin edits user's department field in profile and saves successfully
+  - Admin assigns "Content Editor" role to user
+  - Admin revokes "Badge Admin" role from user
+  - Admin suspends a user (confirmation dialog, user status changes)
+  - Admin reactivates a suspended user
+  - Admin deactivates a user (confirmation dialog, all roles revoked, status permanent)
+  - Admin sees validation error when saving profile with missing required field
+
+## User Invite Dialog
+
+- **Type:** Dialog
+- **Plane:** Tenant Admin
+- **Purpose:** Invite a new user to the tenant via email
+- **Actors & Permissions:**
+  - Tenant Admin: can invite new users
+- **Inputs:**
+  - Email address (required)
+  - Display name (optional, can be filled by user on first login)
+  - Initial role assignments (optional, defaults to "User" system role)
+- **Outputs:**
+  - Confirmation that invitation was sent
+  - New user appears in directory with status "invited" (before first login) or "active" (after JIT provision)
+- **Dependencies:**
+  - Keycloak invitation API
+  - Role listing for initial assignment
+- **Rules / Invariants:**
+  - Email must be unique within the tenant
+  - Invitation triggers Keycloak flow (email sent to user)
+  - User record is JIT provisioned on first successful login
+- **Edge Cases:**
+  - Email already exists in tenant (error: user already exists)
+  - Email exists in Keycloak but not in this tenant (valid: creates tenant-scoped User record)
+  - Invitation email bounces (no platform feedback unless Keycloak reports it)
+- **Acceptance Scenarios:**
+  - Admin invites user by email with default role
+  - Admin invites user with "Content Editor" and "Badge Admin" roles pre-assigned
+  - Admin sees error when inviting an email that already exists in the tenant
+
+## Role Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to create and manage roles, and assign permissions to them
+- **Actors & Permissions:**
+  - Tenant Admin: full CRUD on tenant-defined roles, can customize system role permissions
+- **Inputs:**
+  - Role name and description
+  - Permission selections (grouped by module)
+- **Outputs:**
+  - List of all roles (system + tenant-defined) with user count per role
+  - Role detail view showing assigned permissions grouped by module
+- **Dependencies:**
+  - `crosscut/identity` — Role, RolePermission, Permission
+  - Module registry (to know which modules are enabled and their permissions)
+- **Rules / Invariants:**
+  - Role names must be unique within a tenant
+  - System roles (Tenant Admin, User) cannot be deleted but their permissions can be customized
+  - Only permissions from tenant-enabled modules are available for assignment
+  - Archiving a role revokes it from all assigned users (confirmation required)
+  - Must always have at least one user with Tenant Admin role
+- **Edge Cases:**
+  - Archiving a role that is the only role assigned to some users (users left with no roles)
+  - Removing a permission from a role while users are actively using that capability
+  - Module disabled after permissions from it were assigned to roles (permissions become inactive)
+  - Creating a role with no permissions (valid but useless — show warning)
+- **Acceptance Scenarios:**
+  - Admin views list of roles showing "Tenant Admin" (system, 3 users), "User" (system, 50 users), "Content Editor" (custom, 12 users)
+  - Admin creates "Content Editor" role, assigns content.pages.create, content.pages.update, content.pages.publish
+  - Admin edits "User" system role to add badges.definitions.view permission
+  - Admin archives "Temporary Reviewer" role (confirmation dialog, 5 users affected)
+  - Admin sees permissions grouped by module: "Content" section, "Badges" section, "Audit" section
+
+## Profile Schema Admin Page
+
+- **Type:** Page
+- **Plane:** Tenant Admin
+- **Purpose:** Allow tenant admins to define what custom fields exist on user profiles
+- **Actors & Permissions:**
+  - Tenant Admin: create, edit, and publish profile schema versions
+- **Inputs:**
+  - Field definitions: name, type (string, number, date, enum, boolean), required flag, description
+  - Enum values for enum-type fields
+- **Outputs:**
+  - Current active schema with field list
+  - Draft schema editor
+  - Impact preview (how many profiles need updating when publishing)
+- **Dependencies:**
+  - Schema Registry for storage
+  - UserProfile data for impact analysis
+- **Rules / Invariants:**
+  - Only one active schema per tenant
+  - Publishing a new version deprecates the previous
+  - Removing a required field or adding a new required field shows impact preview
+  - Profile data is not deleted when schema changes — flagged for revalidation
+- **Edge Cases:**
+  - Publishing schema that invalidates most existing profiles (warning + impact count)
+  - Adding a required field with no default (all existing profiles become invalid)
+  - Changing a field type (e.g., string → number) that has existing data
+  - Tenant with no schema yet (no custom fields, profiles are empty objects)
+- **Acceptance Scenarios:**
+  - Admin creates first profile schema with fields: department (string, required), employee_id (string, required), hire_date (date, optional)
+  - Admin adds a new optional field "office_location" to existing schema and publishes
+  - Admin sees impact preview: "12 of 50 profiles will need updating" before publishing
+  - Admin removes "cost_center" field and publishes (existing data for that field is preserved in JSONB but no longer validated)
+
 ## Business Unit Admin Page
 
 - **Type:** Page
@@ -9,7 +178,7 @@
   - Tenant Admin: full CRUD access to business units within their tenant
 - **Inputs:**
   - Business unit name and description
-  - User search queries: username pattern, role filter, custom criteria
+  - User search queries: name, email, role, profile fields
   - User selections (individual or bulk)
   - Business unit selections (for nesting)
 - **Outputs:**
@@ -33,23 +202,18 @@
   - Circular nesting (unit A contains unit B contains unit A)
   - Deep nesting (performance impact on membership resolution)
   - Deleting a business unit that is referenced by messaging widget config, badge rules, etc.
-  - Adding all users in a role (what if role membership changes later?)
-  - User deleted from system but still in business unit membership
+  - User deactivated but still in business unit membership (show as inactive member)
   - Empty business unit (no members)
 - **Acceptance Scenarios:**
   - Admin creates business unit "Sales Team" and adds 10 users individually
-  - Admin searches for "all users with 'manager' in username" and adds them in bulk to "Management" business unit
-  - Admin searches for "all users in role 'Engineer'" and adds them to "Engineering" business unit
+  - Admin searches for users by role "Engineer" and adds them in bulk to "Engineering" business unit
   - Admin creates nested structure: "Company" contains "Sales Team" and "Engineering Team"
   - Admin removes user from business unit
   - Admin deletes business unit (with warning if referenced elsewhere)
   - Business units are available for selection in messaging widget configuration
 - **TODO / Open Questions:**
-  - What is the exact search syntax or UI for "all users with this in username" or "all users in this role"?
-  - Are these searches saved as dynamic queries (membership auto-updates) or snapshots (static list)?
-  - If dynamic, how is membership recalculated? (on-demand, scheduled, or real-time?)
+  - Are bulk searches saved as dynamic queries (membership auto-updates) or snapshots (static list)?
   - Can business units have metadata or custom fields?
   - Is there a bulk import for business unit membership (via CSV)?
   - How deep can nesting go?
   - Is there a visualization for business unit hierarchy?
-  - What is the UI pattern for "seamless" user search and addition?

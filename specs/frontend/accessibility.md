@@ -85,38 +85,36 @@ Every new surface MUST meet WCAG 2.1 Level AA. This is not aspirational — it i
 
 ### Tables
 
-- Data tables MUST use `<table>`, `<thead>`, `<tbody>`, `<th>`, `<td>`.
-- Column headers MUST use `<th scope="col">`.
-- Row headers (if applicable) MUST use `<th scope="row">`.
-- Sortable columns MUST indicate sort state via `aria-sort="ascending"`, `"descending"`, or `"none"`.
-- Tables MUST have a caption or `aria-label` describing the table's content.
+- Data tables MUST use `<atlas-table>` with `<atlas-table-head>`, `<atlas-table-body>`, `<atlas-row>`, and `<atlas-table-cell>`.
+- Column headers MUST use `<atlas-table-cell header>` which auto-sets `role="columnheader"`.
+- `<atlas-table>` uses CSS `display: table` and ARIA `role="table"`. Child elements use `display: table-header-group`, `table-row-group`, `table-row`, and `table-cell` respectively.
+- Sortable columns MUST indicate sort state via `aria-sort="ascending"`, `"descending"`, or `"none"` on the cell.
+- Tables MUST have a `label` attribute (which sets `aria-label`) describing the table's content.
 - Empty tables MUST show an explicit empty state, not a table with zero rows.
 
 ```html
-<table aria-label="Content pages">
-  <thead>
-    <tr>
-      <th scope="col" aria-sort="ascending">
-        <button>Title</button>
-      </th>
-      <th scope="col">Status</th>
-      <th scope="col">Updated</th>
-      <th scope="col">Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    <!-- rows -->
-  </tbody>
-</table>
+<atlas-table name="table" label="Content pages">
+  <atlas-table-head>
+    <atlas-row>
+      <atlas-table-cell header>Title</atlas-table-cell>
+      <atlas-table-cell header>Status</atlas-table-cell>
+      <atlas-table-cell header>Updated</atlas-table-cell>
+      <atlas-table-cell header>Actions</atlas-table-cell>
+    </atlas-row>
+  </atlas-table-head>
+  <atlas-table-body>
+    <!-- atlas-row elements -->
+  </atlas-table-body>
+</atlas-table>
 ```
 
 ### Navigation
 
-- Primary navigation MUST use `<nav>` with `aria-label="Primary navigation"`.
-- When multiple `<nav>` elements exist, each MUST have a unique `aria-label`.
-- The current page MUST be indicated with `aria-current="page"`.
-- Skip links MUST be the first focusable element on the page, targeting `<main>`.
-- Breadcrumbs MUST use `<nav aria-label="Breadcrumb">` with `<ol>` and `aria-current="page"` on the last item.
+- Primary navigation MUST use `<atlas-nav label="Primary navigation">` (which auto-sets `role="navigation"` and `aria-label`).
+- When multiple `<atlas-nav>` elements exist, each MUST have a unique `label` attribute.
+- The current page MUST be indicated with `<atlas-nav-item active>` (which auto-sets `aria-current="page"`).
+- Skip links MUST be the first focusable element on the page.
+- Breadcrumbs MUST use `<atlas-nav label="Breadcrumb">`.
 
 ### Errors and Notifications
 
@@ -164,16 +162,20 @@ The shared design system components MUST enforce these patterns automatically:
 
 | Component | Built-In Accessibility |
 |-----------|----------------------|
-| `<atlas-button>` | Requires text content or `aria-label`. Forwards `data-testid`. |
-| `<atlas-input>` | Requires `label` prop (renders visible `<label>`). Links `aria-describedby` for errors. |
-| `<atlas-select>` | Requires `label` prop. Uses native `<select>` or combobox with full keyboard support. |
-| `<atlas-dialog>` | Focus trap, escape-to-close, focus return, `aria-modal`, `aria-labelledby`. |
-| `<atlas-table>` | Enforces `<thead>`, `<th scope>`. Requires `aria-label` or `<caption>`. |
-| `<atlas-toast>` | Uses `role="status"` or `role="alert"` based on severity. Auto-dismiss with pause-on-hover. |
-| `<atlas-error-panel>` | Renders error state with `role="alert"`. Includes retry affordance. |
-| `<atlas-skeleton>` | Sets `aria-busy="true"` on parent. Announces completion. |
+| `<atlas-button>` | Requires text content or `aria-label`. Auto-generates `data-testid` from `name` attr. Auto-emits click telemetry. |
+| `<atlas-input>` | Requires `label` attribute (renders visible `<label>`). Shadow DOM encapsulation. Links `aria-describedby` for errors. |
+| `<atlas-table>` | CSS `display: table` + `role="table"`. Requires `label` attr. Children (`<atlas-table-head>`, `<atlas-row>`, `<atlas-table-cell>`) auto-set their ARIA roles. |
+| `<atlas-table-cell header>` | Auto-sets `role="columnheader"`, bold styling, uppercase. Without `header`, sets `role="cell"`. |
+| `<atlas-heading>` | Auto-sets `role="heading"` + `aria-level` from `level` attribute. |
+| `<atlas-nav>` | Auto-sets `role="navigation"` + `aria-label` from `label` attribute. |
+| `<atlas-nav-item active>` | Auto-sets `aria-current="page"` when `active` attribute present. |
+| `<atlas-skeleton>` | Sets `aria-busy="true"`. Announces completion. |
+| `<atlas-badge>` | Status indicator with semantic color + text. |
+| `<atlas-box>` | Pass-through container. Sets `display: block`. |
+| `<atlas-text>` | Semantic text with variant styling (`muted`, `error`, `medium`, `small`). |
+| `<atlas-stack>` | Flexbox layout. No semantic overhead. |
 
-Feature developers using `@atlas/design` primitives (built on `@atlas/core` `Component`) get accessibility compliance for free. This is intentional — the primitives are designed so that the path of least resistance is the accessible path.
+Feature developers using `@atlas/design` elements (built on `@atlas/core` `AtlasElement`) get accessibility compliance for free. This is intentional — the elements are designed so that the path of least resistance is the accessible path.
 
 ## Minimum Accessibility Verification
 

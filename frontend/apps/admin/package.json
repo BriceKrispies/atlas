@@ -1,0 +1,22 @@
+{
+  "name": "@atlas/admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test --config ../../playwright.config.js",
+    "test:ui": "playwright test --config ../../playwright.config.js --ui"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/api-client": "workspace:*",
+    "@atlas/design": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/test-fixtures": "workspace:*",
+    "vite": "^6.0.0"
+  }
+}

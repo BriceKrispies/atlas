@@ -1,15 +1,46 @@
 use std::net::SocketAddr;
 use std::sync::Once;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 static INIT: Once = Once::new();
 
 pub fn init_observability() {
     INIT.call_once(|| {
-        tracing_subscriber::fmt()
-            .json()
-            .with_target(false)
-            .with_current_span(false)
-            .init();
+        let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+
+        if let Ok(log_dir) = std::env::var("ATLAS_LOG_DIR") {
+            // Dual output: stdout + file
+            let file_appender = tracing_appender::rolling::never(&log_dir, "ingress.log");
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            // Keep the guard alive for the program's lifetime
+            std::mem::forget(guard);
+
+            let stdout_layer = tracing_subscriber::fmt::layer()
+                .json()
+                .with_target(false)
+                .with_current_span(false);
+
+            let file_layer = tracing_subscriber::fmt::layer()
+                .json()
+                .with_target(false)
+                .with_current_span(false)
+                .with_writer(non_blocking);
+
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(stdout_layer)
+                .with(file_layer)
+                .init();
+        } else {
+            // stdout only (default)
+            tracing_subscriber::fmt()
+                .json()
+                .with_target(false)
+                .with_current_span(false)
+                .with_env_filter(env_filter)
+                .init();
+        }
 
         if let Ok(addr_str) = std::env::var("METRICS_ADDR") {
             if let Ok(addr) = addr_str.parse::<SocketAddr>() {
