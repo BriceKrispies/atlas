@@ -10,7 +10,7 @@ UI Bundles are **artifacts** (compiled code packages), not data. UI composition 
 
 A UI Bundle provides:
 - **Routes**: Compiled page components mapped to URL paths
-- **Widgets**: Embeddable UI components for use in configurable surfaces
+- **Widgets**: Embeddable UI components for use in configurable surfaces — see `crosscut/widgets.md` for the widget contract, manifest, isolation modes, and mediator
 - **Themes**: Visual styling (CSS, design tokens) for the tenant interface
 
 A UI Bundle is:

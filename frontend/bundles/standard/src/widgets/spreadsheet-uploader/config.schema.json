@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/spreadsheet-uploader/config.v1.json",
+  "title": "SpreadsheetUploaderWidgetConfig",
+  "description": "Placeholder config schema for the import.spreadsheet-uploader stub widget. Accepts any object; will be tightened when the real widget lands.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {}
+}

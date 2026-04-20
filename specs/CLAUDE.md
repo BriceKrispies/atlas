@@ -28,6 +28,7 @@ Specs are the SOURCE OF TRUTH. Code implements specs, not the other way around. 
 | Error handling | `crosscut/errors.md` — 9 error categories, failure semantics |
 | File storage | `crosscut/storage.md` — privacy model, placeholder behavior |
 | UI bundle system | `crosscut/ui.md` — versioning, lifecycle, 10 invariants |
+| Widget system | `crosscut/widgets.md` — manifest, mediator, isolation modes, 10 invariants |
 | atlasctl CLI | `crosscut/atlasctl.md` — operator CLI spec |
 
 ### Feature Modules (`modules/`)

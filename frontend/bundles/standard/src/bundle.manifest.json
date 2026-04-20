@@ -1,0 +1,21 @@
+{
+  "bundleId": "atlas-ui-standard",
+  "version": "0.1.0",
+  "displayName": "Atlas Standard UI",
+  "description": "First-party baseline bundle: announcements, messaging, and spreadsheet uploader widgets.",
+  "platformCompatibility": {
+    "minVersion": "0.1.0"
+  },
+  "status": "draft",
+  "provides": {
+    "routes": ["sandbox"],
+    "widgets": [
+      "content.announcements",
+      "comms.messaging",
+      "import.spreadsheet-uploader"
+    ]
+  },
+  "entrypoints": {
+    "main": "src/index.js"
+  }
+}

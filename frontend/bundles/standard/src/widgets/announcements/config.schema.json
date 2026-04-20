@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/announcements/config.v1.json",
+  "title": "AnnouncementsWidgetConfig",
+  "description": "Per-instance configuration for the content.announcements widget. Supports text-mode (plain text message), file-mode (reference to a file in the media library), or an empty object (widget renders its empty state).",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    {
+      "type": "object",
+      "required": ["mode", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "const": "text" },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["mode", "fileId"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "const": "file" },
+        "fileId": { "type": "string", "minLength": 1 }
+      }
+    }
+  ]
+}

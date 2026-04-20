@@ -1,0 +1,17 @@
+{
+  "$schema": "../schemas/contracts/page_layout.schema.json",
+  "$comment": "Valid page layout placing a single announcements widget in the 'main' slot. The host validates each entry's config against the referenced widget's configSchema before mount.",
+  "version": 1,
+  "slots": {
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-announcements-001",
+        "config": {
+          "mode": "text",
+          "text": "Welcome to the portal!"
+        }
+      }
+    ]
+  }
+}

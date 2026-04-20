@@ -149,6 +149,34 @@ const styles = `
     background: var(--atlas-color-primary);
     color: var(--atlas-color-text-inverse);
   }
+
+  /* Widget mount log strip */
+  .mount-log {
+    margin-top: var(--atlas-space-md);
+    padding: var(--atlas-space-sm);
+    border: 1px solid var(--atlas-color-border);
+    border-radius: var(--atlas-radius-sm);
+    background: var(--atlas-color-surface);
+    font-family: var(--atlas-font-mono);
+    font-size: var(--atlas-font-size-xs);
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .mount-log-empty {
+    color: var(--atlas-color-text-muted);
+  }
+  .mount-log-line {
+    padding: 2px 0;
+    color: var(--atlas-color-text);
+    border-bottom: 1px dashed var(--atlas-color-border);
+  }
+  .mount-log-line:last-child { border-bottom: none; }
+  .mount-log-kind {
+    display: inline-block;
+    min-width: 90px;
+    font-weight: var(--atlas-font-weight-semibold);
+    color: var(--atlas-color-primary);
+  }
 `;
 
 export class AtlasSandbox extends AtlasElement {
@@ -160,12 +188,21 @@ export class AtlasSandbox extends AtlasElement {
 
   connectedCallback() {
     super.connectedCallback();
+    /** @type {Array<() => void>} cleanup functions for currently mounted widgets */
+    this._activeCleanups = [];
     queueMicrotask(() => {
       this._render();
       const params = new URLSearchParams(location.search);
       const initial = params.get('specimen') || AtlasSandbox.specimens[0]?.id;
       if (initial) this._select(initial);
     });
+  }
+
+  _runActiveCleanups() {
+    for (const fn of this._activeCleanups) {
+      try { fn(); } catch (err) { console.error('[sandbox] cleanup threw', err); }
+    }
+    this._activeCleanups = [];
   }
 
   _render() {
@@ -228,10 +265,20 @@ export class AtlasSandbox extends AtlasElement {
     `;
 
     const body = this.shadowRoot.querySelector('.preview-body');
+    // Any previously mounted live widgets must be unmounted before the
+    // DOM is replaced — their cleanup functions handle teardown side
+    // effects (mediator unsubscribes, iframe disposal, etc.).
+    this._runActiveCleanups();
     body.innerHTML = '';
 
-    // If specimen has states, render state switcher + initial state
-    if (spec.states) {
+    // If specimen has a mount function, it's a live widget specimen
+    if (typeof spec.mount === 'function') {
+      const variants = Array.isArray(spec.configVariants) && spec.configVariants.length > 0
+        ? spec.configVariants
+        : [{ name: 'default', config: {} }];
+      this._renderMountStateful(body, spec, variants, variants[0].name);
+    } else if (spec.states) {
+      // If specimen has states, render state switcher + initial state
       const stateKeys = Object.keys(spec.states);
       const initial = stateKeys.includes('success') ? 'success' : stateKeys[0];
       this._renderStateful(body, spec, initial);
@@ -241,6 +288,72 @@ export class AtlasSandbox extends AtlasElement {
         this._renderVariant(body, variant);
       }
     }
+  }
+
+  _renderMountStateful(container, spec, variants, activeName) {
+    this._runActiveCleanups();
+    container.innerHTML = '';
+
+    // Switcher bar across configVariants
+    if (variants.length > 1) {
+      const bar = document.createElement('div');
+      bar.className = 'state-bar';
+      for (const v of variants) {
+        const btn = document.createElement('button');
+        btn.className = 'state-btn';
+        btn.textContent = v.name;
+        btn.setAttribute('aria-pressed', v.name === activeName ? 'true' : 'false');
+        btn.addEventListener('click', () => this._renderMountStateful(container, spec, variants, v.name));
+        bar.appendChild(btn);
+      }
+      container.appendChild(bar);
+    }
+
+    const active = variants.find(v => v.name === activeName) ?? variants[0];
+
+    const demo = document.createElement('div');
+    demo.className = 'variant-demo';
+    container.appendChild(demo);
+
+    const log = document.createElement('div');
+    log.className = 'mount-log';
+    const placeholder = document.createElement('div');
+    placeholder.className = 'mount-log-empty';
+    placeholder.textContent = '(no activity yet)';
+    log.appendChild(placeholder);
+    container.appendChild(log);
+
+    const onLog = (kind, payload) => {
+      // Remove the placeholder on first entry.
+      const empty = log.querySelector('.mount-log-empty');
+      if (empty) empty.remove();
+      const line = document.createElement('div');
+      line.className = 'mount-log-line';
+      const k = document.createElement('span');
+      k.className = 'mount-log-kind';
+      k.textContent = kind;
+      line.appendChild(k);
+      const body = document.createTextNode(
+        typeof payload === 'string' ? payload : JSON.stringify(payload),
+      );
+      line.appendChild(body);
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    };
+
+    let cleanup;
+    try {
+      cleanup = spec.mount(demo, {
+        config: active.config ?? {},
+        isolation: active.isolation,
+        onLog,
+      });
+    } catch (err) {
+      onLog('mount-error', err?.message ?? String(err));
+      cleanup = () => {};
+    }
+    if (typeof cleanup !== 'function') cleanup = () => {};
+    this._activeCleanups.push(cleanup);
   }
 
   _renderStateful(container, spec, activeState) {

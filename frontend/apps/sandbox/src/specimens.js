@@ -1,4 +1,19 @@
 import { AtlasSandbox } from './sandbox-app.js';
+// Vite `?url` import returns a string URL to the served module file.
+// This is the bridge between our bundler-driven dev setup and iframe
+// isolation: sandboxed frames cannot resolve bare specifiers, so the
+// host must hand them a concrete URL.
+// The module must export `element` (the widget class); the widget's
+// `index.js` does that re-export from `widget.element.js`.
+import announcementsWidgetUrl from '@atlas/bundle-standard/widgets/announcements?url';
+// @atlas/design registers the atlas-* custom elements. Inline widgets
+// inherit the main page's registrations, but an iframe has its own
+// realm — the boot script loads this URL before the widget so
+// <atlas-box>, <atlas-heading>, etc. are defined in that realm too.
+import atlasDesignUrl from '@atlas/design?url';
+// Per-widget harness fixtures. Lives next to the widget; imported as
+// JSON so it ships as a static asset rather than code.
+import announcementsHarnessSpec from '@atlas/bundle-standard/widgets/announcements/harness.fixtures.json';
 
 const S = (spec) => AtlasSandbox.register(spec);
 
@@ -529,4 +544,41 @@ S({
       `,
     },
   ],
+});
+
+
+// ── Widgets ─────────────────────────────────────────────────────
+//
+// Widget specimens use the live `mount` shape: the sandbox creates a
+// real <widget-host> and wires a sandbox-local capability bridge that
+// returns fake data so the widget runs end-to-end without a backend.
+// This is the same contract the admin app will use in production, just
+// with mocked capabilities. See specs/crosscut/widgets.md.
+
+// Widget specimen: a single top-level <widget-harness> that owns its own
+// config-variant switcher, live mediator/bridge trace logs, and a
+// synthetic-publish panel. The sandbox shell just hands it a container.
+function mountAnnouncementsHarness(demoEl) {
+  const harness = document.createElement('widget-harness');
+  harness.spec = announcementsHarnessSpec;
+  harness.widgetId = 'content.announcements';
+  harness.resolveWidgetModuleUrl = (widgetId) =>
+    widgetId === 'content.announcements'
+      ? { url: announcementsWidgetUrl, supportUrls: [atlasDesignUrl] }
+      : null;
+  demoEl.appendChild(harness);
+  return () => {
+    try { harness.remove(); } catch { /* already detached */ }
+  };
+}
+
+S({
+  id: 'widget.content.announcements',
+  name: 'Announcements',
+  tag: 'widget-harness',
+  group: 'Widgets',
+  mount: mountAnnouncementsHarness,
+  // No configVariants — the harness owns its own variant switcher from
+  // the fixture file so variants stay colocated with the widget.
+  configVariants: [{ name: 'Harness', config: {} }],
 });

@@ -1,0 +1,27 @@
+{
+  "name": "@atlas/bundle-standard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./register": "./src/register.js",
+    "./widgets/announcements": "./src/widgets/announcements/index.js",
+    "./widgets/announcements/widget.element.js": "./src/widgets/announcements/widget.element.js",
+    "./widgets/announcements/harness.fixtures.json": "./src/widgets/announcements/harness.fixtures.json",
+    "./widgets/messaging": "./src/widgets/messaging/index.js",
+    "./widgets/spreadsheet-uploader": "./src/widgets/spreadsheet-uploader/index.js",
+    "./bundle.manifest.json": "./src/bundle.manifest.json"
+  },
+  "scripts": {
+    "test:register": "node test/register.test.mjs"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/design": "workspace:*",
+    "@atlas/widget-host": "workspace:*"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../schemas/contracts/widget_manifest.schema.json",
+  "$comment": "Invalid manifest — missing required 'isolation' field. Demonstrates INV-WIDGET-01 enforcement.",
+  "$violates": [
+    "INV-WIDGET-01: 'isolation' is a required field"
+  ],
+  "widgetId": "comms.messaging",
+  "version": "0.1.0",
+  "displayName": "Messaging",
+  "configSchema": "ui.widget.messaging.config.v1"
+}

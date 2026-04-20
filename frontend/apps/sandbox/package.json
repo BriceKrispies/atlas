@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
-    "@atlas/design": "workspace:*"
+    "@atlas/design": "workspace:*",
+    "@atlas/widget-host": "workspace:*",
+    "@atlas/bundle-standard": "workspace:*"
   },
   "devDependencies": {
     "vite": "^6.0.0"

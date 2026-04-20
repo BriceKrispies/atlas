@@ -1,0 +1,24 @@
+{
+  "name": "@atlas/widget-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./hosts/inline": "./src/hosts/inline-host.js",
+    "./hosts/shadow": "./src/hosts/shadow-host.js"
+  },
+  "scripts": {
+    "dry-run": "node test/dry-run.mjs",
+    "test:dry-run": "node test/dry-run.mjs",
+    "test:iframe": "node test/iframe-dry-run.mjs"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/design": "workspace:*",
+    "ajv": "^8.17.0"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
+  }
+}

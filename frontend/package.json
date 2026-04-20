@@ -1,6 +1,7 @@
 {
   "name": "atlas-frontend",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "pnpm --filter @atlas/admin dev",
     "sandbox": "pnpm --filter @atlas/sandbox dev",
@@ -8,7 +9,10 @@
     "test": "pnpm --filter './apps/*' test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:integration": "playwright test --config playwright.itest.config.js"
+    "test:integration": "playwright test --config playwright.itest.config.js",
+    "lint": "eslint .",
+    "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.js\"",
+    "test:lint-rules": "pnpm -C packages/eslint-plugin-atlas-widgets test"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -16,6 +20,8 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1"
+    "@atlas/eslint-plugin-widgets": "workspace:*",
+    "@playwright/test": "^1.59.1",
+    "eslint": "^9.0.0"
   }
 }

@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/page-layout.v1.json",
+  "title": "PageLayout",
+  "description": "Tenant-scoped layout document that assigns widget instances to slots on a content page. Stored as page data (not bundle code). Consumed by <widget-host> at mount time. See specs/crosscut/widgets.md.",
+  "type": "object",
+  "required": ["version", "slots"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Hosts MUST reject versions they do not support."
+    },
+    "slots": {
+      "type": "object",
+      "description": "Map of slot name to ordered array of widget instances. Slot names are surface-defined; order is significant.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/definitions/WidgetInstance" }
+      }
+    }
+  },
+  "definitions": {
+    "WidgetInstance": {
+      "type": "object",
+      "required": ["widgetId", "instanceId"],
+      "additionalProperties": false,
+      "properties": {
+        "widgetId": {
+          "type": "string",
+          "description": "Identifier of the widget to mount. MUST match a widget registered in the active bundle (INV-WIDGET-10).",
+          "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+        },
+        "instanceId": {
+          "type": "string",
+          "description": "Stable per-page-layout instance identifier. Used by the mediator to scope topic permissions and by observability to identify mounts.",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "config": {
+          "type": "object",
+          "description": "Per-instance configuration. The host validates this against the widget manifest's configSchema before mount (INV-WIDGET-06).",
+          "default": {}
+        },
+        "isolationOverride": {
+          "type": "string",
+          "description": "Optional override of the manifest's declared isolation mode. A host MAY reject overrides that weaken isolation.",
+          "enum": ["inline", "shadow", "iframe"]
+        }
+      }
+    }
+  },
+  "$comment": "Layout is pure tenant data. Widget code is shipped by the UI bundle; this document only references widgets by id."
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/messaging/config.v1.json",
+  "title": "MessagingWidgetConfig",
+  "description": "Placeholder config schema for the comms.messaging stub widget. Accepts any object; will be tightened when the real widget lands.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {}
+}

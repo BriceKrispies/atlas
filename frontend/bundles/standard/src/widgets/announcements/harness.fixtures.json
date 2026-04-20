@@ -1,0 +1,76 @@
+{
+  "widgetId": "content.announcements",
+  "displayName": "Announcements",
+  "configVariants": [
+    {
+      "name": "Text",
+      "config": { "mode": "text", "text": "Welcome to the portal! New features arrived this week." }
+    },
+    {
+      "name": "Image",
+      "config": { "mode": "file", "fileId": "hero-banner" }
+    },
+    {
+      "name": "Slow load (delay)",
+      "config": { "mode": "file", "fileId": "slow" }
+    },
+    {
+      "name": "Hang (never resolves)",
+      "config": { "mode": "file", "fileId": "hang" }
+    },
+    {
+      "name": "Error",
+      "config": { "mode": "file", "fileId": "broken" }
+    },
+    {
+      "name": "Empty (no config)",
+      "config": {}
+    },
+    {
+      "name": "Text (iframe)",
+      "config": { "mode": "text", "text": "Hello from an iframe-isolated widget — same code as inline." },
+      "isolation": "iframe"
+    }
+  ],
+  "capabilities": {
+    "backend.query": [
+      {
+        "match": { "path": "/media/files/hero-banner" },
+        "behavior": "fixture",
+        "response": {
+          "fileId": "hero-banner",
+          "filename": "hero-banner.png",
+          "url": "https://placehold.co/600x160?text=Announcement+media",
+          "mimeType": "image/png"
+        }
+      },
+      {
+        "match": { "path": "/media/files/slow" },
+        "behavior": "delay",
+        "delayMs": 2000,
+        "response": {
+          "fileId": "slow",
+          "filename": "late.png",
+          "url": "https://placehold.co/600x160?text=Slow+load",
+          "mimeType": "image/png"
+        }
+      },
+      {
+        "match": { "path": "/media/files/hang" },
+        "behavior": "hang"
+      },
+      {
+        "match": { "path": "/media/files/broken" },
+        "behavior": "reject",
+        "error": "simulated backend failure"
+      },
+      {
+        "behavior": "fixture",
+        "response": { "ok": true }
+      }
+    ]
+  },
+  "synthetic": {
+    "publishes": []
+  }
+}

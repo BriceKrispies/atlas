@@ -1,0 +1,13 @@
+<!--
+  Reference copy of the iframe shell. The actual srcdoc served by
+  iframe-host.js is assembled inline from this HTML structure plus
+  the BOOT_SCRIPT string exported by boot.js. Kept here so humans
+  can see the shape at a glance; no build step reads this file.
+-->
+<!doctype html>
+<html>
+  <body>
+    <div id="root"></div>
+    <script type="module">/* BOOT_SCRIPT injected by iframe-host.js */</script>
+  </body>
+</html>

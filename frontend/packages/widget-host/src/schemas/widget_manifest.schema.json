@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/widget-manifest.v1.json",
+  "title": "WidgetManifest",
+  "description": "Declarative manifest exported alongside a widget's element class. Identifies the widget, declares its isolation mode, capability and topic permissions, and the JSON schema its per-instance config must satisfy. See specs/crosscut/widgets.md for full specification.",
+  "type": "object",
+  "required": ["widgetId", "version", "displayName", "configSchema", "isolation"],
+  "additionalProperties": false,
+  "properties": {
+    "widgetId": {
+      "type": "string",
+      "description": "Globally unique widget identifier, kebab-case, dot-separated by owning module (e.g. 'content.announcements').",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "minLength": 3,
+      "examples": ["content.announcements", "comms.messaging", "import.spreadsheet-uploader"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this widget.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": ["1.0.0", "2.3.1"]
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable label used in admin UI.",
+      "minLength": 1,
+      "examples": ["Announcements", "Messaging"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional longer description for the widget picker.",
+      "minLength": 1
+    },
+    "configSchema": {
+      "type": "string",
+      "description": "JSON schema id identifying the shape of per-instance config. The host resolves this id in its schema registry and validates config before mount.",
+      "minLength": 1,
+      "examples": ["ui.widget.announcements.config.v1"]
+    },
+    "isolation": {
+      "type": "string",
+      "description": "Isolation mode the host uses when mounting this widget. 'inline' = light DOM; 'shadow' = closed shadow root; 'iframe' = sandboxed iframe with postMessage bridge.",
+      "enum": ["inline", "shadow", "iframe"]
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "Names of capabilities this widget is permitted to invoke through the capability bridge. The host denies any invocation whose name is not listed.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+        "minLength": 3
+      },
+      "uniqueItems": true,
+      "default": [],
+      "examples": [["backend.query"], ["backend.query", "backend.command", "navigation.go"]]
+    },
+    "provides": {
+      "type": "object",
+      "description": "Mediator topics this widget may publish or answer.",
+      "additionalProperties": false,
+      "properties": {
+        "topics": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "consumes": {
+      "type": "object",
+      "description": "Mediator topics this widget may subscribe to.",
+      "additionalProperties": false,
+      "properties": {
+        "topics": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "description": "Slot names in which this widget is permitted to be placed. Omit to allow any slot.",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "deferredStates": {
+      "type": "array",
+      "description": "Surface-contract states (per frontend constitution C4) that this widget explicitly does not implement, with a rationale. Used so the conformance checker can skip them.",
+      "items": {
+        "type": "object",
+        "required": ["state", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["loading", "empty", "success", "validationError", "backendError", "unauthorized"]
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$comment": "Enforces INV-WIDGET-01 (required fields) and the grammar for widgetId and capability names used by INV-WIDGET-02/03. See specs/crosscut/widgets.md."
+}

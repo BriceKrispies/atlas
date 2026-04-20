@@ -1,0 +1,31 @@
+{
+  "$schema": "../schemas/contracts/widget_manifest.schema.json",
+  "$comment": "Valid announcements widget manifest — the reference example referenced throughout specs/crosscut/widgets.md.",
+  "$invariants": [
+    "INV-WIDGET-01: all required fields present"
+  ],
+  "widgetId": "content.announcements",
+  "version": "1.0.0",
+  "displayName": "Announcements",
+  "description": "Displays tenant-admin-authored announcements (text or media) to end users.",
+  "configSchema": "ui.widget.announcements.config.v1",
+  "isolation": "inline",
+  "capabilities": ["backend.query"],
+  "provides": {
+    "topics": ["announcement.dismissed"]
+  },
+  "consumes": {
+    "topics": []
+  },
+  "slots": ["main", "sidebar"],
+  "deferredStates": [
+    {
+      "state": "validationError",
+      "reason": "Read-only widget; no user input to validate."
+    },
+    {
+      "state": "unauthorized",
+      "reason": "v1 shows empty state when content is inaccessible; revisit when authorization feedback is prioritized."
+    }
+  ]
+}
