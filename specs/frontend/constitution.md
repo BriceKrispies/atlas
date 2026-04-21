@@ -248,3 +248,19 @@ portal.dashboard.widget.expanded
 **C15.5** `channel()` MUST reconnect automatically on disconnection with exponential backoff. The connection status MUST be exposed as a signal (`channel.connected`) so the UI can display connectivity state.
 
 **C15.6** All events received via `channel()` MUST be logged to telemetry with the event type and a timestamp. This enables debugging of event delivery issues.
+
+---
+
+## C16: Mobile-First
+
+**C16.1** Base CSS MUST target a mobile viewport (≤640px CSS px). Larger viewports enhance the layout via `@media (min-width: ...)`; `@media (max-width: ...)` overrides MUST NOT be used to retrofit a desktop-first rule.
+
+**C16.2** Every interactive atlas element MUST present a touch target of at least 44×44 CSS pixels, measured at the rendered box (WCAG 2.1 SC 2.5.5). This applies to `atlas-button`, `atlas-input`, `atlas-nav-item`, tab-bar buttons, the content-page editor chrome, and any custom interactive surface in an app or bundle.
+
+**C16.3** Typography and spacing MUST scale fluidly between a mobile floor and a desktop ceiling (via `clamp()` in `tokens.css`). Fixed rem or px sizes on text MUST NOT be used in design-system tokens.
+
+**C16.4** Breakpoint values MUST come from `--atlas-bp-sm | --atlas-bp-md | --atlas-bp-lg` in `tokens.css`. Authored media queries use the literal pixel value (since custom properties cannot appear in media conditions) but MUST mirror those tokens. New breakpoints MUST NOT be introduced without updating `tokens.css` and `breakpoints.js` together.
+
+**C16.5** Layouts MUST reflow at 320px viewport width without horizontal scrolling of the document (WCAG 2.1 SC 1.4.10). Horizontal overflow within a single component (e.g., a wide data table) is permitted when bounded by the component's own scroll container.
+
+Full spec: [responsive.md](./responsive.md).

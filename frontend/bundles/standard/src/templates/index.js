@@ -18,3 +18,7 @@ import './templates.css';
 
 export * as oneColumn from './one-column/index.js';
 export * as twoColumn from './two-column/index.js';
+export * as threeColumn from './three-column/index.js';
+export * as headerMainFooter from './header-main-footer/index.js';
+export * as heroAndGrid from './hero-and-grid/index.js';
+export * as dashboardTiles from './dashboard-tiles/index.js';

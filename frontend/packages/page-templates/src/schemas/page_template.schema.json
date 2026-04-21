@@ -66,13 +66,6 @@
           "type": ["integer", "null"],
           "description": "Optional upper bound on how many widgets may be placed. null or absent = unbounded (INV-TEMPLATE-04).",
           "minimum": 1
-        },
-        "allowedSlots": {
-          "type": "array",
-          "description": "Optional array of widget 'slots' values a widget must declare to be placed here. If absent, any widget whose 'slots' includes this region's 'name' is allowed.",
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true,
-          "minItems": 1
         }
       }
     }

@@ -2,6 +2,8 @@
 import './tokens.css';
 import './elements.css';
 
+export { BREAKPOINTS, matchesBreakpoint } from './breakpoints.js';
+
 // Interactive elements (Shadow DOM)
 import './atlas-button.js';
 import './atlas-input.js';

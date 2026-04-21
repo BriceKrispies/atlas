@@ -4,7 +4,7 @@ import { openSpecimen } from './helpers.js';
 test.describe('sandbox — specimens smoke', () => {
   test('home loads with sidebar populated', async ({ page }) => {
     await page.goto('/');
-    const items = page.locator('button.item');
+    const items = page.locator('atlas-nav-item.item');
     await expect(items.first()).toBeVisible();
     expect(await items.count()).toBeGreaterThan(3);
   });

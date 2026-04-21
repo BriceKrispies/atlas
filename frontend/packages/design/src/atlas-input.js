@@ -14,14 +14,20 @@ const styles = `
   }
   input {
     width: 100%;
-    padding: 4px var(--atlas-space-sm);
+    /* 44×44 touch target and 16px minimum font to suppress iOS zoom-on-focus.
+       Vertical padding is derived from min-height so the caret stays centered
+       even when the user bumps the root font-size. */
+    min-height: var(--atlas-touch-target-min, 44px);
+    padding: var(--atlas-space-sm) var(--atlas-space-md);
     border: 1px solid var(--atlas-color-border);
-    border-radius: var(--atlas-radius-sm);
-    font-size: var(--atlas-font-size-md);
+    border-radius: var(--atlas-radius-md);
+    font-size: max(16px, var(--atlas-font-size-md));
     font-family: var(--atlas-font-family);
     line-height: var(--atlas-line-height);
     color: var(--atlas-color-text);
     background: var(--atlas-color-bg);
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
     transition: border-color var(--atlas-transition-fast);
   }
   input::placeholder {

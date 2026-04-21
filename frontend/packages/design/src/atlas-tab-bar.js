@@ -2,25 +2,38 @@ import { AtlasElement } from '@atlas/core';
 
 const styles = `
   :host {
-    display: inline-flex;
+    /* Mobile-first: horizontal-scroll tab strip with snap points. On narrow
+       viewports users swipe to reach tabs that don't fit; on wider viewports
+       (and with [stretch]) tabs flex equally. */
+    display: flex;
     gap: var(--atlas-space-xs);
-    padding: 2px;
-    border-radius: var(--atlas-radius-sm);
+    padding: 3px;
+    border-radius: var(--atlas-radius-md);
     background: var(--atlas-color-surface);
     border: 1px solid var(--atlas-color-border);
+    max-width: 100%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  :host::-webkit-scrollbar { display: none; }
   button {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
-    padding: 4px var(--atlas-space-md);
+    /* 44×44 touch target. */
+    min-height: var(--atlas-touch-target-min, 44px);
+    padding: var(--atlas-space-sm) var(--atlas-space-md);
     border: none;
-    border-radius: calc(var(--atlas-radius-sm) - 2px);
+    border-radius: calc(var(--atlas-radius-md) - 2px);
     background: transparent;
     font-family: var(--atlas-font-family);
     font-size: var(--atlas-font-size-sm);
     font-weight: var(--atlas-font-weight-medium);
     color: var(--atlas-color-text-muted);
     cursor: pointer;
+    scroll-snap-align: start;
+    -webkit-tap-highlight-color: transparent;
     transition: background var(--atlas-transition-fast),
                 color var(--atlas-transition-fast);
     text-transform: capitalize;
@@ -38,13 +51,32 @@ const styles = `
     outline: 2px solid var(--atlas-color-primary);
     outline-offset: 1px;
   }
+  /* Desktop: tabs flex equally, strip stops scrolling. Mirrors the JS
+     BREAKPOINTS.sm value. */
+  @media (min-width: 640px) {
+    :host {
+      overflow-x: visible;
+      scroll-snap-type: none;
+    }
+    button { flex: 1; }
+  }
   :host([size="sm"]) button {
     font-size: var(--atlas-font-size-xs);
-    padding: 2px var(--atlas-space-sm);
+    /* sm stays compact visually but preserves the touch target on touch. */
+    padding: var(--atlas-space-xs) var(--atlas-space-sm);
   }
   :host([stretch]) {
-    display: flex;
     width: 100%;
+  }
+  @media (hover: none) {
+    button:hover {
+      background: transparent;
+      color: var(--atlas-color-text-muted);
+    }
+    button[aria-selected="true"]:hover {
+      background: var(--atlas-color-primary);
+      color: var(--atlas-color-text-inverse);
+    }
   }
 `;
 

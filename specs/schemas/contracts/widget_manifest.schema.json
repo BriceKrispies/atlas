@@ -80,12 +80,6 @@
         }
       }
     },
-    "slots": {
-      "type": "array",
-      "description": "Slot names in which this widget is permitted to be placed. Omit to allow any slot.",
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true
-    },
     "deferredStates": {
       "type": "array",
       "description": "Surface-contract states (per frontend constitution C4) that this widget explicitly does not implement, with a rationale. Used so the conformance checker can skip them.",

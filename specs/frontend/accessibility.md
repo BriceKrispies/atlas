@@ -16,6 +16,16 @@ Every new surface MUST meet WCAG 2.1 Level AA. This is not aspirational — it i
 - `@atlas/design` primitives that enforce correct patterns
 - Surface contract review that requires `a11y` specification
 
+### Mobile & Responsive (explicit)
+
+Three WCAG 2.1 AA success criteria apply with special weight on small-viewport rendering:
+
+- **SC 2.5.5 Target Size** — every interactive atlas element MUST present a 44×44 CSS-pixel touch target. Enforced by `--atlas-touch-target-min` in `tokens.css`.
+- **SC 1.4.10 Reflow** — content MUST reflow at 320px viewport width without a horizontal document scrollbar. A Playwright test in the sandbox exercises this.
+- **SC 1.4.4 Resize Text** — text MUST remain legible when the user scales font size to 200%. This is why design-system typography is rem-based and fluid (`clamp()`); literal px sizes on text are forbidden.
+
+Full normative rules: [responsive.md](./responsive.md).
+
 ## Required Baseline Semantics
 
 ### Forms

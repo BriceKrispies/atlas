@@ -57,8 +57,12 @@ const { TemplateRegistry, validateTemplateManifest, validatePageDocument } =
   await import('@atlas/page-templates');
 const oneColumn = await import('../src/templates/one-column/index.js');
 const twoColumn = await import('../src/templates/two-column/index.js');
+const threeColumn = await import('../src/templates/three-column/index.js');
+const headerMainFooter = await import('../src/templates/header-main-footer/index.js');
+const heroAndGrid = await import('../src/templates/hero-and-grid/index.js');
+const dashboardTiles = await import('../src/templates/dashboard-tiles/index.js');
 const { registerAllTemplates } = await import('../src/register.js');
-const { seedPages } = await import('../src/seed-pages/index.js');
+const { seedPages, gallerySeedPages } = await import('../src/seed-pages/index.js');
 
 function assert(cond, msg) {
   if (!cond) {
@@ -67,8 +71,16 @@ function assert(cond, msg) {
 }
 
 async function main() {
-  // 1. Both manifests validate against the schema.
-  for (const mod of [oneColumn, twoColumn]) {
+  // 1. Every manifest validates against the schema.
+  const templateModules = [
+    oneColumn,
+    twoColumn,
+    threeColumn,
+    headerMainFooter,
+    heroAndGrid,
+    dashboardTiles,
+  ];
+  for (const mod of templateModules) {
     const result = validateTemplateManifest(mod.manifest);
     assert(
       result.ok === true,
@@ -79,13 +91,25 @@ async function main() {
   // 2. registerAllTemplates succeeds on a fresh registry and populates it.
   const registry = new TemplateRegistry();
   registerAllTemplates(registry);
-  for (const templateId of ['template.one-column', 'template.two-column']) {
+  const expectedTemplateIds = [
+    'template.one-column',
+    'template.two-column',
+    'template.three-column',
+    'template.header-main-footer',
+    'template.hero-and-grid',
+    'template.dashboard-tiles',
+  ];
+  for (const templateId of expectedTemplateIds) {
     assert(registry.has(templateId), `registry should have ${templateId}`);
   }
 
   // 3. Every seed page document validates against page_document.schema.json.
   assert(Array.isArray(seedPages) && seedPages.length === 3, 'seedPages must contain three docs');
-  for (const doc of seedPages) {
+  assert(
+    Array.isArray(gallerySeedPages) && gallerySeedPages.length === 4,
+    'gallerySeedPages must contain four docs',
+  );
+  for (const doc of [...seedPages, ...gallerySeedPages]) {
     const result = validatePageDocument(doc);
     assert(
       result.ok === true,
@@ -94,9 +118,10 @@ async function main() {
   }
 
   // 4. Each seed doc's templateId is present in the populated registry.
+  const allSeeds = [...seedPages, ...gallerySeedPages];
   assert(
-    seedPages.every((p) => registry.has(p.templateId)),
-    `every seed doc's templateId must be registered, got ${seedPages.map((p) => p.templateId).join(', ')}`,
+    allSeeds.every((p) => registry.has(p.templateId)),
+    `every seed doc's templateId must be registered, got ${allSeeds.map((p) => p.templateId).join(', ')}`,
   );
 
   // 5. bundle.manifest.json's provides.templates matches exactly.
@@ -104,7 +129,7 @@ async function main() {
   const manifestPath = resolve(here, '..', 'src', 'bundle.manifest.json');
   const bundleManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const declared = bundleManifest.provides?.templates ?? [];
-  const expected = ['template.one-column', 'template.two-column'];
+  const expected = expectedTemplateIds;
   assert(
     declared.length === expected.length && expected.every((t) => declared.includes(t)),
     `bundle.manifest.json provides.templates should be exactly ${JSON.stringify(expected)}, got ${JSON.stringify(declared)}`,

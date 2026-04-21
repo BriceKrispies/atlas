@@ -58,3 +58,127 @@ template-two-column > widget-host > section[data-slot="sidebar"] {
       "sidebar";
   }
 }
+
+/* ── Three Column ───────────────────────────────────────────────── */
+
+template-three-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "left"
+    "main"
+    "right";
+  gap: var(--atlas-space-md, 1rem);
+  width: 100%;
+}
+
+template-three-column > widget-host {
+  display: contents;
+}
+
+template-three-column > widget-host > section[data-slot="left"] {
+  grid-area: left;
+  min-width: 0;
+}
+
+template-three-column > widget-host > section[data-slot="main"] {
+  grid-area: main;
+  min-width: 0;
+}
+
+template-three-column > widget-host > section[data-slot="right"] {
+  grid-area: right;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  template-three-column {
+    grid-template-columns: 240px 1fr 240px;
+    grid-template-areas: "left main right";
+  }
+}
+
+/* ── Header / Main / Footer ─────────────────────────────────────── */
+
+template-header-main-footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "header"
+    "main"
+    "footer";
+  gap: var(--atlas-space-md, 1rem);
+  width: 100%;
+}
+
+template-header-main-footer > widget-host {
+  display: contents;
+}
+
+template-header-main-footer > widget-host > section[data-slot="header"] {
+  grid-area: header;
+  min-width: 0;
+}
+
+template-header-main-footer > widget-host > section[data-slot="main"] {
+  grid-area: main;
+  min-width: 0;
+}
+
+template-header-main-footer > widget-host > section[data-slot="footer"] {
+  grid-area: footer;
+  min-width: 0;
+}
+
+/* ── Hero + Grid ────────────────────────────────────────────────── */
+
+template-hero-and-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "hero"
+    "grid";
+  gap: var(--atlas-space-lg, 1.5rem);
+  width: 100%;
+}
+
+template-hero-and-grid > widget-host {
+  display: contents;
+}
+
+template-hero-and-grid > widget-host > section[data-slot="hero"] {
+  grid-area: hero;
+  min-width: 0;
+}
+
+template-hero-and-grid > widget-host > section[data-slot="grid"] {
+  grid-area: grid;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--atlas-space-md, 1rem);
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  template-hero-and-grid > widget-host > section[data-slot="grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── Dashboard Tiles ────────────────────────────────────────────── */
+
+template-dashboard-tiles {
+  display: block;
+  width: 100%;
+}
+
+template-dashboard-tiles > widget-host {
+  display: block;
+}
+
+template-dashboard-tiles > widget-host > section[data-slot="tiles"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--atlas-space-md, 1rem);
+  min-width: 0;
+}

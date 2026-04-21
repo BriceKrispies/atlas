@@ -97,15 +97,41 @@ atlas-stack[justify="space-around"]  { justify-content: space-around; }
 
 atlas-stack[wrap] { flex-wrap: wrap; }
 
+/* [orientation] declarative responsive direction. Consumers write e.g.
+     <atlas-stack orientation="stack-on-mobile">
+   and get column on phone, row at ≥640px, without an ad-hoc media query.
+   Literal breakpoint mirrors BREAKPOINTS.sm. */
+atlas-stack[orientation="stack-on-mobile"]  { flex-direction: column; }
+atlas-stack[orientation="always-row"]       { flex-direction: row; }
+atlas-stack[orientation="always-column"]    { flex-direction: column; }
+@media (min-width: 640px) {
+  atlas-stack[orientation="stack-on-mobile"] { flex-direction: row; }
+}
+
 
 /* ── atlas-table ──────────────────────────────────────────────── */
 
+/* Mobile-first: the outer element is a horizontally-scrollable block; the
+   table semantics come from `atlas-table-head/body/row/cell` which set
+   `display: table-*`. The browser generates an anonymous inner table box
+   from those descendants, so we keep the table layout algorithm without
+   needing a wrapper element in consumer markup. */
 atlas-table {
-  display: table;
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
   font-family: var(--atlas-font-family);
   font-size: var(--atlas-font-size-md);
+  /* Scroll-shadow: a subtle gradient on the right edge hints there's more
+     content; fades when scrolled to the end via background-attachment: local. */
+  background:
+    linear-gradient(to right, var(--atlas-color-bg), var(--atlas-color-bg)) left center / 20px 100% no-repeat local,
+    linear-gradient(to right, var(--atlas-color-bg), var(--atlas-color-bg)) right center / 20px 100% no-repeat local,
+    linear-gradient(to right, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0)) left center / 12px 100% no-repeat scroll,
+    linear-gradient(to left,  rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0)) right center / 12px 100% no-repeat scroll;
 }
 
 
@@ -168,14 +194,18 @@ atlas-nav {
 /* ── atlas-nav-item ───────────────────────────────────────────── */
 
 atlas-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  /* WCAG 2.5.5: 44×44 touch target. */
+  min-height: var(--atlas-touch-target-min, 44px);
   padding: var(--atlas-space-sm) var(--atlas-space-md);
-  border-radius: var(--atlas-radius-sm);
+  border-radius: var(--atlas-radius-md);
   color: var(--atlas-color-text);
   font-size: var(--atlas-font-size-md);
   font-family: var(--atlas-font-family);
   cursor: pointer;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
   transition: background var(--atlas-transition-fast);
 }
 

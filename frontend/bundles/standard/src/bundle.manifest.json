@@ -16,7 +16,11 @@
     ],
     "templates": [
       "template.one-column",
-      "template.two-column"
+      "template.two-column",
+      "template.three-column",
+      "template.header-main-footer",
+      "template.hero-and-grid",
+      "template.dashboard-tiles"
     ]
   },
   "entrypoints": {

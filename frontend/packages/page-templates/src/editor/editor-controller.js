@@ -220,6 +220,25 @@ export class EditorController {
   }
 
   /**
+   * Relational drop sugar — "drop before/after the widget currently at
+   * anchorIndex in anchorRegion". Thin wrapper around drop() that
+   * translates the UI's before/after vocabulary into the insertion
+   * index expected by computeValidTargets / drop().
+   *
+   * @param {object} opts
+   * @param {string} opts.anchorRegion
+   * @param {number} opts.anchorIndex
+   * @param {'before'|'after'} opts.side
+   */
+  dropRelative({ anchorRegion, anchorIndex, side }) {
+    if (typeof anchorIndex !== 'number' || anchorIndex < 0) {
+      return { ok: false, reason: 'invalid-anchor' };
+    }
+    const insertIndex = side === 'before' ? anchorIndex : anchorIndex + 1;
+    return this.drop({ target: { regionName: anchorRegion, index: insertIndex } });
+  }
+
+  /**
    * Add a new widget from the palette. Caller supplies the fully-formed
    * WidgetInstance (widgetId, instanceId, config). Validated against the
    * current picked valid-target cache if a pickUp is in progress.

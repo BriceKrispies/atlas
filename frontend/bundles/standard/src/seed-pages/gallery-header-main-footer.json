@@ -1,0 +1,36 @@
+{
+  "pageId": "gallery-header-main-footer",
+  "tenantId": "acme",
+  "templateId": "template.header-main-footer",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "header": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghmf-header-1",
+        "config": { "mode": "text", "text": "Header band — welcome banner." }
+      }
+    ],
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghmf-main-1",
+        "config": { "mode": "text", "text": "Main region — body content." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghmf-main-2",
+        "config": { "mode": "text", "text": "Main region — second block." }
+      }
+    ],
+    "footer": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghmf-footer-1",
+        "config": { "mode": "text", "text": "Footer band — copyright / meta." }
+      }
+    ]
+  },
+  "status": "draft",
+  "meta": { "title": "Gallery — Header / Main / Footer", "slug": "/gallery/header-main-footer" }
+}

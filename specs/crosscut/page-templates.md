@@ -55,12 +55,11 @@ Each region has:
 
 | Field | Description |
 |-------|-------------|
-| `name` | Region name (kebab-case). Matches the slot name a widget's manifest declares in its `slots`. |
+| `name` | Region name (kebab-case). The key under which widget entries are stored in a page document's `regions` map. |
 | `required` | If `true`, the page document MUST place at least one widget in this region. |
 | `maxWidgets` | Optional upper bound on how many widgets may be placed. `null`/absent = unbounded. |
-| `allowedSlots` | Optional array of widget `slots` values a widget must declare to be placed here. If absent, any widget whose `slots` includes this region's `name` is allowed. |
 
-The manifest is the template's **contract with the host and the editor**: any region not listed cannot be filled; `maxWidgets` is enforced on every drop; widgets that don't declare a matching slot in their manifest are refused.
+The manifest is the template's **contract with the host and the editor**: any region not listed cannot be filled, and `maxWidgets` is enforced on every drop. Any registered widget may be placed in any region — the platform does not model per-widget slot permissions.
 
 ## Page Document
 
@@ -145,11 +144,14 @@ The repository-port shape lets the admin app swap persistence layers at bootstra
   - Add a new widget by dragging it out of the palette.
   - Delete a widget by clicking its delete button (or pressing `Delete` while focused on its cell).
 
-Drops are validated against **three** constraints, checked in order, in a pure `dropZones.computeValidTargets(widgetId, page, template)` function:
+Drops are expressed **relationally**, not positionally. While a drag is active the author sees no persistent bars between widgets; instead, each non-source widget cell exposes two virtual halves — "insert before" (top) and "insert after" (bottom) — and the half the pointer is over highlights. Empty regions expose a single rectangular "drop here" zone. Absolute insertion indices remain the internal representation for `computeValidTargets` and `EditorController.drop`; the UI converts cell-anchored before/after into indices and filters no-op moves (where source.index and the resulting insertion index would be adjacent) before dispatch.
+
+Drops are validated against **two** constraints, checked in order, in a pure `dropZones.computeValidTargets(widgetId, page, template)` function:
 
 1. **Target region MUST exist in the template's manifest.**
-2. **Widget's `manifest.slots` MUST include the target region's name** (or the region's `allowedSlots` MUST include one of the widget's slots, if the region declares `allowedSlots`).
-3. **`region.maxWidgets` MUST NOT be exceeded** after the move or add.
+2. **`region.maxWidgets` MUST NOT be exceeded** after the move or add.
+
+A registered widget is placeable in any region; there is no per-widget slot restriction.
 
 If any constraint fails, the drop zone is shown as invalid (typically a red outline). Failed drops do not call `pageStore.save()`.
 
@@ -184,13 +186,13 @@ Widget mount/unmount telemetry is already emitted by `<widget-host>` and is not 
 
 - **INV-TEMPLATE-01**: A template manifest MUST declare `templateId`, `version`, `displayName`, and at least one `region`.
 - **INV-TEMPLATE-02**: Every region name referenced by a page document MUST exist in the resolved template's manifest.
-- **INV-TEMPLATE-03**: A widget MAY be placed in a region only if the widget's manifest `slots` includes the region's name (or satisfies the region's `allowedSlots` if present).
+- **INV-TEMPLATE-03**: *(Reserved — previously restricted widget-to-region placement; removed in favour of universal portability.)*
 - **INV-TEMPLATE-04**: A region's `maxWidgets` MUST NOT be exceeded after any edit operation.
 - **INV-TEMPLATE-05**: Every `required: true` region MUST contain at least one widget entry in a saved page document.
 - **INV-TEMPLATE-06**: A page document MUST validate against `page_document.schema.json` at both read and write time; a failing document MUST NOT be rendered or persisted.
 - **INV-TEMPLATE-07**: The `PageStore` port interface MUST be stable across adapters; swapping adapters at bootstrap MUST NOT require code changes outside the single wiring point.
 - **INV-TEMPLATE-08**: A stored `templateVersion` greater than the registered template's version MUST fail closed at render time. A stored version less than the registered version MAY be upcast if the template declares a migration.
-- **INV-TEMPLATE-09**: Editor drag/drop MUST enforce INV-TEMPLATE-02, 03, and 04 before calling `pageStore.save()`; invalid drops MUST NOT mutate the store.
+- **INV-TEMPLATE-09**: Editor drag/drop MUST enforce INV-TEMPLATE-02 and 04 before calling `pageStore.save()`; invalid drops MUST NOT mutate the store.
 - **INV-TEMPLATE-10**: Editor keyboard interaction MUST reach every action that pointer drag reaches (pick up, move, cancel, drop, delete, add from palette).
 
 ## Page Document Shape — Frozen at v1

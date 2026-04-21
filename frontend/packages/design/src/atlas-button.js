@@ -9,12 +9,16 @@ const styles = `
     font-size: var(--atlas-font-size-md);
     font-weight: var(--atlas-font-weight-medium);
     line-height: var(--atlas-line-height);
-    padding: 4px var(--atlas-space-md);
+    /* WCAG 2.5.5 touch target. min-height wins on narrow phones; padding
+       handles visual breathing room on wider viewports. */
+    min-height: var(--atlas-touch-target-min, 44px);
+    padding: var(--atlas-space-sm) var(--atlas-space-md);
     border: 1px solid var(--atlas-color-border);
-    border-radius: var(--atlas-radius-sm);
+    border-radius: var(--atlas-radius-md);
     cursor: pointer;
     background: var(--atlas-color-bg);
     color: var(--atlas-color-text);
+    -webkit-tap-highlight-color: transparent;
     transition: background var(--atlas-transition-fast),
                 border-color var(--atlas-transition-fast);
   }
@@ -58,7 +62,18 @@ const styles = `
   }
   :host([size="sm"]) button {
     font-size: var(--atlas-font-size-sm);
-    padding: 2px var(--atlas-space-sm);
+    /* sm retains the full target minimum on touch; only padding shrinks. */
+    padding: var(--atlas-space-xs) var(--atlas-space-sm);
+  }
+  @media (hover: none) {
+    button:hover {
+      background: var(--atlas-color-bg);
+      border-color: var(--atlas-color-border);
+    }
+    :host([variant="primary"]) button:hover {
+      background: var(--atlas-color-primary);
+      border-color: var(--atlas-color-primary);
+    }
   }
 `;
 

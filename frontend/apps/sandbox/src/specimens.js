@@ -20,7 +20,7 @@ import {
   InMemoryPageStore,
   ValidatingPageStore,
 } from '@atlas/page-templates';
-import { seedPages } from '@atlas/bundle-standard/seed-pages';
+import { seedPages, gallerySeedPages } from '@atlas/bundle-standard/seed-pages';
 
 const S = (spec) => AtlasSandbox.register(spec);
 
@@ -610,6 +610,9 @@ for (const doc of seedPages) {
   // via the await-once pattern below.
   sandboxPageStore.save(doc.pageId, doc);
 }
+for (const doc of gallerySeedPages) {
+  sandboxPageStore.save(doc.pageId, doc);
+}
 
 // Sandbox-local capability bridge — announcements uses `backend.query`
 // to fetch media files in "file" mode. The seed pages only use "text"
@@ -654,6 +657,31 @@ for (const doc of seedPages) {
     name: doc.meta?.title ?? doc.pageId,
     tag: 'content-page',
     group: 'Pages',
+    mount: mountContentPage,
+    configVariants: [
+      { name: 'View', config: { pageId: doc.pageId, edit: false } },
+      { name: 'Edit', config: { pageId: doc.pageId, edit: true } },
+    ],
+  });
+}
+
+
+// ── Layout Gallery ──────────────────────────────────────────────
+//
+// Each gallery specimen mounts the same announcements widget set into a
+// different page template so layouts can be compared side-by-side. The
+// seed docs live in @atlas/bundle-standard/seed-pages and are saved into
+// the shared sandboxPageStore above. Both View and Edit variants are
+// wired so the drag/drop palette can be exercised against each template.
+
+for (const doc of gallerySeedPages) {
+  const shortName =
+    doc.meta?.title?.replace(/^Gallery\s*—\s*/i, '') ?? doc.templateId;
+  S({
+    id: `gallery.${doc.pageId}`,
+    name: shortName,
+    tag: 'content-page',
+    group: 'Layout Gallery',
     mount: mountContentPage,
     configVariants: [
       { name: 'View', config: { pageId: doc.pageId, edit: false } },

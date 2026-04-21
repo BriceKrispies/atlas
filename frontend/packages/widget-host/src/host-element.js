@@ -265,20 +265,6 @@ export class WidgetHostElement extends AtlasElement {
 
     const { manifest, element: ElementClass } = registration;
 
-    // Slot permission: if manifest.slots is declared, enforce it.
-    if (Array.isArray(manifest.slots) && !manifest.slots.includes(slotName)) {
-      const msg = `widget '${widgetId}' is not allowed in slot '${slotName}'`;
-      this._renderWidgetError(slotEl, msg, instanceId);
-      telemetry('atlas.widget.error', {
-        widgetId,
-        instanceId,
-        correlationId: this.correlationId,
-        phase: 'slot-validate',
-        message: msg,
-      });
-      return;
-    }
-
     // TODO(schema-registry): once the widget config schema registry
     // exists, resolve manifest.configSchema and validate `config` here
     // (INV-WIDGET-06). For now we accept the config as-is.

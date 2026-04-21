@@ -26,6 +26,10 @@ import * as uploader from './widgets/spreadsheet-uploader/index.js';
 
 import * as oneColumn from './templates/one-column/index.js';
 import * as twoColumn from './templates/two-column/index.js';
+import * as threeColumn from './templates/three-column/index.js';
+import * as headerMainFooter from './templates/header-main-footer/index.js';
+import * as heroAndGrid from './templates/hero-and-grid/index.js';
+import * as dashboardTiles from './templates/dashboard-tiles/index.js';
 
 /**
  * @param {{ register: (entry: { manifest: object, element: Function }) => void }} [registry]
@@ -43,5 +47,9 @@ export function registerAllWidgets(registry = moduleDefaultRegistry) {
 export function registerAllTemplates(registry = moduleDefaultTemplateRegistry) {
   registry.register({ manifest: oneColumn.manifest, element: oneColumn.element });
   registry.register({ manifest: twoColumn.manifest, element: twoColumn.element });
+  registry.register({ manifest: threeColumn.manifest, element: threeColumn.element });
+  registry.register({ manifest: headerMainFooter.manifest, element: headerMainFooter.element });
+  registry.register({ manifest: heroAndGrid.manifest, element: heroAndGrid.element });
+  registry.register({ manifest: dashboardTiles.manifest, element: dashboardTiles.element });
   return registry;
 }

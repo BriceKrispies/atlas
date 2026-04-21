@@ -1,0 +1,41 @@
+{
+  "pageId": "gallery-three-column",
+  "tenantId": "acme",
+  "templateId": "template.three-column",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "left": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-g3-left-1",
+        "config": { "mode": "text", "text": "Left rail — navigation hint." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-g3-left-2",
+        "config": { "mode": "text", "text": "Left rail — quick links." }
+      }
+    ],
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-g3-main-1",
+        "config": { "mode": "text", "text": "Main — primary content flows here." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-g3-main-2",
+        "config": { "mode": "text", "text": "Main — second card." }
+      }
+    ],
+    "right": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-g3-right-1",
+        "config": { "mode": "text", "text": "Right rail — related info." }
+      }
+    ]
+  },
+  "status": "draft",
+  "meta": { "title": "Gallery — Three Column", "slug": "/gallery/three-column" }
+}

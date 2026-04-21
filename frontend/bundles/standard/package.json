@@ -15,10 +15,18 @@
     "./templates/templates.css": "./src/templates/templates.css",
     "./templates/one-column": "./src/templates/one-column/index.js",
     "./templates/two-column": "./src/templates/two-column/index.js",
+    "./templates/three-column": "./src/templates/three-column/index.js",
+    "./templates/header-main-footer": "./src/templates/header-main-footer/index.js",
+    "./templates/hero-and-grid": "./src/templates/hero-and-grid/index.js",
+    "./templates/dashboard-tiles": "./src/templates/dashboard-tiles/index.js",
     "./seed-pages": "./src/seed-pages/index.js",
     "./seed-pages/welcome.json": "./src/seed-pages/welcome.json",
     "./seed-pages/about.json": "./src/seed-pages/about.json",
     "./seed-pages/dashboard.json": "./src/seed-pages/dashboard.json",
+    "./seed-pages/gallery-three-column.json": "./src/seed-pages/gallery-three-column.json",
+    "./seed-pages/gallery-header-main-footer.json": "./src/seed-pages/gallery-header-main-footer.json",
+    "./seed-pages/gallery-hero-and-grid.json": "./src/seed-pages/gallery-hero-and-grid.json",
+    "./seed-pages/gallery-dashboard-tiles.json": "./src/seed-pages/gallery-dashboard-tiles.json",
     "./bundle.manifest.json": "./src/bundle.manifest.json"
   },
   "scripts": {

@@ -1,0 +1,39 @@
+{
+  "pageId": "gallery-hero-and-grid",
+  "tenantId": "acme",
+  "templateId": "template.hero-and-grid",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "hero": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghg-hero-1",
+        "config": { "mode": "text", "text": "Hero — headline announcement for the gallery." }
+      }
+    ],
+    "grid": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghg-grid-1",
+        "config": { "mode": "text", "text": "Grid card — one." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghg-grid-2",
+        "config": { "mode": "text", "text": "Grid card — two." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghg-grid-3",
+        "config": { "mode": "text", "text": "Grid card — three." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-ghg-grid-4",
+        "config": { "mode": "text", "text": "Grid card — four." }
+      }
+    ]
+  },
+  "status": "draft",
+  "meta": { "title": "Gallery — Hero + Grid", "slug": "/gallery/hero-and-grid" }
+}

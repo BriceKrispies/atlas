@@ -16,7 +16,9 @@
  */
 export async function openSpecimen(page, specimenId) {
   await page.goto(`/?specimen=${encodeURIComponent(specimenId)}`);
-  await page.waitForSelector(`button.item[data-id="${specimenId}"][aria-selected="true"]`);
+  await page.waitForSelector(
+    `atlas-nav-item.item[data-id="${specimenId}"][aria-selected="true"]`,
+  );
 }
 
 /**
@@ -40,19 +42,6 @@ async function expect_selected(locator) {
 }
 
 /**
- * Locator for a drop indicator at a specific region + index.
- *
- * @param {import('@playwright/test').Page} page
- * @param {string} region
- * @param {number} index
- */
-export function dropIndicator(page, region, index) {
-  return page.locator(
-    `[data-testid="content-page.drop-indicator"][data-region="${region}"][data-index="${index}"]`,
-  );
-}
-
-/**
  * Locator for the nth widget cell inside a region.
  *
  * @param {import('@playwright/test').Page} page
@@ -66,14 +55,32 @@ export function widgetCell(page, region, index) {
 }
 
 /**
- * Pointer-drag a source element onto a target. Uses Pointer Events since
- * the editor listens for pointer*, not HTML5 drag-and-drop.
+ * Locator for the empty-region drop zone for a region, rendered during
+ * an active drag when the region has no visible cells.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} region
+ */
+export function emptyDropZone(page, region) {
+  return page.locator(
+    `section[data-slot="${region}"] > [data-drop-empty][data-region="${region}"]`,
+  );
+}
+
+/**
+ * Pointer-drag a source element onto a specific half of a target cell.
+ * Uses Pointer Events since the editor listens for pointer*, not HTML5
+ * drag-and-drop.
  *
  * @param {import('@playwright/test').Page} page
  * @param {import('@playwright/test').Locator} source
  * @param {import('@playwright/test').Locator} target
+ * @param {{ half?: 'before' | 'after', offsetFraction?: number }} [options]
+ *   half='before' aims the mouse at the top ~25% of the target; 'after'
+ *   aims at the bottom ~25%. Default is the centre. offsetFraction
+ *   overrides (0 = top edge, 1 = bottom edge).
  */
-export async function pointerDrag(page, source, target) {
+export async function pointerDrag(page, source, target, options = {}) {
   const sbox = await source.boundingBox();
   if (!sbox) throw new Error('pointerDrag: source has no bounding box');
   const sx = sbox.x + sbox.width / 2;
@@ -82,13 +89,22 @@ export async function pointerDrag(page, source, target) {
   await page.mouse.move(sx, sy);
   await page.mouse.down();
 
-  // Pickup fires on pointerdown. Indicators grow (8px → 36px) which shifts
-  // everything below. Recompute target box AFTER pickup so the mouse lands
-  // on the live position, not the stale pre-pickup layout.
+  // Pickup fires on pointerdown. Layout can shift (source cell becomes
+  // display:none, empty-drop zones appear) so recompute the target box
+  // AFTER pickup.
   const tbox = await target.boundingBox();
   if (!tbox) throw new Error('pointerDrag: target has no bounding box after pickup');
+
+  let fraction = 0.5;
+  if (typeof options.offsetFraction === 'number') {
+    fraction = options.offsetFraction;
+  } else if (options.half === 'before') {
+    fraction = 0.2;
+  } else if (options.half === 'after') {
+    fraction = 0.8;
+  }
   const tx = tbox.x + tbox.width / 2;
-  const ty = tbox.y + tbox.height / 2;
+  const ty = tbox.y + tbox.height * fraction;
 
   await page.mouse.move((sx + tx) / 2, (sy + ty) / 2, { steps: 4 });
   await page.mouse.move(tx, ty, { steps: 4 });
@@ -106,4 +122,14 @@ export async function widgetTextsInRegion(page, region) {
   return page
     .locator(`section[data-slot="${region}"] > [data-widget-cell]`)
     .allInnerTexts();
+}
+
+/**
+ * Set the viewport to a small phone size (iPhone SE) so responsive/mobile
+ * assertions operate at the framework's mobile-first base breakpoint.
+ *
+ * @param {import('@playwright/test').Page} page
+ */
+export async function setMobileViewport(page) {
+  await page.setViewportSize({ width: 360, height: 640 });
 }

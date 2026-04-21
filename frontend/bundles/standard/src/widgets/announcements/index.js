@@ -16,7 +16,6 @@ export const manifest = {
   capabilities: ['backend.query'],
   provides: { topics: ['announcement.dismissed'] },
   consumes: { topics: [] },
-  slots: ['main', 'sidebar'],
   deferredStates: [
     { state: 'validationError', reason: 'Read-only widget; no user input.' },
     { state: 'unauthorized', reason: 'v1 shows empty state when content is inaccessible.' },

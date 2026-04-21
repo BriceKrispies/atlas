@@ -5,17 +5,16 @@
  * widget registry, computes which regions (and which positions within each
  * region) are valid drop targets. Pure: no DOM, no store, no side effects.
  *
- * Implements INV-TEMPLATE-02 / -03 / -04 (spec: crosscut/page-templates.md):
+ * Implements INV-TEMPLATE-02 / -04 (spec: crosscut/page-templates.md):
  *   1. Target region MUST exist in the template manifest.
- *   2. Widget's manifest.slots MUST include the region name — unless the
- *      region declares `allowedSlots`, in which case one of the widget's
- *      manifest.slots values MUST appear in `allowedSlots`. A widget with
- *      no declared `slots` is allowed in regions without `allowedSlots`
- *      only.
- *   3. region.maxWidgets MUST NOT be exceeded. For a move WITHIN the same
+ *   2. region.maxWidgets MUST NOT be exceeded. For a move WITHIN the same
  *      region the count is unchanged (the widget is already counted); for
  *      an add-from-palette or cross-region move the effective count is
  *      currentLength + 1.
+ *
+ * Any registered widget may be placed in any region. The platform does
+ * not model per-widget slot permissions — widgets are portable across
+ * layouts by design.
  *
  * The caller decides the "source" semantics:
  *   sourcePosition = { regionName, index } → move (the widget is currently
@@ -31,13 +30,13 @@
  * @property {string} regionName
  * @property {boolean[]} canInsertAt — length = currentEntries + 1 when valid,
  *   all-false same length when a count cap blocks insertion.
- * @property {('max-widgets'|'slot-permission'|'not-in-template')} [reason]
+ * @property {('max-widgets'|'not-in-template')} [reason]
  */
 
 /**
  * @typedef {object} InvalidRegion
  * @property {string} regionName
- * @property {('max-widgets'|'slot-permission'|'not-in-template')} reason
+ * @property {('max-widgets'|'not-in-template'|'unknown-widget')} reason
  */
 
 /**
@@ -61,29 +60,30 @@ export function computeValidTargets(
     return result;
   }
 
-  // Resolve widget manifest (for slot permissions). If the registry doesn't
-  // know the widget, nothing is droppable.
-  let widgetManifest = null;
+  // Resolve widget registration just to confirm the widget is known.
+  // Per-widget slot permissions were removed — any registered widget is
+  // placeable in any region.
+  let widgetKnown = false;
   try {
-    if (widgetRegistry && typeof widgetRegistry.get === 'function') {
-      const entry = widgetRegistry.get(widgetId);
-      widgetManifest = entry?.manifest ?? null;
+    if (widgetRegistry && typeof widgetRegistry.has === 'function') {
+      widgetKnown = widgetRegistry.has(widgetId);
+    } else if (widgetRegistry && typeof widgetRegistry.get === 'function') {
+      widgetKnown = widgetRegistry.get(widgetId) != null;
     }
   } catch {
-    widgetManifest = null;
+    widgetKnown = false;
   }
-  if (!widgetManifest) {
-    // Unknown widget → every region is invalid on slot-permission grounds.
+  if (!widgetKnown) {
+    // Unknown widget → nothing is droppable.
     for (const region of templateManifest.regions) {
       result.invalidRegions.push({
         regionName: region.name,
-        reason: 'slot-permission',
+        reason: 'unknown-widget',
       });
     }
     return result;
   }
 
-  const widgetSlots = Array.isArray(widgetManifest.slots) ? widgetManifest.slots : null;
   const docRegions = (pageDoc && typeof pageDoc === 'object' && pageDoc.regions) || {};
 
   for (const region of templateManifest.regions) {
@@ -91,29 +91,6 @@ export function computeValidTargets(
     const currentEntries = Array.isArray(docRegions[regionName])
       ? docRegions[regionName]
       : [];
-
-    // --- Slot permission (INV-TEMPLATE-03) ---
-    const hasAllowedSlots =
-      Array.isArray(region.allowedSlots) && region.allowedSlots.length > 0;
-    let slotPermitted;
-    if (hasAllowedSlots) {
-      // Widget must declare at least one slot that appears in allowedSlots.
-      if (!widgetSlots) {
-        slotPermitted = false;
-      } else {
-        slotPermitted = widgetSlots.some((s) => region.allowedSlots.includes(s));
-      }
-    } else if (widgetSlots == null) {
-      // No widget slot declaration AND no allowedSlots → allowed.
-      slotPermitted = true;
-    } else {
-      // Default rule: widget.slots must include region.name.
-      slotPermitted = widgetSlots.includes(regionName);
-    }
-    if (!slotPermitted) {
-      result.invalidRegions.push({ regionName, reason: 'slot-permission' });
-      continue;
-    }
 
     // --- maxWidgets (INV-TEMPLATE-04) ---
     const max =

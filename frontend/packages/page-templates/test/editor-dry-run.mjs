@@ -110,14 +110,6 @@ class AnnouncementsWidget extends globalThis.HTMLElement {
 }
 customElements.define('stub-announcements-widget-ed', AnnouncementsWidget);
 
-// Second widget type to exercise slot-permission rules.
-class SidebarOnlyWidget extends globalThis.HTMLElement {
-  connectedCallback() {
-    this._mounted = true;
-  }
-}
-customElements.define('stub-sidebar-only-widget', SidebarOnlyWidget);
-
 function cleanAnnouncementsManifest() {
   const clean = { ...announcementsManifest };
   delete clean.$schema;
@@ -126,27 +118,9 @@ function cleanAnnouncementsManifest() {
   return clean;
 }
 
-function sidebarOnlyManifest() {
-  return {
-    widgetId: 'content.sidebar-only',
-    version: '1.0.0',
-    displayName: 'Sidebar Only',
-    description: 'Widget that declares only the sidebar slot.',
-    configSchema: 'ui.widget.sidebar-only.config.v1',
-    isolation: 'inline',
-    capabilities: [],
-    provides: { topics: [] },
-    consumes: { topics: [] },
-    slots: ['sidebar'],
-  };
-}
-
-function makeWidgetRegistry({ includeSidebarOnly = false } = {}) {
+function makeWidgetRegistry() {
   const wr = new WidgetRegistry();
   wr.register({ manifest: cleanAnnouncementsManifest(), element: AnnouncementsWidget });
-  if (includeSidebarOnly) {
-    wr.register({ manifest: sidebarOnlyManifest(), element: SidebarOnlyWidget });
-  }
   return wr;
 }
 
@@ -189,49 +163,34 @@ async function testComputeValidTargets_unknownRegion() {
   assertEq(result.validRegions[0].regionName, 'main', 'main returned');
 }
 
-async function testComputeValidTargets_slotPermissionFail() {
-  // content.announcements declares slots: ['main', 'sidebar']; make a
-  // template with region 'header' not in those slots.
+async function testComputeValidTargets_anyRegionAllowed() {
+  // Per-widget slot permissions are gone: a registered widget is valid
+  // in any region the template declares.
   const reg = makeWidgetRegistry();
-  const tpl = { regions: [{ name: 'header' }] };
+  const tpl = { regions: [{ name: 'header' }, { name: 'footer' }] };
   const result = computeValidTargets(
     'content.announcements',
-    { regions: { header: [] } },
+    { regions: { header: [], footer: [] } },
     tpl,
     reg,
   );
-  assertEq(result.validRegions.length, 0, 'no valid regions');
+  assertEq(result.validRegions.length, 2, 'both regions valid');
+  assertEq(result.invalidRegions.length, 0, 'no invalid regions');
+}
+
+async function testComputeValidTargets_unknownWidget() {
+  // A widget id the registry does not know about is undroppable everywhere.
+  const reg = makeWidgetRegistry();
+  const tpl = { regions: [{ name: 'main' }] };
+  const result = computeValidTargets(
+    'content.does-not-exist',
+    { regions: { main: [] } },
+    tpl,
+    reg,
+  );
+  assertEq(result.validRegions.length, 0, 'no valid regions for unknown widget');
   assertEq(result.invalidRegions.length, 1, 'one invalid region');
-  assertEq(result.invalidRegions[0].reason, 'slot-permission', 'reason slot-permission');
-}
-
-async function testComputeValidTargets_allowedSlotsMatch() {
-  const reg = makeWidgetRegistry({ includeSidebarOnly: true });
-  // A region named 'aside' that declares allowedSlots=['sidebar'] should
-  // accept a widget whose slots include 'sidebar', even though the region
-  // name doesn't match.
-  const tpl = { regions: [{ name: 'aside', allowedSlots: ['sidebar'] }] };
-  const result = computeValidTargets(
-    'content.sidebar-only',
-    { regions: { aside: [] } },
-    tpl,
-    reg,
-  );
-  assertEq(result.validRegions.length, 1, 'aside valid by allowedSlots');
-  assertEq(result.validRegions[0].regionName, 'aside', 'aside name matches');
-}
-
-async function testComputeValidTargets_allowedSlotsNoMatch() {
-  const reg = makeWidgetRegistry({ includeSidebarOnly: true });
-  const tpl = { regions: [{ name: 'header', allowedSlots: ['header'] }] };
-  const result = computeValidTargets(
-    'content.sidebar-only',
-    { regions: { header: [] } },
-    tpl,
-    reg,
-  );
-  assertEq(result.invalidRegions.length, 1, 'header invalid');
-  assertEq(result.invalidRegions[0].reason, 'slot-permission', 'reason slot-permission');
+  assertEq(result.invalidRegions[0].reason, 'unknown-widget', 'reason unknown-widget');
 }
 
 async function testComputeValidTargets_maxWidgetsAtCap_newPlacement() {
@@ -277,61 +236,6 @@ async function testComputeValidTargets_maxWidgetsMoveWithin() {
   const main = result.validRegions.find((r) => r.regionName === 'main');
   assert(main, 'main valid');
   assert(main.canInsertAt.every((b) => b === true), 'move-within allowed at cap');
-}
-
-async function testComputeValidTargets_widgetNoSlotsRegionNoAllowed() {
-  // Widget declares no slots; region declares no allowedSlots → allowed.
-  const reg = new WidgetRegistry();
-  reg.register({
-    manifest: {
-      widgetId: 'content.universal',
-      version: '1.0.0',
-      displayName: 'Universal',
-      description: 'No slots declared.',
-      configSchema: 'x.y.z',
-      isolation: 'inline',
-      capabilities: [],
-      provides: { topics: [] },
-      consumes: { topics: [] },
-      // no slots
-    },
-    element: AnnouncementsWidget,
-  });
-  const tpl = { regions: [{ name: 'main' }] };
-  const result = computeValidTargets(
-    'content.universal',
-    { regions: { main: [] } },
-    tpl,
-    reg,
-  );
-  assertEq(result.validRegions.length, 1, 'main allowed for slot-less widget');
-}
-
-async function testComputeValidTargets_widgetNoSlotsRegionWithAllowed() {
-  // Widget declares no slots; region declares allowedSlots → rejected.
-  const reg = new WidgetRegistry();
-  reg.register({
-    manifest: {
-      widgetId: 'content.universal2',
-      version: '1.0.0',
-      displayName: 'Universal',
-      description: 'No slots declared.',
-      configSchema: 'x.y.z',
-      isolation: 'inline',
-      capabilities: [],
-      provides: { topics: [] },
-      consumes: { topics: [] },
-    },
-    element: AnnouncementsWidget,
-  });
-  const tpl = { regions: [{ name: 'main', allowedSlots: ['main'] }] };
-  const result = computeValidTargets(
-    'content.universal2',
-    { regions: { main: [] } },
-    tpl,
-    reg,
-  );
-  assertEq(result.invalidRegions.length, 1, 'rejected by allowedSlots with no widget slots');
 }
 
 async function testComputeValidTargets_emptyTemplateRegions() {
@@ -498,8 +402,9 @@ async function testContentPageEditDomShape() {
   );
   assert(announcer, 'aria-live announcer present');
 
-  // Drop indicators exist — one before each cell plus one after the last,
-  // across every region.
+  // Widget-anchored drop model: no persistent [data-drop-indicator] bars
+  // in the DOM. Drop targets are cell halves driven by [data-drop-target]
+  // at drag time (or a single [data-drop-empty] for empty regions).
   const indicators = [];
   const collect = (el) => {
     if (!el) return;
@@ -509,10 +414,9 @@ async function testContentPageEditDomShape() {
     for (const c of el.children ?? []) collect(c);
   };
   collect(page);
-  // Two regions (main, sidebar) each with 1 widget → 2 indicators per region = 4.
   assert(
-    indicators.length >= 4,
-    `expected >= 4 indicators, got ${indicators.length}`,
+    indicators.length === 0,
+    `expected 0 persistent drop indicators, got ${indicators.length}`,
   );
 
   // Widget cells got tabindex=0.
@@ -703,16 +607,13 @@ async function testValidatingStoreRejectsInvalidEdit() {
 // ---- main -----------------------------------------------------------
 
 async function main() {
-  // computeValidTargets cases (>=10)
+  // computeValidTargets cases
   await testComputeValidTargets_basic();
   await testComputeValidTargets_unknownRegion();
-  await testComputeValidTargets_slotPermissionFail();
-  await testComputeValidTargets_allowedSlotsMatch();
-  await testComputeValidTargets_allowedSlotsNoMatch();
+  await testComputeValidTargets_anyRegionAllowed();
+  await testComputeValidTargets_unknownWidget();
   await testComputeValidTargets_maxWidgetsAtCap_newPlacement();
   await testComputeValidTargets_maxWidgetsMoveWithin();
-  await testComputeValidTargets_widgetNoSlotsRegionNoAllowed();
-  await testComputeValidTargets_widgetNoSlotsRegionWithAllowed();
   await testComputeValidTargets_emptyTemplateRegions();
 
   // EditorController
