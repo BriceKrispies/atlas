@@ -1,0 +1,9 @@
+{
+  "pageId": "broken",
+  "tenantId": "acme",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "main": []
+  },
+  "status": "draft"
+}

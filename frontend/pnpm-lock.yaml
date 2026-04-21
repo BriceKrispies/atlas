@@ -48,10 +48,16 @@ importers:
       '@atlas/design':
         specifier: workspace:*
         version: link:../../packages/design
+      '@atlas/page-templates':
+        specifier: workspace:*
+        version: link:../../packages/page-templates
       '@atlas/widget-host':
         specifier: workspace:*
         version: link:../../packages/widget-host
     devDependencies:
+      '@playwright/test':
+        specifier: ^1.59.1
+        version: 1.59.1
       vite:
         specifier: ^6.0.0
         version: 6.4.2
@@ -64,6 +70,9 @@ importers:
       '@atlas/design':
         specifier: workspace:*
         version: link:../../packages/design
+      '@atlas/page-templates':
+        specifier: workspace:*
+        version: link:../../packages/page-templates
       '@atlas/widget-host':
         specifier: workspace:*
         version: link:../../packages/widget-host
@@ -91,6 +100,25 @@ importers:
       eslint:
         specifier: ^9.0.0
         version: 9.39.4
+
+  packages/page-templates:
+    dependencies:
+      '@atlas/core':
+        specifier: workspace:*
+        version: link:../core
+      '@atlas/design':
+        specifier: workspace:*
+        version: link:../design
+      '@atlas/widget-host':
+        specifier: workspace:*
+        version: link:../widget-host
+      ajv:
+        specifier: ^8.17.0
+        version: 8.18.0
+    devDependencies:
+      linkedom:
+        specifier: ^0.18.0
+        version: 0.18.12
 
   packages/test-fixtures:
     dependencies:

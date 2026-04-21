@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/page-template.v1.json",
+  "title": "PageTemplate",
+  "description": "Declarative manifest exported alongside a page template's element class. Identifies the template, declares its regions (named drop zones), and the placement rules for each. See specs/crosscut/page-templates.md.",
+  "type": "object",
+  "required": ["templateId", "version", "displayName", "regions"],
+  "additionalProperties": false,
+  "properties": {
+    "templateId": {
+      "type": "string",
+      "description": "Globally unique template identifier, kebab-case, dot-separated (e.g. 'template.one-column').",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "minLength": 3,
+      "examples": ["template.one-column", "template.two-column", "template.hero-and-grid"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this template.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": ["0.1.0", "1.0.0"]
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable label used in the template picker.",
+      "minLength": 1,
+      "examples": ["One Column", "Two Column"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional longer description shown in the template picker.",
+      "minLength": 1
+    },
+    "preview": {
+      "type": "string",
+      "description": "Optional URL to a preview thumbnail shown in the template picker.",
+      "minLength": 1
+    },
+    "regions": {
+      "type": "array",
+      "description": "Ordered list of region declarations. At least one region is required (INV-TEMPLATE-01).",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/Region" }
+    }
+  },
+  "definitions": {
+    "Region": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Region name (kebab-case). Matches the slot name a widget manifest declares in its 'slots'.",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "minLength": 1,
+          "maxLength": 64,
+          "examples": ["main", "sidebar", "hero"]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "If true, the page document MUST place at least one widget in this region (INV-TEMPLATE-05).",
+          "default": false
+        },
+        "maxWidgets": {
+          "type": ["integer", "null"],
+          "description": "Optional upper bound on how many widgets may be placed. null or absent = unbounded (INV-TEMPLATE-04).",
+          "minimum": 1
+        },
+        "allowedSlots": {
+          "type": "array",
+          "description": "Optional array of widget 'slots' values a widget must declare to be placed here. If absent, any widget whose 'slots' includes this region's 'name' is allowed.",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      }
+    }
+  },
+  "$comment": "Enforces INV-TEMPLATE-01 (required manifest fields) and INV-TEMPLATE-04 (maxWidgets bounds). See specs/crosscut/page-templates.md."
+}

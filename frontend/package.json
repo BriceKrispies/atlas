@@ -9,6 +9,7 @@
     "test": "pnpm --filter './apps/*' test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:sandbox": "pnpm --filter @atlas/sandbox test:e2e",
     "test:integration": "playwright test --config playwright.itest.config.js",
     "lint": "eslint .",
     "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.js\"",

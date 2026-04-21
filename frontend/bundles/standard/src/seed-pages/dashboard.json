@@ -1,0 +1,41 @@
+{
+  "pageId": "dashboard",
+  "tenantId": "acme",
+  "templateId": "template.two-column",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-dashboard-main-1",
+        "config": {
+          "mode": "text",
+          "text": "Dashboard is under construction. Check back soon for metrics."
+        }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-dashboard-main-2",
+        "config": {
+          "mode": "text",
+          "text": "Tip: press '?' anywhere to open the keyboard-shortcut palette."
+        }
+      }
+    ],
+    "sidebar": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-dashboard-sidebar-1",
+        "config": {
+          "mode": "text",
+          "text": "Recent activity will appear here once events start flowing."
+        }
+      }
+    ]
+  },
+  "status": "draft",
+  "meta": {
+    "title": "Dashboard",
+    "slug": "/dashboard"
+  }
+}

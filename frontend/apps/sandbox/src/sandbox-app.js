@@ -1,5 +1,6 @@
-import { AtlasElement } from '@atlas/core';
+import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
+import '@atlas/design';
 
 const styles = `
   :host {
@@ -120,34 +121,8 @@ const styles = `
     background: var(--atlas-color-shell-bg);
   }
 
-  /* ── State switcher ── */
-  .state-bar {
-    display: flex;
-    gap: 1px;
+  atlas-tab-bar {
     margin-bottom: var(--atlas-space-sm);
-    background: var(--atlas-color-border);
-    border-radius: var(--atlas-radius-sm);
-    overflow: hidden;
-  }
-  .state-btn {
-    flex: 1;
-    padding: 4px 0;
-    border: none;
-    background: var(--atlas-color-surface);
-    font-family: var(--atlas-font-family);
-    font-size: var(--atlas-font-size-xs);
-    font-weight: var(--atlas-font-weight-medium);
-    color: var(--atlas-color-text-muted);
-    cursor: pointer;
-    transition: background var(--atlas-transition-fast), color var(--atlas-transition-fast);
-    text-transform: capitalize;
-  }
-  .state-btn:hover {
-    background: var(--atlas-color-surface-hover);
-  }
-  .state-btn[aria-pressed="true"] {
-    background: var(--atlas-color-primary);
-    color: var(--atlas-color-text-inverse);
   }
 
   /* Widget mount log strip */
@@ -179,7 +154,9 @@ const styles = `
   }
 `;
 
-export class AtlasSandbox extends AtlasElement {
+export class AtlasSandbox extends AtlasSurface {
+  static surfaceId = 'sandbox';
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -296,16 +273,16 @@ export class AtlasSandbox extends AtlasElement {
 
     // Switcher bar across configVariants
     if (variants.length > 1) {
-      const bar = document.createElement('div');
-      bar.className = 'state-bar';
-      for (const v of variants) {
-        const btn = document.createElement('button');
-        btn.className = 'state-btn';
-        btn.textContent = v.name;
-        btn.setAttribute('aria-pressed', v.name === activeName ? 'true' : 'false');
-        btn.addEventListener('click', () => this._renderMountStateful(container, spec, variants, v.name));
-        bar.appendChild(btn);
-      }
+      const bar = document.createElement('atlas-tab-bar');
+      bar.setAttribute('name', 'variant-switcher');
+      bar.setAttribute('size', 'sm');
+      bar.setAttribute('aria-label', 'Config variants');
+      bar.tabs = variants.map((v) => ({ value: variantSlug(v.name), label: v.name }));
+      bar.value = variantSlug(activeName);
+      bar.addEventListener('change', (ev) => {
+        const picked = variants.find((v) => variantSlug(v.name) === ev.detail.value);
+        if (picked) this._renderMountStateful(container, spec, variants, picked.name);
+      });
       container.appendChild(bar);
     }
 
@@ -362,16 +339,16 @@ export class AtlasSandbox extends AtlasElement {
     const stateKeys = Object.keys(spec.states);
 
     // State switcher bar
-    const bar = document.createElement('div');
-    bar.className = 'state-bar';
-    for (const key of stateKeys) {
-      const btn = document.createElement('button');
-      btn.className = 'state-btn';
-      btn.textContent = key;
-      btn.setAttribute('aria-pressed', key === activeState ? 'true' : 'false');
-      btn.addEventListener('click', () => this._renderStateful(container, spec, key));
-      bar.appendChild(btn);
-    }
+    const bar = document.createElement('atlas-tab-bar');
+    bar.setAttribute('name', 'state-switcher');
+    bar.setAttribute('size', 'sm');
+    bar.setAttribute('aria-label', 'States');
+    bar.tabs = stateKeys.map((k) => ({ value: variantSlug(k), label: k }));
+    bar.value = variantSlug(activeState);
+    bar.addEventListener('change', (ev) => {
+      const key = stateKeys.find((k) => variantSlug(k) === ev.detail.value);
+      if (key) this._renderStateful(container, spec, key);
+    });
     container.appendChild(bar);
 
     // Demo area for the active state
@@ -413,3 +390,7 @@ export class AtlasSandbox extends AtlasElement {
 }
 
 AtlasElement.define('atlas-sandbox', AtlasSandbox);
+
+function variantSlug(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}

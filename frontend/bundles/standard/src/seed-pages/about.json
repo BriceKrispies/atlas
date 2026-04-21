@@ -1,0 +1,23 @@
+{
+  "pageId": "about",
+  "tenantId": "acme",
+  "templateId": "template.one-column",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-about-main-1",
+        "config": {
+          "mode": "text",
+          "text": "Atlas is a multi-tenant CMS + workflow platform."
+        }
+      }
+    ]
+  },
+  "status": "published",
+  "meta": {
+    "title": "About",
+    "slug": "/about"
+  }
+}

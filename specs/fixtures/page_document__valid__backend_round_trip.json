@@ -1,0 +1,34 @@
+{
+  "pageId": "round-trip",
+  "tenantId": "acme",
+  "templateId": "template.two-column",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "rt-main-1",
+        "config": { "mode": "text", "text": "Round-trip contract." }
+      },
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "rt-main-2",
+        "config": { "mode": "text", "text": "Second widget in main." }
+      }
+    ],
+    "sidebar": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "rt-side-1",
+        "config": { "mode": "text", "text": "Sidebar entry." },
+        "isolationOverride": "iframe"
+      }
+    ]
+  },
+  "status": "published",
+  "meta": {
+    "title": "Round Trip",
+    "slug": "/round-trip",
+    "description": "Contract fixture — backend GET MUST return this byte-equivalent (modulo JSON key ordering)."
+  }
+}

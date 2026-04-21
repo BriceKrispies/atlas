@@ -1,0 +1,12 @@
+{
+  "templateId": "template.one-column",
+  "version": "0.1.0",
+  "displayName": "One Column",
+  "description": "Single stacked region — the simplest layout. Every widget stacks vertically in the 'main' region.",
+  "regions": [
+    {
+      "name": "main",
+      "required": true
+    }
+  ]
+}

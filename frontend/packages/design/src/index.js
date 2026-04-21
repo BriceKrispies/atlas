@@ -7,6 +7,7 @@ import './atlas-button.js';
 import './atlas-input.js';
 import './atlas-skeleton.js';
 import './atlas-badge.js';
+import './atlas-tab-bar.js';
 
 // Layout elements (Light DOM)
 import './atlas-box.js';

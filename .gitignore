@@ -26,3 +26,5 @@ infra/compose/.env.itest
 # Test artifacts
 test-results.xml
 tests/blackbox/target/
+test-results/
+playwright-report/

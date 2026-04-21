@@ -1,0 +1,23 @@
+{
+  "name": "@atlas/page-templates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "dry-run": "node test/dry-run.mjs",
+    "test:dry-run": "node test/dry-run.mjs",
+    "test:editor-dry-run": "node test/editor-dry-run.mjs"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/design": "workspace:*",
+    "@atlas/widget-host": "workspace:*",
+    "ajv": "^8.17.0"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
+  }
+}

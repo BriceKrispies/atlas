@@ -6,6 +6,8 @@ A **Widget** is an isolated UI island that renders inside a configurable surface
 
 Widgets are delivered as code inside a **UI Bundle** (see `crosscut/ui.md`). A bundle's `provides.widgets` list references widget identifiers; the widget source lives in the bundle. Widget **placement and configuration** is tenant data, not bundle code — the split mirrors the data/code separation defined for UI Bundles.
 
+Widgets are placed inside **Page Templates** (see `crosscut/page-templates.md`). A template defines named regions; a page document picks a template and fills each region with an ordered list of widget entries. The widget-entry shape (`widgetId`, `instanceId`, `config`, optional `isolationOverride`) is defined by `page_layout.schema.json` and reused by `page_document.schema.json` — there is one widget-entry shape across the platform, not two.
+
 Widgets may only communicate with other widgets through an explicit **Mediator** (see "Mediator Semantics" below). Widgets may only reach the platform (backend, storage, navigation) through an explicit **Capability Bridge**. Both constraints exist so that:
 
 - Two widgets written by different authors cannot collide in the DOM, in global state, or in network side effects.

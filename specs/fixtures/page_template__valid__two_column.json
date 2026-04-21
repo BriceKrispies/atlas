@@ -1,0 +1,17 @@
+{
+  "templateId": "template.two-column",
+  "version": "0.1.0",
+  "displayName": "Two Column",
+  "description": "Primary 'main' region with a narrower 'sidebar' region beside it. Main is required; sidebar is optional and capped at four widgets.",
+  "regions": [
+    {
+      "name": "main",
+      "required": true
+    },
+    {
+      "name": "sidebar",
+      "required": false,
+      "maxWidgets": 4
+    }
+  ]
+}

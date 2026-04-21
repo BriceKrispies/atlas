@@ -1,9 +1,19 @@
 import '@atlas/design';
 // Widget runtime: importing registers <widget-host> via customElements.define.
 import '@atlas/widget-host';
-// Bundle: importing registers the three standard widgets into moduleDefaultRegistry.
-import { registerAllWidgets } from '@atlas/bundle-standard/register';
+// Page-template runtime: importing registers <content-page> and <widget-palette>.
+import '@atlas/page-templates';
+// Bundle: importing registers the three standard widgets into moduleDefaultRegistry,
+// and both templates into moduleDefaultTemplateRegistry.
+import {
+  registerAllWidgets,
+  registerAllTemplates,
+} from '@atlas/bundle-standard/register';
 registerAllWidgets();
+registerAllTemplates();
+// Templates barrel — side-effect import of templates.css so two-column grid
+// styles etc. are loaded in the browser realm.
+import '@atlas/bundle-standard/templates';
 // Widget development harness — registers <widget-harness>.
 import './harness/widget-harness.js';
 

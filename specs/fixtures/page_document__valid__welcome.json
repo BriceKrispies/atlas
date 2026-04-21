@@ -1,0 +1,27 @@
+{
+  "pageId": "welcome",
+  "tenantId": "acme",
+  "templateId": "template.two-column",
+  "templateVersion": "0.1.0",
+  "regions": {
+    "main": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-main-1",
+        "config": { "mode": "text", "text": "Welcome to Atlas." }
+      }
+    ],
+    "sidebar": [
+      {
+        "widgetId": "content.announcements",
+        "instanceId": "w-side-1",
+        "config": { "mode": "text", "text": "Need help? Email support." }
+      }
+    ]
+  },
+  "status": "published",
+  "meta": {
+    "title": "Welcome",
+    "slug": "/welcome"
+  }
+}

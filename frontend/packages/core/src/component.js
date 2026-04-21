@@ -60,10 +60,22 @@ export class AtlasElement extends HTMLElement {
    * @returns {AtlasSurface | null}
    */
   get surface() {
-    let el = this.parentElement;
-    while (el) {
-      if (el instanceof AtlasSurface) return el;
-      el = el.parentElement;
+    // Walk up the tree, crossing shadow-root boundaries via the host
+    // so elements inside a shadow-rendering surface still inherit its
+    // surfaceId for auto-testid.
+    let node = this.parentElement;
+    if (!node) {
+      const root = this.getRootNode?.();
+      node = root instanceof ShadowRoot ? root.host : null;
+    }
+    while (node) {
+      if (node instanceof AtlasSurface) return node;
+      if (node.parentElement) {
+        node = node.parentElement;
+      } else {
+        const root = node.getRootNode?.();
+        node = root instanceof ShadowRoot ? root.host : null;
+      }
     }
     return null;
   }

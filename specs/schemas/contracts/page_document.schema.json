@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/page-document.v1.json",
+  "title": "PageDocument",
+  "description": "Tenant-scoped record that binds a content page to a template and stores widget placement for each region. Frozen at v1 — see 'Page Document Shape — Frozen at v1' in specs/crosscut/page-templates.md. The WidgetInstance entry shape is reused from page-layout.v1.json to guarantee one widget-entry shape across the platform.",
+  "type": "object",
+  "required": ["pageId", "tenantId", "templateId", "templateVersion", "regions", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "pageId": {
+      "type": "string",
+      "description": "Tenant-scoped page identifier (kebab-case). Stable across template changes.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 64,
+      "examples": ["welcome", "about", "onboarding"]
+    },
+    "tenantId": {
+      "type": "string",
+      "description": "Owning tenant identifier (I7, I9).",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 64,
+      "examples": ["acme", "contoso"]
+    },
+    "templateId": {
+      "type": "string",
+      "description": "Template this page binds to. MUST match a template registered in the active bundle (INV-TEMPLATE-02).",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "examples": ["template.one-column", "template.two-column"]
+    },
+    "templateVersion": {
+      "type": "string",
+      "description": "Semantic version of the template the page was last saved against. A stored version greater than the registered template's version MUST fail closed at render time (INV-TEMPLATE-08).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": ["0.1.0", "1.0.0"]
+    },
+    "regions": {
+      "type": "object",
+      "description": "Map of region name to ordered array of widget instances. Region names MUST exist in the resolved template's manifest (INV-TEMPLATE-02); required regions MUST be non-empty (INV-TEMPLATE-05).",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "https://atlas-platform.example.com/schemas/page-layout.v1.json#/definitions/WidgetInstance" }
+      }
+    },
+    "status": {
+      "type": "string",
+      "description": "Publication status of the page.",
+      "enum": ["draft", "published", "archived"]
+    },
+    "meta": {
+      "type": "object",
+      "description": "Optional page-level metadata (title, slug, SEO fields).",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "slug": {
+          "type": "string",
+          "description": "Route-path slug (e.g. '/welcome'). Leading slash required.",
+          "pattern": "^/[a-z0-9][a-z0-9/_-]*$",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    }
+  },
+  "$comment": "This shape is frozen at v1. Both InMemoryPageStore and the future HttpPageStore MUST round-trip byte-equivalent. Breaking changes require page-document.v2.json — not an in-place edit. Reuses WidgetInstance from page-layout.v1.json (INV-WIDGET-10 compatibility)."
+}

@@ -15,6 +15,13 @@ import atlasDesignUrl from '@atlas/design?url';
 // JSON so it ships as a static asset rather than code.
 import announcementsHarnessSpec from '@atlas/bundle-standard/widgets/announcements/harness.fixtures.json';
 
+// Page-template runtime for content-page specimens.
+import {
+  InMemoryPageStore,
+  ValidatingPageStore,
+} from '@atlas/page-templates';
+import { seedPages } from '@atlas/bundle-standard/seed-pages';
+
 const S = (spec) => AtlasSandbox.register(spec);
 
 
@@ -582,3 +589,75 @@ S({
   // the fixture file so variants stay colocated with the widget.
   configVariants: [{ name: 'Harness', config: {} }],
 });
+
+
+// ── Pages ───────────────────────────────────────────────────────
+//
+// Content-page specimens mount real <content-page> elements backed by a
+// session-shared InMemoryPageStore. The store is seeded once with the
+// three bundle seed pages at module load — edits made in edit-mode
+// specimens persist across specimen switches (but reset on page reload).
+//
+// Each page gets two config variants: View (read-only) and Edit (with
+// the widget palette + drag/drop). Switching between them re-mounts the
+// <content-page>, which re-reads from the store, so edits flush through
+// immediately on a re-render.
+
+const sandboxPageStore = new ValidatingPageStore(new InMemoryPageStore());
+for (const doc of seedPages) {
+  // Fire-and-forget — the InMemoryPageStore save is synchronous under
+  // the hood; we await the promise before the first specimen mounts
+  // via the await-once pattern below.
+  sandboxPageStore.save(doc.pageId, doc);
+}
+
+// Sandbox-local capability bridge — announcements uses `backend.query`
+// to fetch media files in "file" mode. The seed pages only use "text"
+// mode so this is defensive, but wiring it here means adding a file
+// variant later doesn't need a new specimen.
+const sandboxCapabilities = {
+  'backend.query': async ({ path }) => {
+    if (typeof path === 'string' && path.startsWith('/media/files/')) {
+      const fileId = path.slice('/media/files/'.length);
+      return {
+        id: fileId,
+        filename: `${fileId}.png`,
+        url: 'https://placehold.co/600x200?text=Sample+Media',
+      };
+    }
+    return null;
+  },
+};
+
+function mountContentPage(demoEl, { config, onLog }) {
+  const { pageId, edit } = config;
+  const page = document.createElement('content-page');
+  page.pageId = pageId;
+  page.pageStore = sandboxPageStore;
+  page.principal = { id: 'u_sandbox', roles: [] };
+  page.tenantId = 'acme';
+  page.correlationId = `cid-sandbox-${pageId}-${Date.now()}`;
+  page.capabilities = sandboxCapabilities;
+  page.edit = edit === true;
+  page.onMediatorTrace = (evt) => onLog('mediator', evt);
+  page.onCapabilityTrace = (evt) => onLog('capability', evt);
+  demoEl.appendChild(page);
+  onLog('page-mount', { pageId, edit: page.edit });
+  return () => {
+    try { page.remove(); } catch { /* already detached */ }
+  };
+}
+
+for (const doc of seedPages) {
+  S({
+    id: `page.${doc.pageId}`,
+    name: doc.meta?.title ?? doc.pageId,
+    tag: 'content-page',
+    group: 'Pages',
+    mount: mountContentPage,
+    configVariants: [
+      { name: 'View', config: { pageId: doc.pageId, edit: false } },
+      { name: 'Edit', config: { pageId: doc.pageId, edit: true } },
+    ],
+  });
+}

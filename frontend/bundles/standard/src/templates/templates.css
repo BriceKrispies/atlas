@@ -1,0 +1,60 @@
+/**
+ * @atlas/bundle-standard — template layout chrome.
+ *
+ * Templates are light-DOM custom elements that act as pure CSS wrappers.
+ * <content-page> appends a <widget-host> into the template instance; the
+ * widget-host then renders one <section data-slot="${regionName}"> per
+ * region as its own light-DOM children. The rules below target those
+ * sections so each template's region layout is purely a matter of CSS —
+ * no DOM construction on the template side.
+ *
+ * `display: contents` on <widget-host> lets its <section> children
+ * participate directly in the template's grid.
+ *
+ * All rules are scoped under the template's custom element tag to avoid
+ * leaking global styles.
+ */
+
+template-one-column {
+  display: block;
+  width: 100%;
+}
+
+template-one-column > widget-host {
+  display: block;
+}
+
+template-one-column > widget-host > section[data-slot="main"] {
+  display: block;
+}
+
+template-two-column {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-areas: "main sidebar";
+  gap: var(--atlas-space-md, 1rem);
+  width: 100%;
+}
+
+template-two-column > widget-host {
+  display: contents;
+}
+
+template-two-column > widget-host > section[data-slot="main"] {
+  grid-area: main;
+  min-width: 0;
+}
+
+template-two-column > widget-host > section[data-slot="sidebar"] {
+  grid-area: sidebar;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  template-two-column {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "sidebar";
+  }
+}

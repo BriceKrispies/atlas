@@ -5,15 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test:e2e": "playwright test --config playwright.config.js",
+    "test:e2e:ui": "playwright test --config playwright.config.js --ui"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
     "@atlas/design": "workspace:*",
     "@atlas/widget-host": "workspace:*",
+    "@atlas/page-templates": "workspace:*",
     "@atlas/bundle-standard": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "vite": "^6.0.0"
   }
 }
