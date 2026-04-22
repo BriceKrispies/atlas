@@ -94,6 +94,10 @@ importers:
       '@atlas/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      linkedom:
+        specifier: ^0.18.0
+        version: 0.18.12
 
   packages/eslint-plugin-atlas-widgets:
     dependencies:

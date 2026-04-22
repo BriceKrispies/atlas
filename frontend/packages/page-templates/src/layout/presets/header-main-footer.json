@@ -1,0 +1,12 @@
+{
+  "layoutId": "layout.header-main-footer",
+  "version": "0.1.0",
+  "displayName": "Header / Main / Footer",
+  "description": "Full-width header band, a main region, and a full-width footer band.",
+  "grid": { "columns": 12, "rowHeight": 160, "gap": 16 },
+  "slots": [
+    { "name": "header", "col": 1, "row": 1, "colSpan": 12, "rowSpan": 1 },
+    { "name": "main",   "col": 1, "row": 2, "colSpan": 12, "rowSpan": 3 },
+    { "name": "footer", "col": 1, "row": 5, "colSpan": 12, "rowSpan": 1 }
+  ]
+}

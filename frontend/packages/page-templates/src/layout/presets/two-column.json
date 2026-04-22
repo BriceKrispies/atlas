@@ -1,0 +1,11 @@
+{
+  "layoutId": "layout.two-column",
+  "version": "0.1.0",
+  "displayName": "Two Column",
+  "description": "Primary main slot with a narrower sidebar beside it.",
+  "grid": { "columns": 12, "rowHeight": 160, "gap": 16 },
+  "slots": [
+    { "name": "main",    "col": 1, "row": 1, "colSpan": 8, "rowSpan": 2 },
+    { "name": "sidebar", "col": 9, "row": 1, "colSpan": 4, "rowSpan": 2 }
+  ]
+}

@@ -9,11 +9,6 @@
         "widgetId": "content.announcements",
         "instanceId": "w-g3-left-1",
         "config": { "mode": "text", "text": "Left rail — navigation hint." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-g3-left-2",
-        "config": { "mode": "text", "text": "Left rail — quick links." }
       }
     ],
     "main": [
@@ -21,11 +16,6 @@
         "widgetId": "content.announcements",
         "instanceId": "w-g3-main-1",
         "config": { "mode": "text", "text": "Main — primary content flows here." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-g3-main-2",
-        "config": { "mode": "text", "text": "Main — second card." }
       }
     ],
     "right": [

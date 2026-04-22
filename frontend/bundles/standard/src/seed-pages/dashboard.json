@@ -12,14 +12,6 @@
           "mode": "text",
           "text": "Dashboard is under construction. Check back soon for metrics."
         }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-dashboard-main-2",
-        "config": {
-          "mode": "text",
-          "text": "Tip: press '?' anywhere to open the keyboard-shortcut palette."
-        }
       }
     ],
     "sidebar": [

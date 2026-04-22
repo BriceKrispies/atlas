@@ -19,10 +19,11 @@ test.describe('sandbox — specimens smoke', () => {
     await openSpecimen(page, 'page.welcome');
     const cp = page.locator('content-page[data-page-id="welcome"]');
     await expect(cp).toBeVisible();
-    // Both regions from the two-column template should render with widgets.
+    // Welcome seeds main with one widget; the sidebar slot is empty by
+    // default so the two-column template shows exactly one widget cell.
     await expect(page.locator('section[data-slot="main"] [data-widget-cell]').first()).toBeVisible();
     await expect(
-      page.locator('section[data-slot="sidebar"] [data-widget-cell]').first(),
-    ).toBeVisible();
+      page.locator('section[data-slot="sidebar"] [data-widget-cell]'),
+    ).toHaveCount(0);
   });
 });

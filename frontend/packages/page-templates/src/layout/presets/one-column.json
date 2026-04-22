@@ -1,0 +1,10 @@
+{
+  "layoutId": "layout.one-column",
+  "version": "0.1.0",
+  "displayName": "One Column",
+  "description": "Single full-width slot.",
+  "grid": { "columns": 12, "rowHeight": 160, "gap": 16 },
+  "slots": [
+    { "name": "main", "col": 1, "row": 1, "colSpan": 12, "rowSpan": 2 }
+  ]
+}

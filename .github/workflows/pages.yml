@@ -1,0 +1,69 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build admin
+        env:
+          VITE_BASE: /atlas/admin/
+        run: pnpm --filter @atlas/admin build
+
+      - name: Build sandbox
+        env:
+          VITE_BASE: /atlas/sandbox/
+        run: pnpm --filter @atlas/sandbox build
+
+      - name: Assemble site
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p dist/admin dist/sandbox
+          cp frontend/deploy/index.html dist/index.html
+          cp frontend/deploy/index.html dist/404.html
+          cp -r frontend/apps/admin/dist/. dist/admin/
+          cp -r frontend/apps/sandbox/dist/. dist/sandbox/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

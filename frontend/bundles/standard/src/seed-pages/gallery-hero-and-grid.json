@@ -8,29 +8,14 @@
       {
         "widgetId": "content.announcements",
         "instanceId": "w-ghg-hero-1",
-        "config": { "mode": "text", "text": "Hero — headline announcement for the gallery." }
+        "config": { "mode": "text", "text": "Hero — headline announcement." }
       }
     ],
     "grid": [
       {
         "widgetId": "content.announcements",
         "instanceId": "w-ghg-grid-1",
-        "config": { "mode": "text", "text": "Grid card — one." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-ghg-grid-2",
-        "config": { "mode": "text", "text": "Grid card — two." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-ghg-grid-3",
-        "config": { "mode": "text", "text": "Grid card — three." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-ghg-grid-4",
-        "config": { "mode": "text", "text": "Grid card — four." }
+        "config": { "mode": "text", "text": "Grid — content card." }
       }
     ]
   },

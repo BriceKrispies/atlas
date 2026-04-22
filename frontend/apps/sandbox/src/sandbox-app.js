@@ -1,6 +1,12 @@
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import '@atlas/design';
+// Template layout chrome (grid rules keyed off `template-*` custom element
+// tags). Because the sandbox shell uses Shadow DOM, document-level
+// stylesheets do NOT pierce it — we must inline this CSS into the shadow
+// root ourselves. Without this, every page template renders as a plain
+// stacked block instead of its intended grid.
+import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
 
 /**
  * Sandbox shell, composed entirely from atlas primitives:
@@ -260,7 +266,7 @@ export class AtlasSandbox extends AtlasSurface {
     }
 
     this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
+      <style>${styles}\n${templatesCssText}</style>
       <atlas-box data-role="topbar">
         <button
           class="nav-toggle"

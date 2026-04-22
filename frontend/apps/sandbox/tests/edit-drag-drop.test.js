@@ -3,229 +3,224 @@ import {
   openSpecimen,
   selectVariant,
   widgetCell,
-  emptyDropZone,
-  pointerDrag,
-  widgetTextsInRegion,
+  widgetInstanceIdsInRegion,
+  dropSlot,
+  paletteChip,
+  runEditorOp,
+  waitForEditor,
 } from './helpers.js';
 
-test.describe('content-page edit mode — drag and drop (widget-anchored)', () => {
-  test('palette pickup activates editor and highlights hovered cells', async ({ page }) => {
+test.describe('content-page edit mode — drop into slot', () => {
+  test('only empty regions expose a drop slot (filled regions expose none)', async ({ page }) => {
+    // welcome seeds main=1 widget, sidebar=empty → exactly one drop slot.
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    await expect(dropSlot(page, 'main')).toHaveCount(0);
+    await expect(dropSlot(page, 'sidebar')).toHaveCount(1);
+  });
+
+  test('palette renders chips named by widgetId', async ({ page }) => {
     await openSpecimen(page, 'page.dashboard');
     await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'dashboard');
 
     const palette = page.locator('[data-testid="widget-palette"]');
     await expect(palette).toBeVisible();
 
-    const chip = page.locator('[data-testid="widget-palette.palette-chip"]').first();
+    const chip = paletteChip(page, 'content.announcements');
     await expect(chip).toBeVisible();
-
-    const cp = page.locator('content-page[data-page-id="dashboard"]');
-    await expect(cp).toHaveAttribute('data-editor-active', 'false').catch(async () => {
-      const val = await cp.getAttribute('data-editor-active');
-      expect(val === null || val === 'false').toBeTruthy();
-    });
-
-    await chip.click();
-    await expect(cp).toHaveAttribute('data-editor-active', 'true');
-
-    // Hover the top half of the first main cell; assert the cell picks up
-    // a "before" half highlight.
-    const firstMain = widgetCell(page, 'main', 0);
-    const box = await firstMain.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.2);
-    await expect(firstMain).toHaveAttribute('data-drop-target', 'before');
-
-    // Move to the bottom half — it should flip to "after".
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.8);
-    await expect(firstMain).toHaveAttribute('data-drop-target', 'after');
+    await expect(chip).not.toHaveAttribute('draggable', 'true');
   });
 
-  test('no persistent drop-indicator bars are rendered in edit mode', async ({ page }) => {
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    // The widget-anchored redesign removed all between-cell indicator bars.
-    await expect(page.locator('[data-drop-indicator]')).toHaveCount(0);
-  });
-
-  test('reorder: drag main[0] onto the bottom half of main[1]', async ({ page }) => {
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    const before = await widgetTextsInRegion(page, 'main');
-    expect(before.length).toBe(2);
-    const [first, second] = before;
-    expect(first).not.toEqual(second);
-
-    const sourceCell = widgetCell(page, 'main', 0);
-    await sourceCell.hover();
-    const handle = sourceCell.locator('[data-testid="content-page.drag-handle"]');
-    await expect(handle).toBeVisible();
-
-    // With source (main[0]) hidden on pickup, the only visible main cell is
-    // the one that was at main[1]. Dropping on its bottom half = "after",
-    // which inserts source below it → new order [second, first].
-    const target = widgetCell(page, 'main', 1);
-    await pointerDrag(page, handle, target, { half: 'after' });
-
-    await expect
-      .poll(async () => widgetTextsInRegion(page, 'main'))
-      .toEqual([second, first]);
-  });
-
-  test('reorder: drag main[1] onto the top half of main[0]', async ({ page }) => {
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    const before = await widgetTextsInRegion(page, 'main');
-    expect(before.length).toBe(2);
-    const [first, second] = before;
-    expect(first).not.toEqual(second);
-
-    const sourceCell = widgetCell(page, 'main', 1);
-    await sourceCell.hover();
-    const handle = sourceCell.locator('[data-testid="content-page.drag-handle"]');
-    await expect(handle).toBeVisible();
-
-    const target = widgetCell(page, 'main', 0);
-    await pointerDrag(page, handle, target, { half: 'before' });
-
-    await expect
-      .poll(async () => widgetTextsInRegion(page, 'main'))
-      .toEqual([second, first]);
-  });
-
-  test('whole cell is grabbable (not just the drag handle)', async ({ page }) => {
-    // Regression: pointerdown anywhere on the cell — not only on the
-    // corner drag-handle button — starts a drag. The widget body is
-    // pointer-events:none in edit mode so its own click/pointer handlers
-    // can't swallow the pickup.
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    const before = await widgetTextsInRegion(page, 'main');
-    expect(before.length).toBe(2);
-    const [first, second] = before;
-
-    // Start the press in the middle of the cell — away from the chrome.
-    const sourceCell = widgetCell(page, 'main', 0);
-    const sbox = await sourceCell.boundingBox();
-    const sx = sbox.x + sbox.width / 2;
-    const sy = sbox.y + sbox.height / 2;
-    await page.mouse.move(sx, sy);
-    await page.mouse.down();
-
-    // Source flips to picked (display:none) as soon as pointerdown fires.
-    await expect(sourceCell).toHaveAttribute('data-picked', 'true');
-
-    const target = widgetCell(page, 'main', 1);
-    const tbox = await target.boundingBox();
-    const tx = tbox.x + tbox.width / 2;
-    const ty = tbox.y + tbox.height * 0.8;
-    await page.mouse.move(tx, ty, { steps: 4 });
-    await page.mouse.up();
-
-    await expect
-      .poll(async () => widgetTextsInRegion(page, 'main'))
-      .toEqual([second, first]);
-  });
-
-  test('picking up a widget hides its cell and collapses the gap', async ({ page }) => {
-    // Regression: source cell is display:none during pickup so the visible
-    // layout is the peer cell(s), each exposing top/bottom halves as drop
-    // targets. No persistent drop bars stack in the gap.
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    const sourceCell = widgetCell(page, 'main', 1);
-    await sourceCell.hover();
-    const handle = sourceCell.locator('[data-testid="content-page.drag-handle"]');
-    await expect(handle).toBeVisible();
-
-    const hbox = await handle.boundingBox();
-    await page.mouse.move(hbox.x + hbox.width / 2, hbox.y + hbox.height / 2);
-    await page.mouse.down();
-
-    await expect(sourceCell).toHaveAttribute('data-picked', 'true');
-    await expect(sourceCell).toBeHidden();
-    // No drop-indicator elements exist anywhere.
-    await expect(page.locator('[data-drop-indicator]')).toHaveCount(0);
-
-    await page.mouse.up();
-  });
-
-  test('empty region: palette drop into an emptied region', async ({ page }) => {
-    // Empty a region (welcome.sidebar has one widget) then pick from the
-    // palette and drop into the empty-region zone.
+  test('palette chip + click on empty slot adds a widget', async ({ page }) => {
     await openSpecimen(page, 'page.welcome');
     await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
 
-    const sidebarOnly = widgetCell(page, 'sidebar', 0);
-    await sidebarOnly.hover();
-    await sidebarOnly.locator('[data-testid="content-page.delete-button"]').click();
-
-    await expect
-      .poll(async () => (await widgetTextsInRegion(page, 'sidebar')).length)
-      .toBe(0);
-
-    // Pick from palette.
-    const chip = page.locator('[data-testid="widget-palette.palette-chip"]').first();
-    await chip.click();
-
-    // The sidebar section now shows a rectangular empty-drop zone.
-    const zone = emptyDropZone(page, 'sidebar');
-    await expect(zone).toBeVisible();
-    await expect(zone).toHaveAttribute('data-drop-valid', 'true');
-
-    // Click the zone to drop.
-    const zbox = await zone.boundingBox();
-    await page.mouse.move(zbox.x + zbox.width / 2, zbox.y + zbox.height / 2);
-    await page.mouse.down();
-    await page.mouse.up();
+    await paletteChip(page, 'content.announcements').click();
+    await dropSlot(page, 'sidebar').click();
 
     await expect
-      .poll(async () => (await widgetTextsInRegion(page, 'sidebar')).length)
+      .poll(async () => (await widgetInstanceIdsInRegion(page, 'sidebar')).length)
       .toBe(1);
   });
 
-  test('delete: X on first main widget removes it from the page', async ({ page }) => {
-    await openSpecimen(page, 'page.dashboard');
-    await selectVariant(page, 'Edit');
-
-    const before = await widgetTextsInRegion(page, 'main');
-    expect(before.length).toBe(2);
-    const kept = before[1];
-
-    const target = widgetCell(page, 'main', 0);
-    await target.hover();
-    const del = target.locator('[data-testid="content-page.delete-button"]');
-    await expect(del).toBeVisible();
-    await del.click();
-
-    await expect
-      .poll(async () => widgetTextsInRegion(page, 'main'))
-      .toEqual([kept]);
-  });
-
-  test('delete: emptying a region is permitted with no error toast', async ({ page }) => {
-    // Pages may have empty regions — the template's `required` flag is
-    // informational only and not enforced at runtime.
+  test('keyboard two-tap: Enter on chip, Enter on empty slot commits an add', async ({ page }) => {
     await openSpecimen(page, 'page.welcome');
     await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
 
-    const only = widgetCell(page, 'main', 0);
-    await only.hover();
-    await only.locator('[data-testid="content-page.delete-button"]').click();
+    const chip = paletteChip(page, 'content.announcements');
+    await chip.focus();
+    await page.keyboard.press('Enter');
+
+    const slot = dropSlot(page, 'sidebar');
+    await slot.focus();
+    await page.keyboard.press('Enter');
 
     await expect
-      .poll(async () => (await widgetTextsInRegion(page, 'main')).length)
-      .toBe(0);
+      .poll(async () => (await widgetInstanceIdsInRegion(page, 'sidebar')).length)
+      .toBe(1);
+  });
 
-    await expect(
-      page.locator('[data-testid="content-page.editor-toast"][data-variant="error"]'),
-    ).toHaveCount(0);
-    await expect(
-      page.locator('content-page atlas-box:has-text("Required region")'),
-    ).toHaveCount(0);
+  test('Escape clears a pending selection without mutating', async ({ page }) => {
+    await openSpecimen(page, 'page.dashboard');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'dashboard');
+
+    const snapshot = await widgetInstanceIdsInRegion(page, 'main');
+
+    await widgetCell(page, 'main', 0).click();
+    const cp = page.locator('content-page[data-page-id="dashboard"]');
+    await expect(cp).toHaveAttribute('data-editor-selected', /cell:/);
+
+    await page.keyboard.press('Escape');
+    await expect(cp).not.toHaveAttribute('data-editor-selected', /.+/);
+
+    expect(await widgetInstanceIdsInRegion(page, 'main')).toEqual(snapshot);
+  });
+
+  test('pointer-drag a palette chip into the empty slot commits an add', async ({ page }) => {
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    const chip = paletteChip(page, 'content.announcements');
+    const slot = dropSlot(page, 'sidebar');
+    const cb = await chip.boundingBox();
+    const sb = await slot.boundingBox();
+    expect(cb).not.toBeNull();
+    expect(sb).not.toBeNull();
+
+    const cx = cb.x + cb.width / 2;
+    const cy = cb.y + cb.height / 2;
+    const tx = sb.x + sb.width / 2;
+    const ty = sb.y + sb.height / 2;
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 8, cy + 8, { steps: 2 });
+    await page.mouse.move(tx, ty, { steps: 10 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await widgetInstanceIdsInRegion(page, 'sidebar')).length)
+      .toBe(1);
+    // Main is untouched — dropping into sidebar does not reorder main.
+    expect((await widgetInstanceIdsInRegion(page, 'main')).length).toBe(1);
+  });
+
+  test('pointer-drag a cell from one slot into another empty slot', async ({ page }) => {
+    // Welcome has main=[1], sidebar=[]. Drag main's cell into the empty
+    // sidebar slot. That would empty a required region, so the editor
+    // rejects the move and the data stays put.
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    const [mainId] = await widgetInstanceIdsInRegion(page, 'main');
+    const source = page.locator(`[data-widget-cell][data-instance-id="${mainId}"]`);
+    const slot = dropSlot(page, 'sidebar');
+    const sb = await source.boundingBox();
+    const zb = await slot.boundingBox();
+
+    const sx = sb.x + sb.width / 2;
+    const sy = sb.y + sb.height / 2;
+    const tx = zb.x + zb.width / 2;
+    const ty = zb.y + zb.height / 2;
+
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    await page.mouse.move(sx + 8, sy + 8, { steps: 2 });
+    await page.mouse.move(tx, ty, { steps: 10 });
+    await page.mouse.up();
+
+    // Move was rejected (required main would be empty). Nothing moved.
+    await page.waitForTimeout(300);
+    expect(await widgetInstanceIdsInRegion(page, 'main')).toEqual([mainId]);
+    expect(await widgetInstanceIdsInRegion(page, 'sidebar')).toEqual([]);
+  });
+
+  test('filled region is not a drop target — dragging onto it is a no-op', async ({ page }) => {
+    // Pointer-drag a chip onto a filled region (main). No drop slot exists
+    // there, so the drop is rejected silently.
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    const before = await widgetInstanceIdsInRegion(page, 'main');
+    expect(before.length).toBe(1);
+
+    const chip = paletteChip(page, 'content.announcements');
+    const mainSection = page.locator('section[data-slot="main"]');
+    const cb = await chip.boundingBox();
+    const mb = await mainSection.boundingBox();
+
+    await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(cb.x + cb.width / 2 + 8, cb.y + cb.height / 2, { steps: 2 });
+    await page.mouse.move(mb.x + mb.width / 2, mb.y + mb.height / 2, { steps: 10 });
+    await page.mouse.up();
+
+    expect(await widgetInstanceIdsInRegion(page, 'main')).toEqual(before);
+  });
+
+  test('imperative API: agents can add / move / remove without the UI', async ({ page }) => {
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    const addRes = await runEditorOp(page, 'welcome', 'add', {
+      widgetId: 'content.announcements',
+      config: { mode: 'text', text: 'Hello from an agent' },
+      region: 'sidebar',
+      index: 0,
+    });
+    expect(addRes.ok).toBe(true);
+    const newId = addRes.instanceId;
+    expect(typeof newId).toBe('string');
+
+    await expect
+      .poll(async () => widgetInstanceIdsInRegion(page, 'sidebar'))
+      .toEqual([newId]);
+
+    const rmRes = await runEditorOp(page, 'welcome', 'remove', { instanceId: newId });
+    expect(rmRes.ok).toBe(true);
+    await expect
+      .poll(async () => widgetInstanceIdsInRegion(page, 'sidebar'))
+      .toEqual([]);
+  });
+
+  test('imperative API: rejected operations return stable reason codes', async ({ page }) => {
+    await openSpecimen(page, 'page.welcome');
+    await selectVariant(page, 'Edit');
+    await waitForEditor(page, 'welcome');
+
+    const unknown = await runEditorOp(page, 'welcome', 'add', {
+      widgetId: 'no.such.widget',
+      region: 'main',
+      index: 0,
+    });
+    expect(unknown.ok).toBe(false);
+    expect(unknown.reason).toBe('unknown-widget');
+
+    const badRegion = await runEditorOp(page, 'welcome', 'add', {
+      widgetId: 'content.announcements',
+      config: { mode: 'text', text: 'x' },
+      region: 'not-a-region',
+      index: 0,
+    });
+    expect(badRegion.ok).toBe(false);
+    expect(badRegion.reason).toBe('region-invalid');
+
+    const missing = await runEditorOp(page, 'welcome', 'move', {
+      instanceId: 'does-not-exist',
+      region: 'main',
+      index: 0,
+    });
+    expect(missing.ok).toBe(false);
+    expect(missing.reason).toBe('instance-not-found');
   });
 });

@@ -1,35 +1,34 @@
 /**
- * EditorController — framework-agnostic coordinator for <content-page edit>.
+ * EditorController — pure state machine for page-document mutations.
  *
  * Holds a mutable CLONE of the stored page doc (the PageStore's copy is
- * never mutated directly). Exposes pickUp / cancel / drop / deleteInstance
- * mutations that return either { ok: true, nextDoc } or
- * { ok: false, reason } — the caller is responsible for persisting the
- * nextDoc via pageStore.save and reloading.
+ * never mutated directly). Exposes four primitive mutations:
  *
- * Valid-target caching: drops are validated against the same constraint
- * computation that was done on pickUp. Recomputation happens every pickUp.
+ *   applyAdd     — insert a new widget entry at (region, index)
+ *   applyMove    — relocate an existing widget to (region, index) by instanceId
+ *   applyUpdate  — replace the config of a widget by instanceId
+ *   applyRemove  — remove a widget by instanceId
  *
- * Events:
- *   'statechange' — fires after every transition of picked state
- *     (pickUp, cancel, drop-success, deleteInstance-success).
+ * Each returns { ok, nextDoc, ...info } or { ok: false, reason }. The caller
+ * (EditorAPI) is responsible for persisting `nextDoc`.
+ *
+ * Identity is `instanceId`, never (region, index). Indices shift when
+ * siblings move; instanceIds don't. Agents can stash an instanceId and
+ * safely come back later.
+ *
+ * Validation covers:
+ *   - region exists in template manifest           (INV-TEMPLATE-02)
+ *   - region.maxWidgets respected                  (INV-TEMPLATE-04)
+ *   - required regions never emptied               (INV-TEMPLATE-05)
+ *   - widget is known to the registry
+ *   - instanceId collision on add
+ *   - instanceId lookup on move/update/remove
+ *
+ * No DOM, no store, no pointer / keyboard concerns. Plain data in → plain
+ * data out.
  */
 
 import { computeValidTargets } from '../drop-zones.js';
-
-/**
- * @typedef {object} Source
- * @property {string} regionName
- * @property {number} index
- */
-
-/**
- * @typedef {object} PickedState
- * @property {string} widgetId
- * @property {Source | 'palette'} source
- * @property {('pointer'|'keyboard')} via
- * @property {ReturnType<typeof computeValidTargets>} validTargets
- */
 
 export class EditorController {
   /**
@@ -51,44 +50,68 @@ export class EditorController {
     this._doc = structuredClone(pageDoc);
     this._template = templateManifest;
     this._registry = widgetRegistry;
-    /** @type {PickedState | null} */
-    this._picked = null;
     /** @type {Map<string, Set<Function>>} */
     this._listeners = new Map();
   }
 
   // ---- accessors ----
 
-  /** Current (mutable) cloned doc. */
   get doc() {
     return this._doc;
   }
 
-  /** Replace the working doc (after a successful save + reload). */
   setDoc(nextDoc) {
     this._doc = structuredClone(nextDoc);
-    // A fresh doc invalidates any in-flight pickUp.
-    if (this._picked) {
-      this._picked = null;
-      this._emit('statechange', { picked: null });
+    this._emit('statechange', { doc: this._doc });
+  }
+
+  /**
+   * Locate a widget entry by instanceId. O(N) across the whole doc, which
+   * is fine — pages rarely hold more than a few dozen widgets.
+   * @param {string} instanceId
+   * @returns {{region: string, index: number, entry: object} | null}
+   */
+  findInstance(instanceId) {
+    const regions = this._doc?.regions ?? {};
+    for (const region of Object.keys(regions)) {
+      const entries = regions[region];
+      if (!Array.isArray(entries)) continue;
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i] && entries[i].instanceId === instanceId) {
+          return { region, index: i, entry: entries[i] };
+        }
+      }
     }
+    return null;
   }
 
-  get picked() {
-    return this._picked;
-  }
-
-  getValidTargets() {
-    return this._picked ? this._picked.validTargets : null;
+  /**
+   * Snapshot of every entry with its current position. Used by
+   * EditorAPI.list() and Playwright introspection.
+   */
+  listEntries() {
+    const out = [];
+    const regions = this._doc?.regions ?? {};
+    for (const region of Object.keys(regions)) {
+      const entries = regions[region];
+      if (!Array.isArray(entries)) continue;
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (!e) continue;
+        out.push({
+          instanceId: e.instanceId,
+          widgetId: e.widgetId,
+          region,
+          index: i,
+          config: e.config ?? {},
+        });
+      }
+    }
+    return out;
   }
 
   // ---- events ----
 
-  /**
-   * @param {string} event
-   * @param {(payload: any) => void} handler
-   * @returns {() => void} unsubscribe
-   */
   on(event, handler) {
     let set = this._listeners.get(event);
     if (!set) {
@@ -106,227 +129,251 @@ export class EditorController {
       try {
         handler(payload);
       } catch (err) {
-        // Listener errors must not break state transitions.
         // eslint-disable-next-line no-console
         console.error('[editor-controller] listener threw', err);
       }
     }
   }
 
-  // ---- commands ----
+  // ---- helpers ----
+
+  _regionSpec(regionName) {
+    const regions = this._template?.regions;
+    if (!Array.isArray(regions)) return null;
+    return regions.find((r) => r.name === regionName) ?? null;
+  }
+
+  _isWidgetKnown(widgetId) {
+    const reg = this._registry;
+    if (!reg) return false;
+    try {
+      if (typeof reg.has === 'function') return reg.has(widgetId);
+      if (typeof reg.get === 'function') return reg.get(widgetId) != null;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
 
   /**
-   * Begin a drag/move. Computes the valid-target cache against the
-   * current doc. Replaces any prior picked state.
+   * Would removing this instance leave a `required` region empty?
    */
-  pickUp({ widgetId, source, via }) {
-    if (!widgetId) throw new TypeError('pickUp requires widgetId');
-    const sourcePosition =
-      source && source !== 'palette' && typeof source === 'object'
-        ? { regionName: source.regionName, index: source.index }
+  _wouldEmptyRequired(region, instanceId) {
+    const spec = this._regionSpec(region);
+    if (!spec || spec.required !== true) return false;
+    const entries = this._doc?.regions?.[region] ?? [];
+    const remaining = entries.filter((e) => e && e.instanceId !== instanceId);
+    return remaining.length === 0;
+  }
+
+  // ---- primitives ----
+
+  /**
+   * Insert a new widget entry into (region, index).
+   *
+   * @param {object} args
+   * @param {object} args.entry — { widgetId, instanceId, config }
+   * @param {string} args.region
+   * @param {number} [args.index] — defaults to "append" (end of region)
+   */
+  applyAdd({ entry, region, index }) {
+    if (!entry || typeof entry !== 'object') {
+      return { ok: false, reason: 'invalid-entry' };
+    }
+    if (!entry.widgetId || !entry.instanceId) {
+      return { ok: false, reason: 'invalid-entry' };
+    }
+    if (!this._isWidgetKnown(entry.widgetId)) {
+      return { ok: false, reason: 'unknown-widget' };
+    }
+    const spec = this._regionSpec(region);
+    if (!spec) return { ok: false, reason: 'region-invalid' };
+    if (this.findInstance(entry.instanceId)) {
+      return { ok: false, reason: 'duplicate-instance-id' };
+    }
+
+    const next = structuredClone(this._doc);
+    if (!next.regions || typeof next.regions !== 'object') next.regions = {};
+    if (!Array.isArray(next.regions[region])) next.regions[region] = [];
+
+    const len = next.regions[region].length;
+    const resolvedIndex =
+      typeof index === 'number' ? index : len;
+    if (resolvedIndex < 0 || resolvedIndex > len) {
+      return { ok: false, reason: 'index-invalid' };
+    }
+
+    const max =
+      typeof spec.maxWidgets === 'number' && spec.maxWidgets >= 0
+        ? spec.maxWidgets
         : null;
-    const validTargets = computeValidTargets(
+    if (max !== null && len + 1 > max) {
+      return { ok: false, reason: 'max-widgets' };
+    }
+
+    next.regions[region].splice(resolvedIndex, 0, structuredClone(entry));
+
+    this._doc = next;
+    this._emit('statechange', { doc: this._doc });
+    return {
+      ok: true,
+      nextDoc: next,
+      action: 'add',
+      widgetId: entry.widgetId,
+      instanceId: entry.instanceId,
+      to: { region, index: resolvedIndex },
+    };
+  }
+
+  /**
+   * Move an existing instance to (region, index). Idempotent no-op if the
+   * resolved target is the instance's current position.
+   */
+  applyMove({ instanceId, region, index }) {
+    const found = this.findInstance(instanceId);
+    if (!found) return { ok: false, reason: 'instance-not-found' };
+
+    const spec = this._regionSpec(region);
+    if (!spec) return { ok: false, reason: 'region-invalid' };
+
+    const next = structuredClone(this._doc);
+    if (!next.regions || typeof next.regions !== 'object') next.regions = {};
+    if (!Array.isArray(next.regions[region])) next.regions[region] = [];
+    if (!Array.isArray(next.regions[found.region])) {
+      next.regions[found.region] = [];
+    }
+
+    // Remove from current position first; this matters for same-region moves
+    // where the target index can refer to the slot after removal.
+    const [picked] = next.regions[found.region].splice(found.index, 1);
+    if (!picked) return { ok: false, reason: 'source-gone' };
+
+    const targetLen = next.regions[region].length; // length after removal
+    let resolvedIndex =
+      typeof index === 'number' ? index : targetLen;
+    // When moving within the same region and the caller passed the pre-removal
+    // index AFTER the source, the removal has already shifted it down by 1.
+    // Callers that compute "insert at slot K of the current layout" expect
+    // that shift to be handled here. But when the caller gave a post-removal
+    // index (typical for a DnD target or programmatic list), no adjustment
+    // is needed. We adopt the post-removal convention: index is interpreted
+    // against the array after the source was removed.
+    if (resolvedIndex < 0 || resolvedIndex > targetLen) {
+      // Restore before returning so the doc is unchanged on failure.
+      next.regions[found.region].splice(found.index, 0, picked);
+      return { ok: false, reason: 'index-invalid' };
+    }
+
+    // maxWidgets: cross-region moves add 1 to target; same-region keeps count.
+    const max =
+      typeof spec.maxWidgets === 'number' && spec.maxWidgets >= 0
+        ? spec.maxWidgets
+        : null;
+    if (max !== null && found.region !== region && targetLen + 1 > max) {
+      next.regions[found.region].splice(found.index, 0, picked);
+      return { ok: false, reason: 'max-widgets' };
+    }
+
+    // Required-region guard: would emptying the source violate INV-TEMPLATE-05?
+    if (found.region !== region) {
+      const srcSpec = this._regionSpec(found.region);
+      if (srcSpec?.required === true && next.regions[found.region].length === 0) {
+        next.regions[found.region].splice(found.index, 0, picked);
+        return { ok: false, reason: 'required-region-empty' };
+      }
+    }
+
+    // No-op detection: target position equals source position.
+    if (found.region === region && resolvedIndex === found.index) {
+      next.regions[found.region].splice(found.index, 0, picked);
+      return {
+        ok: true,
+        nextDoc: next,
+        action: 'move',
+        noop: true,
+        widgetId: picked.widgetId,
+        instanceId,
+        from: { region: found.region, index: found.index },
+        to: { region, index: resolvedIndex },
+      };
+    }
+
+    next.regions[region].splice(resolvedIndex, 0, picked);
+
+    this._doc = next;
+    this._emit('statechange', { doc: this._doc });
+    return {
+      ok: true,
+      nextDoc: next,
+      action: 'move',
+      noop: false,
+      widgetId: picked.widgetId,
+      instanceId,
+      from: { region: found.region, index: found.index },
+      to: { region, index: resolvedIndex },
+    };
+  }
+
+  /**
+   * Replace (not merge) the config of an existing instance.
+   */
+  applyUpdate({ instanceId, config }) {
+    const found = this.findInstance(instanceId);
+    if (!found) return { ok: false, reason: 'instance-not-found' };
+
+    const next = structuredClone(this._doc);
+    const entry = next.regions[found.region][found.index];
+    entry.config = structuredClone(config ?? {});
+
+    this._doc = next;
+    this._emit('statechange', { doc: this._doc });
+    return {
+      ok: true,
+      nextDoc: next,
+      action: 'update',
+      widgetId: entry.widgetId,
+      instanceId,
+      at: { region: found.region, index: found.index },
+    };
+  }
+
+  /**
+   * Remove an instance. Refuses if removal would leave a required region empty.
+   */
+  applyRemove({ instanceId }) {
+    const found = this.findInstance(instanceId);
+    if (!found) return { ok: false, reason: 'instance-not-found' };
+
+    if (this._wouldEmptyRequired(found.region, instanceId)) {
+      return { ok: false, reason: 'required-region-empty' };
+    }
+
+    const next = structuredClone(this._doc);
+    const [removed] = next.regions[found.region].splice(found.index, 1);
+
+    this._doc = next;
+    this._emit('statechange', { doc: this._doc });
+    return {
+      ok: true,
+      nextDoc: next,
+      action: 'remove',
+      widgetId: removed?.widgetId,
+      instanceId,
+      from: { region: found.region, index: found.index },
+    };
+  }
+
+  /**
+   * Dry-run: compute valid drop targets for a widgetId. Thin re-export of
+   * computeValidTargets, kept here so UI code has one import surface.
+   */
+  validTargetsFor(widgetId, sourcePosition = null) {
+    return computeValidTargets(
       widgetId,
       this._doc,
       this._template,
       this._registry,
       sourcePosition,
     );
-    this._picked = {
-      widgetId,
-      source: sourcePosition ? { regionName: source.regionName, index: source.index } : 'palette',
-      via: via === 'keyboard' ? 'keyboard' : 'pointer',
-      validTargets,
-    };
-    this._emit('statechange', { picked: this._picked });
-    return this._picked;
-  }
-
-  cancel() {
-    if (!this._picked) return;
-    this._picked = null;
-    this._emit('statechange', { picked: null });
-  }
-
-  /**
-   * Finalize a drop against the cached valid targets.
-   * Returns { ok, nextDoc?, reason? } — on success, the controller's
-   * internal doc is updated.
-   */
-  drop({ target }) {
-    if (!this._picked) return { ok: false, reason: 'not-picked-up' };
-    if (!target || typeof target !== 'object') {
-      return { ok: false, reason: 'invalid-target' };
-    }
-    const { regionName, index } = target;
-    const { validTargets, widgetId, source } = this._picked;
-
-    const regionEntry = validTargets.validRegions.find(
-      (r) => r.regionName === regionName,
-    );
-    if (!regionEntry) {
-      return { ok: false, reason: 'region-invalid' };
-    }
-    if (
-      !Array.isArray(regionEntry.canInsertAt) ||
-      index < 0 ||
-      index >= regionEntry.canInsertAt.length ||
-      regionEntry.canInsertAt[index] !== true
-    ) {
-      return { ok: false, reason: regionEntry.reason ?? 'index-invalid' };
-    }
-
-    // Apply mutation to a clone of the current doc.
-    const next = structuredClone(this._doc);
-    if (!next.regions || typeof next.regions !== 'object') next.regions = {};
-    if (!Array.isArray(next.regions[regionName])) next.regions[regionName] = [];
-
-    let entryToInsert;
-    if (source === 'palette') {
-      // New placement — caller must have set config etc. The palette path
-      // ships a fresh entry via addFromPalette(); drop() alone can't
-      // synthesize one (no config schema knowledge here).
-      return { ok: false, reason: 'palette-must-use-addFromPalette' };
-    }
-
-    // Move or reorder: remove from current position first.
-    const fromEntries = next.regions[source.regionName];
-    if (!Array.isArray(fromEntries) || source.index >= fromEntries.length) {
-      return { ok: false, reason: 'source-gone' };
-    }
-    const [picked] = fromEntries.splice(source.index, 1);
-    entryToInsert = picked;
-
-    // When moving within the same region, removing shifts subsequent
-    // indices down by 1 — adjust the insertion index accordingly.
-    let insertIndex = index;
-    if (source.regionName === regionName && source.index < index) {
-      insertIndex = index - 1;
-    }
-
-    next.regions[regionName].splice(insertIndex, 0, entryToInsert);
-
-    this._doc = next;
-    this._picked = null;
-    this._emit('statechange', { picked: null });
-    return {
-      ok: true,
-      nextDoc: next,
-      action: 'move',
-      widgetId,
-      from: source,
-      to: { regionName, index: insertIndex },
-    };
-  }
-
-  /**
-   * Relational drop sugar — "drop before/after the widget currently at
-   * anchorIndex in anchorRegion". Thin wrapper around drop() that
-   * translates the UI's before/after vocabulary into the insertion
-   * index expected by computeValidTargets / drop().
-   *
-   * @param {object} opts
-   * @param {string} opts.anchorRegion
-   * @param {number} opts.anchorIndex
-   * @param {'before'|'after'} opts.side
-   */
-  dropRelative({ anchorRegion, anchorIndex, side }) {
-    if (typeof anchorIndex !== 'number' || anchorIndex < 0) {
-      return { ok: false, reason: 'invalid-anchor' };
-    }
-    const insertIndex = side === 'before' ? anchorIndex : anchorIndex + 1;
-    return this.drop({ target: { regionName: anchorRegion, index: insertIndex } });
-  }
-
-  /**
-   * Add a new widget from the palette. Caller supplies the fully-formed
-   * WidgetInstance (widgetId, instanceId, config). Validated against the
-   * current picked valid-target cache if a pickUp is in progress.
-   */
-  addFromPalette({ entry, target }) {
-    if (!entry || typeof entry !== 'object') {
-      return { ok: false, reason: 'invalid-entry' };
-    }
-    if (!target || typeof target !== 'object') {
-      return { ok: false, reason: 'invalid-target' };
-    }
-
-    // Compute a fresh validTargets if pickUp wasn't called (programmatic
-    // drop), or reuse the cache if it matches.
-    let validTargets;
-    if (
-      this._picked &&
-      this._picked.widgetId === entry.widgetId &&
-      this._picked.source === 'palette'
-    ) {
-      validTargets = this._picked.validTargets;
-    } else {
-      validTargets = computeValidTargets(
-        entry.widgetId,
-        this._doc,
-        this._template,
-        this._registry,
-        null,
-      );
-    }
-
-    const regionEntry = validTargets.validRegions.find(
-      (r) => r.regionName === target.regionName,
-    );
-    if (!regionEntry) {
-      return { ok: false, reason: 'region-invalid' };
-    }
-    if (
-      !Array.isArray(regionEntry.canInsertAt) ||
-      target.index < 0 ||
-      target.index >= regionEntry.canInsertAt.length ||
-      regionEntry.canInsertAt[target.index] !== true
-    ) {
-      return { ok: false, reason: regionEntry.reason ?? 'index-invalid' };
-    }
-
-    const next = structuredClone(this._doc);
-    if (!next.regions || typeof next.regions !== 'object') next.regions = {};
-    if (!Array.isArray(next.regions[target.regionName])) {
-      next.regions[target.regionName] = [];
-    }
-    next.regions[target.regionName].splice(target.index, 0, structuredClone(entry));
-
-    this._doc = next;
-    this._picked = null;
-    this._emit('statechange', { picked: null });
-    return {
-      ok: true,
-      nextDoc: next,
-      action: 'add',
-      widgetId: entry.widgetId,
-      to: { regionName: target.regionName, index: target.index },
-    };
-  }
-
-  /**
-   * Remove a widget. Any region can be emptied — the "required" flag on
-   * templates is informational only; pages may exist with empty regions.
-   */
-  deleteInstance({ regionName, index }) {
-    const next = structuredClone(this._doc);
-    if (!next.regions || !Array.isArray(next.regions[regionName])) {
-      return { ok: false, reason: 'region-missing' };
-    }
-    if (index < 0 || index >= next.regions[regionName].length) {
-      return { ok: false, reason: 'index-out-of-range' };
-    }
-
-    const [removed] = next.regions[regionName].splice(index, 1);
-    this._doc = next;
-    this._picked = null;
-    this._emit('statechange', { picked: null });
-    return {
-      ok: true,
-      nextDoc: next,
-      action: 'delete',
-      widgetId: removed?.widgetId,
-      from: { regionName, index },
-    };
   }
 }

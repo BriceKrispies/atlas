@@ -1,11 +1,18 @@
 /**
  * <widget-palette> — lists every widget in the registry that could be placed
- * into SOME region of the active template. Each entry is a focusable
- * atlas-button; activating it calls `onPickUp({ widgetId, via })`.
+ * into SOME region of the active template. Each entry is:
+ *   - a focusable atlas-button
+ *   - a DnD subsystem drag source (Pointer Events, not HTML5 DnD)
+ *   - uniquely named `palette-chip-{widgetId}` so Playwright can select
+ *     it via the auto-testid `widget-palette.palette-chip-{widgetId}`
  *
- * The palette does not own drag state — it's a pure list. Drag/drop and
- * keyboard placement are coordinated by the <content-page> host via the
- * EditorController.
+ * Interaction:
+ *   - click / keyboard Enter  → calls host.onChipSelect({widgetId})
+ *                               (host sets its "picked chip" state; next
+ *                                zone click commits via editor.add)
+ *   - pointer drag            → registered with the DnD subsystem by
+ *                                edit-mount. Drop on a zone commits via
+ *                                editor.add.
  *
  * Constitutional rules:
  *   C2: test-ids auto-computed from `name` attribute + AtlasSurface ancestor.
@@ -26,8 +33,10 @@ export class WidgetPaletteElement extends AtlasSurface {
     this._pageDoc = null;
     /** @type {object | null} */
     this._templateManifest = null;
-    /** @type {((arg: { widgetId: string, via: 'pointer' | 'keyboard' }) => void) | null} */
-    this.onPickUp = null;
+    /** @type {((arg: { widgetId: string }) => void) | null} */
+    this.onChipSelect = null;
+    /** @type {((arg: { widgetId: string, region?: string, index?: number }) => void) | null} */
+    this.onChipActivate = null;
   }
 
   set widgetRegistry(value) {
@@ -77,8 +86,6 @@ export class WidgetPaletteElement extends AtlasSurface {
     const out = [];
     for (const summary of reg.list()) {
       const result = computeValidTargets(summary.widgetId, doc, tpl, reg, null);
-      // Keep widgets that have at least ONE region with at least ONE
-      // insertable index. (A fully-capped region still counts as invalid.)
       const anyInsertable = result.validRegions.some((r) =>
         r.canInsertAt.some((b) => b === true),
       );
@@ -113,21 +120,23 @@ export class WidgetPaletteElement extends AtlasSurface {
     const list = this.querySelector('[data-palette-list]');
     for (const summary of widgets) {
       const btn = document.createElement('atlas-button');
-      btn.setAttribute('name', 'palette-chip');
+      btn.setAttribute('name', `palette-chip-${summary.widgetId}`);
+      btn.setAttribute('data-palette-chip', '');
       btn.setAttribute('data-widget-id', summary.widgetId);
       btn.setAttribute('size', 'sm');
       btn.setAttribute('variant', 'ghost');
       btn.textContent = summary.displayName ?? summary.widgetId;
+
       btn.addEventListener('click', () => {
-        if (typeof this.onPickUp === 'function') {
-          this.onPickUp({ widgetId: summary.widgetId, via: 'pointer' });
+        if (typeof this.onChipSelect === 'function') {
+          this.onChipSelect({ widgetId: summary.widgetId });
         }
       });
       btn.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
           ev.preventDefault();
-          if (typeof this.onPickUp === 'function') {
-            this.onPickUp({ widgetId: summary.widgetId, via: 'keyboard' });
+          if (typeof this.onChipSelect === 'function') {
+            this.onChipSelect({ widgetId: summary.widgetId });
           }
         }
       });

@@ -1,10 +1,16 @@
 /**
  * Sandbox-specific Playwright helpers.
  *
- * The sandbox renders its sidebar and preview area inside a shadow root
- * on <atlas-sandbox>. Playwright's default locators pierce shadow DOM
- * transparently, so these helpers hide only the selector convention —
- * not any shadow-DOM trickery.
+ * The editor is built around an imperative, instance-keyed EditorAPI and
+ * explicit <atlas-box data-drop-slot> DOM elements (one per empty region
+ * — filled regions render no slot). Every slot, cell, and cell-chrome
+ * control has a unique `name` attribute that becomes a stable
+ * auto-generated data-testid, so tests never need pointer-geometry math.
+ *
+ * Drag is handled by the internal DnD subsystem (Pointer Events, not the
+ * native HTML5 DnD API). For reliable mutations in tests prefer the
+ * bypass-UI helper `runEditorOp(page, ...)`; to exercise the sensor
+ * end-to-end, use `page.mouse.down/move/up` on real coordinates.
  */
 
 /**
@@ -31,11 +37,7 @@ export async function selectVariant(page, variantName) {
   const slug = String(variantName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const tab = page.locator(`[data-testid="sandbox.variant-switcher.${slug}"]`);
   await tab.click();
-  await expect_selected(tab);
-}
-
-async function expect_selected(locator) {
-  const selected = await locator.getAttribute('aria-selected');
+  const selected = await tab.getAttribute('aria-selected');
   if (selected !== 'true') {
     throw new Error(`Tab is not selected (aria-selected=${selected})`);
   }
@@ -55,60 +57,50 @@ export function widgetCell(page, region, index) {
 }
 
 /**
- * Locator for the empty-region drop zone for a region, rendered during
- * an active drag when the region has no visible cells.
+ * Locator for a region's drop slot. Each region section is the slot; in
+ * edit mode an EMPTY slot carries `data-empty="true"` and accepts drops.
+ * A filled slot has no `data-empty` and ignores drops (so the locator
+ * below only matches empty slots — that's the "droppable slot").
  *
  * @param {import('@playwright/test').Page} page
  * @param {string} region
  */
-export function emptyDropZone(page, region) {
+export function dropSlot(page, region) {
   return page.locator(
-    `section[data-slot="${region}"] > [data-drop-empty][data-region="${region}"]`,
+    `section[data-editor-slot="${region}"][data-empty="true"]`,
   );
 }
 
 /**
- * Pointer-drag a source element onto a specific half of a target cell.
- * Uses Pointer Events since the editor listens for pointer*, not HTML5
- * drag-and-drop.
+ * Locator for the delete button on a cell, keyed by instanceId.
  *
  * @param {import('@playwright/test').Page} page
- * @param {import('@playwright/test').Locator} source
- * @param {import('@playwright/test').Locator} target
- * @param {{ half?: 'before' | 'after', offsetFraction?: number }} [options]
- *   half='before' aims the mouse at the top ~25% of the target; 'after'
- *   aims at the bottom ~25%. Default is the centre. offsetFraction
- *   overrides (0 = top edge, 1 = bottom edge).
+ * @param {string} instanceId
  */
-export async function pointerDrag(page, source, target, options = {}) {
-  const sbox = await source.boundingBox();
-  if (!sbox) throw new Error('pointerDrag: source has no bounding box');
-  const sx = sbox.x + sbox.width / 2;
-  const sy = sbox.y + sbox.height / 2;
+export function deleteButton(page, instanceId) {
+  return page.locator(`[data-testid="content-page.delete-${instanceId}"]`);
+}
 
-  await page.mouse.move(sx, sy);
-  await page.mouse.down();
+/**
+ * Locator for the drag handle on a cell, keyed by instanceId.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} instanceId
+ */
+export function dragHandle(page, instanceId) {
+  return page.locator(`[data-testid="content-page.drag-handle-${instanceId}"]`);
+}
 
-  // Pickup fires on pointerdown. Layout can shift (source cell becomes
-  // display:none, empty-drop zones appear) so recompute the target box
-  // AFTER pickup.
-  const tbox = await target.boundingBox();
-  if (!tbox) throw new Error('pointerDrag: target has no bounding box after pickup');
-
-  let fraction = 0.5;
-  if (typeof options.offsetFraction === 'number') {
-    fraction = options.offsetFraction;
-  } else if (options.half === 'before') {
-    fraction = 0.2;
-  } else if (options.half === 'after') {
-    fraction = 0.8;
-  }
-  const tx = tbox.x + tbox.width / 2;
-  const ty = tbox.y + tbox.height * fraction;
-
-  await page.mouse.move((sx + tx) / 2, (sy + ty) / 2, { steps: 4 });
-  await page.mouse.move(tx, ty, { steps: 4 });
-  await page.mouse.up();
+/**
+ * Locator for a palette chip by widgetId.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} widgetId
+ */
+export function paletteChip(page, widgetId) {
+  return page.locator(
+    `[data-testid="widget-palette.palette-chip-${widgetId}"]`,
+  );
 }
 
 /**
@@ -122,6 +114,96 @@ export async function widgetTextsInRegion(page, region) {
   return page
     .locator(`section[data-slot="${region}"] > [data-widget-cell]`)
     .allInnerTexts();
+}
+
+/**
+ * Read the ordered instanceIds of widgets in a region.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} region
+ */
+export async function widgetInstanceIdsInRegion(page, region) {
+  return page
+    .locator(`section[data-slot="${region}"] > [data-widget-cell]`)
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-instance-id')));
+}
+
+/**
+ * Wait for a <content-page> to have its imperative editor API attached.
+ * Must be called after selectVariant('Edit'), before any runEditorOp /
+ * chrome-click assertion that depends on the editor being live.
+ *
+ * The sandbox app mounts specimens inside <atlas-sandbox>'s shadow root,
+ * so `document.querySelector('content-page[...]')` returns null — we have
+ * to walk shadow roots breadth-first.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} pageId
+ */
+export async function waitForEditor(page, pageId) {
+  await page.waitForFunction(
+    (pid) => {
+      const deepFind = (id) => {
+        const stack = [document];
+        while (stack.length) {
+          const root = stack.shift();
+          const found =
+            root.querySelector && root.querySelector(`content-page[data-page-id="${id}"]`);
+          if (found) return found;
+          const descendants = root.querySelectorAll
+            ? Array.from(root.querySelectorAll('*'))
+            : [];
+          for (const el of descendants) {
+            if (el.shadowRoot) stack.push(el.shadowRoot);
+          }
+        }
+        return null;
+      };
+      const cp = deepFind(pid);
+      return !!(cp && cp.editor);
+    },
+    pageId,
+  );
+}
+
+/**
+ * Call the imperative editor API exposed at contentPageEl.editor.
+ * Use this when a test wants to drive a mutation the way an agent or
+ * another surface would — skipping the UI entirely. Returns the API's
+ * result object (`{ ok, ... }`).
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} pageId
+ * @param {'add'|'move'|'update'|'remove'|'list'|'get'|'can'} op
+ * @param {object} [args]
+ */
+export async function runEditorOp(page, pageId, op, args) {
+  return page.evaluate(
+    ({ pageId, op, args }) => {
+      const deepFind = (id) => {
+        const stack = [document];
+        while (stack.length) {
+          const root = stack.shift();
+          const found =
+            root.querySelector && root.querySelector(`content-page[data-page-id="${id}"]`);
+          if (found) return found;
+          const descendants = root.querySelectorAll
+            ? Array.from(root.querySelectorAll('*'))
+            : [];
+          for (const el of descendants) {
+            if (el.shadowRoot) stack.push(el.shadowRoot);
+          }
+        }
+        return null;
+      };
+      const cp = deepFind(pageId);
+      if (!cp || !cp.editor) return { ok: false, reason: 'editor-not-attached' };
+      const fn = cp.editor[op];
+      if (typeof fn !== 'function') return { ok: false, reason: 'op-not-found' };
+      return fn.call(cp.editor, args);
+    },
+    { pageId, op, args },
+  );
 }
 
 /**

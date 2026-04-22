@@ -7,6 +7,7 @@ export { BREAKPOINTS, matchesBreakpoint } from './breakpoints.js';
 // Interactive elements (Shadow DOM)
 import './atlas-button.js';
 import './atlas-input.js';
+import './atlas-multi-select.js';
 import './atlas-skeleton.js';
 import './atlas-badge.js';
 import './atlas-tab-bar.js';

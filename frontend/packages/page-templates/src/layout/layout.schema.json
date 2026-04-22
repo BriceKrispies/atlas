@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas.dev/schemas/layout_document.schema.json",
+  "title": "LayoutDocument",
+  "description": "A layout document: a grid of named slots that widgets bind to. Slots are rectangles (col, row, colSpan, rowSpan) in a fixed column grid with a fixed row height and gap.",
+  "type": "object",
+  "required": ["layoutId", "version", "grid", "slots"],
+  "additionalProperties": false,
+  "properties": {
+    "layoutId": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "displayName": { "type": "string" },
+    "description": { "type": "string" },
+    "grid": {
+      "type": "object",
+      "required": ["columns", "rowHeight", "gap"],
+      "additionalProperties": false,
+      "properties": {
+        "columns": { "type": "integer", "minimum": 1 },
+        "rowHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "gap": { "type": "number", "minimum": 0 }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "col", "row", "colSpan", "rowSpan"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$" },
+          "col": { "type": "integer", "minimum": 1 },
+          "row": { "type": "integer", "minimum": 1 },
+          "colSpan": { "type": "integer", "minimum": 1 },
+          "rowSpan": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

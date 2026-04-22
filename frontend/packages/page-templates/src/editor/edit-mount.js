@@ -1,33 +1,65 @@
 /**
- * edit-mount.js — attaches editor chrome (cell chrome, hover drop targets,
- * palette, announcer) to a <content-page> after its widget-host has mounted
- * in view mode.
+ * edit-mount.js — attaches editor UI to a <content-page>.
  *
- * Drop model: widget-anchored. Every non-source widget cell offers two
- * virtual halves while a drag is active — top = "insert before this widget",
- * bottom = "insert after this widget". The pointer's position in the cell
- * decides which half lights up. Empty regions get a single rectangular
- * drop zone. There are no persistent drop bars in the document flow and
- * no [data-drop-indicator] elements anywhere — edit mode preserves
- * view-mode layout.
+ * The UI is a thin adapter over the `EditorAPI`. Every user interaction
+ * (click, keyboard, drag) ultimately calls one of editor.add / move /
+ * remove. Agents and tests can skip the UI entirely and call the API
+ * directly via `contentPageEl.editor.add({...})`.
  *
- * Editor decorations attached to widget-host children:
- *   - [data-cell-chrome] overlay (drag handle + delete) per cell
- *   - [data-drop-empty] marker in otherwise-empty sections during pickup
- * All are removed in detach(). The cell half-highlights are CSS pseudo
- * elements driven by [data-drop-target] on the cell itself — no DOM added.
+ * Slot model:
+ *
+ *   Each <section data-slot="{region}"> in the template holds AT MOST
+ *   ONE widget. An empty region renders a single drop slot; a filled
+ *   region renders just the cell (no drop slot — the region is not a
+ *   drop target). Nothing reorders on drop or pickup.
+ *
+ *   <section data-slot="{region}">
+ *     // filled:
+ *     <div data-widget-cell data-instance-id="{id}" name="cell-{id}">
+ *       <atlas-box data-cell-chrome>
+ *         <atlas-button name="drag-handle-{id}" />
+ *         <atlas-button name="delete-{id}" />
+ *       </atlas-box>
+ *       [widget body]
+ *     </div>
+ *     // empty:
+ *     <atlas-box data-drop-slot data-region="{region}" name="drop-slot-{region}"></atlas-box>
+ *   </section>
+ *
+ * Every cell and drop slot has a unique `name` attribute → unique
+ * auto-testid. Playwright selects by testid.
+ *
+ * Interaction model:
+ *
+ *   1. CLICK / KEYBOARD "two-tap" flow
+ *      - click a cell   → cell selected (data-selected=true); empty slots
+ *                         become active (data-active=true)
+ *      - click a slot   → editor.move({instanceId, region, index: 0})
+ *      - click a chip   → chip selected; next slot click → editor.add
+ *      - Escape         → clear selection
+ *
+ *   2. POINTER DRAG (Pointer Events subsystem, see ../dnd/)
+ *      - Cells and palette chips register as DnD sources.
+ *      - Drop slots (empty regions) register as DnD targets. Filled
+ *        regions register no target, so "slot is occupied" naturally
+ *        means "not a drop target" — no error path.
+ *      - On drop the commit boundary calls editor.move / editor.add.
+ *
+ *   The native HTML5 Drag and Drop API is NOT used anywhere. See
+ *   packages/page-templates/src/dnd/ for the Pointer Events subsystem.
  */
 
 import { EditorController } from './editor-controller.js';
+import { EditorAPI, freshInstanceId } from './editor-api.js';
 import { createAnnouncer } from './a11y.js';
+import { DndController } from '../dnd/controller.js';
+import { ensureDndStyles } from '../dnd/styles.js';
 
 /**
- * Attach the editor to a content-page. Returns a teardown function.
- *
  * @param {object} options
- * @param {HTMLElement} options.contentPageEl — the <content-page>
- * @param {HTMLElement} options.templateEl — the mounted template element
- * @param {HTMLElement} options.widgetHostEl — the mounted <widget-host>
+ * @param {HTMLElement} options.contentPageEl
+ * @param {HTMLElement} options.templateEl
+ * @param {HTMLElement} options.widgetHostEl
  * @param {object} options.pageDoc
  * @param {object} options.templateManifest
  * @param {object} options.widgetRegistry
@@ -52,725 +84,468 @@ export function attachEditor({
   const announcer = createAnnouncer(contentPageEl);
   const telemetry = typeof onTelemetry === 'function' ? onTelemetry : () => {};
 
-  /** @type {HTMLElement | null} */
-  let toastEl = null;
-  /** @type {number | null} */
-  let toastTimer = null;
-  function toast(message, variant = 'info') {
-    if (toastEl && toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
-    toastEl = contentPageEl.ownerDocument.createElement('atlas-box');
-    toastEl.setAttribute('data-editor-toast', '');
-    toastEl.setAttribute('data-variant', variant);
-    toastEl.setAttribute('name', 'editor-toast');
-    toastEl.setAttribute('role', variant === 'error' ? 'alert' : 'status');
-    toastEl.textContent = String(message);
-    contentPageEl.appendChild(toastEl);
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      if (toastEl && toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
-      toastEl = null;
-      toastTimer = null;
-    }, 3000);
+  function emitTelemetry(event, payload) {
+    telemetry({ event, payload });
   }
+
+  const api = new EditorAPI({
+    controller,
+    onCommit,
+    onTelemetry: emitTelemetry,
+    announce: (msg) => announcer.announce(msg),
+  });
 
   /** @type {Array<() => void>} */
   const teardowns = [];
-  /** @type {HTMLElement | null} */
-  let ghostEl = null;
 
-  // --- helpers ---------------------------------------------------------
+  ensureDndStyles(contentPageEl);
+
+  const dndController = new DndController({
+    root: typeof document !== 'undefined' ? document : undefined,
+    activationDistance: 4,
+    onDrop: async ({ payload, target }) => commitDndDrop(payload, target),
+  });
+  dndController.attach();
+  teardowns.push(() => dndController.detach());
+
+  // ---------------------------------------------------------------------
+  // Transient selection state (for two-tap flow).
+  //   { kind: 'cell', instanceId }  — picked cell, waiting for slot click
+  //   { kind: 'chip', widgetId   }  — picked chip, waiting for slot click
+  //   null                          — idle
+  // ---------------------------------------------------------------------
+
+  /** @type {{kind:'cell',instanceId:string}|{kind:'chip',widgetId:string}|null} */
+  let selection = null;
+
+  function setSelection(next) {
+    selection = next;
+    if (next) {
+      contentPageEl.setAttribute(
+        'data-editor-selected',
+        `${next.kind}:${next.kind === 'cell' ? next.instanceId : next.widgetId}`,
+      );
+    } else {
+      contentPageEl.removeAttribute('data-editor-selected');
+    }
+    refreshSelectionDecorations();
+  }
+
+  function clearSelection() {
+    if (!selection) return;
+    setSelection(null);
+  }
+
+  function refreshSelectionDecorations() {
+    for (const cell of widgetHostEl.querySelectorAll('[data-widget-cell]')) {
+      cell.removeAttribute('data-selected');
+    }
+    for (const slot of widgetHostEl.querySelectorAll('section[data-editor-slot]')) {
+      slot.removeAttribute('data-active');
+      slot.removeAttribute('data-invalid');
+    }
+    for (const chip of contentPageEl.querySelectorAll('[data-palette-chip]')) {
+      chip.removeAttribute('data-selected');
+    }
+    if (!selection) return;
+
+    if (selection.kind === 'cell') {
+      const cellEl = widgetHostEl.querySelector(
+        `[data-widget-cell][data-instance-id="${selection.instanceId}"]`,
+      );
+      if (cellEl) cellEl.setAttribute('data-selected', 'true');
+      const found = controller.findInstance(selection.instanceId);
+      const valid = found
+        ? controller.validTargetsFor(found.entry.widgetId, {
+            regionName: found.region,
+            index: found.index,
+          })
+        : null;
+      markSlotValidity(valid);
+    } else if (selection.kind === 'chip') {
+      const chipEl = contentPageEl.querySelector(
+        `[data-palette-chip][data-widget-id="${selection.widgetId}"]`,
+      );
+      if (chipEl) chipEl.setAttribute('data-selected', 'true');
+      const valid = controller.validTargetsFor(selection.widgetId, null);
+      markSlotValidity(valid);
+    }
+  }
+
+  function markSlotValidity(validTargets) {
+    if (!validTargets) return;
+    // Only EMPTY slots are real drop targets; filled slots don't get the
+    // active/invalid marker (their cells render normally).
+    for (const slot of widgetHostEl.querySelectorAll(
+      'section[data-editor-slot][data-empty="true"]',
+    )) {
+      const region = slot.getAttribute('data-slot');
+      const regionEntry = validTargets.validRegions.find(
+        (r) => r.regionName === region,
+      );
+      if (regionEntry) slot.setAttribute('data-active', 'true');
+      else slot.setAttribute('data-invalid', 'true');
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // DOM rendering: one cell OR one drop slot per region. Rebuilt on every
+  // doc change.
+  // ---------------------------------------------------------------------
 
   function regionSections() {
     return Array.from(widgetHostEl.querySelectorAll('section[data-slot]'));
   }
 
-  function cellsIn(section) {
-    return Array.from(section.querySelectorAll(':scope > [data-widget-cell]'));
+  /** @type {Array<() => void>} */
+  let dndRegistrations = [];
+
+  function clearDndRegistrations() {
+    for (const un of dndRegistrations) {
+      try {
+        un();
+      } catch {
+        /* ignore */
+      }
+    }
+    dndRegistrations = [];
+    dndController.setTargets([]);
   }
 
-  function allCells() {
-    return Array.from(widgetHostEl.querySelectorAll('[data-widget-cell]'));
+  function clearEditorDecorations() {
+    clearDndRegistrations();
+    for (const el of widgetHostEl.querySelectorAll('[data-cell-chrome]')) {
+      el.remove?.();
+    }
+    for (const cell of widgetHostEl.querySelectorAll('[data-widget-cell]')) {
+      cell.removeAttribute('tabindex');
+      cell.removeAttribute('data-instance-id');
+      cell.removeAttribute('data-region');
+      cell.removeAttribute('data-cell-index');
+      cell.removeAttribute('data-selected');
+      cell.removeAttribute('name');
+    }
+    for (const section of regionSections()) {
+      section.removeAttribute('data-editor-slot');
+      section.removeAttribute('data-empty');
+      section.removeAttribute('data-active');
+      section.removeAttribute('data-invalid');
+      section.removeAttribute('role');
+      section.removeAttribute('tabindex');
+      section.removeAttribute('aria-label');
+      section.removeAttribute('name');
+    }
+  }
+
+  function decorate() {
+    clearEditorDecorations();
+    const doc = controller.doc;
+    /** @type {Array<import('../dnd/types.js').DropTarget>} */
+    const targets = [];
+    for (const section of regionSections()) {
+      const region = section.getAttribute('data-slot');
+      const entries = doc?.regions?.[region] ?? [];
+      const cells = Array.from(
+        section.querySelectorAll(':scope > [data-widget-cell]'),
+      );
+
+      for (let i = 0; i < cells.length; i++) {
+        decorateCell(cells[i], region, i, entries[i]);
+      }
+
+      // The section IS the slot. It renders with a fixed footprint whether
+      // it holds a widget or not, so moving widgets in/out never shifts
+      // other slots. Only empty slots register as drop targets.
+      section.setAttribute('data-editor-slot', region);
+      section.setAttribute('name', `drop-slot-${region}`);
+
+      if (entries.length === 0) {
+        section.setAttribute('data-empty', 'true');
+        section.setAttribute('role', 'button');
+        section.setAttribute('tabindex', '0');
+        section.setAttribute('aria-label', `Drop into ${region}`);
+        targets.push({
+          element: section,
+          id: `slot-${region}`,
+          containerId: region,
+          accepts: (payload) =>
+            payload?.type === 'cell' || payload?.type === 'chip',
+        });
+      }
+    }
+    dndController.setTargets(targets);
+  }
+
+  // Delegated click + keyboard handlers for empty slots. One set of
+  // listeners for the lifetime of this attach — no per-decorate rebuild.
+  function onHostClick(ev) {
+    const section = ev.target?.closest?.('section[data-slot][data-empty="true"]');
+    if (!section || !widgetHostEl.contains(section)) return;
+    const region = section.getAttribute('data-slot');
+    if (!region) return;
+    ev.stopPropagation();
+    onSlotActivated(region);
+  }
+  function onHostKeydown(ev) {
+    if (ev.target?.tagName !== 'SECTION') return;
+    const section = ev.target;
+    if (!section.hasAttribute('data-empty')) return;
+    if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+      ev.preventDefault();
+      const region = section.getAttribute('data-slot');
+      if (region) onSlotActivated(region);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      clearSelection();
+    }
+  }
+  widgetHostEl.addEventListener('click', onHostClick);
+  widgetHostEl.addEventListener('keydown', onHostKeydown);
+  teardowns.push(() => {
+    widgetHostEl.removeEventListener('click', onHostClick);
+    widgetHostEl.removeEventListener('keydown', onHostKeydown);
+  });
+
+  function decorateCell(cellEl, region, index, entry) {
+    const instanceId = entry?.instanceId ?? `cell-${region}-${index}`;
+    cellEl.setAttribute('tabindex', '0');
+    cellEl.setAttribute('data-instance-id', instanceId);
+    cellEl.setAttribute('data-region', region);
+    cellEl.setAttribute('data-cell-index', String(index));
+    cellEl.setAttribute('name', `cell-${instanceId}`);
+
+    for (const old of cellEl.querySelectorAll(':scope > [data-cell-chrome]')) {
+      old.remove?.();
+    }
+
+    const chrome = contentPageEl.ownerDocument.createElement('atlas-box');
+    chrome.setAttribute('data-cell-chrome', '');
+    chrome.setAttribute('name', `chrome-${instanceId}`);
+
+    const handle = contentPageEl.ownerDocument.createElement('atlas-button');
+    handle.setAttribute('name', `drag-handle-${instanceId}`);
+    handle.setAttribute('size', 'sm');
+    handle.setAttribute('variant', 'ghost');
+    handle.setAttribute('aria-label', 'Drag widget');
+    handle.setAttribute('tabindex', '-1');
+    handle.textContent = '⋮⋮';
+
+    const del = contentPageEl.ownerDocument.createElement('atlas-button');
+    del.setAttribute('name', `delete-${instanceId}`);
+    del.setAttribute('size', 'sm');
+    del.setAttribute('variant', 'danger');
+    del.setAttribute('aria-label', 'Delete widget');
+    del.textContent = '×';
+    del.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const res = await api.remove({ instanceId });
+      if (res.ok) {
+        announcer.announce(`${findDisplayName(entry?.widgetId)} deleted.`);
+      } else {
+        announcer.announce(`Cannot delete: ${res.reason}.`);
+      }
+    });
+
+    chrome.appendChild(handle);
+    chrome.appendChild(del);
+    cellEl.appendChild(chrome);
+
+    cellEl.addEventListener('click', (ev) => {
+      if (ev.target && typeof ev.target.closest === 'function') {
+        if (ev.target.closest('[name^="delete-"]')) return;
+      }
+      ev.stopPropagation();
+      toggleCellSelection(instanceId);
+    });
+    cellEl.addEventListener('keydown', (ev) => {
+      if (ev.target !== cellEl) return;
+      if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+        ev.preventDefault();
+        toggleCellSelection(instanceId);
+      } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        ev.preventDefault();
+        void api.remove({ instanceId }).then((res) => {
+          if (res.ok)
+            announcer.announce(`${findDisplayName(entry?.widgetId)} deleted.`);
+          else announcer.announce(`Cannot delete: ${res.reason}.`);
+        });
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        clearSelection();
+      }
+    });
+
+    const unreg = dndController.registerSource({
+      element: cellEl,
+      containerId: region,
+      getPayload: () => ({ type: 'cell', id: instanceId }),
+    });
+    dndRegistrations.push(unreg);
+  }
+
+  function toggleCellSelection(instanceId) {
+    if (
+      selection &&
+      selection.kind === 'cell' &&
+      selection.instanceId === instanceId
+    ) {
+      clearSelection();
+      return;
+    }
+    setSelection({ kind: 'cell', instanceId });
+    const entry = controller.findInstance(instanceId);
+    const label = findDisplayName(entry?.entry?.widgetId);
+    announcer.announce(
+      `Selected ${label}. Click or press Enter on a drop slot to move it, or press Escape to cancel.`,
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Slot activations: click / Enter / pointer-drop all funnel here.
+  // ---------------------------------------------------------------------
+
+  async function onSlotActivated(region) {
+    if (!selection) {
+      announcer.announce('Select a widget or palette item first.');
+      return;
+    }
+    await commitSlot(region);
+  }
+
+  /**
+   * Called by the DnD subsystem's commit boundary when a pointer-driven
+   * drag ends on a registered drop slot.
+   *
+   * @param {import('../dnd/types.js').DragPayload} payload
+   * @param {import('../dnd/types.js').DropTarget} target
+   */
+  async function commitDndDrop(payload, target) {
+    const region = target?.containerId;
+    if (!payload || typeof region !== 'string') {
+      return { ok: false, reason: 'invalid-target' };
+    }
+    let res;
+    if (payload.type === 'cell') {
+      res = await api.move({ instanceId: payload.id, region, index: 0 });
+    } else if (payload.type === 'chip') {
+      res = await api.add({ widgetId: payload.id, region, index: 0 });
+    } else {
+      return { ok: false, reason: 'unknown-payload' };
+    }
+    announceResult(res, region);
+    clearSelection();
+    return res;
+  }
+
+  async function commitSlot(region) {
+    if (!selection) return;
+    let res;
+    if (selection.kind === 'cell') {
+      res = await api.move({
+        instanceId: selection.instanceId,
+        region,
+        index: 0,
+      });
+    } else {
+      res = await api.add({ widgetId: selection.widgetId, region, index: 0 });
+    }
+    announceResult(res, region);
+    clearSelection();
+  }
+
+  function announceResult(res, region) {
+    if (!res.ok) {
+      announcer.announce(`Drop rejected: ${res.reason}.`);
+      return;
+    }
+    if (res.noop) {
+      announcer.announce('No change.');
+      return;
+    }
+    const label = findDisplayName(res.widgetId);
+    if (res.action === 'move') {
+      announcer.announce(`${label} moved to ${region}.`);
+    } else if (res.action === 'add') {
+      announcer.announce(`${label} added to ${region}.`);
+    }
   }
 
   function findDisplayName(widgetId) {
     try {
       const entry = widgetRegistry.get(widgetId);
-      return entry?.manifest?.displayName ?? widgetId;
+      return entry?.manifest?.displayName ?? widgetId ?? 'widget';
     } catch {
-      return widgetId;
+      return widgetId ?? 'widget';
     }
   }
 
-  function cellLabel(cell) {
-    const regionName = cell.getAttribute('data-region');
-    const idx = parseInt(cell.getAttribute('data-cell-index') ?? '-1', 10);
-    const entries = controller.doc.regions?.[regionName] ?? [];
-    const entry = entries[idx];
-    return entry ? findDisplayName(entry.widgetId) : 'widget';
-  }
+  // ---------------------------------------------------------------------
+  // Palette hookup.
+  // ---------------------------------------------------------------------
 
-  function clearAllDropHighlights() {
-    for (const cell of allCells()) {
-      cell.removeAttribute('data-drop-target');
-      cell.removeAttribute('data-drop-invalid');
+  /** @type {Array<() => void>} */
+  let paletteDndUnregs = [];
+
+  function clearPaletteDndRegistrations() {
+    for (const un of paletteDndUnregs) {
+      try {
+        un();
+      } catch {
+        /* ignore */
+      }
     }
-    for (const empty of widgetHostEl.querySelectorAll('[data-drop-empty]')) {
-      empty.removeAttribute('data-hover');
-    }
+    paletteDndUnregs = [];
   }
 
-  function clearEmptyZones() {
-    for (const empty of widgetHostEl.querySelectorAll('[data-drop-empty]')) {
-      empty.remove?.();
-    }
-  }
-
-  /**
-   * While a drag is active, any region that looks visually empty (either
-   * has no cells at all, or only the hidden source cell remains) gets a
-   * single "Drop here" rectangle. The rectangle's [data-drop-valid] tells
-   * the author whether the current picked widget is actually allowed there.
-   */
-  function renderEmptyZones() {
-    clearEmptyZones();
-    const valid = controller.getValidTargets();
-    if (!valid) return;
-    const picked = controller.picked;
-    const sourceSameRegion =
-      picked && picked.source && typeof picked.source === 'object'
-        ? picked.source.regionName
-        : null;
-
-    for (const section of regionSections()) {
-      const regionName = section.getAttribute('data-slot');
-      const cells = cellsIn(section);
-      // "Visually empty" = no cells, OR the only cell is the source (hidden).
-      const visiblyEmpty =
-        cells.length === 0 ||
-        (cells.length === 1 &&
-          sourceSameRegion === regionName &&
-          cells[0].getAttribute('data-picked') === 'true');
-      if (!visiblyEmpty) continue;
-
-      const regionEntry = valid.validRegions.find((r) => r.regionName === regionName);
-      const invalidEntry = valid.invalidRegions.find((r) => r.regionName === regionName);
-      const isValid =
-        regionEntry &&
-        Array.isArray(regionEntry.canInsertAt) &&
-        regionEntry.canInsertAt.some((v) => v === true);
-
-      const zone = contentPageEl.ownerDocument.createElement('atlas-box');
-      zone.setAttribute('data-drop-empty', '');
-      zone.setAttribute('data-region', regionName);
-      zone.setAttribute('name', 'drop-empty');
-      zone.setAttribute('data-drop-valid', isValid ? 'true' : 'false');
-      zone.setAttribute(
-        'aria-label',
-        isValid
-          ? `Drop into ${regionName}`
-          : `Cannot drop into ${regionName}: ${invalidEntry?.reason ?? regionEntry?.reason ?? 'not permitted'}`,
-      );
-      zone.textContent = isValid
-        ? `Drop here — ${regionName}`
-        : `Cannot drop into ${regionName}`;
-      section.appendChild(zone);
-    }
-  }
-
-  function markPickedCell(cellEl, picked) {
-    for (const c of allCells()) {
-      c.removeAttribute('data-picked');
-    }
-    if (picked && cellEl) {
-      cellEl.setAttribute('data-picked', 'true');
-    }
-  }
-
-  function removeGhost() {
-    if (ghostEl && ghostEl.parentNode) ghostEl.parentNode.removeChild(ghostEl);
-    ghostEl = null;
-  }
-
-  function createGhost(label, x, y) {
-    removeGhost();
-    const el = contentPageEl.ownerDocument.createElement('atlas-box');
-    el.setAttribute('data-drag-ghost', '');
-    el.setAttribute('name', 'drag-ghost');
-    el.setAttribute('aria-hidden', 'true');
-    el.textContent = label;
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-    contentPageEl.appendChild(el);
-    ghostEl = el;
-  }
-
-  // --- commit path -----------------------------------------------------
-
-  async function commit(result) {
-    if (!result || !result.ok) return false;
-    try {
-      await onCommit(result.nextDoc, {
-        action: result.action,
-        widgetId: result.widgetId,
-        from: result.from,
-        to: result.to,
+  function registerPaletteChips(paletteEl) {
+    clearPaletteDndRegistrations();
+    const chips = paletteEl.querySelectorAll('[data-palette-chip]');
+    for (const chip of chips) {
+      const widgetId = chip.getAttribute('data-widget-id');
+      if (!widgetId) continue;
+      const unreg = dndController.registerSource({
+        element: chip,
+        containerId: 'palette',
+        getPayload: () => ({ type: 'chip', id: widgetId }),
       });
-      const widgetLabel = findDisplayName(result.widgetId);
-      if (result.action === 'move') {
-        const anchor = result.anchorLabel;
-        const side = result.anchorSide;
-        if (anchor && side) {
-          announcer.announce(`${widgetLabel} moved ${side} ${anchor}.`);
-        } else {
-          announcer.announce(
-            `${widgetLabel} moved to ${result.to.regionName} position ${result.to.index + 1}.`,
-          );
-        }
-      } else if (result.action === 'add') {
-        announcer.announce(
-          `${widgetLabel} added to ${result.to.regionName} position ${result.to.index + 1}.`,
-        );
-      } else if (result.action === 'delete') {
-        announcer.announce(`${widgetLabel} deleted.`);
-      }
-      telemetry({
-        event: 'atlas.content-page.edit',
-        payload: {
-          action: result.action,
-          widgetId: result.widgetId,
-          fromRegion: result.from?.regionName,
-          fromIndex: result.from?.index,
-          toRegion: result.to?.regionName,
-          toIndex: result.to?.index,
-        },
-      });
-      return true;
-    } catch (err) {
-      const msg = err?.message ?? String(err);
-      announcer.announce(`Save failed: ${msg}`);
-      telemetry({
-        event: 'atlas.content-page.save.error',
-        payload: { message: msg },
-      });
-      return false;
+      paletteDndUnregs.push(unreg);
     }
   }
-
-  // --- decorate each cell with chrome ---------------------------------
-
-  function decorate() {
-    for (const section of regionSections()) {
-      const regionName = section.getAttribute('data-slot');
-      const cells = cellsIn(section);
-      for (let i = 0; i < cells.length; i++) {
-        decorateCell(cells[i], regionName, i);
-      }
-    }
-  }
-
-  function decorateCell(cell, regionName, index) {
-    cell.setAttribute('tabindex', '0');
-    cell.setAttribute('data-region', regionName);
-    cell.setAttribute('data-cell-index', String(index));
-
-    const chrome = contentPageEl.ownerDocument.createElement('atlas-box');
-    chrome.setAttribute('data-cell-chrome', '');
-    chrome.setAttribute('name', 'cell-chrome');
-
-    // Drag handle is a visual affordance only. The whole cell is grabbable
-    // (see the cell-level pointerdown below), so pointerdown on the handle
-    // simply bubbles to the cell's listener.
-    const handle = contentPageEl.ownerDocument.createElement('atlas-button');
-    handle.setAttribute('name', 'drag-handle');
-    handle.setAttribute('size', 'sm');
-    handle.setAttribute('variant', 'ghost');
-    handle.setAttribute('aria-label', 'Drag widget');
-    handle.setAttribute('tabindex', '-1');
-    handle.textContent = '\u22ee\u22ee';
-
-    const del = contentPageEl.ownerDocument.createElement('atlas-button');
-    del.setAttribute('name', 'delete-button');
-    del.setAttribute('size', 'sm');
-    del.setAttribute('variant', 'danger');
-    del.setAttribute('aria-label', 'Delete widget');
-    del.textContent = '\u00d7';
-    del.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      handleDelete(regionName, index);
-    });
-
-    chrome.appendChild(handle);
-    chrome.appendChild(del);
-    cell.appendChild(chrome);
-
-    // Whole-cell grab: pointerdown anywhere in the cell starts the drag,
-    // except over the delete button. Widget bodies are pointer-events:none
-    // in edit mode so their content can't swallow the pointerdown.
-    cell.addEventListener('pointerdown', (ev) => {
-      // Only left-button presses initiate a drag.
-      if (typeof ev.button === 'number' && ev.button !== 0) return;
-      // Ignore if a drag is already active (prevents double-pickup).
-      if (controller.picked) return;
-      // Let the delete button keep its own click semantics.
-      const overDelete =
-        ev.target &&
-        typeof ev.target.closest === 'function' &&
-        ev.target.closest('[data-testid="content-page.delete-button"], atlas-button[name="delete-button"]');
-      if (overDelete) return;
-      ev.preventDefault();
-      startPointerDrag(cell, regionName, index, ev);
-    });
-
-    cell.addEventListener('keydown', (ev) => {
-      if (ev.target !== cell) return;
-      if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
-        ev.preventDefault();
-        if (controller.picked) {
-          // Drop onto this cell's "before" half by default when keyboard-
-          // committing. Authors can use arrow keys to pick before/after.
-          const side = cell.getAttribute('data-drop-target') === 'after' ? 'after' : 'before';
-          commitKeyboardDrop(cell, side);
-        } else {
-          handlePickUp(cell, regionName, index, 'keyboard');
-        }
-      } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
-        ev.preventDefault();
-        if (!controller.picked) handleDelete(regionName, index);
-      } else if (ev.key === 'Escape') {
-        ev.preventDefault();
-        handleCancel();
-      } else if (
-        controller.picked &&
-        (ev.key === 'ArrowUp' ||
-          ev.key === 'ArrowDown' ||
-          ev.key === 'ArrowLeft' ||
-          ev.key === 'ArrowRight')
-      ) {
-        ev.preventDefault();
-        keyboardNavigateHalves(cell, ev.key);
-      } else if (controller.picked && ev.key === 'Tab') {
-        ev.preventDefault();
-        toggleHalf(cell);
-      }
-    });
-  }
-
-  // --- pickup / cancel / delete ---------------------------------------
-
-  /** @type {null | (() => void)} */
-  let _pointerSessionTeardown = null;
-
-  function handlePickUp(cellEl, regionName, index, via) {
-    const entries = controller.doc.regions?.[regionName] ?? [];
-    const entry = entries[index];
-    if (!entry) return;
-    controller.pickUp({
-      widgetId: entry.widgetId,
-      source: { regionName, index },
-      via,
-    });
-    markPickedCell(cellEl, true);
-    contentPageEl.setAttribute('data-editor-active', 'true');
-    renderEmptyZones();
-    announcer.announce(
-      `Picked up ${findDisplayName(entry.widgetId)}. Hover a widget and drop on its top or bottom half, or press Escape to cancel.`,
-    );
-    if (via === 'pointer') installPointerSession({ commitOnUp: true });
-    if (via === 'keyboard') focusFirstValidCell();
-  }
-
-  function handlePaletteUp({ widgetId, via }) {
-    controller.pickUp({ widgetId, source: 'palette', via });
-    contentPageEl.setAttribute('data-editor-active', 'true');
-    renderEmptyZones();
-    const label = findDisplayName(widgetId);
-    announcer.announce(`Adding ${label}. Hover a widget and drop on its top or bottom half, or press Escape to cancel.`);
-    toast(`Adding ${label} — drop on a widget's top or bottom half, or on an empty region.`);
-    // Palette pickup uses a latched pointer: follow the cursor, commit on
-    // the NEXT pointerup (not the palette chip's own up, which Playwright /
-    // users already released). Passing commitOnUp:false means a move is
-    // committed via click-to-confirm — a follow-up pointerdown + up.
-    if (via === 'pointer') installPointerSession({ commitOnUp: false });
-    if (via === 'keyboard') focusFirstValidCell();
-  }
-
-  function handleCancel() {
-    if (_pointerSessionTeardown) {
-      _pointerSessionTeardown();
-      _pointerSessionTeardown = null;
-    }
-    if (!controller.picked) return;
-    controller.cancel();
-    removeGhost();
-    markPickedCell(null, false);
-    contentPageEl.setAttribute('data-editor-active', 'false');
-    clearAllDropHighlights();
-    clearEmptyZones();
-    announcer.announce('Move cancelled.');
-  }
-
-  function handleDelete(regionName, index) {
-    const result = controller.deleteInstance({ regionName, index });
-    if (!result.ok) {
-      const msg = `Delete failed: ${result.reason}`;
-      announcer.announce(msg);
-      toast(msg, 'error');
-      return;
-    }
-    void commit(result);
-  }
-
-  // --- drop dispatch --------------------------------------------------
-
-  /**
-   * Translate an "anchored" drop (before/after a cell, or into an empty
-   * region) into a {regionName, insertIndex} pair and dispatch through the
-   * controller. Filters out moves that resolve to the source's current
-   * position — no pointless commit/remount.
-   */
-  function handleDropAnchored({ regionName, anchorIndex, side, anchorCell }) {
-    const picked = controller.picked;
-    if (!picked) return;
-
-    let insertIndex;
-    if (anchorIndex == null) {
-      insertIndex = 0; // empty-region drop
-    } else {
-      insertIndex = side === 'before' ? anchorIndex : anchorIndex + 1;
-    }
-
-    // Within-region move: detect the no-op case (drop adjacent to self)
-    // before invoking the controller. EditorController.drop() would
-    // otherwise accept it and emit a pointless save.
-    if (picked.source && typeof picked.source === 'object') {
-      const src = picked.source;
-      if (src.regionName === regionName) {
-        const adjusted = src.index < insertIndex ? insertIndex - 1 : insertIndex;
-        if (adjusted === src.index) {
-          // No structural change — treat as cancel.
-          handleCancel();
-          return;
-        }
-      }
-    }
-
-    let result;
-    if (picked.source === 'palette') {
-      const entry = {
-        widgetId: picked.widgetId,
-        instanceId: freshInstanceId(picked.widgetId),
-        config: {},
-      };
-      result = controller.addFromPalette({ entry, target: { regionName, index: insertIndex } });
-    } else {
-      result = controller.drop({ target: { regionName, index: insertIndex } });
-    }
-    if (!result.ok) {
-      announcer.announce(`Drop rejected: ${result.reason}`);
-      toast(`Drop rejected: ${result.reason}`, 'error');
-      return;
-    }
-    // Decorate the result with anchor-aware labels for the announcer.
-    if (result.action === 'move' && anchorCell) {
-      result.anchorLabel = cellLabel(anchorCell);
-      result.anchorSide = side;
-    }
-    removeGhost();
-    markPickedCell(null, false);
-    clearAllDropHighlights();
-    clearEmptyZones();
-    contentPageEl.setAttribute('data-editor-active', 'false');
-    void commit(result);
-  }
-
-  // --- pointer drag ---------------------------------------------------
-
-  /**
-   * Pierce shadow DOM when hit-testing. `document.elementFromPoint` stops
-   * at the first shadow host; recurse into each host's shadow root until
-   * we reach a node with no further shadowRoot.
-   */
-  function deepElementFromPoint(x, y) {
-    const doc = contentPageEl.ownerDocument;
-    if (typeof doc?.elementFromPoint !== 'function') return null;
-    let el = doc.elementFromPoint(x, y);
-    while (el && el.shadowRoot && typeof el.shadowRoot.elementFromPoint === 'function') {
-      const inner = el.shadowRoot.elementFromPoint(x, y);
-      if (!inner || inner === el) break;
-      el = inner;
-    }
-    return el;
-  }
-
-  function isRegionValidFor(regionName) {
-    const valid = controller.getValidTargets();
-    if (!valid) return false;
-    const entry = valid.validRegions.find((r) => r.regionName === regionName);
-    return !!entry && Array.isArray(entry.canInsertAt) && entry.canInsertAt.some((v) => v === true);
-  }
-
-  function updateHoverForPoint(x, y) {
-    const under = deepElementFromPoint(x, y);
-    // Which target (cell or empty-zone) is the pointer over?
-    const overCell =
-      under &&
-      typeof under.closest === 'function' &&
-      under.closest('[data-widget-cell]');
-    const overEmpty =
-      under &&
-      typeof under.closest === 'function' &&
-      under.closest('[data-drop-empty]');
-
-    clearAllDropHighlights();
-
-    // Source cell is hidden (display:none), so the pointer can never be
-    // over it — no special-case needed.
-    if (overCell && overCell.getAttribute('data-picked') !== 'true') {
-      const regionName = overCell.getAttribute('data-region');
-      const regionValid = isRegionValidFor(regionName);
-      const rect = overCell.getBoundingClientRect?.();
-      if (rect) {
-        const mid = rect.top + rect.height / 2;
-        const side = y < mid ? 'before' : 'after';
-        overCell.setAttribute('data-drop-target', side);
-        if (!regionValid) overCell.setAttribute('data-drop-invalid', 'true');
-      }
-    } else if (overEmpty) {
-      overEmpty.setAttribute('data-hover', 'true');
-    }
-  }
-
-  function readPointerTarget(x, y) {
-    const under = deepElementFromPoint(x, y);
-    const overCell =
-      under &&
-      typeof under.closest === 'function' &&
-      under.closest('[data-widget-cell]');
-    const overEmpty =
-      under &&
-      typeof under.closest === 'function' &&
-      under.closest('[data-drop-empty]');
-
-    if (overCell && overCell.getAttribute('data-picked') !== 'true') {
-      const regionName = overCell.getAttribute('data-region');
-      const anchorIndex = parseInt(overCell.getAttribute('data-cell-index') ?? '-1', 10);
-      const rect = overCell.getBoundingClientRect?.();
-      if (!rect || anchorIndex < 0) return null;
-      const mid = rect.top + rect.height / 2;
-      const side = y < mid ? 'before' : 'after';
-      return { kind: 'cell', regionName, anchorIndex, side, anchorCell: overCell };
-    }
-    if (overEmpty) {
-      const regionName = overEmpty.getAttribute('data-region');
-      if (overEmpty.getAttribute('data-drop-valid') !== 'true') return null;
-      return { kind: 'empty', regionName };
-    }
-    return null;
-  }
-
-  function startPointerDrag(cell, regionName, index, ev) {
-    handlePickUp(cell, regionName, index, 'pointer');
-    const label = findDisplayName(controller.picked?.widgetId ?? '');
-    createGhost(label, ev.clientX ?? 0, ev.clientY ?? 0);
-  }
-
-  /**
-   * Install window-level pointermove + pointerup handlers to drive hover
-   * highlights and drop commits. Shared by the drag-handle flow (pickup
-   * inside a pointerdown) and the palette flow (pickup via click — no
-   * pressed button; commit on the user's next pointerup).
-   */
-  function installPointerSession(_opts = {}) {
-    // Replace any prior session (e.g. palette → drag-handle).
-    if (_pointerSessionTeardown) {
-      _pointerSessionTeardown();
-      _pointerSessionTeardown = null;
-    }
-
-    const win = contentPageEl.ownerDocument?.defaultView ?? window;
-
-    // If pickup didn't create a ghost yet (palette flow), make one now
-    // so the cursor has feedback as soon as the user starts moving.
-    if (!ghostEl && controller.picked) {
-      const label = findDisplayName(controller.picked.widgetId);
-      createGhost(label, -1000, -1000);
-    }
-
-    const onMove = (mv) => {
-      if (ghostEl) {
-        ghostEl.style.left = `${mv.clientX ?? 0}px`;
-        ghostEl.style.top = `${mv.clientY ?? 0}px`;
-      }
-      updateHoverForPoint(mv.clientX ?? 0, mv.clientY ?? 0);
-    };
-    const onUp = (uv) => {
-      teardown();
-      const target = readPointerTarget(uv?.clientX ?? 0, uv?.clientY ?? 0);
-      if (!target) {
-        handleCancel();
-        return;
-      }
-      if (target.kind === 'cell') {
-        handleDropAnchored({
-          regionName: target.regionName,
-          anchorIndex: target.anchorIndex,
-          side: target.side,
-          anchorCell: target.anchorCell,
-        });
-      } else if (target.kind === 'empty') {
-        handleDropAnchored({
-          regionName: target.regionName,
-          anchorIndex: null,
-          side: null,
-          anchorCell: null,
-        });
-      }
-    };
-
-    function teardown() {
-      win.removeEventListener('pointermove', onMove, true);
-      win.removeEventListener('pointerup', onUp, true);
-      win.removeEventListener('pointercancel', onUp, true);
-      _pointerSessionTeardown = null;
-    }
-
-    win.addEventListener('pointermove', onMove, true);
-    win.addEventListener('pointerup', onUp, true);
-    win.addEventListener('pointercancel', onUp, true);
-    _pointerSessionTeardown = teardown;
-  }
-
-  // --- keyboard path --------------------------------------------------
-
-  /**
-   * Return the list of cells that are valid anchors for the currently
-   * picked widget, ordered by (region, index). Excludes the source cell.
-   */
-  function validAnchorCells() {
-    const valid = controller.getValidTargets();
-    if (!valid) return [];
-    const picked = controller.picked;
-    const sourceRegion =
-      picked && picked.source && typeof picked.source === 'object'
-        ? picked.source.regionName
-        : null;
-    const sourceIndex =
-      picked && picked.source && typeof picked.source === 'object'
-        ? picked.source.index
-        : -1;
-
-    const out = [];
-    for (const section of regionSections()) {
-      const regionName = section.getAttribute('data-slot');
-      if (!isRegionValidFor(regionName)) continue;
-      const cells = cellsIn(section);
-      for (let i = 0; i < cells.length; i++) {
-        if (regionName === sourceRegion && i === sourceIndex) continue;
-        out.push(cells[i]);
-      }
-    }
-    return out;
-  }
-
-  function focusFirstValidCell() {
-    const anchors = validAnchorCells();
-    const first = anchors[0];
-    if (!first) return;
-    first.setAttribute('data-drop-target', 'before');
-    try {
-      first.focus?.();
-    } catch {
-      /* linkedom doesn't always implement focus */
-    }
-  }
-
-  function keyboardNavigateHalves(cell, key) {
-    const anchors = validAnchorCells();
-    const idx = anchors.indexOf(cell);
-    const currentSide = cell.getAttribute('data-drop-target') ?? 'before';
-    clearAllDropHighlights();
-
-    let nextCell = cell;
-    let nextSide = currentSide;
-    if (key === 'ArrowUp' || key === 'ArrowLeft') {
-      if (currentSide === 'after') {
-        nextSide = 'before';
-      } else {
-        const prev = anchors[(idx - 1 + anchors.length) % anchors.length];
-        nextCell = prev ?? cell;
-        nextSide = 'after';
-      }
-    } else {
-      if (currentSide === 'before') {
-        nextSide = 'after';
-      } else {
-        const next = anchors[(idx + 1) % anchors.length];
-        nextCell = next ?? cell;
-        nextSide = 'before';
-      }
-    }
-    nextCell.setAttribute('data-drop-target', nextSide);
-    try {
-      nextCell.focus?.();
-    } catch {
-      /* ignore */
-    }
-    announcer.announce(`Drop ${nextSide} ${cellLabel(nextCell)}.`);
-  }
-
-  function toggleHalf(cell) {
-    const currentSide = cell.getAttribute('data-drop-target') ?? 'before';
-    const nextSide = currentSide === 'before' ? 'after' : 'before';
-    clearAllDropHighlights();
-    cell.setAttribute('data-drop-target', nextSide);
-    announcer.announce(`Drop ${nextSide} ${cellLabel(cell)}.`);
-  }
-
-  function commitKeyboardDrop(cell, side) {
-    const regionName = cell.getAttribute('data-region');
-    const anchorIndex = parseInt(cell.getAttribute('data-cell-index') ?? '-1', 10);
-    if (!regionName || anchorIndex < 0) return;
-    handleDropAnchored({ regionName, anchorIndex, side, anchorCell: cell });
-  }
-
-  function freshInstanceId(widgetId) {
-    const rand = Math.random().toString(36).slice(2, 8);
-    const prefix = String(widgetId).split('.').pop() || 'w';
-    return `w-${prefix}-${Date.now().toString(36)}-${rand}`;
-  }
-
-  // --- palette wiring (set by caller) ----------------------------------
 
   function setPalette(paletteEl) {
-    paletteEl.onPickUp = ({ widgetId, via }) => handlePaletteUp({ widgetId, via });
+    paletteEl.onChipSelect = ({ widgetId }) => {
+      setSelection({ kind: 'chip', widgetId });
+      announcer.announce(
+        `Adding ${findDisplayName(widgetId)}. Click or press Enter on a drop slot to place it, or press Escape to cancel.`,
+      );
+    };
+    paletteEl.onChipActivate = async ({ widgetId, region }) => {
+      const res = await api.add({ widgetId, region, index: 0 });
+      announceResult(res, region);
+      clearSelection();
+    };
+    registerPaletteChips(paletteEl);
+    if (typeof MutationObserver !== 'undefined') {
+      const mo = new MutationObserver(() => registerPaletteChips(paletteEl));
+      mo.observe(paletteEl, { childList: true, subtree: true });
+      teardowns.push(() => mo.disconnect());
+    }
+    teardowns.push(clearPaletteDndRegistrations);
   }
 
-  // --- global keydown for Escape (works anywhere in the page) ----------
-
-  const onGlobalKey = (ev) => {
-    if (ev.key === 'Escape' && controller.picked) {
-      handleCancel();
+  const onDocKey = (ev) => {
+    if (ev.key === 'Escape' && selection) {
+      clearSelection();
     }
   };
-  contentPageEl.addEventListener('keydown', onGlobalKey);
-  teardowns.push(() => contentPageEl.removeEventListener('keydown', onGlobalKey));
+  contentPageEl.addEventListener('keydown', onDocKey);
+  teardowns.push(() => contentPageEl.removeEventListener('keydown', onDocKey));
 
   decorate();
 
-  // --- teardown --------------------------------------------------------
-
   function detach() {
-    if (_pointerSessionTeardown) {
-      _pointerSessionTeardown();
-      _pointerSessionTeardown = null;
-    }
-    removeGhost();
-    clearEmptyZones();
-    clearAllDropHighlights();
-    if (toastTimer) clearTimeout(toastTimer);
-    if (toastEl && toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
-    toastEl = null;
-    toastTimer = null;
+    clearSelection();
+    clearEditorDecorations();
     for (const fn of teardowns) {
       try {
         fn();
@@ -778,25 +553,24 @@ export function attachEditor({
         /* best effort */
       }
     }
-    for (const chrome of widgetHostEl.querySelectorAll('[data-cell-chrome]')) {
-      chrome.remove?.();
-    }
-    for (const cell of widgetHostEl.querySelectorAll('[data-widget-cell][tabindex]')) {
-      cell.removeAttribute('tabindex');
-      cell.removeAttribute('data-picked');
-      cell.removeAttribute('data-region');
-      cell.removeAttribute('data-cell-index');
-      cell.removeAttribute('data-drop-target');
-      cell.removeAttribute('data-drop-invalid');
-    }
-    contentPageEl.removeAttribute('data-editor-active');
+    contentPageEl.removeAttribute('data-editor-selected');
     announcer.element.remove?.();
   }
 
   return {
     controller,
+    api,
     announcer,
     setPalette,
     detach,
+    // Called by <content-page> after an incremental widget-host mutation
+    // so editor chrome (cell decoration + DnD sources + drop-slot
+    // registration) re-syncs with the new doc without a full remount.
+    refresh: () => decorate(),
+    _selectCellForTest(instanceId) {
+      setSelection({ kind: 'cell', instanceId });
+    },
   };
 }
+
+export { freshInstanceId };

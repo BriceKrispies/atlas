@@ -1,0 +1,12 @@
+{
+  "layoutId": "layout.three-column",
+  "version": "0.1.0",
+  "displayName": "Three Column",
+  "description": "Left rail, main content, right rail.",
+  "grid": { "columns": 12, "rowHeight": 160, "gap": 16 },
+  "slots": [
+    { "name": "left",  "col": 1,  "row": 1, "colSpan": 3, "rowSpan": 2 },
+    { "name": "main",  "col": 4,  "row": 1, "colSpan": 6, "rowSpan": 2 },
+    { "name": "right", "col": 10, "row": 1, "colSpan": 3, "rowSpan": 2 }
+  ]
+}

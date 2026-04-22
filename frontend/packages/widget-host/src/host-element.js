@@ -177,7 +177,13 @@ export class WidgetHostElement extends AtlasElement {
     this._mounted = [];
     this._mediator = null;
     this._bridge = null;
-    this.textContent = '';
+    // Preserve existing <section data-slot> elements — their positioning /
+    // styling is owned by whichever parent (e.g. <atlas-layout>, a static
+    // template, or the editor's chrome) put them there. Just clear the
+    // widget contents inside each.
+    for (const sec of this.querySelectorAll(':scope > section[data-slot]')) {
+      sec.textContent = '';
+    }
   }
 
   _renderLayoutError(message) {
@@ -227,18 +233,164 @@ export class WidgetHostElement extends AtlasElement {
       this._bridge.register(name, handler);
     }
 
-    this.textContent = '';
     const registry = this.registry;
 
-    for (const [slotName, entries] of Object.entries(layout.slots)) {
-      const slotEl = document.createElement('section');
-      slotEl.setAttribute('data-slot', slotName);
-      this.appendChild(slotEl);
+    // Reuse any <section data-slot> the parent already placed (e.g. from
+    // <atlas-layout>) so its inline grid positioning survives. Create a
+    // section on the fly for any slot name that doesn't have one yet.
+    const existing = new Map();
+    for (const sec of this.querySelectorAll(':scope > section[data-slot]')) {
+      existing.set(sec.getAttribute('data-slot'), sec);
+      sec.textContent = '';
+    }
 
+    for (const [slotName, entries] of Object.entries(layout.slots)) {
+      let slotEl = existing.get(slotName);
+      if (slotEl) {
+        existing.delete(slotName);
+      } else {
+        slotEl = document.createElement('section');
+        slotEl.setAttribute('data-slot', slotName);
+        this.appendChild(slotEl);
+      }
       for (const entry of entries) {
         this._mountEntry({ registry, slotEl, slotName, entry });
       }
     }
+
+    // Any pre-existing section not named by the current layout is an
+    // orphan — remove it so the DOM reflects the new layout exactly.
+    for (const sec of existing.values()) {
+      sec.remove();
+    }
+  }
+
+  /**
+   * Apply a single incremental mutation without tearing down unrelated
+   * widgets. Keeps sections and every untouched widget in place so the
+   * surrounding layout never reflows on an edit commit.
+   *
+   * @param {{
+   *   action: 'add'|'remove'|'move'|'update',
+   *   instanceId: string,
+   *   from?: { region: string, index?: number },
+   *   to?: { region: string, index?: number },
+   *   nextDoc: { regions: Record<string, Array<object>> },
+   * }} info
+   * @returns {boolean} true if applied incrementally; false if caller
+   *   should fall back to a full remount.
+   */
+  applyMutation(info) {
+    if (!this._layout || !this._mediator) return false;
+    const { action, instanceId, to, nextDoc } = info ?? {};
+    if (!action || !nextDoc || !nextDoc.regions) return false;
+
+    switch (action) {
+      case 'add': {
+        const slotName = to?.region;
+        if (!slotName) return false;
+        const slotEl = this._slotEl(slotName);
+        if (!slotEl) return false;
+        const entry = (nextDoc.regions[slotName] ?? []).find(
+          (e) => e.instanceId === instanceId,
+        );
+        if (!entry) return false;
+        this._mountEntry({ registry: this.registry, slotEl, slotName, entry });
+        this._layout = { ...this._layout, slots: nextDoc.regions };
+        return true;
+      }
+      case 'remove': {
+        if (!this._unmountInstance(instanceId)) return false;
+        this._layout = { ...this._layout, slots: nextDoc.regions };
+        return true;
+      }
+      case 'move': {
+        const targetSlot = to?.region;
+        if (!targetSlot) return false;
+        const targetSlotEl = this._slotEl(targetSlot);
+        if (!targetSlotEl) return false;
+        const entry = (nextDoc.regions[targetSlot] ?? []).find(
+          (e) => e.instanceId === instanceId,
+        );
+        if (!entry) return false;
+        // Same-slot move is a no-op at the DOM level (slot model is 1 widget
+        // per slot; an in-place move just keeps the existing cell).
+        if (info.from?.region === targetSlot) {
+          this._layout = { ...this._layout, slots: nextDoc.regions };
+          return true;
+        }
+        this._unmountInstance(instanceId);
+        this._mountEntry({
+          registry: this.registry,
+          slotEl: targetSlotEl,
+          slotName: targetSlot,
+          entry,
+        });
+        this._layout = { ...this._layout, slots: nextDoc.regions };
+        return true;
+      }
+      case 'update': {
+        // Find which region holds the widget in the new doc.
+        let region = null;
+        for (const r of Object.keys(nextDoc.regions)) {
+          if (nextDoc.regions[r].some((e) => e.instanceId === instanceId)) {
+            region = r;
+            break;
+          }
+        }
+        if (!region) return false;
+        const slotEl = this._slotEl(region);
+        if (!slotEl) return false;
+        const entry = nextDoc.regions[region].find(
+          (e) => e.instanceId === instanceId,
+        );
+        if (!entry) return false;
+        this._unmountInstance(instanceId);
+        this._mountEntry({
+          registry: this.registry,
+          slotEl,
+          slotName: region,
+          entry,
+        });
+        this._layout = { ...this._layout, slots: nextDoc.regions };
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  _slotEl(slotName) {
+    return this.querySelector(
+      `:scope > section[data-slot="${slotName}"]`,
+    );
+  }
+
+  _unmountInstance(instanceId) {
+    const mounted = this._mounted.find((m) => m.instanceId === instanceId);
+    if (!mounted) return false;
+    try {
+      mounted.unmount();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[widget-host] incremental unmount threw', { instanceId, err });
+    }
+    try {
+      this._mediator?.revokeInstance(instanceId);
+      this._bridge?.revokeInstance(instanceId);
+    } catch {
+      /* best effort */
+    }
+    this._mounted = this._mounted.filter((m) => m.instanceId !== instanceId);
+    const cell = this.querySelector(
+      `:scope > section > [data-widget-cell][data-widget-instance-id="${instanceId}"]`,
+    );
+    if (cell && cell.parentNode) cell.parentNode.removeChild(cell);
+    telemetry('atlas.widget.unmount', {
+      instanceId,
+      correlationId: this.correlationId,
+    });
+    return true;
   }
 
   _mountEntry({ registry, slotEl, slotName, entry }) {

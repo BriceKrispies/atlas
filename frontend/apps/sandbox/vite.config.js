@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: process.env.VITE_BASE ?? '/',
   server: {
     port: 5180,
     // Sandboxed iframes have origin "null"; Vite 6's default CORS

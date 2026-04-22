@@ -138,31 +138,43 @@ The repository-port shape lets the admin app swap persistence layers at bootstra
 
 - Each mounted widget cell gains a chrome overlay with a drag handle, a delete button, and a focus ring. The widget body below stays interactive.
 - A `<widget-palette>` renders adjacent to the page body, listing every widget in the registry that could be placed into *some* region of the active template.
-- Pointer-based drag and drop lets the user:
-  - Move a widget from one region to another.
-  - Reorder widgets within a region.
-  - Add a new widget by dragging it out of the palette.
-  - Delete a widget by clicking its delete button (or pressing `Delete` while focused on its cell).
+- Every region renders **explicit drop zones** in the DOM — one before every widget cell and one at the end (N+1 zones for N widgets). Zones are first-class atlas elements with unique, deterministic names (`drop-zone-{region}-{index}`) so Playwright and agents can address them by auto-testid without any DOM geometry math.
 
-Drops are expressed **relationally**, not positionally. While a drag is active the author sees no persistent bars between widgets; instead, each non-source widget cell exposes two virtual halves — "insert before" (top) and "insert after" (bottom) — and the half the pointer is over highlights. Empty regions expose a single rectangular "drop here" zone. Absolute insertion indices remain the internal representation for `computeValidTargets` and `EditorController.drop`; the UI converts cell-anchored before/after into indices and filters no-op moves (where source.index and the resulting insertion index would be adjacent) before dispatch.
+### Imperative Editor API
 
-Drops are validated against **two** constraints, checked in order, in a pure `dropZones.computeValidTargets(widgetId, page, template)` function:
+The editor exposes an imperative, instanceId-keyed API at `contentPageEl.editor`. All mutation flows — pointer drag, keyboard, palette click, programmatic (agents, Playwright, tests) — funnel through this single surface:
+
+```js
+page.editor.add({ entry, region, index? })         → { ok, instanceId, nextDoc } | { ok:false, reason }
+page.editor.move({ instanceId, region, index? })   → { ok, from, to, nextDoc, noop? } | { ok:false, reason }
+page.editor.update({ instanceId, config })         → { ok, nextDoc } | { ok:false, reason }
+page.editor.remove({ instanceId })                 → { ok, nextDoc } | { ok:false, reason }
+page.editor.list()                                 → Array<{ instanceId, widgetId, region, index, config }>
+page.editor.get(instanceId)                        → entry | null
+page.editor.can(op, args)                          → { ok, reason? }   // dry run, no mutation
+```
+
+`instanceId` is the sole identity for a widget over its lifetime; agents and tests never need to reason about shifting indices. When `add` is called without an explicit `instanceId` the API mints a fresh one. Rejections are stable, documented reason codes: `region-invalid`, `index-invalid`, `max-widgets`, `unknown-widget`, `required-region-empty`, `duplicate-instance-id`, `instance-not-found`, `invalid-entry`, `source-gone`, `persist-failed`, `not-editable`.
+
+### Interaction flows
+
+All three flows produce the same `editor.*` call; they differ only in how they collect the arguments.
+
+1. **Native HTML5 drag and drop.** Cells are `draggable="true"`; `dragstart` writes the instanceId to `dataTransfer['application/x-atlas-move']`. Palette chips write a widgetId to `application/x-atlas-add`. Zones handle `dragover` (preventDefault) and `drop` (read dataTransfer, call `editor.move` or `editor.add`). Standard Playwright `page.dragAndDrop(sourceSelector, zoneSelector)` works without custom helpers.
+2. **Two-tap click.** Click a cell or a palette chip to select it (`data-selected="true"`). Click a zone to commit the move/add. Works identically with touch and mouse, and gives tests a drag-free path.
+3. **Keyboard (WCAG 2.1 AA, SC 2.1.1).** Cells and zones are tabbable (`tabindex="0"`). `Space`/`Enter` on a cell or chip selects; `Space`/`Enter` on a zone commits; `Escape` clears the selection. `Delete` / `Backspace` on a focused cell calls `editor.remove`. Changes are announced to an `aria-live="polite"` region.
+
+Validity for a given selection is precomputed by the pure function `computeValidTargets(widgetId, pageDoc, templateManifest, widgetRegistry, sourcePos)`, which returns a per-region/per-index boolean grid. Zones reflect validity as DOM attributes — `data-active="true"` for valid targets, `data-invalid="true"` for invalid, `data-noop="true"` for same-position moves — so Playwright can assert editor state without inspecting CSS.
+
+Validity is checked in order:
 
 1. **Target region MUST exist in the template's manifest.**
 2. **`region.maxWidgets` MUST NOT be exceeded** after the move or add.
+3. **Required-region depletion** — a `move` or `remove` that would empty a `required: true` region is rejected.
 
-A registered widget is placeable in any region; there is no per-widget slot restriction.
+A registered widget is placeable in any region; there is no per-widget slot restriction. Failed operations do not call `pageStore.save()`; they return `{ok:false, reason}` and emit an `atlas.content-page.edit.rejected` telemetry event.
 
-If any constraint fails, the drop zone is shown as invalid (typically a red outline). Failed drops do not call `pageStore.save()`.
-
-Keyboard parity is non-optional (WCAG 2.1 AA, SC 2.1.1):
-
-- Widget cells are tabbable (`tabindex="0"`).
-- `Space` / `Enter` on a focused cell picks it up; arrow keys move between regions or within a region; `Space` / `Enter` again drops; `Escape` cancels.
-- Palette chips are buttons; activating one enters an "add mode" where arrow keys pick a region and `Enter` places the widget.
-- Changes are announced to an `aria-live="polite"` region ("Announcements moved from Main to Sidebar").
-
-Every successful edit calls `pageStore.save(pageId, nextDoc)`. The element then re-reads and re-renders; widget unmount/remount is handled by `<widget-host>`'s existing teardown path.
+Every successful edit calls `pageStore.save(pageId, nextDoc)`. If the store rejects (schema violation, backend error), the editor surfaces it as `{ok:false, reason:'persist-failed', message}` and emits `atlas.content-page.save.error`. On success, the element re-reads and re-renders; widget unmount/remount is handled by `<widget-host>`'s existing teardown path.
 
 ## Authorization Integration
 
@@ -177,7 +189,8 @@ Region-level and widget-instance-level permissions are out of scope for v1. The 
 The `<content-page>` element MUST emit telemetry for:
 - Page load (pageId, templateId, templateVersion, correlationId, elapsedMs)
 - Page load failure (missing page, missing template, validation failure)
-- Edit action (drop, delete, add; before/after region+index; widgetId; correlationId)
+- Edit action (`add` / `move` / `update` / `remove`; widgetId; instanceId; from/to region+index where applicable; correlationId)
+- Edit rejection (reason code, correlationId)
 - Save failure (schema violation, store rejection)
 
 Widget mount/unmount telemetry is already emitted by `<widget-host>` and is not duplicated here.
@@ -192,8 +205,9 @@ Widget mount/unmount telemetry is already emitted by `<widget-host>` and is not 
 - **INV-TEMPLATE-06**: A page document MUST validate against `page_document.schema.json` at both read and write time; a failing document MUST NOT be rendered or persisted.
 - **INV-TEMPLATE-07**: The `PageStore` port interface MUST be stable across adapters; swapping adapters at bootstrap MUST NOT require code changes outside the single wiring point.
 - **INV-TEMPLATE-08**: A stored `templateVersion` greater than the registered template's version MUST fail closed at render time. A stored version less than the registered version MAY be upcast if the template declares a migration.
-- **INV-TEMPLATE-09**: Editor drag/drop MUST enforce INV-TEMPLATE-02 and 04 before calling `pageStore.save()`; invalid drops MUST NOT mutate the store.
-- **INV-TEMPLATE-10**: Editor keyboard interaction MUST reach every action that pointer drag reaches (pick up, move, cancel, drop, delete, add from palette).
+- **INV-TEMPLATE-09**: Every editor mutation (pointer, keyboard, programmatic) MUST go through the `contentPageEl.editor` API, which MUST enforce INV-TEMPLATE-02, 04, and 05 before calling `pageStore.save()`; rejected operations MUST NOT mutate the store and MUST return a stable `reason` code.
+- **INV-TEMPLATE-10**: Editor keyboard interaction MUST reach every action pointer drag reaches (select cell or chip, commit to zone, cancel, delete, add from palette), operating on the same drop-zone DOM elements.
+- **INV-TEMPLATE-11**: Every drop zone and widget cell rendered in edit mode MUST carry a unique, deterministic `name` attribute (`drop-zone-{region}-{index}`, `cell-{instanceId}`) so auto-generated test-ids resolve to a single element; no two zones or cells in the same page MAY share a name.
 
 ## Page Document Shape — Frozen at v1
 

@@ -10,7 +10,15 @@
     "./elements.css": "./src/elements.css",
     "./shared-styles": "./src/shared-styles.js"
   },
+  "scripts": {
+    "test": "node test/multi-select-core.mjs && node test/atlas-multi-select-adapter.mjs",
+    "test:core": "node test/multi-select-core.mjs",
+    "test:adapter": "node test/atlas-multi-select-adapter.mjs"
+  },
   "dependencies": {
     "@atlas/core": "workspace:*"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
   }
 }

@@ -11,9 +11,34 @@
  * `display: contents` on <widget-host> lets its <section> children
  * participate directly in the template's grid.
  *
+ * Slots are FIXED-FOOTPRINT: every section has a min-height so removing
+ * or moving a widget never shrinks its slot. This keeps other slots
+ * exactly where they were — no reflow, no neighbors jumping around.
+ *
  * All rules are scoped under the template's custom element tag to avoid
  * leaking global styles.
  */
+
+/* Every slot is a FIXED-footprint box: same position, same size, at all
+ * times, in BOTH view and edit mode. Whether the slot holds a widget or
+ * is empty, whether the widget is 40px tall or 2000px tall — the slot
+ * itself stays 320px tall. Removing, adding, or moving a widget must
+ * NEVER change the position of any other slot on the page. Taller
+ * widgets scroll inside their slot.
+ *
+ * The border/padding/background below is the shared "slot card" look —
+ * edit mode only adds drag indicators on top, never changes this chrome.
+ */
+widget-host > section[data-slot] {
+  height: 320px;
+  overflow: auto;
+  box-sizing: border-box;
+  contain: size layout;
+  padding: var(--atlas-space-md, 1rem);
+  border-radius: var(--atlas-radius-md, 6px);
+  border: 1px solid var(--atlas-color-border, #e5e7eb);
+  background: var(--atlas-color-bg, #fff);
+}
 
 template-one-column {
   display: block;

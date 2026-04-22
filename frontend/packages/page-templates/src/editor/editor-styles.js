@@ -19,6 +19,9 @@ content-page[edit] .content-page-edit-layout {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------- cells ------- */
+
 content-page[edit] [data-widget-cell] {
   position: relative;
   outline-offset: 2px;
@@ -26,7 +29,6 @@ content-page[edit] [data-widget-cell] {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: none;
 }
 content-page[edit] [data-widget-cell]:active {
   cursor: grabbing;
@@ -34,17 +36,14 @@ content-page[edit] [data-widget-cell]:active {
 content-page[edit] [data-widget-cell]:focus-visible {
   outline: 2px solid var(--atlas-color-primary, #3366ff);
 }
-/* Widget bodies don't receive pointer events in edit mode so the whole
-   cell is a grab handle. The chrome overlay (drag-handle + delete) opts
-   back in via its own pointer-events rule below. */
+content-page[edit] [data-widget-cell][data-selected="true"] {
+  outline: 2px solid var(--atlas-color-primary, #3366ff);
+  outline-offset: 2px;
+}
+/* Widget bodies don't receive pointer events in edit mode so clicks land
+   on the cell itself. The chrome overlay opts back in. */
 content-page[edit] [data-widget-cell] > *:not([data-cell-chrome]) {
   pointer-events: none;
-}
-/* During a pickup the source cell is removed from the visual flow — the
-   ghost follows the pointer and the gap closes naturally. The drop target
-   is always another widget (or an empty region), never a sliver of space. */
-content-page[edit] [data-widget-cell][data-picked="true"] {
-  display: none;
 }
 content-page[edit] [data-cell-chrome] {
   position: absolute;
@@ -57,86 +56,76 @@ content-page[edit] [data-cell-chrome] {
   border: 1px solid var(--atlas-color-border, #ddd);
   border-radius: var(--atlas-radius-sm, 4px);
   padding: 2px;
-  opacity: 0;
+  opacity: 0.4;
   transition: opacity 0.12s;
-  pointer-events: none;
+  pointer-events: auto;
 }
 content-page[edit] [data-widget-cell]:hover [data-cell-chrome],
 content-page[edit] [data-widget-cell]:focus-within [data-cell-chrome],
-content-page[edit] [data-widget-cell]:focus-visible [data-cell-chrome] {
-  opacity: 1;
-  pointer-events: auto;
-}
-/* Drop targets are widget-anchored halves. Two absolute overlays per cell:
-   top half = "insert before", bottom half = "insert after". Both are
-   invisible until a drag is active AND the pointer is over this cell's
-   corresponding half. */
-content-page[edit] [data-widget-cell][data-drop-half-before],
-content-page[edit] [data-widget-cell][data-drop-half-after] {
-  /* marker attributes only; the ::before / ::after pseudos do the work */
-}
-content-page[edit] [data-widget-cell]::before,
-content-page[edit] [data-widget-cell]::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 50%;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-  z-index: 1;
-  box-sizing: border-box;
-}
-content-page[edit] [data-widget-cell]::before {
-  top: 0;
-  border-top: 3px solid var(--atlas-color-primary, #3366ff);
-  background: var(--atlas-color-primary-subtle, rgba(51, 102, 255, 0.08));
-}
-content-page[edit] [data-widget-cell]::after {
-  bottom: 0;
-  border-bottom: 3px solid var(--atlas-color-primary, #3366ff);
-  background: var(--atlas-color-primary-subtle, rgba(51, 102, 255, 0.08));
-}
-content-page[edit] [data-widget-cell][data-drop-target="before"]::before,
-content-page[edit] [data-widget-cell][data-drop-target="after"]::after {
+content-page[edit] [data-widget-cell][data-selected="true"] [data-cell-chrome] {
   opacity: 1;
 }
-content-page[edit] [data-widget-cell][data-drop-target][data-drop-invalid="true"]::before,
-content-page[edit] [data-widget-cell][data-drop-target][data-drop-invalid="true"]::after {
-  border-color: var(--atlas-color-danger, #dc2626);
-  background: var(--atlas-color-danger-subtle, rgba(220, 38, 38, 0.1));
-}
-/* Empty-region drop zone — a single rectangular target filling the empty
-   section. Only visible when a drag is active AND this region permits the
-   picked widget (see data-drop-valid attribute). */
-content-page[edit] [data-drop-empty] {
-  display: block;
-  min-height: 72px;
-  border: 2px dashed var(--atlas-color-border, #ddd);
-  background: var(--atlas-color-surface, #fafafa);
-  border-radius: var(--atlas-radius-md, 6px);
-  margin: var(--atlas-space-sm, 8px) 0;
-  padding: var(--atlas-space-md, 12px);
-  color: var(--atlas-color-text-muted, #666);
-  text-align: center;
-  font-size: var(--atlas-font-size-sm, 12px);
-  box-sizing: border-box;
+
+/* ------- template slots — edit-only overlays -------
+ *
+ * The slot's size/border/padding/background are defined in the template
+ * stylesheet so view mode and edit mode look identical at the slot level.
+ * Edit mode only adds drag/drop indicators on top: empty-state dashed
+ * border, drop highlight, active/invalid markers.
+ */
+
+content-page[edit] section[data-editor-slot] {
   transition: background 0.12s, border-color 0.12s;
 }
-content-page[edit] [data-drop-empty][data-drop-valid="true"] {
-  border-color: var(--atlas-color-primary, #3366ff);
+
+/* Empty slots: swap the plain border for a dashed drop target with helper text. */
+content-page[edit] section[data-editor-slot][data-empty="true"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--atlas-color-surface, #f6f7fa);
+  border: 2px dashed var(--atlas-color-border, #cbd5e1);
+  color: var(--atlas-color-text-muted, #6b7280);
+  font-size: 0.875rem;
+  cursor: copy;
+}
+content-page[edit] section[data-editor-slot][data-empty="true"]::before {
+  content: "Empty slot — drop a widget here";
+}
+content-page[edit] section[data-editor-slot][data-empty="true"]:hover,
+content-page[edit] section[data-editor-slot][data-empty="true"]:focus-visible {
+  background: var(--atlas-color-surface-strong, #eef0f4);
+  border-color: var(--atlas-color-border-strong, #94a3b8);
+  color: var(--atlas-color-text, #111827);
+}
+content-page[edit] section[data-editor-slot][data-empty="true"]:focus-visible {
+  outline: 2px solid var(--atlas-color-primary, #3366ff);
+  outline-offset: 2px;
+}
+
+/* Active (matching the current click/keyboard selection). */
+content-page[edit] section[data-editor-slot][data-empty="true"][data-active="true"] {
   background: var(--atlas-color-primary-subtle, rgba(51, 102, 255, 0.06));
-  color: var(--atlas-color-primary, #3366ff);
+  border-color: var(--atlas-color-primary, #3366ff);
 }
-content-page[edit] [data-drop-empty][data-drop-valid="false"] {
-  border-color: var(--atlas-color-danger, #dc2626);
-  background: var(--atlas-color-danger-subtle, rgba(220, 38, 38, 0.08));
-  color: var(--atlas-color-danger, #dc2626);
+content-page[edit] section[data-editor-slot][data-empty="true"][data-invalid="true"] {
+  background: transparent;
+  border-color: var(--atlas-color-danger-subtle, rgba(220, 38, 38, 0.4));
+  opacity: 0.6;
 }
-content-page[edit] [data-drop-empty][data-hover="true"] {
+
+/* Pointer-drag hover state (set by the DnD subsystem's projection). */
+content-page[edit] section[data-editor-slot][data-empty="true"][data-dnd-over="true"] {
+  background: var(--atlas-color-primary-subtle, rgba(51, 102, 255, 0.12));
+  border-color: var(--atlas-color-primary, #3366ff);
   border-style: solid;
 }
+content-page[edit] [data-widget-cell][data-dnd-source] {
+  opacity: 0.4;
+}
+
+/* ------- palette ------- */
+
 widget-palette {
   display: block;
   border: 1px solid var(--atlas-color-border, #ddd);
@@ -149,39 +138,14 @@ widget-palette [data-palette-list] {
   flex-direction: column;
   gap: var(--atlas-space-xs, 4px);
 }
-widget-palette atlas-button[data-widget-id] {
+widget-palette [data-palette-chip] {
   display: block;
   width: 100%;
+  cursor: grab;
 }
-content-page[edit] [data-drag-ghost] {
-  position: fixed;
-  pointer-events: none;
-  opacity: 0.85;
-  z-index: 1000;
-  transform: translate(-50%, -50%);
-  border: 1px dashed var(--atlas-color-primary, #3366ff);
-  background: var(--atlas-color-bg, #fff);
-  padding: 6px 10px;
-  border-radius: var(--atlas-radius-sm, 4px);
-  font-size: var(--atlas-font-size-sm, 12px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-content-page[edit] [data-editor-toast] {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1001;
-  background: var(--atlas-color-primary, #3366ff);
-  color: #fff;
-  padding: 8px 14px;
-  border-radius: 4px;
-  font-size: 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  max-width: 80vw;
-}
-content-page[edit] [data-editor-toast][data-variant="error"] {
-  background: var(--atlas-color-danger, #dc2626);
+widget-palette [data-palette-chip][data-selected="true"] {
+  outline: 2px solid var(--atlas-color-primary, #3366ff);
+  outline-offset: 2px;
 }
 `;
 
@@ -208,7 +172,6 @@ export function ensureEditorStyles(elOrRoot) {
   const style = document.createElement('style');
   style.setAttribute('data-atlas-page-templates-editor', '');
   style.textContent = CSS;
-  // Document → append to <head>; ShadowRoot → append directly.
   const target = root === document ? document.head : root;
   target.appendChild(style);
 }

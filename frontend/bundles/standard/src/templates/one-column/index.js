@@ -11,7 +11,7 @@ export const manifest = {
   displayName: 'One Column',
   description: 'Single stacked region. Simplest layout.',
   regions: [
-    { name: 'main', required: true },
+    { name: 'main', required: false },
   ],
 };
 

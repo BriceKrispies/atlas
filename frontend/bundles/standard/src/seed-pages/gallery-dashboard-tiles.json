@@ -8,32 +8,7 @@
       {
         "widgetId": "content.announcements",
         "instanceId": "w-gdt-tile-1",
-        "config": { "mode": "text", "text": "Tile 1 — metric or status." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-gdt-tile-2",
-        "config": { "mode": "text", "text": "Tile 2 — metric or status." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-gdt-tile-3",
-        "config": { "mode": "text", "text": "Tile 3 — metric or status." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-gdt-tile-4",
-        "config": { "mode": "text", "text": "Tile 4 — metric or status." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-gdt-tile-5",
-        "config": { "mode": "text", "text": "Tile 5 — metric or status." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-gdt-tile-6",
-        "config": { "mode": "text", "text": "Tile 6 — metric or status." }
+        "config": { "mode": "text", "text": "Tile — metric or status." }
       }
     ]
   },

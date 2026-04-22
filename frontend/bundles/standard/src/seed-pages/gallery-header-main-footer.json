@@ -16,11 +16,6 @@
         "widgetId": "content.announcements",
         "instanceId": "w-ghmf-main-1",
         "config": { "mode": "text", "text": "Main region — body content." }
-      },
-      {
-        "widgetId": "content.announcements",
-        "instanceId": "w-ghmf-main-2",
-        "config": { "mode": "text", "text": "Main region — second block." }
       }
     ],
     "footer": [

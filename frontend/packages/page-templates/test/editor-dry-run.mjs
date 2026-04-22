@@ -1,7 +1,17 @@
 /**
- * Editor dry-run: exercises editor-mode primitives end-to-end in a linkedom
- * DOM. Covers the pure constraint computation, the editor state machine,
- * keyboard-driven pickup + drop, persistence, and the canEdit gate.
+ * Editor dry-run: exercises the new zones-based editor and the imperative
+ * EditorAPI end-to-end in a linkedom DOM.
+ *
+ * Covers:
+ *   - computeValidTargets purity + edge cases
+ *   - EditorController primitives (applyAdd / applyMove / applyUpdate /
+ *     applyRemove) including required-region, max-widgets, and instance
+ *     lookup failures
+ *   - EditorAPI wired up to a content-page: list/get/add/move/update/remove
+ *   - DOM invariants: drop zones + cells exposed with unique auto-testid
+ *     names; no legacy half-cell attributes
+ *   - canEdit=false gate blocks API mutations
+ *   - ValidatingPageStore rejection propagates as reason=persist-failed
  *
  * Invoked via `pnpm --filter @atlas/page-templates test:editor-dry-run`.
  */
@@ -49,6 +59,8 @@ const {
   ValidatingPageStore,
   computeValidTargets,
   EditorController,
+  EditorAPI,
+  freshInstanceId,
 } = pkg;
 
 const widgetHostPkg = await import('@atlas/widget-host');
@@ -86,6 +98,13 @@ function findDescendant(node, predicate) {
     if (found) return found;
   }
   return null;
+}
+
+function findAllDescendants(node, predicate, out = []) {
+  if (!node) return out;
+  if (predicate(node)) out.push(node);
+  for (const child of node.children ?? []) findAllDescendants(child, predicate, out);
+  return out;
 }
 
 // ---- stub template + widget classes ---------------------------------
@@ -131,7 +150,11 @@ function makeTemplateRegistry() {
   return tr;
 }
 
-// ---- 1. computeValidTargets pure tests ------------------------------
+function makeWelcomeDoc() {
+  return structuredClone(docWelcome);
+}
+
+// ==== 1. computeValidTargets ==========================================
 
 async function testComputeValidTargets_basic() {
   const reg = makeWidgetRegistry();
@@ -146,26 +169,12 @@ async function testComputeValidTargets_basic() {
   const sidebar = result.validRegions.find((r) => r.regionName === 'sidebar');
   assert(main, 'main region valid for announcements');
   assert(sidebar, 'sidebar region valid for announcements');
-  // main has 1 widget → 2 insertion points, sidebar has 1 → 2 insertion points.
   assertEq(main.canInsertAt.length, 2, 'main insertion slots');
   assert(main.canInsertAt.every((b) => b === true), 'all main positions valid');
   assertEq(sidebar.canInsertAt.length, 2, 'sidebar insertion slots');
 }
 
-async function testComputeValidTargets_unknownRegion() {
-  const reg = makeWidgetRegistry();
-  const bogusTemplate = { regions: [{ name: 'main', required: true }] };
-  const doc = { regions: { main: [], nope: [] } };
-  const result = computeValidTargets('content.announcements', doc, bogusTemplate, reg);
-  // 'nope' isn't in the template so it's not returned at all — the function
-  // iterates template.regions; unknown document regions simply get ignored.
-  assertEq(result.validRegions.length, 1, 'only template-declared regions returned');
-  assertEq(result.validRegions[0].regionName, 'main', 'main returned');
-}
-
 async function testComputeValidTargets_anyRegionAllowed() {
-  // Per-widget slot permissions are gone: a registered widget is valid
-  // in any region the template declares.
   const reg = makeWidgetRegistry();
   const tpl = { regions: [{ name: 'header' }, { name: 'footer' }] };
   const result = computeValidTargets(
@@ -179,7 +188,6 @@ async function testComputeValidTargets_anyRegionAllowed() {
 }
 
 async function testComputeValidTargets_unknownWidget() {
-  // A widget id the registry does not know about is undroppable everywhere.
   const reg = makeWidgetRegistry();
   const tpl = { regions: [{ name: 'main' }] };
   const result = computeValidTargets(
@@ -201,13 +209,7 @@ async function testComputeValidTargets_maxWidgetsAtCap_newPlacement() {
       main: [{ widgetId: 'content.announcements', instanceId: 'x', config: {} }],
     },
   };
-  const result = computeValidTargets(
-    'content.announcements',
-    doc,
-    tpl,
-    reg,
-    null,
-  );
+  const result = computeValidTargets('content.announcements', doc, tpl, reg, null);
   const main = result.validRegions.find((r) => r.regionName === 'main');
   assert(main, 'main is returned with capped state');
   assertEq(main.reason, 'max-widgets', 'reason is max-widgets');
@@ -225,7 +227,6 @@ async function testComputeValidTargets_maxWidgetsMoveWithin() {
       ],
     },
   };
-  // Moving 'a' within the same region: count unchanged.
   const result = computeValidTargets(
     'content.announcements',
     doc,
@@ -238,115 +239,331 @@ async function testComputeValidTargets_maxWidgetsMoveWithin() {
   assert(main.canInsertAt.every((b) => b === true), 'move-within allowed at cap');
 }
 
-async function testComputeValidTargets_emptyTemplateRegions() {
-  const reg = makeWidgetRegistry();
-  const tpl = { regions: [] };
-  const result = computeValidTargets(
-    'content.announcements',
-    { regions: {} },
-    tpl,
-    reg,
-  );
-  assertEq(result.validRegions.length, 0, 'no regions → no valid targets');
-  assertEq(result.invalidRegions.length, 0, 'no regions → no invalid entries');
-}
+// ==== 2. EditorController primitives ==================================
 
-// ---- 2. EditorController tests --------------------------------------
-
-function makeWelcomeDoc() {
-  return structuredClone(docWelcome);
-}
-
-async function testControllerPickUpDrop() {
+async function testController_applyAdd_basic() {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
     pageDoc: makeWelcomeDoc(),
     templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  ctrl.pickUp({
+  const entry = {
     widgetId: 'content.announcements',
-    source: { regionName: 'main', index: 0 },
-    via: 'pointer',
-  });
-  assert(ctrl.picked, 'picked state set');
-  const result = ctrl.drop({ target: { regionName: 'sidebar', index: 1 } });
-  assert(result.ok, `drop ok (got ${JSON.stringify(result)})`);
-  assertEq(result.nextDoc.regions.main.length, 0, 'main emptied');
-  assertEq(result.nextDoc.regions.sidebar.length, 2, 'sidebar grown');
-  assert(ctrl.picked === null, 'picked cleared after drop');
+    instanceId: 'w-new-1',
+    config: { mode: 'text', text: 'Hi' },
+  };
+  const res = ctrl.applyAdd({ entry, region: 'sidebar', index: 1 });
+  assert(res.ok, `applyAdd ok: ${JSON.stringify(res)}`);
+  assertEq(res.nextDoc.regions.sidebar.length, 2, 'sidebar grew to 2');
+  assertEq(res.nextDoc.regions.sidebar[1].instanceId, 'w-new-1', 'inserted at index 1');
 }
 
-async function testControllerCancelClearsState() {
+async function testController_applyAdd_appendDefaults() {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
     pageDoc: makeWelcomeDoc(),
     templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  let events = 0;
-  ctrl.on('statechange', () => events++);
-  ctrl.pickUp({
-    widgetId: 'content.announcements',
-    source: { regionName: 'main', index: 0 },
-    via: 'keyboard',
-  });
-  assert(ctrl.picked, 'picked');
-  ctrl.cancel();
-  assert(ctrl.picked === null, 'picked cleared');
-  assert(events >= 2, 'statechange fired on pickUp and cancel');
+  const entry = { widgetId: 'content.announcements', instanceId: 'w-new-2', config: {} };
+  const res = ctrl.applyAdd({ entry, region: 'main' }); // no index
+  assert(res.ok, 'applyAdd with no index appends');
+  assertEq(res.to.index, 1, 'appended at end of main');
 }
 
-async function testControllerDropInvalidTarget() {
+async function testController_applyAdd_rejectsUnknownWidget() {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
     pageDoc: makeWelcomeDoc(),
     templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  ctrl.pickUp({
-    widgetId: 'content.announcements',
-    source: { regionName: 'main', index: 0 },
-    via: 'pointer',
+  const res = ctrl.applyAdd({
+    entry: { widgetId: 'nope.nope', instanceId: 'x', config: {} },
+    region: 'main',
+    index: 0,
   });
-  const result = ctrl.drop({ target: { regionName: 'nonexistent', index: 0 } });
-  assert(!result.ok, 'bad region rejected');
-  assertEq(result.reason, 'region-invalid', 'reason is region-invalid');
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'unknown-widget', 'reason unknown-widget');
 }
 
-async function testControllerDeleteInstance() {
+async function testController_applyAdd_rejectsDuplicateInstance() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  // welcome doc already has 'w-main-1' in main
+  const res = ctrl.applyAdd({
+    entry: { widgetId: 'content.announcements', instanceId: 'w-main-1', config: {} },
+    region: 'sidebar',
+    index: 0,
+  });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'duplicate-instance-id', 'reason duplicate-instance-id');
+}
+
+async function testController_applyMove_crossRegion() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  // Seed a second main entry so move-out doesn't empty required main.
+  ctrl.applyAdd({
+    entry: { widgetId: 'content.announcements', instanceId: 'w-main-2', config: {} },
+    region: 'main',
+  });
+  const res = ctrl.applyMove({ instanceId: 'w-main-2', region: 'sidebar', index: 1 });
+  assert(res.ok, `move ok: ${JSON.stringify(res)}`);
+  assertEq(res.nextDoc.regions.main.length, 1, 'main shrunk to 1');
+  assertEq(res.nextDoc.regions.sidebar.length, 2, 'sidebar grew to 2');
+  assertEq(res.to.region, 'sidebar', 'to region correct');
+  assertEq(res.to.index, 1, 'to index correct');
+}
+
+async function testController_applyMove_noop() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const res = ctrl.applyMove({ instanceId: 'w-main-1', region: 'main', index: 0 });
+  assert(res.ok, 'move to same position is ok');
+  assertEq(res.noop, true, 'flagged as noop');
+}
+
+async function testController_applyMove_rejectsRequiredEmpty() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  // main is required; moving its only widget out must fail.
+  const res = ctrl.applyMove({ instanceId: 'w-main-1', region: 'sidebar', index: 0 });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'required-region-empty', 'reason required-region-empty');
+}
+
+async function testController_applyMove_rejectsUnknownInstance() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const res = ctrl.applyMove({ instanceId: 'nope', region: 'main', index: 0 });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'instance-not-found', 'reason instance-not-found');
+}
+
+async function testController_applyUpdate() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const res = ctrl.applyUpdate({ instanceId: 'w-main-1', config: { mode: 'text', text: 'Updated' } });
+  assert(res.ok, 'update ok');
+  const found = ctrl.findInstance('w-main-1');
+  assertEq(found.entry.config.text, 'Updated', 'config replaced');
+}
+
+async function testController_applyRemove() {
   const reg = makeWidgetRegistry();
   const doc = makeWelcomeDoc();
-  // Add a second widget to sidebar so deletion leaves it non-empty.
+  // Add a second sidebar entry so removal doesn't empty (sidebar isn't
+  // required anyway, but belt + braces).
   doc.regions.sidebar.push({
     widgetId: 'content.announcements',
     instanceId: 'w-side-2',
-    config: { mode: 'text', text: 'Second' },
+    config: {},
   });
   const ctrl = new EditorController({
     pageDoc: doc,
     templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  const result = ctrl.deleteInstance({ regionName: 'sidebar', index: 0 });
-  assert(result.ok, 'delete succeeded');
-  assertEq(result.nextDoc.regions.sidebar.length, 1, 'sidebar shrunk');
+  const res = ctrl.applyRemove({ instanceId: 'w-side-2' });
+  assert(res.ok, 'remove ok');
+  assertEq(res.nextDoc.regions.sidebar.length, 1, 'sidebar shrunk');
+  assert(ctrl.findInstance('w-side-2') === null, 'instance gone from doc');
 }
 
-async function testControllerDeleteRefusesRequired() {
+async function testController_applyRemove_refusesRequiredEmpty() {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
     pageDoc: makeWelcomeDoc(),
     templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  // main is required and has only one widget → delete must refuse.
-  const result = ctrl.deleteInstance({ regionName: 'main', index: 0 });
-  assert(!result.ok, 'required region last widget delete refused');
-  assertEq(result.reason, 'required-region-empty', 'required-region-empty reason');
+  const res = ctrl.applyRemove({ instanceId: 'w-main-1' });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'required-region-empty', 'reason required-region-empty');
 }
 
-// ---- 3. Integration smoke: <content-page edit> DOM shape ------------
+async function testController_findInstanceAndList() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const found = ctrl.findInstance('w-main-1');
+  assert(found, 'instance found');
+  assertEq(found.region, 'main', 'found in main');
+  assertEq(found.index, 0, 'at index 0');
+
+  const list = ctrl.listEntries();
+  assertEq(list.length, 2, 'two entries in welcome doc');
+  assert(list.some((e) => e.instanceId === 'w-main-1'), 'w-main-1 listed');
+  assert(list.some((e) => e.instanceId === 'w-side-1'), 'w-side-1 listed');
+}
+
+// ==== 3. EditorAPI (standalone, no DOM) ===============================
+
+async function testAPI_addAndList() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const saves = [];
+  const api = new EditorAPI({
+    controller: ctrl,
+    onCommit: async (doc) => saves.push(doc),
+  });
+  const res = await api.add({
+    widgetId: 'content.announcements',
+    region: 'sidebar',
+    instanceId: 'w-agent-1',
+    config: { mode: 'text', text: 'from agent' },
+  });
+  assert(res.ok, 'add ok');
+  assertEq(res.instanceId, 'w-agent-1', 'returned instanceId');
+  assertEq(saves.length, 1, 'onCommit called');
+  assertEq(api.list().length, 3, 'list has 3 entries');
+  assertEq(api.get('w-agent-1').config.text, 'from agent', 'get returns config');
+}
+
+async function testAPI_addGeneratesInstanceId() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
+  const res = await api.add({ widgetId: 'content.announcements', region: 'sidebar' });
+  assert(res.ok, 'add ok');
+  assert(res.instanceId && res.instanceId.startsWith('w-announcements-'), 'auto-id generated with widget suffix');
+}
+
+async function testAPI_moveById() {
+  const reg = makeWidgetRegistry();
+  const doc = makeWelcomeDoc();
+  doc.regions.main.push({
+    widgetId: 'content.announcements',
+    instanceId: 'w-main-2',
+    config: {},
+  });
+  const ctrl = new EditorController({
+    pageDoc: doc,
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
+  const res = await api.move({ instanceId: 'w-main-2', region: 'sidebar', index: 0 });
+  assert(res.ok, 'move ok');
+  assertEq(api.get('w-main-2').region, 'sidebar', 'now in sidebar');
+  assertEq(api.get('w-main-2').index, 0, 'at index 0');
+}
+
+async function testAPI_updateConfig() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
+  const res = await api.update({
+    instanceId: 'w-main-1',
+    config: { mode: 'text', text: 'Updated by agent' },
+  });
+  assert(res.ok, 'update ok');
+  assertEq(api.get('w-main-1').config.text, 'Updated by agent', 'config replaced');
+}
+
+async function testAPI_remove() {
+  const reg = makeWidgetRegistry();
+  const doc = makeWelcomeDoc();
+  doc.regions.main.push({
+    widgetId: 'content.announcements',
+    instanceId: 'w-main-2',
+    config: {},
+  });
+  const ctrl = new EditorController({
+    pageDoc: doc,
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
+  const res = await api.remove({ instanceId: 'w-main-2' });
+  assert(res.ok, 'remove ok');
+  assert(api.get('w-main-2') === null, 'instance gone');
+}
+
+async function testAPI_rejectsNotEditable() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({
+    controller: ctrl,
+    onCommit: async () => {},
+    isEditable: () => false,
+  });
+  const res = await api.add({ widgetId: 'content.announcements', region: 'sidebar' });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'not-editable', 'reason not-editable');
+}
+
+async function testAPI_persistError() {
+  const reg = makeWidgetRegistry();
+  const ctrl = new EditorController({
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
+    widgetRegistry: reg,
+  });
+  const api = new EditorAPI({
+    controller: ctrl,
+    onCommit: async () => {
+      throw new Error('disk full');
+    },
+  });
+  const res = await api.add({ widgetId: 'content.announcements', region: 'sidebar' });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'persist-failed', 'reason persist-failed');
+}
+
+async function testFreshInstanceId() {
+  const a = freshInstanceId('content.announcements');
+  const b = freshInstanceId('content.announcements');
+  assert(a !== b, 'two calls produce distinct ids');
+  assert(a.startsWith('w-announcements-'), 'uses widgetId suffix');
+}
+
+// ==== 4. <content-page edit> DOM shape ================================
 
 class StubPageStore {
   constructor(seed) {
@@ -372,7 +589,10 @@ class StubPageStore {
   }
 }
 
-async function testContentPageEditDomShape() {
+async function testContentPage_dropSlotsAndCellsHaveUniqueNames() {
+  // Seed welcome has both main and sidebar filled (1 widget each), so no
+  // drop slots are rendered. Remove sidebar via the editor API to expose
+  // one drop slot, then assert the naming contract.
   const pageStore = new StubPageStore({ welcome: makeWelcomeDoc() });
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
@@ -388,84 +608,92 @@ async function testContentPageEditDomShape() {
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  // Palette is present.
-  const palette = findDescendant(
+  assert(page.editor, 'page.editor is exposed');
+  assert(typeof page.editor.add === 'function', 'editor.add exists');
+  assert(typeof page.editor.list === 'function', 'editor.list exists');
+
+  // Both regions filled → no section is marked data-empty.
+  let emptySlots = findAllDescendants(
     page,
-    (el) => el.tagName && el.tagName.toLowerCase() === 'widget-palette',
+    (el) =>
+      el.tagName === 'SECTION' &&
+      el.getAttribute?.('data-editor-slot') !== null &&
+      el.getAttribute?.('data-empty') === 'true',
   );
-  assert(palette, '<widget-palette> is present in edit mode');
+  assertEq(emptySlots.length, 0, 'filled sections are not marked data-empty');
 
-  // Announcer is present.
-  const announcer = findDescendant(
-    page,
-    (el) => el.getAttribute && el.getAttribute('data-editor-announcer') !== null,
-  );
-  assert(announcer, 'aria-live announcer present');
-
-  // Widget-anchored drop model: no persistent [data-drop-indicator] bars
-  // in the DOM. Drop targets are cell halves driven by [data-drop-target]
-  // at drag time (or a single [data-drop-empty] for empty regions).
-  const indicators = [];
-  const collect = (el) => {
-    if (!el) return;
-    if (el.getAttribute && el.getAttribute('data-drop-indicator') !== null) {
-      indicators.push(el);
-    }
-    for (const c of el.children ?? []) collect(c);
-  };
-  collect(page);
-  assert(
-    indicators.length === 0,
-    `expected 0 persistent drop indicators, got ${indicators.length}`,
-  );
-
-  // Widget cells got tabindex=0.
-  const cells = [];
-  const collectCells = (el) => {
-    if (!el) return;
-    if (el.getAttribute && el.getAttribute('data-widget-cell') !== null) {
-      cells.push(el);
-    }
-    for (const c of el.children ?? []) collectCells(c);
-  };
-  collectCells(page);
-  assert(cells.length >= 2, `expected >= 2 cells, got ${cells.length}`);
+  // Cells have instance-id-keyed unique names and are not native-draggable.
+  const cells = findAllDescendants(page, (el) => el.getAttribute?.('data-widget-cell') !== null);
+  assertEq(cells.length, 2, 'two cells (main + sidebar)');
   for (const c of cells) {
-    assertEq(c.getAttribute('tabindex'), '0', 'cell has tabindex=0');
+    const instanceId = c.getAttribute('data-instance-id');
+    assert(instanceId, 'cell has data-instance-id');
+    assertEq(c.getAttribute('name'), `cell-${instanceId}`, 'cell has unique name');
+    assertEq(c.getAttribute('tabindex'), '0', 'cell tabbable');
+    assert(!c.hasAttribute('draggable'), 'cell is NOT native-draggable');
   }
 
-  // Simulate a keyboard pickUp: synthesize a keydown with Space on a cell.
-  // linkedom's dispatchEvent works; we can check the editor state machine
-  // directly via the palette-adjacent attribute we set on data-editor-active.
-  const cell = cells[0];
-  // linkedom's KeyboardEvent is a thin alias and does not honor the `key`
-  // option; always set it as a property after construction.
-  const ev = new dom.window.Event('keydown', { bubbles: true, cancelable: true });
-  ev.key = ' ';
-  cell.dispatchEvent(ev);
-  await waitMicrotasks(5);
+  // Legacy half-cell / zone-per-index / child-element slot markers are gone.
+  const legacy = findAllDescendants(page, (el) =>
+    el.getAttribute?.('data-drop-zone') !== null ||
+    el.getAttribute?.('data-drop-slot') !== null ||
+    el.getAttribute?.('data-drop-target') !== null ||
+    el.getAttribute?.('data-drop-empty') !== null ||
+    el.getAttribute?.('data-drop-indicator') !== null,
+  );
+  assertEq(legacy.length, 0, 'no legacy drop-zone / drop-slot child markers');
+
+  // Delete buttons per cell.
+  const deleteButtons = findAllDescendants(page, (el) => {
+    const name = el.getAttribute?.('name');
+    return typeof name === 'string' && name.startsWith('delete-');
+  });
+  assertEq(deleteButtons.length, 2, 'one delete button per cell');
+
+  // Empty a region — a single drop slot should appear for it with a
+  // stable, region-keyed name (no index suffix in the slot model).
+  const sidebarCell = cells.find((c) => {
+    // Walk up to find the section slot attribute.
+    let node = c;
+    while (node && node.nodeType === 1) {
+      const slot = node.getAttribute?.('data-slot');
+      if (slot) return slot === 'sidebar';
+      node = node.parentNode;
+    }
+    return false;
+  });
+  assert(sidebarCell, 'sidebar cell located');
+  const res = await page.editor.remove({
+    instanceId: sidebarCell.getAttribute('data-instance-id'),
+  });
+  assert(res.ok, 'sidebar remove succeeded');
+  await waitMicrotasks(40);
+
+  emptySlots = findAllDescendants(
+    page,
+    (el) =>
+      el.tagName === 'SECTION' &&
+      el.getAttribute?.('data-editor-slot') !== null &&
+      el.getAttribute?.('data-empty') === 'true',
+  );
+  assertEq(emptySlots.length, 1, 'one section marked empty for the emptied region');
   assertEq(
-    page.getAttribute('data-editor-active'),
-    'true',
-    'keyboard Space entered picked state (editor-active=true)',
+    emptySlots[0].getAttribute('data-slot'),
+    'sidebar',
+    'the empty section is sidebar',
+  );
+  assertEq(
+    emptySlots[0].getAttribute('name'),
+    'drop-slot-sidebar',
+    'slot name is region-keyed (no index suffix)',
   );
 
   page.remove();
   await waitMicrotasks(5);
 }
 
-// ---- 4. Persistence smoke -------------------------------------------
-
-async function testPersistenceOnKeyboardDrop() {
-  // Seed a doc with TWO widgets in main so we can move one to sidebar
-  // without emptying the required 'main' region.
-  const seedDoc = makeWelcomeDoc();
-  seedDoc.regions.main.push({
-    widgetId: 'content.announcements',
-    instanceId: 'w-main-2',
-    config: { mode: 'text', text: 'Second.' },
-  });
-  const pageStore = new StubPageStore({ welcome: seedDoc });
+async function testContentPage_editorAPI_add_moves_remove_persist() {
+  const pageStore = new StubPageStore({ welcome: makeWelcomeDoc() });
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
@@ -474,56 +702,87 @@ async function testPersistenceOnKeyboardDrop() {
   page.pageStore = pageStore;
   page.templateRegistry = templateRegistry;
   page.widgetRegistry = widgetRegistry;
-  page.correlationId = 'cid-editor-persist';
+  page.correlationId = 'cid-api-persist';
   page.edit = true;
   page.setAttribute('edit', '');
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  // Drive the editor directly through its handle — event dispatch in
-  // linkedom is too fragile for full end-to-end keyboard plumbing. This
-  // still verifies: controller.drop → _commitAndRemount → pageStore.save
-  // → re-read → re-mount path.
-  const handle = page._editorHandle;
-  assert(handle, 'editor handle attached');
-  handle.controller.pickUp({
+  // Add a widget programmatically.
+  const addRes = await page.editor.add({
     widgetId: 'content.announcements',
-    source: { regionName: 'main', index: 1 },
-    via: 'keyboard',
+    region: 'sidebar',
+    index: 1,
+    instanceId: 'w-agent-1',
+    config: { mode: 'text', text: 'from agent' },
   });
-  const _result = handle.controller.drop({
-    target: { regionName: 'sidebar', index: 1 },
-  });
-  assert(_result.ok, 'controller drop ok');
-  await page._commitAndRemount(_result.nextDoc, {
-    action: 'move',
-    widgetId: 'content.announcements',
-    from: _result.from,
-    to: _result.to,
-  });
+  assert(addRes.ok, `add ok: ${JSON.stringify(addRes)}`);
   await waitMicrotasks(40);
+  assert(pageStore.saveCalls.length >= 1, 'pageStore.save called');
+  const last1 = pageStore.saveCalls[pageStore.saveCalls.length - 1].doc;
+  assertEq(last1.regions.sidebar.length, 2, 'sidebar grew after add');
 
-  assert(pageStore.saveCalls.length >= 1, 'pageStore.save was called');
-  const lastSaved = pageStore.saveCalls[pageStore.saveCalls.length - 1].doc;
-  assertEq(lastSaved.regions.main.length, 1, 'saved doc: main shrunk to 1');
-  assertEq(lastSaved.regions.sidebar.length, 2, 'saved doc: sidebar grew to 2');
+  // Move it.
+  const moveRes = await page.editor.move({
+    instanceId: 'w-agent-1',
+    region: 'main',
+    index: 0,
+  });
+  assert(moveRes.ok, `move ok: ${JSON.stringify(moveRes)}`);
+  await waitMicrotasks(40);
+  const last2 = pageStore.saveCalls[pageStore.saveCalls.length - 1].doc;
+  assertEq(last2.regions.main[0].instanceId, 'w-agent-1', 'agent widget moved to main[0]');
 
-  // After re-mount, the widget-host reflects the new ordering.
-  const host = findDescendant(
-    page,
-    (el) => el.tagName && el.tagName.toLowerCase() === 'widget-host',
-  );
-  assert(host, 'widget-host is remounted');
+  // Update it.
+  const updRes = await page.editor.update({
+    instanceId: 'w-agent-1',
+    config: { mode: 'text', text: 'revised' },
+  });
+  assert(updRes.ok, 'update ok');
+  await waitMicrotasks(40);
+  const last3 = pageStore.saveCalls[pageStore.saveCalls.length - 1].doc;
+  const agentEntry = last3.regions.main.find((e) => e.instanceId === 'w-agent-1');
+  assertEq(agentEntry.config.text, 'revised', 'config updated');
+
+  // Remove it.
+  const rmRes = await page.editor.remove({ instanceId: 'w-agent-1' });
+  assert(rmRes.ok, 'remove ok');
+  await waitMicrotasks(40);
+  const last4 = pageStore.saveCalls[pageStore.saveCalls.length - 1].doc;
   assert(
-    host.layout && host.layout.slots.sidebar.length === 2,
-    'remounted host reflects new layout',
+    !last4.regions.main.some((e) => e.instanceId === 'w-agent-1'),
+    'agent widget gone',
   );
 
   page.remove();
   await waitMicrotasks(5);
 }
 
-// ---- 5. canEdit=false gate ------------------------------------------
+async function testContentPage_editorAPI_rejectsRequiredEmpty() {
+  const pageStore = new StubPageStore({ welcome: makeWelcomeDoc() });
+  const templateRegistry = makeTemplateRegistry();
+  const widgetRegistry = makeWidgetRegistry();
+
+  const page = document.createElement('content-page');
+  page.pageId = 'welcome';
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.correlationId = 'cid-api-required';
+  page.edit = true;
+  page.setAttribute('edit', '');
+  document.body.appendChild(page);
+  await waitMicrotasks(40);
+
+  const res = await page.editor.remove({ instanceId: 'w-main-1' });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'required-region-empty', 'reason required-region-empty');
+
+  page.remove();
+  await waitMicrotasks(5);
+}
+
+// ==== 5. canEdit=false gate ==========================================
 
 async function testCanEditFalseGate() {
   const pageStore = new StubPageStore({ welcome: makeWelcomeDoc() });
@@ -554,6 +813,7 @@ async function testCanEditFalseGate() {
       (el) => el.tagName && el.tagName.toLowerCase() === 'widget-palette',
     );
     assert(!palette, 'palette NOT rendered when canEdit=false');
+    assert(!page.editor, 'editor API NOT exposed when canEdit=false');
 
     const denied = telemetryEvents.find(
       (e) => e.event === 'atlas.content-page.edit.denied',
@@ -567,11 +827,9 @@ async function testCanEditFalseGate() {
   }
 }
 
-// ---- round it out: ValidatingPageStore rejects bad commit ----------
+// ==== 6. ValidatingPageStore rejection =================================
 
-async function testValidatingStoreRejectsInvalidEdit() {
-  // Force an invalid save: if editor emits a doc the validator rejects,
-  // _commitAndRemount's save throws; we expect no crash and an announce.
+async function testValidatingStoreRejection_asPersistFailed() {
   const inner = new InMemoryPageStore();
   await inner.save('welcome', makeWelcomeDoc());
   const store = new ValidatingPageStore(inner);
@@ -589,45 +847,64 @@ async function testValidatingStoreRejectsInvalidEdit() {
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  // Build a bad next-doc (missing required field).
-  const bad = makeWelcomeDoc();
-  delete bad.tenantId;
-  let threw = null;
-  try {
-    await page._commitAndRemount(bad, { action: 'move' });
-  } catch (err) {
-    threw = err;
-  }
-  assert(threw, 'invalid save must throw');
+  // Monkey-patch the store to produce an invalid doc and confirm the API
+  // surfaces it as reason=persist-failed.
+  const origSave = store.save.bind(store);
+  store.save = async () => {
+    throw new Error('schema violation: missing tenantId');
+  };
+  const res = await page.editor.add({
+    widgetId: 'content.announcements',
+    region: 'sidebar',
+  });
+  assert(!res.ok, 'rejected');
+  assertEq(res.reason, 'persist-failed', 'reason persist-failed');
+  store.save = origSave;
 
   page.remove();
   await waitMicrotasks(5);
 }
 
-// ---- main -----------------------------------------------------------
+// ==== main ============================================================
 
 async function main() {
-  // computeValidTargets cases
+  // computeValidTargets
   await testComputeValidTargets_basic();
-  await testComputeValidTargets_unknownRegion();
   await testComputeValidTargets_anyRegionAllowed();
   await testComputeValidTargets_unknownWidget();
   await testComputeValidTargets_maxWidgetsAtCap_newPlacement();
   await testComputeValidTargets_maxWidgetsMoveWithin();
-  await testComputeValidTargets_emptyTemplateRegions();
 
-  // EditorController
-  await testControllerPickUpDrop();
-  await testControllerCancelClearsState();
-  await testControllerDropInvalidTarget();
-  await testControllerDeleteInstance();
-  await testControllerDeleteRefusesRequired();
+  // Controller primitives
+  await testController_applyAdd_basic();
+  await testController_applyAdd_appendDefaults();
+  await testController_applyAdd_rejectsUnknownWidget();
+  await testController_applyAdd_rejectsDuplicateInstance();
+  await testController_applyMove_crossRegion();
+  await testController_applyMove_noop();
+  await testController_applyMove_rejectsRequiredEmpty();
+  await testController_applyMove_rejectsUnknownInstance();
+  await testController_applyUpdate();
+  await testController_applyRemove();
+  await testController_applyRemove_refusesRequiredEmpty();
+  await testController_findInstanceAndList();
 
-  // Integration
-  await testContentPageEditDomShape();
-  await testPersistenceOnKeyboardDrop();
+  // EditorAPI standalone
+  await testAPI_addAndList();
+  await testAPI_addGeneratesInstanceId();
+  await testAPI_moveById();
+  await testAPI_updateConfig();
+  await testAPI_remove();
+  await testAPI_rejectsNotEditable();
+  await testAPI_persistError();
+  await testFreshInstanceId();
+
+  // Integration with <content-page edit>
+  await testContentPage_dropSlotsAndCellsHaveUniqueNames();
+  await testContentPage_editorAPI_add_moves_remove_persist();
+  await testContentPage_editorAPI_rejectsRequiredEmpty();
   await testCanEditFalseGate();
-  await testValidatingStoreRejectsInvalidEdit();
+  await testValidatingStoreRejection_asPersistFailed();
 
   console.log('OK');
 }

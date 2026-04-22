@@ -4,8 +4,12 @@
   "title": "PageDocument",
   "description": "Tenant-scoped record that binds a content page to a template and stores widget placement for each region. Frozen at v1 — see 'Page Document Shape — Frozen at v1' in specs/crosscut/page-templates.md. The WidgetInstance entry shape is reused from page-layout.v1.json to guarantee one widget-entry shape across the platform.",
   "type": "object",
-  "required": ["pageId", "tenantId", "templateId", "templateVersion", "regions", "status"],
+  "required": ["pageId", "tenantId", "regions", "status"],
   "additionalProperties": false,
+  "oneOf": [
+    { "required": ["templateId", "templateVersion"] },
+    { "required": ["layoutId", "layoutVersion"] }
+  ],
   "properties": {
     "pageId": {
       "type": "string",
@@ -25,13 +29,25 @@
     },
     "templateId": {
       "type": "string",
-      "description": "Template this page binds to. MUST match a template registered in the active bundle (INV-TEMPLATE-02).",
+      "description": "Legacy: static-template page. Mutually exclusive with layoutId.",
       "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
       "examples": ["template.one-column", "template.two-column"]
     },
     "templateVersion": {
       "type": "string",
-      "description": "Semantic version of the template the page was last saved against. A stored version greater than the registered template's version MUST fail closed at render time (INV-TEMPLATE-08).",
+      "description": "Semver of the template the page was saved against. Present iff templateId is.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": ["0.1.0", "1.0.0"]
+    },
+    "layoutId": {
+      "type": "string",
+      "description": "Data-driven layout this page binds to. MUST resolve via the active LayoutRegistry / LayoutStore.",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "examples": ["layout.two-column", "my-tenant.landing"]
+    },
+    "layoutVersion": {
+      "type": "string",
+      "description": "Semver of the layout document the page was saved against. Stored version greater than the registered layout's version MUST fail closed at render time.",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
       "examples": ["0.1.0", "1.0.0"]
     },

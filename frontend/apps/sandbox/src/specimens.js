@@ -19,8 +19,29 @@ import announcementsHarnessSpec from '@atlas/bundle-standard/widgets/announcemen
 import {
   InMemoryPageStore,
   ValidatingPageStore,
+  presetLayouts,
+  LayoutRegistry,
+  InMemoryLayoutStore,
+  ValidatingLayoutStore,
+  emptyLayoutDocument,
 } from '@atlas/page-templates';
 import { seedPages, gallerySeedPages } from '@atlas/bundle-standard/seed-pages';
+
+// Sandbox-scoped layout registry seeded with every bundled preset. Shared
+// across all Layout + Layout Gallery specimens so "edit one, see another"
+// can be demoed later without re-seeding.
+const sandboxLayoutRegistry = new LayoutRegistry();
+for (const layout of presetLayouts) {
+  sandboxLayoutRegistry.register(layout);
+}
+
+// Session-scoped layout store used by the Layout Editor specimens. Saves
+// persist across specimen switches until the browser tab reloads.
+const sandboxLayoutStore = new ValidatingLayoutStore(
+  new InMemoryLayoutStore(
+    Object.fromEntries(presetLayouts.map((l) => [l.layoutId, l])),
+  ),
+);
 
 const S = (spec) => AtlasSandbox.register(spec);
 
@@ -211,6 +232,124 @@ S({
           <atlas-input label="Email" type="email" placeholder="user@example.com" required></atlas-input>
         </atlas-stack>
       `,
+    },
+  ],
+});
+
+S({
+  id: 'multi-select',
+  name: 'Multi Select',
+  tag: 'atlas-multi-select',
+  group: 'Interactive',
+  mount: (demoEl, { config }) => {
+    const el = document.createElement('atlas-multi-select');
+    for (const [k, v] of Object.entries(config.attrs ?? {})) {
+      if (v === true) el.setAttribute(k, '');
+      else if (v !== false && v != null) el.setAttribute(k, String(v));
+    }
+    el.options = config.options ?? [];
+    if (Array.isArray(config.value)) el.value = config.value;
+    el.style.maxWidth = '420px';
+    demoEl.appendChild(el);
+    return () => el.remove();
+  },
+  configVariants: [
+    {
+      name: 'Default',
+      config: {
+        attrs: { name: 'tags', label: 'Tags', placeholder: 'Select tags…' },
+        options: [
+          { value: 'react', label: 'React' },
+          { value: 'vue', label: 'Vue' },
+          { value: 'svelte', label: 'Svelte' },
+          { value: 'angular', label: 'Angular' },
+          { value: 'solid', label: 'Solid' },
+          { value: 'qwik', label: 'Qwik' },
+        ],
+      },
+    },
+    {
+      name: 'Searchable',
+      config: {
+        attrs: { name: 'country', label: 'Country', placeholder: 'Pick countries…', searchable: true },
+        options: [
+          'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Denmark',
+          'Egypt', 'France', 'Germany', 'Greece', 'India', 'Indonesia', 'Italy',
+          'Japan', 'Kenya', 'Mexico', 'Netherlands', 'Norway', 'Peru', 'Poland',
+          'Portugal', 'Spain', 'Sweden', 'Thailand', 'Turkey', 'United Kingdom',
+          'United States', 'Vietnam',
+        ].map((c) => ({ value: c.toLowerCase().replace(/\s+/g, '-'), label: c })),
+      },
+    },
+    {
+      name: 'Pre-selected',
+      config: {
+        attrs: { name: 'langs', label: 'Languages', searchable: true },
+        options: [
+          { value: 'en', label: 'English' },
+          { value: 'es', label: 'Spanish' },
+          { value: 'fr', label: 'French' },
+          { value: 'de', label: 'German' },
+          { value: 'ja', label: 'Japanese' },
+          { value: 'zh', label: 'Chinese' },
+        ],
+        value: ['en', 'fr', 'ja'],
+      },
+    },
+    {
+      name: 'Allow-create (tags)',
+      config: {
+        attrs: { name: 'labels', label: 'Labels', searchable: true, 'allow-create': true, placeholder: 'Add labels…' },
+        options: [
+          { value: 'bug', label: 'bug' },
+          { value: 'enhancement', label: 'enhancement' },
+          { value: 'question', label: 'question' },
+        ],
+      },
+    },
+    {
+      name: 'Max=2',
+      config: {
+        attrs: { name: 'picks', label: 'Pick up to 2', max: '2' },
+        options: [
+          { value: 'a', label: 'Alpha' },
+          { value: 'b', label: 'Beta' },
+          { value: 'c', label: 'Gamma' },
+          { value: 'd', label: 'Delta' },
+        ],
+      },
+    },
+    {
+      name: 'Disabled items',
+      config: {
+        attrs: { name: 'plans', label: 'Plans' },
+        options: [
+          { value: 'free', label: 'Free' },
+          { value: 'pro', label: 'Pro' },
+          { value: 'enterprise', label: 'Enterprise', disabled: true },
+        ],
+      },
+    },
+    {
+      name: 'Error state',
+      config: {
+        attrs: { name: 'required', label: 'Required', error: 'Pick at least one option', required: true },
+        options: [
+          { value: 'a', label: 'Alpha' },
+          { value: 'b', label: 'Beta' },
+        ],
+      },
+    },
+    {
+      name: 'Disabled',
+      config: {
+        attrs: { name: 'locked', label: 'Locked field', disabled: true },
+        options: [
+          { value: 'a', label: 'Alpha' },
+          { value: 'b', label: 'Beta' },
+        ],
+        value: ['a'],
+      },
     },
   ],
 });
@@ -637,6 +776,10 @@ function mountContentPage(demoEl, { config, onLog }) {
   const page = document.createElement('content-page');
   page.pageId = pageId;
   page.pageStore = sandboxPageStore;
+  // layoutRegistry resolves layoutId-based pages. Legacy templateId-based
+  // pages keep using templateRegistry (its default wired in by the bundle
+  // import). Both paths coexist.
+  page.layoutRegistry = sandboxLayoutRegistry;
   page.principal = { id: 'u_sandbox', roles: [] };
   page.tenantId = 'acme';
   page.correlationId = `cid-sandbox-${pageId}-${Date.now()}`;
@@ -686,6 +829,127 @@ for (const doc of gallerySeedPages) {
     configVariants: [
       { name: 'View', config: { pageId: doc.pageId, edit: false } },
       { name: 'Edit', config: { pageId: doc.pageId, edit: true } },
+    ],
+  });
+}
+
+
+// ── Layouts ─────────────────────────────────────────────────────
+//
+// Data-driven layouts rendered via <atlas-layout>. Each specimen mounts a
+// preset layout document and labels each slot inline so you can see the
+// grid placement (col/row + span). This is the Phase 1 runtime proof:
+// no bespoke template class, no CSS file — just a JSON layout document
+// and an <atlas-layout> element that positions sections on a grid.
+
+function mountLayoutPreview(demoEl, { config }) {
+  const layoutDoc = sandboxLayoutRegistry.get(config.layoutId);
+  const el = document.createElement('atlas-layout');
+  el.layout = layoutDoc;
+  demoEl.appendChild(el);
+  // Label each section so the slot grid is visible at a glance. These
+  // labels live INSIDE the section so they scroll with its overflow; the
+  // section itself keeps its fixed footprint regardless.
+  for (const slot of layoutDoc.slots) {
+    const sec = el.querySelector(`:scope > section[data-slot="${slot.name}"]`);
+    if (!sec) continue;
+    sec.innerHTML = `
+      <atlas-stack gap="xs" padding="md" style="height:100%;justify-content:center;align-items:center;text-align:center">
+        <atlas-text variant="medium">${slot.name}</atlas-text>
+        <atlas-text variant="muted">
+          col ${slot.col} · row ${slot.row} · span ${slot.colSpan}×${slot.rowSpan}
+        </atlas-text>
+      </atlas-stack>
+    `;
+  }
+  return () => {
+    try { el.remove(); } catch { /* already detached */ }
+  };
+}
+
+for (const layout of presetLayouts) {
+  const shortName = layout.displayName ?? layout.layoutId;
+  S({
+    id: `layout.${layout.layoutId}`,
+    name: shortName,
+    tag: 'atlas-layout',
+    group: 'Layouts',
+    mount: mountLayoutPreview,
+    configVariants: [
+      { name: 'Preview', config: { layoutId: layout.layoutId } },
+    ],
+  });
+}
+
+
+// ── Layout Editor ───────────────────────────────────────────────
+//
+// Live editor specimens. Each mounts <atlas-layout-editor> seeded either
+// with a preset (so you can tweak one) or with a blank canvas. Saves go
+// through the sandboxLayoutStore and are immediately observable by other
+// specimens that read from it.
+
+function mountLayoutEditor(demoEl, { config, onLog }) {
+  const seedId = config.layoutId ?? null;
+  const seedDoc = seedId
+    ? (sandboxLayoutStore.get
+        ? null  /* async — populated below */
+        : null)
+    : emptyLayoutDocument({
+        layoutId: `sandbox.${Date.now().toString(36)}`,
+        displayName: 'Untitled layout',
+      });
+
+  const editor = document.createElement('atlas-layout-editor');
+  editor.onChange = (doc) => onLog('layout-editor.change', {
+    layoutId: doc.layoutId,
+    slotCount: doc.slots.length,
+  });
+  editor.onSave = async (doc) => {
+    await sandboxLayoutStore.save(doc.layoutId, doc);
+    // Mirror saved layouts into the registry so preview / content-page
+    // specimens pick them up without extra plumbing.
+    try {
+      sandboxLayoutRegistry.register(doc);
+    } catch {
+      /* duplicate name with different shape — registry throws; ignore */
+    }
+    onLog('layout-editor.save', { layoutId: doc.layoutId });
+  };
+
+  (async () => {
+    if (seedId) {
+      const stored = await sandboxLayoutStore.get(seedId);
+      editor.layout = stored ?? sandboxLayoutRegistry.get(seedId);
+    } else {
+      editor.layout = seedDoc;
+    }
+  })();
+
+  demoEl.appendChild(editor);
+  return () => {
+    try { editor.remove(); } catch { /* already detached */ }
+  };
+}
+
+S({
+  id: 'layout-editor.blank',
+  name: 'Blank canvas',
+  tag: 'atlas-layout-editor',
+  group: 'Layout Editor',
+  mount: mountLayoutEditor,
+  configVariants: [{ name: 'New layout', config: {} }],
+});
+
+for (const layout of presetLayouts) {
+  S({
+    id: `layout-editor.${layout.layoutId}`,
+    name: layout.displayName ?? layout.layoutId,
+    tag: 'atlas-layout-editor',
+    group: 'Layout Editor',
+    mount: mountLayoutEditor,
+    configVariants: [
+      { name: 'Edit preset', config: { layoutId: layout.layoutId } },
     ],
   });
 }

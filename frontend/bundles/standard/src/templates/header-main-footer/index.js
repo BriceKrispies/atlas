@@ -7,11 +7,11 @@ export const manifest = {
   version: '0.1.0',
   displayName: 'Header / Main / Footer',
   description:
-    'Full-width header band, a main region, and a full-width footer band. Header and footer are optional.',
+    'Full-width header band, a main region, and a full-width footer band. Each region is a single slot.',
   regions: [
-    { name: 'header', required: false, maxWidgets: 3 },
-    { name: 'main', required: true },
-    { name: 'footer', required: false, maxWidgets: 3 },
+    { name: 'header', required: false },
+    { name: 'main', required: false },
+    { name: 'footer', required: false },
   ],
 };
 

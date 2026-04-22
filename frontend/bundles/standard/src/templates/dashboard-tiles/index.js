@@ -7,9 +7,9 @@ export const manifest = {
   version: '0.1.0',
   displayName: 'Dashboard Tiles',
   description:
-    'Responsive tile grid. Widgets flow into equal-width columns that auto-fit the viewport (min 260px per tile).',
+    'A single tile slot. In the slot model this is a one-widget region.',
   regions: [
-    { name: 'tiles', required: true },
+    { name: 'tiles', required: false },
   ],
 };
 
