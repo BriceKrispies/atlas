@@ -12,8 +12,12 @@
     --muted: #8a94a0;
     --card: #14181d;
     --card-hover: #1a2028;
+    --card-disabled: #101418;
     --accent: #6aa6ff;
     --border: #252c35;
+    --border-dim: #1b2027;
+    --tag-bg: #1f2731;
+    --tag-fg: #9db3cc;
   }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
   body {
@@ -24,11 +28,20 @@
     padding: 2rem;
     box-sizing: border-box;
   }
-  main { width: 100%; max-width: 640px; }
+  main { width: 100%; max-width: 720px; }
   h1 { font-size: 2rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
   p.lede { margin: 0 0 2rem; color: var(--muted); }
+  section { margin-bottom: 2rem; }
+  section:last-of-type { margin-bottom: 0; }
+  section h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+  }
   ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
-  a.card {
+  a.card, div.card {
     display: block;
     padding: 1rem 1.25rem;
     background: var(--card);
@@ -43,8 +56,40 @@
     border-color: var(--accent);
     outline: none;
   }
-  a.card strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
-  a.card span { color: var(--muted); font-size: 0.9rem; }
+  .card strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
+  .card span.desc { color: var(--muted); font-size: 0.9rem; display: block; }
+  .card[data-kind="info"] {
+    background: var(--card-disabled);
+    border-style: dashed;
+    border-color: var(--border-dim);
+  }
+  .card .row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+    flex-wrap: wrap;
+  }
+  .card .tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--tag-bg);
+    color: var(--tag-fg);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .card code {
+    display: inline-block;
+    margin-top: 0.4rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #0a0d11;
+    border: 1px solid var(--border-dim);
+    font-size: 0.8rem;
+    color: var(--tag-fg);
+  }
   footer { margin-top: 2rem; color: var(--muted); font-size: 0.85rem; }
   footer a { color: var(--muted); }
 </style>
@@ -53,17 +98,84 @@
 <main>
   <h1>Atlas</h1>
   <p class="lede">Frontend apps deployed from <code>main</code>.</p>
-  <ul>
-    <li><a class="card" href="./admin/">
-      <strong>Admin</strong>
-      <span>Tenant administration console.</span>
-    </a></li>
-    <li><a class="card" href="./sandbox/">
-      <strong>Sandbox</strong>
-      <span>Design system &amp; component playground.</span>
-    </a></li>
-  </ul>
+  <div id="groups"></div>
   <footer><a href="https://github.com/BriceKrispies/atlas">github.com/BriceKrispies/atlas</a></footer>
 </main>
+<script>
+  // Single source of truth for the router. To add a new app, append to
+  // APPS. Items in the "frontend" group are built by the Pages workflow
+  // and linked relative to the router; items in the "backend" group are
+  // informational cards for services that aren't served by Pages.
+  const APPS = [
+    {
+      id: 'admin',
+      group: 'frontend',
+      name: 'Admin',
+      description: 'Tenant administration console.',
+      href: './admin/',
+    },
+    {
+      id: 'sandbox',
+      group: 'frontend',
+      name: 'Sandbox',
+      description: 'Design system + component playground.',
+      href: './sandbox/',
+    },
+    {
+      id: 'control-plane',
+      group: 'backend',
+      name: 'Control plane',
+      description: 'Rust HTTP service — tenant / bundle / deploy control API. Not a static site; runs separately.',
+      href: 'https://github.com/BriceKrispies/atlas/tree/main/apps/control-plane',
+      localDev: 'http://localhost:8080',
+      kind: 'info',
+    },
+  ];
+
+  const GROUP_META = {
+    frontend: { heading: 'Frontend apps' },
+    backend:  { heading: 'Backend services' },
+  };
+
+  function renderCard(app) {
+    const isInfo = app.kind === 'info';
+    const tag = isInfo ? '<span class="tag">info</span>' : '';
+    const localDev = app.localDev
+      ? `<code>${app.localDev}</code>`
+      : '';
+    const inner = `
+      <div class="row"><strong>${app.name}</strong>${tag}</div>
+      <span class="desc">${app.description}</span>
+      ${localDev}
+    `;
+    if (isInfo) {
+      // Still clickable — but visually flagged as not a live destination.
+      return `<li><a class="card" data-kind="info" href="${app.href}" target="_blank" rel="noopener">${inner}</a></li>`;
+    }
+    return `<li><a class="card" href="${app.href}">${inner}</a></li>`;
+  }
+
+  function render() {
+    const host = document.getElementById('groups');
+    const groups = new Map();
+    for (const app of APPS) {
+      if (!groups.has(app.group)) groups.set(app.group, []);
+      groups.get(app.group).push(app);
+    }
+    const parts = [];
+    for (const [groupId, items] of groups) {
+      const heading = GROUP_META[groupId]?.heading ?? groupId;
+      parts.push(`
+        <section>
+          <h2>${heading}</h2>
+          <ul>${items.map(renderCard).join('')}</ul>
+        </section>
+      `);
+    }
+    host.innerHTML = parts.join('');
+  }
+
+  render();
+</script>
 </body>
 </html>
