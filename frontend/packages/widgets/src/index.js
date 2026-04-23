@@ -12,6 +12,8 @@ import './data-table/atlas-table-toolbar.js';
 import './data-table/atlas-pagination.js';
 import './data-table/atlas-data-table.js';
 
-// Charts — registered incrementally as each element lands.
+// Charts
+import './charts/atlas-chart-tooltip.js';
+import './charts/atlas-chart-legend.js';
 
 export * from './data-source/index.js';
