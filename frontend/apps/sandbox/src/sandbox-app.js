@@ -1,5 +1,6 @@
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
+import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import '@atlas/design';
 // Template layout chrome (grid rules keyed off `template-*` custom element
 // tags). Because the sandbox shell uses Shadow DOM, document-level
@@ -227,6 +228,7 @@ export class AtlasSandbox extends AtlasSurface {
     super();
     this.attachShadow({ mode: 'open' });
     adoptAtlasStyles(this.shadowRoot);
+    adoptAtlasWidgetStyles(this.shadowRoot);
   }
 
   connectedCallback() {
