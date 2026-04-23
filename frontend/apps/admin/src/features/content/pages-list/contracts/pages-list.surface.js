@@ -38,9 +38,11 @@ export const contract = {
     { name: 'create-button', type: 'atlas-button', testId: 'admin.content.pages-list.create-button' },
     { name: 'skeleton', type: 'atlas-skeleton', testId: 'admin.content.pages-list.skeleton' },
     { name: 'retry-button', type: 'atlas-button', testId: 'admin.content.pages-list.retry-button' },
-    { name: 'table', type: 'atlas-table', testId: 'admin.content.pages-list.table' },
-    { name: 'row', type: 'atlas-row', testId: 'admin.content.pages-list.row.{pageId}', parameterized: true },
-    { name: 'row-delete', type: 'atlas-button', testId: 'admin.content.pages-list.row-delete.{pageId}', parameterized: true },
+    { name: 'table', type: 'atlas-data-table', testId: 'admin.content.pages-list.table',
+      includes: '@atlas/widgets atlas-data-table.widget' },
+    { name: 'table-toolbar', type: 'atlas-table-toolbar', testId: 'admin.content.pages-list.table-toolbar' },
+    { name: 'table-pagination', type: 'atlas-pagination', testId: 'admin.content.pages-list.table-pagination' },
+    { name: 'row-delete', type: 'atlas-button', testId: 'admin.content.pages-list.row-delete' },
   ],
 
   intents: [
