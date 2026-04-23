@@ -39,6 +39,14 @@ import { ensureLayoutEditorStyles } from './layout-editor-styles.js';
  * @typedef {import('../layout/layout-document.js').LayoutSlot} LayoutSlot
  */
 
+/** Pointer must travel this many px before a drag activates. Below the
+ *  threshold the gesture is treated as a tap (selection only), so accidental
+ *  jitter during a tap doesn't kick off a move / resize. */
+const DRAG_THRESHOLD_PX = 6;
+
+/** Duration of the FLIP "slide into place" animation on drop. */
+const DROP_ANIM_MS = 160;
+
 export class AtlasLayoutEditorElement extends AtlasElement {
   static surfaceId = 'atlas-layout-editor';
 
@@ -54,10 +62,11 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     this.onSave = null;
     /** @type {boolean} */
     this._rendered = false;
-    /** Pointer-drag transient state. */
+    /** Pointer-drag transient state. See _onSectionPointerDown for shape. */
     this._drag = null;
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
+    this._onPointerCancel = this._onPointerCancel.bind(this);
     this._onKeyDown = this._onKeyDown.bind(this);
   }
 
@@ -218,52 +227,129 @@ export class AtlasLayoutEditorElement extends AtlasElement {
 
   _onSectionPointerDown(ev, slotName) {
     if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+    if (this._drag) return; // already dragging something
     const handleEl = ev.target.closest?.('[data-resize-handle]');
     const canvas = this.querySelector('[data-editor-canvas]');
     const layoutEl = this.querySelector(
       '[data-editor-canvas] > atlas-layout',
     );
     if (!canvas || !layoutEl) return;
-    const gridRect = layoutEl.getBoundingClientRect();
     const slot = this._findSlot(slotName);
     if (!slot) return;
 
-    if (handleEl) {
-      ev.stopPropagation();
-      this._drag = {
-        mode: 'resize',
-        edge: handleEl.getAttribute('data-resize-handle'),
-        slotName,
-        gridRect,
-        originalSlot: { ...slot },
-      };
-      canvas.setAttribute('data-drag-mode', 'resize');
-    } else {
-      this._drag = {
-        mode: 'move',
-        slotName,
-        gridRect,
-        originalSlot: { ...slot },
-        pickupCol: this._pointerCol(ev.clientX, gridRect) - slot.col,
-        pickupRow: this._pointerRow(ev.clientY, gridRect) - slot.row,
-      };
-      canvas.setAttribute('data-drag-mode', 'move');
-    }
-    this._select(slotName);
+    const section = layoutEl.querySelector(
+      `:scope > section[data-slot="${CSS.escape(slotName)}"]`,
+    );
+    if (!section) return;
+
+    // Keep pointer events flowing to the section even if the finger moves off
+    // of it (critical on touch when the element slides out from under the
+    // finger). Implicit for touch, explicit for mouse — belt and braces.
+    try { section.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
+
+    this._drag = {
+      phase: 'pending',
+      mode: handleEl ? 'resize' : 'move',
+      edge: handleEl?.getAttribute('data-resize-handle') ?? null,
+      slotName,
+      section,
+      canvas,
+      layoutEl,
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      lastX: ev.clientX,
+      lastY: ev.clientY,
+      gridRect: layoutEl.getBoundingClientRect(),
+      originalSlot: { ...slot },
+      pickupCol: this._pointerCol(ev.clientX, layoutEl.getBoundingClientRect()) - slot.col,
+      pickupRow: this._pointerRow(ev.clientY, layoutEl.getBoundingClientRect()) - slot.row,
+      rafId: 0,
+      ghostEl: null,
+    };
+    if (handleEl) ev.stopPropagation();
+
     window.addEventListener('pointermove', this._onPointerMove);
     window.addEventListener('pointerup', this._onPointerUp);
-    // Prevent text selection during drag.
+    window.addEventListener('pointercancel', this._onPointerCancel);
+    // Prevent text selection / native drag on mouse.
     ev.preventDefault();
   }
 
   _onPointerMove(ev) {
     const drag = this._drag;
     if (!drag) return;
-    const slot = this._findSlot(drag.slotName);
-    if (!slot) return;
+    if (ev.pointerId !== drag.pointerId) return;
+    drag.lastX = ev.clientX;
+    drag.lastY = ev.clientY;
+
+    if (drag.phase === 'pending') {
+      const dx = ev.clientX - drag.startX;
+      const dy = ev.clientY - drag.startY;
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      this._activateDrag();
+    }
+
+    if (drag.phase !== 'active') return;
+    // Coalesce to one update per frame — pointermove can fire at 120+ Hz on
+    // modern touch hardware and we'd otherwise redo layout math every tick.
+    if (drag.rafId) return;
+    drag.rafId = requestAnimationFrame(() => {
+      drag.rafId = 0;
+      if (this._drag === drag && drag.phase === 'active') this._applyDragFrame();
+    });
+  }
+
+  _onPointerUp(ev) {
+    const drag = this._drag;
+    if (!drag) return;
+    if (ev.pointerId !== drag.pointerId) return;
+    drag.lastX = ev.clientX;
+    drag.lastY = ev.clientY;
+    if (drag.phase === 'active') {
+      this._commitDrag();
+    } else {
+      // Never crossed the threshold — treat as a tap. Select directly rather
+      // than relying on the compatibility click event, which some mobile
+      // browsers skip after a preventDefault'd pointerdown.
+      const slotName = drag.slotName;
+      this._teardownDrag();
+      this._select(slotName);
+    }
+  }
+
+  _onPointerCancel(ev) {
+    const drag = this._drag;
+    if (!drag) return;
+    if (ev.pointerId !== drag.pointerId) return;
+    this._cancelDrag();
+  }
+
+  _activateDrag() {
+    const drag = this._drag;
+    if (!drag) return;
+    drag.phase = 'active';
+    drag.section.setAttribute('data-dragging', 'true');
+    drag.canvas.setAttribute('data-drag-mode', drag.mode);
+    this._select(drag.slotName);
+    drag.ghostEl = this._createDragGhost(drag.originalSlot);
+    drag.layoutEl.appendChild(drag.ghostEl);
+  }
+
+  _createDragGhost(slot) {
+    const el = document.createElement('div');
+    el.setAttribute('data-drag-ghost', '');
+    el.style.gridColumn = `${slot.col} / span ${slot.colSpan}`;
+    el.style.gridRow = `${slot.row} / span ${slot.rowSpan}`;
+    return el;
+  }
+
+  _applyDragFrame() {
+    const drag = this._drag;
+    if (!drag || drag.phase !== 'active') return;
     const columns = this._doc.grid.columns;
-    const pCol = this._pointerCol(ev.clientX, drag.gridRect);
-    const pRow = this._pointerRow(ev.clientY, drag.gridRect);
+    const pCol = this._pointerCol(drag.lastX, drag.gridRect);
+    const pRow = this._pointerRow(drag.lastY, drag.gridRect);
 
     if (drag.mode === 'resize') {
       const next = { ...drag.originalSlot };
@@ -276,34 +362,106 @@ export class AtlasLayoutEditorElement extends AtlasElement {
       if (drag.edge === 's' || drag.edge === 'se') {
         next.rowSpan = Math.max(1, pRow - next.row + 1);
       }
-      this._applySlotChange(drag.slotName, next);
-    } else if (drag.mode === 'move') {
+      drag.targetSlot = next;
+      if (drag.ghostEl) {
+        drag.ghostEl.style.gridColumn = `${next.col} / span ${next.colSpan}`;
+        drag.ghostEl.style.gridRow = `${next.row} / span ${next.rowSpan}`;
+      }
+    } else {
+      // move: ghost snaps to nearest grid cell, section follows the finger
+      // freely so the pickup feels anchored to the touch point.
       let col = pCol - drag.pickupCol;
       let row = pRow - drag.pickupRow;
-      // Clamp so the slot stays within the grid.
-      col = Math.max(1, Math.min(columns - slot.colSpan + 1, col));
+      col = Math.max(1, Math.min(columns - drag.originalSlot.colSpan + 1, col));
       row = Math.max(1, row);
-      this._applySlotChange(drag.slotName, { ...slot, col, row });
+      drag.targetSlot = { ...drag.originalSlot, col, row };
+      if (drag.ghostEl) {
+        drag.ghostEl.style.gridColumn = `${col} / span ${drag.originalSlot.colSpan}`;
+        drag.ghostEl.style.gridRow = `${row} / span ${drag.originalSlot.rowSpan}`;
+      }
+      const dx = drag.lastX - drag.startX;
+      const dy = drag.lastY - drag.startY;
+      drag.section.style.transform = `translate(${dx}px, ${dy}px)`;
     }
   }
 
-  _onPointerUp() {
-    this._finalizeDrag();
+  _commitDrag() {
+    const drag = this._drag;
+    if (!drag) return;
+    const finalSlot = drag.targetSlot ?? drag.originalSlot;
+
+    // Capture the section's current visible rect (with transform applied) so
+    // we can FLIP-animate it into its final grid cell. Same for resize — the
+    // section's dimensions will change once the span commits.
+    const beforeRect = drag.section.getBoundingClientRect();
+
+    if (drag.ghostEl) {
+      drag.ghostEl.remove();
+      drag.ghostEl = null;
+    }
+    drag.section.style.transform = '';
+    drag.section.removeAttribute('data-dragging');
+
+    // Commit to the doc. <atlas-layout> reuses the existing section element
+    // (keyed by data-slot), so only grid-column / grid-row change — listeners,
+    // handles, and our transform all survive.
+    this._applySlotChange(drag.slotName, finalSlot);
+
+    const afterRect = drag.section.getBoundingClientRect();
+    const flipDx = beforeRect.left - afterRect.left;
+    const flipDy = beforeRect.top - afterRect.top;
+
+    if (flipDx || flipDy) {
+      // Jump the element back to where it visually was (finger-last position)
+      // so the commit is invisible, then release it to its new cell in the
+      // next frame under a transition.
+      drag.section.style.transform = `translate(${flipDx}px, ${flipDy}px)`;
+      // Force a layout read so the browser commits the pre-transition state
+      // before we flip the transition flag on.
+      drag.section.getBoundingClientRect();
+      drag.section.setAttribute('data-drop-return', 'true');
+      requestAnimationFrame(() => {
+        drag.section.style.transform = '';
+      });
+      const clear = () => {
+        drag.section.removeAttribute('data-drop-return');
+        drag.section.removeEventListener('transitionend', clear);
+      };
+      drag.section.addEventListener('transitionend', clear);
+      // Fallback in case transitionend is skipped (interrupted, off-screen).
+      setTimeout(clear, DROP_ANIM_MS + 50);
+    }
+
+    this._teardownDrag();
   }
 
-  _finalizeDrag() {
-    const canvas = this.querySelector('[data-editor-canvas]');
-    if (canvas) canvas.removeAttribute('data-drag-mode');
+  _teardownDrag() {
+    const drag = this._drag;
+    if (!drag) return;
+    if (drag.rafId) cancelAnimationFrame(drag.rafId);
+    if (drag.ghostEl) {
+      drag.ghostEl.remove();
+      drag.ghostEl = null;
+    }
+    if (drag.canvas) drag.canvas.removeAttribute('data-drag-mode');
+    try { drag.section.releasePointerCapture(drag.pointerId); } catch { /* ignore */ }
     window.removeEventListener('pointermove', this._onPointerMove);
     window.removeEventListener('pointerup', this._onPointerUp);
+    window.removeEventListener('pointercancel', this._onPointerCancel);
     this._drag = null;
   }
 
   _cancelDrag() {
-    if (!this._drag) return;
-    // Revert to original.
-    this._applySlotChange(this._drag.slotName, this._drag.originalSlot);
-    this._finalizeDrag();
+    const drag = this._drag;
+    if (!drag) return;
+    // Revert visuals — no doc mutation happened during the drag, so there is
+    // nothing to undo in the document itself.
+    if (drag.section) {
+      drag.section.style.transform = '';
+      drag.section.removeAttribute('data-dragging');
+      drag.section.removeAttribute('data-drop-return');
+    }
+    this._teardownDrag();
   }
 
   // ---- grid math -------------------------------------------------------

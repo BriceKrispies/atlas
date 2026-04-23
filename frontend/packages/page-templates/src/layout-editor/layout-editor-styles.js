@@ -71,13 +71,51 @@ atlas-layout-editor [data-editor-canvas] > atlas-layout > section[data-slot] {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  /* Consume every touch gesture ourselves — otherwise the browser steals
+   * vertical drags for page scroll and the edit gesture never starts. */
+  touch-action: none;
 }
 atlas-layout-editor [data-editor-canvas] > atlas-layout > section[data-slot]:active {
   cursor: grabbing;
 }
+
 atlas-layout-editor [data-editor-canvas] section[data-slot][data-selected="true"] {
   border-color: var(--atlas-color-primary, #3366ff);
   box-shadow: 0 0 0 2px var(--atlas-color-primary, #3366ff);
+}
+
+/* Drop target preview — a dashed outline rendered as a sibling grid cell
+ * inside <atlas-layout>. It shows the snapped destination while the
+ * dragged section follows the finger freely. */
+atlas-layout-editor [data-drag-ghost] {
+  pointer-events: none;
+  border: 2px dashed var(--atlas-color-primary, #3366ff);
+  border-radius: var(--atlas-radius-md, 6px);
+  background: rgba(37, 99, 235, 0.08);
+  z-index: 1;
+}
+
+/* Lifted look while the section is being dragged. Placed after the selected
+ * rule so its compound shadow wins on source order even when a slot is both
+ * selected and dragging (which it always is). */
+atlas-layout-editor [data-editor-canvas] section[data-slot][data-dragging="true"] {
+  z-index: 10;
+  box-shadow:
+    0 0 0 2px var(--atlas-color-primary, #3366ff),
+    var(--atlas-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  opacity: 0.95;
+  will-change: transform;
+  cursor: grabbing;
+}
+
+/* FLIP return: after the doc commits on drop, JS offsets the section with a
+ * transform equal to its pre-commit visible position, then clears the
+ * transform next frame. This transition smooths that release into the new
+ * grid cell so the drop "settles in" instead of snapping. */
+atlas-layout-editor section[data-slot][data-drop-return="true"] {
+  /* Keep in sync with DROP_ANIM_MS in layout-editor-element.js. */
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
 }
 
 /* Slot label overlaid top-left so the editor always identifies the slot. */
@@ -166,12 +204,6 @@ atlas-layout-editor [data-editor-panel] [data-rect-grid] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--atlas-space-sm, 0.5rem);
-}
-
-/* Drag preview highlight while resizing/moving. */
-atlas-layout-editor [data-editor-canvas][data-drag-mode="move"] section[data-slot][data-selected="true"],
-atlas-layout-editor [data-editor-canvas][data-drag-mode="resize"] section[data-slot][data-selected="true"] {
-  outline: 2px dashed var(--atlas-color-primary, #3366ff);
 }
 
 /* Coarse-pointer (touch) devices: resize handles are always visible (no hover
