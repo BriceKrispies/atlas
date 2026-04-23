@@ -7,7 +7,6 @@ import '@atlas/design';
 import './styles.css';
 
 // Data table
-import './data-table/atlas-data-table-header-cell.js';
 import './data-table/atlas-table-toolbar.js';
 import './data-table/atlas-pagination.js';
 import './data-table/atlas-data-table.js';

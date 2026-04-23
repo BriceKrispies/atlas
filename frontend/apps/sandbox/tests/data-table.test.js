@@ -20,7 +20,7 @@ test.describe('atlas-data-table specimen', () => {
 
   test('clicking a sortable header cycles aria-sort', async ({ page }) => {
     await openSpecimen(page, 'widgets.data-table');
-    const titleHeader = page.locator('atlas-data-table-header-cell[column-key="title"]');
+    const titleHeader = page.locator('atlas-table-cell[header][data-column-key="title"]');
     await expect(titleHeader).toHaveAttribute('aria-sort', 'none');
     await titleHeader.click();
     await expect(titleHeader).toHaveAttribute('aria-sort', 'ascending');
@@ -32,7 +32,7 @@ test.describe('atlas-data-table specimen', () => {
 
   test('sort reorders rows ascending by title', async ({ page }) => {
     await openSpecimen(page, 'widgets.data-table');
-    const titleHeader = page.locator('atlas-data-table-header-cell[column-key="title"]');
+    const titleHeader = page.locator('atlas-table-cell[header][data-column-key="title"]');
     await titleHeader.click(); // ascending
     const firstTitle = await page
       .locator('atlas-data-table atlas-table-body atlas-row')
@@ -111,7 +111,7 @@ test.describe('atlas-data-table specimen', () => {
 
     // Sort by id asc so we can reason about row order across streams.
     // (Default rowKey is 'id'; explicit sort ensures the new row lands at page edge.)
-    await page.locator('atlas-data-table-header-cell[column-key="title"]').click();
+    await page.locator('atlas-table-cell[header][data-column-key="title"]').click();
 
     const log = page.locator('atlas-box[data-role="mount-log"]');
 

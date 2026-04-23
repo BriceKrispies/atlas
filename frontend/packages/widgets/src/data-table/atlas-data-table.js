@@ -1,4 +1,4 @@
-import { AtlasElement, html } from '@atlas/core';
+import { AtlasElement } from '@atlas/core';
 import { DataTableCore, STATUS } from './data-table-core.js';
 import { arrayDataSource } from '../data-source/array-data-source.js';
 import { formatCell } from './cell-formatters.js';
@@ -428,20 +428,45 @@ class AtlasDataTable extends AtlasElement {
     const head = document.createElement('atlas-table-head');
     const headRow = document.createElement('atlas-row');
     for (const col of this._columns) {
-      const cell = document.createElement('atlas-data-table-header-cell');
+      // Use the design-system <atlas-table-cell header> primitive as the
+      // header cell — it already participates in the anonymous table box
+      // via display: table-cell, and carries the correct padding, border,
+      // and typography. Sort affordances are layered on via attributes and
+      // listeners; the element stays a plain table cell underneath.
+      const cell = document.createElement('atlas-table-cell');
+      cell.setAttribute('header', '');
+      cell.setAttribute('role', 'columnheader');
       const key = typeof col.key === 'string' ? col.key : '';
-      cell.setAttribute('column-key', key);
+      cell.dataset.columnKey = key;
       cell.setAttribute('name', this._childName(`header-${key || 'col'}`));
-      if (col.sortable) cell.setAttribute('sortable', '');
-      if (state.sortBy === key && state.sortDir) {
-        cell.setAttribute('sort-dir', state.sortDir);
-      } else {
-        cell.setAttribute('sort-dir', 'none');
+
+      const sortDir = (state.sortBy === key && state.sortDir) ? state.sortDir : null;
+      if (col.sortable) {
+        cell.setAttribute('sortable', '');
+        cell.setAttribute('tabindex', '0');
+        cell.setAttribute('aria-sort',
+          sortDir === 'asc' ? 'ascending' :
+          sortDir === 'desc' ? 'descending' : 'none');
+        cell.addEventListener('click', () => this._toggleSort(key));
+        cell.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this._toggleSort(key);
+          }
+        });
       }
+
       const labelNode = document.createElement('span');
       labelNode.textContent = col.label ?? key;
-      cell.insertBefore(labelNode, cell.firstChild);
-      cell.addEventListener('sort-toggle', (e) => this._onSortToggle(e));
+      cell.appendChild(labelNode);
+
+      if (col.sortable) {
+        const indicator = document.createElement('span');
+        indicator.dataset.role = 'sort-indicator';
+        indicator.setAttribute('aria-hidden', 'true');
+        cell.appendChild(indicator);
+      }
+
       headRow.appendChild(cell);
     }
     head.appendChild(headRow);
@@ -511,8 +536,7 @@ class AtlasDataTable extends AtlasElement {
 
   // ── Event handlers (DOM → core) ──────────────────────────────
 
-  _onSortToggle(event) {
-    const { columnKey } = event.detail ?? {};
+  _toggleSort(columnKey) {
     if (!columnKey) return;
     this._core.setSort(columnKey);
     const s = this._core.getState();
@@ -628,5 +652,3 @@ function messageBlock(role, heading, body) {
 }
 
 AtlasElement.define('atlas-data-table', AtlasDataTable);
-// Suppress unused import warnings (html retained for future template needs).
-void html;
