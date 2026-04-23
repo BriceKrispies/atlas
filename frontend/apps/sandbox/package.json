@@ -12,6 +12,7 @@
   "dependencies": {
     "@atlas/core": "workspace:*",
     "@atlas/design": "workspace:*",
+    "@atlas/widgets": "workspace:*",
     "@atlas/widget-host": "workspace:*",
     "@atlas/page-templates": "workspace:*",
     "@atlas/bundle-standard": "workspace:*"

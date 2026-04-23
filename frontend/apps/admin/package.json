@@ -13,7 +13,8 @@
   "dependencies": {
     "@atlas/core": "workspace:*",
     "@atlas/api-client": "workspace:*",
-    "@atlas/design": "workspace:*"
+    "@atlas/design": "workspace:*",
+    "@atlas/widgets": "workspace:*"
   },
   "devDependencies": {
     "@atlas/test-fixtures": "workspace:*",

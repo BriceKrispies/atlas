@@ -7,16 +7,11 @@ import '@atlas/design';
 import './styles.css';
 
 // Data table
-import './data-table/atlas-data-table.js';
 import './data-table/atlas-data-table-header-cell.js';
 import './data-table/atlas-table-toolbar.js';
 import './data-table/atlas-pagination.js';
+import './data-table/atlas-data-table.js';
 
-// Charts
-import './charts/atlas-chart-tooltip.js';
-import './charts/atlas-chart-legend.js';
-import './charts/atlas-chart.js';
-import './charts/atlas-sparkline.js';
-import './charts/atlas-kpi-tile.js';
+// Charts — registered incrementally as each element lands.
 
 export * from './data-source/index.js';

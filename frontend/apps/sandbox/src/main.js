@@ -1,4 +1,7 @@
 import '@atlas/design';
+// First-party composed widgets (data table, charts). Registers
+// <atlas-data-table>, <atlas-chart>, <atlas-sparkline>, etc.
+import '@atlas/widgets';
 // Widget runtime: importing registers <widget-host> via customElements.define.
 import '@atlas/widget-host';
 // Page-template runtime: importing registers <content-page> and <widget-palette>.
