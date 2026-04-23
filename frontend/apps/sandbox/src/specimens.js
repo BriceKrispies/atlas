@@ -953,3 +953,71 @@ for (const layout of presetLayouts) {
     ],
   });
 }
+
+
+// ── @atlas/widgets ──────────────────────────────────────────────
+
+const SAMPLE_TABLE_ROWS = [
+  { id: 1,  title: 'Welcome Page',          status: 'published', score: 82, updated: '2026-04-10' },
+  { id: 2,  title: 'About Us',              status: 'draft',     score: 47, updated: '2026-04-08' },
+  { id: 3,  title: 'FAQ',                   status: 'archived',  score: 5,  updated: '2026-03-15' },
+  { id: 4,  title: 'Careers',               status: 'published', score: 64, updated: '2026-04-02' },
+  { id: 5,  title: 'Press',                 status: 'published', score: 33, updated: '2026-02-28' },
+  { id: 6,  title: 'Privacy Policy',        status: 'published', score: 12, updated: '2026-01-14' },
+  { id: 7,  title: 'Terms of Service',      status: 'published', score: 9,  updated: '2026-01-14' },
+  { id: 8,  title: 'Support Home',          status: 'draft',     score: 71, updated: '2026-04-20' },
+  { id: 9,  title: 'Release Notes',         status: 'published', score: 58, updated: '2026-04-18' },
+  { id: 10, title: 'Changelog',             status: 'published', score: 22, updated: '2026-04-17' },
+  { id: 11, title: 'Developer Blog',        status: 'draft',     score: 77, updated: '2026-04-15' },
+  { id: 12, title: 'Security Advisories',   status: 'archived',  score: 3,  updated: '2025-11-02' },
+];
+
+const SAMPLE_TABLE_COLUMNS = [
+  { key: 'title',   label: 'Title',  sortable: true, filter: { type: 'text' } },
+  { key: 'status',  label: 'Status', sortable: true, filter: { type: 'select' }, format: 'status' },
+  { key: 'score',   label: 'Score',  sortable: true, filter: { type: 'range' }, align: 'end', format: 'number' },
+  { key: 'updated', label: 'Updated', sortable: true, format: 'date' },
+];
+
+function mountDataTable(demo, { config, onLog }) {
+  const table = document.createElement('atlas-data-table');
+  table.setAttribute('name', 'table');
+  table.setAttribute('label', 'Sample pages');
+  if (config.pageSize != null) table.setAttribute('page-size', String(config.pageSize));
+  if (config.selection) table.setAttribute('selection', config.selection);
+  if (config.emptyHeading) table.setAttribute('empty-heading', config.emptyHeading);
+  table.columns = SAMPLE_TABLE_COLUMNS;
+  table.data = config.data ?? SAMPLE_TABLE_ROWS;
+
+  const events = [
+    'sort-change', 'filter-change', 'filter-cleared', 'page-change',
+    'row-selected', 'row-unselected', 'row-activated', 'stream-patch-applied',
+  ];
+  const handlers = events.map((ev) => {
+    const h = (e) => onLog(ev, e.detail ?? {});
+    table.addEventListener(ev, h);
+    return [ev, h];
+  });
+
+  demo.appendChild(table);
+  return () => {
+    for (const [ev, h] of handlers) table.removeEventListener(ev, h);
+    table.remove();
+  };
+}
+
+S({
+  id: 'widgets.data-table',
+  name: 'Data table',
+  tag: 'atlas-data-table',
+  group: 'Widgets',
+  mount: mountDataTable,
+  configVariants: [
+    { name: 'Default',    config: { pageSize: 5 } },
+    { name: 'Small page', config: { pageSize: 3 } },
+    { name: 'No pagination', config: { pageSize: 0 } },
+    { name: 'Single-select', config: { pageSize: 5, selection: 'single' } },
+    { name: 'Multi-select',  config: { pageSize: 5, selection: 'multi' } },
+    { name: 'Empty',  config: { pageSize: 5, data: [], emptyHeading: 'No results found' } },
+  ],
+});
