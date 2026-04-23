@@ -15,5 +15,6 @@ import './data-table/atlas-data-table.js';
 // Charts
 import './charts/atlas-chart-tooltip.js';
 import './charts/atlas-chart-legend.js';
+import './charts/atlas-chart.js';
 
 export * from './data-source/index.js';
