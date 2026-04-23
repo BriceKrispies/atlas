@@ -1118,3 +1118,64 @@ S({
     { name: 'Donut',            config: { type: 'donut', data: SAMPLE_SLICES, innerRadius: 0.6 } },
   ],
 });
+
+
+S({
+  id: 'widgets.sparkline',
+  name: 'Sparkline',
+  tag: 'atlas-sparkline',
+  group: 'Widgets',
+  variants: [
+    {
+      name: 'Basic',
+      html: `<atlas-sparkline values="1,3,5,4,7,9,8,12,11,14" label="Signups this week" style="width:140px"></atlas-sparkline>`,
+    },
+    {
+      name: 'With last-point marker',
+      html: `<atlas-sparkline values="50,42,48,55,70,65,78" show-last-point style="width:160px"></atlas-sparkline>`,
+    },
+    {
+      name: 'Custom color',
+      html: `<atlas-sparkline values="10,22,18,26,19,30,24" color="#16a34a" style="width:140px"></atlas-sparkline>`,
+    },
+  ],
+});
+
+S({
+  id: 'widgets.kpi-tile',
+  name: 'KPI tile',
+  tag: 'atlas-kpi-tile',
+  group: 'Widgets',
+  variants: [
+    {
+      name: 'Value + trend',
+      html: `
+        <atlas-kpi-tile
+          label="Daily active users"
+          value="12,482"
+          trend="up"
+          trend-label="+5.2% vs. last week"
+        ></atlas-kpi-tile>
+      `,
+    },
+    {
+      name: 'With sparkline',
+      html: `
+        <atlas-kpi-tile
+          label="API latency"
+          value="124"
+          unit="ms"
+          trend="down"
+          trend-label="−12ms vs. yesterday"
+          sparkline-values="180,170,160,155,150,140,124"
+        ></atlas-kpi-tile>
+      `,
+    },
+    {
+      name: 'Flat value',
+      html: `
+        <atlas-kpi-tile label="Error rate" value="0.02" unit="%" trend="flat" trend-label="stable"></atlas-kpi-tile>
+      `,
+    },
+  ],
+});
