@@ -139,6 +139,8 @@ importers:
         specifier: ^1.48.0
         version: 1.59.1
 
+  packages/test-state: {}
+
   packages/widget-host:
     dependencies:
       '@atlas/core':
