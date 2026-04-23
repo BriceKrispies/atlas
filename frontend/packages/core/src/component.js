@@ -91,15 +91,22 @@ export class AtlasElement extends HTMLElement {
   /**
    * Auto-set data-testid from surface context + name attribute.
    * Called on connectedCallback. If no name attribute, no testid is set.
+   *
+   * If the element also has a `key` attribute, it is appended to the
+   * testid — producing `{surfaceId}.{name}.{key}`. Use `key` to
+   * disambiguate repeated elements that share a `name` (e.g. legend rows,
+   * toolbar buttons, time-range presets).
    */
   _applyTestId() {
     const name = this.getAttribute('name');
     if (!name) return;
 
     const sid = this.surfaceId;
-    if (sid) {
-      this.setAttribute('data-testid', `${sid}.${name}`);
-    }
+    if (!sid) return;
+
+    const key = this.getAttribute('key');
+    const testId = key ? `${sid}.${name}.${key}` : `${sid}.${name}`;
+    this.setAttribute('data-testid', testId);
   }
 
   /**
