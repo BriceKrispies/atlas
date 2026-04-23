@@ -6,23 +6,32 @@
  * don't need to import a CSS file.
  */
 
+/* Mobile-first. Base layout stacks toolbar → canvas → panel so the editor is
+ * usable on a 360px phone. At 900px (atlas-bp-md) we restore the original
+ * two-column layout with the 280px properties panel on the right.
+ *
+ * Resize handles stay visually small on fine-pointer devices (mouse/trackpad)
+ * but expand their hit area to the 44px WCAG 2.5.5 target on coarse-pointer
+ * devices via a `::before` overlay. Since touch has no hover state, handles
+ * are always visible there too.
+ */
 const CSS = `
 atlas-layout-editor {
   display: grid;
-  grid-template-columns: 1fr 280px;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "toolbar toolbar"
-    "canvas  panel";
+    "toolbar"
+    "canvas"
+    "panel";
   gap: var(--atlas-space-md, 1rem);
   width: 100%;
-  min-height: 480px;
   box-sizing: border-box;
 }
 
 atlas-layout-editor [data-editor-toolbar] {
   grid-area: toolbar;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--atlas-space-sm, 0.5rem);
   padding: var(--atlas-space-sm, 0.5rem);
@@ -31,10 +40,12 @@ atlas-layout-editor [data-editor-toolbar] {
   background: var(--atlas-color-surface, #f6f7fa);
 }
 atlas-layout-editor [data-editor-toolbar] > [data-spacer] {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 atlas-layout-editor [data-editor-toolbar] atlas-input {
-  width: 240px;
+  flex: 1 1 160px;
+  min-width: 0;
 }
 
 atlas-layout-editor [data-editor-canvas] {
@@ -161,6 +172,33 @@ atlas-layout-editor [data-editor-panel] [data-rect-grid] {
 atlas-layout-editor [data-editor-canvas][data-drag-mode="move"] section[data-slot][data-selected="true"],
 atlas-layout-editor [data-editor-canvas][data-drag-mode="resize"] section[data-slot][data-selected="true"] {
   outline: 2px dashed var(--atlas-color-primary, #3366ff);
+}
+
+/* Coarse-pointer (touch) devices: resize handles are always visible (no hover
+ * to reveal them) and expand their hit area to meet WCAG 2.5.5 without
+ * enlarging the visible rail. The ::before overlay is transparent, ≥44px in
+ * every direction, and positioned so the handle sits at its centre. */
+@media (hover: none) {
+  atlas-layout-editor [data-resize-handle] {
+    opacity: 0.8;
+  }
+  atlas-layout-editor [data-resize-handle]::before {
+    content: "";
+    position: absolute;
+    inset: -19px;
+  }
+}
+
+/* Tablet-landscape / laptop: restore the two-column editor layout. */
+@media (min-width: 900px) {
+  atlas-layout-editor {
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "toolbar toolbar"
+      "canvas  panel";
+    min-height: 480px;
+  }
 }
 `;
 

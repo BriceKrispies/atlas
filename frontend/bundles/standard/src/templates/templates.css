@@ -30,7 +30,11 @@
  * edit mode only adds drag indicators on top, never changes this chrome.
  */
 widget-host > section[data-slot] {
-  height: 320px;
+  /* Mobile-first: shorter slots on phones save vertical space. At 640px+ we
+   * restore the full 320px footprint. Within each breakpoint the height is
+   * still deterministic, so `contain: size` stays valid and widgets never
+   * reflow their neighbours. */
+  height: 200px;
   overflow: auto;
   box-sizing: border-box;
   contain: size layout;
@@ -38,6 +42,12 @@ widget-host > section[data-slot] {
   border-radius: var(--atlas-radius-md, 6px);
   border: 1px solid var(--atlas-color-border, #e5e7eb);
   background: var(--atlas-color-bg, #fff);
+}
+
+@media (min-width: 640px) {
+  widget-host > section[data-slot] {
+    height: 320px;
+  }
 }
 
 template-one-column {
@@ -114,6 +124,17 @@ template-three-column > widget-host > section[data-slot="main"] {
 template-three-column > widget-host > section[data-slot="right"] {
   grid-area: right;
   min-width: 0;
+}
+
+/* sm: drop the right rail so tablets-in-portrait get a usable 2-column layout
+ * instead of three squeezed columns. md: restore the full 3-column layout. */
+@media (min-width: 640px) {
+  template-three-column {
+    grid-template-columns: 240px 1fr;
+    grid-template-areas:
+      "left main"
+      "left right";
+  }
 }
 
 @media (min-width: 900px) {
