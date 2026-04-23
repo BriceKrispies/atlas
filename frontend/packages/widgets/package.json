@@ -1,0 +1,22 @@
+{
+  "name": "@atlas/widgets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./data-source": "./src/data-source/index.js",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/design": "workspace:*"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.0"
+  }
+}
