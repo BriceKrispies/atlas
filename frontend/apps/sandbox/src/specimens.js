@@ -1039,3 +1039,82 @@ S({
     { name: 'Empty',  config: { pageSize: 5, data: [], emptyHeading: 'No results found' } },
   ],
 });
+
+
+// ── Charts ──────────────────────────────────────────────────────
+
+const SAMPLE_SERIES = {
+  series: [
+    { name: 'Logins',    values: [1, 3, 5, 4, 7, 9, 12] },
+    { name: 'Sign-ups',  values: [0, 1, 2, 3, 4, 6, 8] },
+  ],
+};
+
+const SAMPLE_TIME_SERIES = {
+  series: [
+    {
+      name: 'Revenue',
+      values: [
+        { x: '2026-01-01', y: 120 },
+        { x: '2026-02-01', y: 180 },
+        { x: '2026-03-01', y: 160 },
+        { x: '2026-04-01', y: 220 },
+      ],
+    },
+  ],
+};
+
+const SAMPLE_BAR = {
+  series: [
+    { name: 'Desktop', values: [{ x: 'Q1', y: 30 }, { x: 'Q2', y: 45 }, { x: 'Q3', y: 60 }, { x: 'Q4', y: 50 }] },
+    { name: 'Mobile',  values: [{ x: 'Q1', y: 20 }, { x: 'Q2', y: 35 }, { x: 'Q3', y: 40 }, { x: 'Q4', y: 55 }] },
+  ],
+};
+
+const SAMPLE_SLICES = {
+  slices: [
+    { label: 'Blog',   value: 40 },
+    { label: 'Docs',   value: 25 },
+    { label: 'FAQ',    value: 15 },
+    { label: 'Home',   value: 20 },
+  ],
+};
+
+function mountChart(demo, { config, onLog }) {
+  const chart = document.createElement('atlas-chart');
+  chart.setAttribute('name', 'chart');
+  chart.setAttribute('type', config.type ?? 'line');
+  if (config.height) chart.setAttribute('height', config.height);
+  if (config.label) chart.setAttribute('label', config.label);
+  if (config.showLegend) chart.setAttribute('show-legend', '');
+  if (config.innerRadius != null) chart.setAttribute('inner-radius', String(config.innerRadius));
+  chart.data = config.data;
+
+  const handler = (e) => onLog(e.type, e.detail ?? {});
+  chart.addEventListener('point-focus', handler);
+  chart.addEventListener('point-blur', handler);
+
+  demo.appendChild(chart);
+  return () => {
+    chart.removeEventListener('point-focus', handler);
+    chart.removeEventListener('point-blur', handler);
+    chart.remove();
+  };
+}
+
+S({
+  id: 'widgets.chart',
+  name: 'Chart',
+  tag: 'atlas-chart',
+  group: 'Widgets',
+  mount: mountChart,
+  configVariants: [
+    { name: 'Line (simple)',    config: { type: 'line',  data: SAMPLE_SERIES, label: 'Logins vs sign-ups', showLegend: true } },
+    { name: 'Line (time)',      config: { type: 'line',  data: SAMPLE_TIME_SERIES, label: 'Monthly revenue' } },
+    { name: 'Area',             config: { type: 'area',  data: SAMPLE_SERIES, showLegend: true } },
+    { name: 'Bar',              config: { type: 'bar',   data: SAMPLE_BAR, showLegend: true } },
+    { name: 'Stacked bar',      config: { type: 'stacked-bar', data: SAMPLE_BAR, showLegend: true } },
+    { name: 'Pie',              config: { type: 'pie',   data: SAMPLE_SLICES } },
+    { name: 'Donut',            config: { type: 'donut', data: SAMPLE_SLICES, innerRadius: 0.6 } },
+  ],
+});
