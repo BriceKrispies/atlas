@@ -92,7 +92,19 @@
       "Bash(taskkill //F //IM podman.exe)",
       "Bash(podman ps *)",
       "Bash(podman images *)",
-      "Bash(podman system *)"
+      "Bash(podman system *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(rm .git/COMMIT_MSG.tmp)",
+      "Bash(git push *)",
+      "Bash(pnpm --filter @atlas/bundle-standard test:register-templates)",
+      "Bash(pnpm --filter @atlas/page-templates test:editor-dry-run)",
+      "Bash(pnpm --filter @atlas/page-templates test:dry-run)",
+      "Bash(pnpm -r --parallel --if-present test)",
+      "Bash(pnpm --filter @atlas/sandbox test:e2e -- --reporter=list)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm --filter @atlas/bundle-standard test)",
+      "Bash(pnpm --filter @atlas/bundle-standard test:register)"
     ]
   }
 }

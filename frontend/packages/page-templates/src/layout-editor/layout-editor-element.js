@@ -169,10 +169,15 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     if (nameInput && nameInput.value !== (this._doc.displayName ?? '')) {
       nameInput.value = this._doc.displayName ?? '';
     }
-    // Expose the gap as a CSS var so the canvas background grid matches.
+    // Expose the grid dimensions as CSS vars so the canvas background
+    // grid lines align with atlas-layout's actual column / row
+    // boundaries regardless of how the doc is configured.
     const canvas = this.querySelector('[data-editor-canvas]');
     if (canvas) {
-      canvas.style.setProperty('--editor-gap', `${this._doc.grid.gap}px`);
+      const { gap, columns, rowHeight } = this._doc.grid;
+      canvas.style.setProperty('--editor-gap', `${gap}px`);
+      canvas.style.setProperty('--editor-cols', String(columns));
+      canvas.style.setProperty('--editor-row-step', `${rowHeight + gap}px`);
     }
   }
 

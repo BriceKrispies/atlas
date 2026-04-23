@@ -58,11 +58,29 @@ atlas-layout-editor [data-editor-canvas] {
   overflow: auto;
 }
 
-/* The canvas hosts an <atlas-layout> directly as its grid. Sections pick up
- * the editor's chrome (border, drag cursor, handles). */
+/* The canvas hosts an <atlas-layout> directly as its grid. Sections pick
+ * up the editor's chrome (border, drag cursor, handles).
+ *
+ * Grid lines: two subtle repeating gradients painted on <atlas-layout>'s
+ * background. The column line step is (100% + gap) / columns — that's
+ * exactly cellW + gap, so lines fall at the left edge of every column.
+ * The row step is rowHeight + gap. Both numbers come from per-instance
+ * CSS vars (--editor-gap / --editor-cols / --editor-row-step) set by
+ * _syncToolbarInputs, so the lines always align with the doc's grid.
+ */
 atlas-layout-editor [data-editor-canvas] > atlas-layout {
   display: grid;
   width: 100%;
+  background-image:
+    linear-gradient(to right,
+      rgba(100, 130, 180, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom,
+      rgba(100, 130, 180, 0.18) 1px, transparent 1px);
+  background-size:
+    calc((100% + var(--editor-gap, 16px)) / var(--editor-cols, 12)) 100%,
+    100% var(--editor-row-step, 176px);
+  background-position: 0 0, 0 0;
+  background-repeat: repeat, repeat;
 }
 atlas-layout-editor [data-editor-canvas] > atlas-layout > section[data-slot] {
   position: relative;

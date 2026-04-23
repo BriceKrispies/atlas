@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(VITE_BASE=/atlas/admin/ pnpm --filter @atlas/admin build)",
+      "Bash(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL=\"*\" VITE_BASE=/atlas/admin/ pnpm --filter @atlas/admin build)",
+      "PowerShell(pnpm *)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test edit-dnd-subsystem --headed --project=chromium)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test gallery-hero-and-grid --headed --project=chromium)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test _diag-hero-grid --project=chromium)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test gallery-hero-and-grid --project=chromium --reporter=list)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test gallery-hero-and-grid --project=chromium --grep \"pointer-drag a grid cell into the hero region\" --reporter=list)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test _diag-delete --project=chromium)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test edit-dnd-subsystem --project=chromium --reporter=list)",
+      "Bash(pnpm --filter @atlas/sandbox exec playwright test --project=chromium --reporter=line)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(gh workflow *)"
+    ]
+  }
+}
