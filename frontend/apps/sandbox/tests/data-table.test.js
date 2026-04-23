@@ -101,4 +101,40 @@ test.describe('atlas-data-table specimen', () => {
     await table.locator('atlas-stack[data-role="filtered-empty"] atlas-button').click();
     await expect(table).toHaveAttribute('data-state', 'success');
   });
+
+  test('streaming variant applies upsert and remove patches', async ({ page }) => {
+    await openSpecimen(page, 'widgets.data-table');
+    await selectVariant(page, 'Streaming');
+
+    const table = page.locator('atlas-data-table');
+    await expect(table).toHaveAttribute('data-state', 'success');
+
+    // Sort by id asc so we can reason about row order across streams.
+    // (Default rowKey is 'id'; explicit sort ensures the new row lands at page edge.)
+    await page.locator('atlas-data-table-header-cell[column-key="title"]').click();
+
+    const log = page.locator('atlas-box[data-role="mount-log"]');
+
+    // Inject an upsert patch via the specimen's imperative data source handle.
+    await page.evaluate(() => {
+      window.__atlasTestDataSource.emit({
+        type: 'upsert',
+        row: { id: 99, title: 'Streamed Row', status: 'published', score: 100, updated: '2026-04-23' },
+      });
+    });
+    await expect(log).toContainText('stream-patch-applied');
+
+    // Typing a filter should now find the streamed row.
+    const filterInput = table.locator('atlas-input[data-column-key="title"]');
+    await filterInput.locator('>>> input').fill('Streamed');
+    await expect(
+      table.locator('atlas-table-body atlas-row'),
+    ).toHaveCount(1);
+
+    // Now remove and confirm the row disappears.
+    await page.evaluate(() => {
+      window.__atlasTestDataSource.emit({ type: 'remove', rowKey: 99 });
+    });
+    await expect(table).toHaveAttribute('data-state', 'filtered-empty');
+  });
 });

@@ -979,6 +979,8 @@ const SAMPLE_TABLE_COLUMNS = [
   { key: 'updated', label: 'Updated', sortable: true, format: 'date' },
 ];
 
+import { arrayDataSource } from '@atlas/widgets';
+
 function mountDataTable(demo, { config, onLog }) {
   const table = document.createElement('atlas-data-table');
   table.setAttribute('name', 'table');
@@ -987,7 +989,18 @@ function mountDataTable(demo, { config, onLog }) {
   if (config.selection) table.setAttribute('selection', config.selection);
   if (config.emptyHeading) table.setAttribute('empty-heading', config.emptyHeading);
   table.columns = SAMPLE_TABLE_COLUMNS;
-  table.data = config.data ?? SAMPLE_TABLE_ROWS;
+
+  // Streaming variant wires an arrayDataSource (which supports subscribe)
+  // and hangs an imperative emit handle on window.__atlasTestDataSource
+  // so Playwright can inject patches via page.evaluate.
+  if (config.streaming) {
+    const ds = arrayDataSource(config.data ?? SAMPLE_TABLE_ROWS);
+    table.dataSource = ds;
+    // eslint-disable-next-line no-restricted-globals
+    (typeof window !== 'undefined' ? window : globalThis).__atlasTestDataSource = ds;
+  } else {
+    table.data = config.data ?? SAMPLE_TABLE_ROWS;
+  }
 
   const events = [
     'sort-change', 'filter-change', 'filter-cleared', 'page-change',
@@ -1003,6 +1016,10 @@ function mountDataTable(demo, { config, onLog }) {
   return () => {
     for (const [ev, h] of handlers) table.removeEventListener(ev, h);
     table.remove();
+    // eslint-disable-next-line no-restricted-globals
+    if (typeof window !== 'undefined' && window.__atlasTestDataSource) {
+      delete window.__atlasTestDataSource;
+    }
   };
 }
 
@@ -1018,6 +1035,7 @@ S({
     { name: 'No pagination', config: { pageSize: 0 } },
     { name: 'Single-select', config: { pageSize: 5, selection: 'single' } },
     { name: 'Multi-select',  config: { pageSize: 5, selection: 'multi' } },
+    { name: 'Streaming',   config: { pageSize: 5, streaming: true } },
     { name: 'Empty',  config: { pageSize: 5, data: [], emptyHeading: 'No results found' } },
   ],
 });
