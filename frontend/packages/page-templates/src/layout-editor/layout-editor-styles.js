@@ -229,18 +229,43 @@ atlas-layout-editor [data-editor-panel] [data-rect-grid] {
   gap: var(--atlas-space-sm, 0.5rem);
 }
 
-/* Coarse-pointer (touch) devices: resize handles are always visible (no hover
- * to reveal them) and expand their hit area to meet WCAG 2.5.5 without
- * enlarging the visible rail. The ::before overlay is transparent, ≥44px in
- * every direction, and positioned so the handle sits at its centre. */
+/* Coarse-pointer (touch) devices: resize handles take a tailored form — a
+ * visible 24 px circular knob centered on each edge (and at the SE corner)
+ * backed by a ≥ 44 px invisible hit halo. The knob is easier to see and
+ * deliberately grab with a finger than the thin rails used on mouse, and
+ * the handles are always opaque since there's no hover to reveal them. */
 @media (hover: none) {
   atlas-layout-editor [data-resize-handle] {
-    opacity: 0.8;
+    opacity: 0.9;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--atlas-color-bg, #fff);
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(0, 0, 0, 0.08);
   }
+  atlas-layout-editor [data-resize-handle="e"] {
+    top: 50%;
+    bottom: auto;
+    right: -12px;
+    transform: translateY(-50%);
+  }
+  atlas-layout-editor [data-resize-handle="s"] {
+    left: 50%;
+    right: auto;
+    bottom: -12px;
+    transform: translateX(-50%);
+  }
+  atlas-layout-editor [data-resize-handle="se"] {
+    right: -12px;
+    bottom: -12px;
+  }
+  /* 24 px visible + 10 px on each side = 44 px hit target (WCAG 2.5.5). */
   atlas-layout-editor [data-resize-handle]::before {
     content: "";
     position: absolute;
-    inset: -19px;
+    inset: -10px;
     touch-action: none;
   }
 }
