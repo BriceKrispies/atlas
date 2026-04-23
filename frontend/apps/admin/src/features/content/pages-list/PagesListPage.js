@@ -1,6 +1,43 @@
 import { AtlasSurface, html } from '@atlas/core';
 import { backend } from '@atlas/api-client';
 import '@atlas/design';
+import '@atlas/widgets';
+
+const COLUMNS = (host) => [
+  { key: 'title', label: 'Title', sortable: true, filter: { type: 'text' } },
+  {
+    key: 'slug',
+    label: 'Slug',
+    sortable: true,
+    format: (value) => `/${value ?? ''}`,
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortable: true,
+    format: 'status',
+    filter: { type: 'select' },
+  },
+  {
+    key: 'updatedAt',
+    label: 'Updated',
+    sortable: true,
+    format: 'date',
+  },
+  {
+    key: 'pageId',
+    label: 'Actions',
+    format: (value, row) => {
+      const btn = document.createElement('atlas-button');
+      btn.setAttribute('name', 'row-delete');
+      btn.setAttribute('variant', 'danger');
+      btn.setAttribute('size', 'sm');
+      btn.textContent = 'Delete';
+      btn.addEventListener('click', () => host._deletePage(row.pageId));
+      return btn;
+    },
+  },
+];
 
 class PagesListPage extends AtlasSurface {
   static surfaceId = 'admin.content.pages-list';
@@ -18,7 +55,7 @@ class PagesListPage extends AtlasSurface {
   }
 
   render() {
-    const pages = this.data;
+    const pages = this.data ?? [];
     return html`
       <atlas-stack gap="lg">
         <atlas-stack direction="row" justify="space-between" align="center">
@@ -27,36 +64,26 @@ class PagesListPage extends AtlasSurface {
             Create page
           </atlas-button>
         </atlas-stack>
-        <atlas-table name="table" label="Content pages">
-          <atlas-table-head>
-            <atlas-row>
-              <atlas-table-cell header>Title</atlas-table-cell>
-              <atlas-table-cell header>Slug</atlas-table-cell>
-              <atlas-table-cell header>Status</atlas-table-cell>
-              <atlas-table-cell header>Updated</atlas-table-cell>
-              <atlas-table-cell header>Actions</atlas-table-cell>
-            </atlas-row>
-          </atlas-table-head>
-          <atlas-table-body>
-            ${pages.map(
-              (page) => html`
-                <atlas-row name="row" key="${page.pageId}">
-                  <atlas-table-cell><atlas-text variant="medium">${page.title}</atlas-text></atlas-table-cell>
-                  <atlas-table-cell><atlas-text variant="muted">/${page.slug}</atlas-text></atlas-table-cell>
-                  <atlas-table-cell><atlas-badge status="${page.status}">${page.status}</atlas-badge></atlas-table-cell>
-                  <atlas-table-cell><atlas-text variant="muted">${formatDate(page.updatedAt)}</atlas-text></atlas-table-cell>
-                  <atlas-table-cell>
-                    <atlas-button name="row-delete" variant="danger" size="sm" @click=${() => this._deletePage(page.pageId)}>
-                      Delete
-                    </atlas-button>
-                  </atlas-table-cell>
-                </atlas-row>
-              `
-            )}
-          </atlas-table-body>
-        </atlas-table>
+        ${this._renderTable(pages)}
       </atlas-stack>
     `;
+  }
+
+  /**
+   * Build the <atlas-data-table> programmatically so we can assign
+   * property-only values (columns, data) — the `html` template supports
+   * `.prop=${…}` bindings, but the column format closures are easier
+   * to reason about imperatively.
+   */
+  _renderTable(pages) {
+    const table = document.createElement('atlas-data-table');
+    table.setAttribute('name', 'table');
+    table.setAttribute('label', 'Content pages');
+    table.setAttribute('row-key', 'pageId');
+    table.setAttribute('page-size', '25');
+    table.columns = COLUMNS(this);
+    table.data = pages;
+    return table;
   }
 
   onMount() {
@@ -107,12 +134,3 @@ class PagesListPage extends AtlasSurface {
 }
 
 AtlasSurface.define('pages-list-page', PagesListPage);
-
-/** @param {string} iso */
-function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
