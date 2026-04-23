@@ -337,8 +337,14 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     drag.section.setAttribute('data-dragging', 'true');
     drag.canvas.setAttribute('data-drag-mode', drag.mode);
     this._select(drag.slotName);
-    drag.ghostEl = this._createDragGhost(drag.originalSlot);
-    drag.layoutEl.appendChild(drag.ghostEl);
+    // Ghost only exists in move mode. In move the section follows the finger
+    // freely (transform) and the ghost shows the snapped drop target. In
+    // resize mode the section itself is the preview — it grows/shrinks under
+    // the finger — so a separate ghost would be redundant noise.
+    if (drag.mode === 'move') {
+      drag.ghostEl = this._createDragGhost(drag.originalSlot);
+      drag.layoutEl.appendChild(drag.ghostEl);
+    }
   }
 
   _createDragGhost(slot) {
@@ -352,6 +358,10 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   _applyDragFrame() {
     const drag = this._drag;
     if (!drag || drag.phase !== 'active') return;
+    // Refresh the grid's bounding box every frame — the canvas has
+    // `overflow: auto`, so any scroll during a drag (common on tall mobile
+    // canvases) invalidates the capture we took at pointerdown.
+    drag.gridRect = drag.layoutEl.getBoundingClientRect();
     const columns = this._doc.grid.columns;
     const pCol = this._pointerCol(drag.lastX, drag.gridRect);
     const pRow = this._pointerRow(drag.lastY, drag.gridRect);
@@ -368,10 +378,12 @@ export class AtlasLayoutEditorElement extends AtlasElement {
         next.rowSpan = Math.max(1, pRow - next.row + 1);
       }
       drag.targetSlot = next;
-      if (drag.ghostEl) {
-        drag.ghostEl.style.gridColumn = `${next.col} / span ${next.colSpan}`;
-        drag.ghostEl.style.gridRow = `${next.row} / span ${next.rowSpan}`;
-      }
+      // Grow/shrink the section itself so the slot responds under the
+      // finger. Every snap crossing is visible as a step on the element the
+      // user is manipulating — critical for vertical, where each row is
+      // 160px and a dashed overlay elsewhere on the canvas goes unnoticed.
+      drag.section.style.gridColumn = `${next.col} / span ${next.colSpan}`;
+      drag.section.style.gridRow = `${next.row} / span ${next.rowSpan}`;
     } else {
       // move: ghost snaps to nearest grid cell, section follows the finger
       // freely so the pickup feels anchored to the touch point.
@@ -466,6 +478,10 @@ export class AtlasLayoutEditorElement extends AtlasElement {
       drag.section.removeAttribute('data-dragging');
       drag.section.removeAttribute('data-drop-return');
     }
+    // In resize mode we wrote to the section's inline grid-column / grid-row
+    // during the drag. Re-apply the (unmutated) doc so those styles snap back
+    // to the original placement.
+    if (drag.mode === 'resize') this._applyLayoutToCanvas();
     this._teardownDrag();
   }
 

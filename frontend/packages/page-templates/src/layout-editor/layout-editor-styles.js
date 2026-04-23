@@ -156,6 +156,11 @@ atlas-layout-editor [data-resize-handle] {
   opacity: 0;
   transition: opacity 0.12s;
   z-index: 2;
+  /* Belt-and-braces over the section's touch-action: mobile browsers handle
+   * effective touch-action on pseudo-elements positioned outside the
+   * ancestor's box inconsistently, and vertical drags here were being lost
+   * to page / canvas scroll on some engines. */
+  touch-action: none;
 }
 atlas-layout-editor section[data-slot]:hover [data-resize-handle],
 atlas-layout-editor section[data-slot][data-selected="true"] [data-resize-handle] {
@@ -236,6 +241,7 @@ atlas-layout-editor [data-editor-panel] [data-rect-grid] {
     content: "";
     position: absolute;
     inset: -19px;
+    touch-action: none;
   }
 }
 
