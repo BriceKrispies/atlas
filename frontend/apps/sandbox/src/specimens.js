@@ -26,6 +26,7 @@ import {
   emptyLayoutDocument,
 } from '@atlas/page-templates';
 import { seedPages, gallerySeedPages } from '@atlas/bundle-standard/seed-pages';
+import { arrayDataSource } from '@atlas/widgets';
 
 // Sandbox-scoped layout registry seeded with every bundled preset. Shared
 // across all Layout + Layout Gallery specimens so "edit one, see another"
@@ -978,8 +979,6 @@ const SAMPLE_TABLE_COLUMNS = [
   { key: 'score',   label: 'Score',  sortable: true, filter: { type: 'range' }, align: 'end', format: 'number' },
   { key: 'updated', label: 'Updated', sortable: true, format: 'date' },
 ];
-
-import { arrayDataSource } from '@atlas/widgets';
 
 function mountDataTable(demo, { config, onLog }) {
   const table = document.createElement('atlas-data-table');
