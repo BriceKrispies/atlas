@@ -122,6 +122,9 @@ importers:
       '@atlas/design':
         specifier: workspace:*
         version: link:../design
+      '@atlas/test-state':
+        specifier: workspace:*
+        version: link:../test-state
       '@atlas/widget-host':
         specifier: workspace:*
         version: link:../widget-host

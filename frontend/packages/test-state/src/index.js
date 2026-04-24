@@ -12,10 +12,12 @@
  * is never allocated and every call is a no-op that bundlers can strip.
  */
 
-// Vite replaces `import.meta.env.DEV` with a boolean literal at build time,
-// so in prod bundles this becomes `const DEV_MODE = false;` and every
-// `if (DEV_MODE)` / `DEV_MODE ? … : …` below dead-code eliminates.
-const DEV_MODE = import.meta.env.DEV;
+// Vite replaces `import.meta.env.DEV` with a boolean literal at build time.
+// The outer `import.meta.env &&` guard lets this module be imported by plain
+// Node tools (dry-run scripts, unit tests) where `import.meta.env` is
+// undefined — without it the `.DEV` access throws at module load.
+// In a Vite prod build the whole expression folds to `false`.
+const DEV_MODE = import.meta.env && import.meta.env.DEV === true;
 
 /** @type {Map<string, () => unknown> | null} */
 const readers = DEV_MODE ? new Map() : null;

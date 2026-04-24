@@ -13,6 +13,7 @@ import { WidgetPaletteElement } from './editor/widget-palette.js';
 // are registered as soon as the package loads.
 import './layout/layout-element.js';
 import './layout-editor/layout-editor-element.js';
+import './block-editor/index.js';
 
 export { TemplateRegistry, moduleDefaultTemplateRegistry } from './registry.js';
 export { validateTemplateManifest } from './manifest.js';
@@ -39,6 +40,13 @@ export {
 } from './layout/index.js';
 export { AtlasLayoutEditorElement } from './layout-editor/layout-editor-element.js';
 export { ensureLayoutEditorStyles } from './layout-editor/layout-editor-styles.js';
+export {
+  BlockEditorController,
+  AtlasBlockEditor,
+  AtlasBlock,
+  AtlasEditorToolbar,
+  freshBlockId,
+} from './block-editor/index.js';
 export * from './errors.js';
 
 if (typeof customElements !== 'undefined') {
