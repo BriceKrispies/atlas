@@ -1201,6 +1201,37 @@ S({
 });
 
 
+// ── Block editor ────────────────────────────────────────────────
+
+const BLOCK_SEED_DOC = {
+  blocks: [
+    { blockId: 'seed-heading', type: 'heading', content: 'Welcome to the block editor' },
+    { blockId: 'seed-text',    type: 'text',    content: 'Select a block and use the toolbar.' },
+    { blockId: 'seed-list',    type: 'list',    content: ['Insert blocks', 'Move up/down', 'Apply B / I'] },
+  ],
+};
+
+function mountBlockEditor(demo, { config }) {
+  const editor = document.createElement('atlas-block-editor');
+  editor.setAttribute('editor-id', config.editorId ?? 'demo');
+  editor.document = config.document ?? BLOCK_SEED_DOC;
+  demo.appendChild(editor);
+  return () => { editor.remove(); };
+}
+
+S({
+  id: 'page-templates.block-editor',
+  name: 'Block editor',
+  tag: 'atlas-block-editor',
+  group: 'Page templates',
+  mount: mountBlockEditor,
+  configVariants: [
+    { name: 'Seeded', config: { editorId: 'demo', document: BLOCK_SEED_DOC } },
+    { name: 'Empty',  config: { editorId: 'empty', document: { blocks: [] } } },
+  ],
+});
+
+
 S({
   id: 'widgets.sparkline',
   name: 'Sparkline',

@@ -54,6 +54,7 @@ import { EditorAPI, freshInstanceId } from './editor-api.js';
 import { createAnnouncer } from './a11y.js';
 import { DndController } from '../dnd/controller.js';
 import { ensureDndStyles } from '../dnd/styles.js';
+import { registerTestState, makeCommit } from '@atlas/test-state';
 
 /**
  * @param {object} options
@@ -75,6 +76,7 @@ export function attachEditor({
   widgetRegistry,
   onCommit,
   onTelemetry,
+  editorId,
 }) {
   const controller = new EditorController({
     pageDoc,
@@ -88,15 +90,27 @@ export function attachEditor({
     telemetry({ event, payload });
   }
 
+  const resolvedEditorId =
+    editorId
+    ?? pageDoc?.pageId
+    ?? contentPageEl.getAttribute?.('data-page-id')
+    ?? 'content-page';
+  const surfaceKey = `editor:${resolvedEditorId}`;
+
   const api = new EditorAPI({
     controller,
     onCommit,
     onTelemetry: emitTelemetry,
     announce: (msg) => announcer.announce(msg),
+    surfaceId: surfaceKey,
   });
 
   /** @type {Array<() => void>} */
   const teardowns = [];
+
+  // Expose the editor's committed state to Playwright (dev-only).
+  const disposeTestState = registerTestState(surfaceKey, () => api.getSnapshot());
+  teardowns.push(disposeTestState);
 
   ensureDndStyles(contentPageEl);
 
@@ -107,6 +121,19 @@ export function attachEditor({
   });
   dndController.attach();
   teardowns.push(() => dndController.detach());
+
+  // Expose the DnD session state so Playwright can assert mid-drag
+  // (active payload + hovered slot) before the drop lands.
+  const disposeDragState = registerTestState('drag:layout', () => {
+    const active = dndController._active;
+    if (!active) return { active: false, payload: null, hoveredSlotId: null };
+    return {
+      active: true,
+      payload: active.source?.getPayload?.() ?? null,
+      hoveredSlotId: active.target?.id ?? null,
+    };
+  });
+  teardowns.push(disposeDragState);
 
   // ---------------------------------------------------------------------
   // Transient selection state (for two-tap flow).
@@ -431,6 +458,16 @@ export function attachEditor({
       res = await api.add({ widgetId: payload.id, region, index: 0 });
     } else {
       return { ok: false, reason: 'unknown-payload' };
+    }
+    if (res.ok) {
+      // Record a drop intent on top of the underlying add/move so tests
+      // can distinguish pointer-driven drops from programmatic moves.
+      api.recordExternalCommit('drop', {
+        payload: { type: payload.type, id: payload.id },
+        toRegion: region,
+        underlying: res.action,
+        instanceId: res.instanceId,
+      });
     }
     announceResult(res, region);
     clearSelection();

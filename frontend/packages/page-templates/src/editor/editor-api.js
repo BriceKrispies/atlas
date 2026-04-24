@@ -81,14 +81,35 @@ export class EditorAPI {
    * @param {() => boolean} [options.isEditable] — gate; returns false to
    *   reject every mutation with reason 'not-editable'. Defaults to always
    *   true.
+   * @param {string} [options.surfaceId] — surface id for commit envelopes.
    */
-  constructor({ controller, onCommit, onTelemetry, announce, isEditable }) {
+  constructor({ controller, onCommit, onTelemetry, announce, isEditable, surfaceId }) {
     this._controller = controller;
     this._commit = typeof onCommit === 'function' ? onCommit : async () => {};
     this._telemetry = typeof onTelemetry === 'function' ? onTelemetry : () => {};
     this._announce = typeof announce === 'function' ? announce : () => {};
     this._isEditable = typeof isEditable === 'function' ? isEditable : () => true;
+    this._surfaceId = surfaceId ?? 'editor';
+    /** @type {null | { surfaceId: string, intent: string, patch: object, at: number }} */
+    this._lastCommit = null;
+    this._dirty = false;
   }
+
+  /**
+   * Snapshot of the editor's externally-observable state. Used by the
+   * `@atlas/test-state` registry (see interaction-contracts.md).
+   */
+  getSnapshot() {
+    return {
+      surfaceId: this._surfaceId,
+      document: this._controller.doc,
+      entries: this._controller.listEntries(),
+      dirty: this._dirty,
+      lastCommit: this._lastCommit,
+    };
+  }
+
+  get lastCommit() { return this._lastCommit; }
 
   // ---- introspection (synchronous) ----
 
@@ -278,6 +299,7 @@ export class EditorAPI {
       toRegion: result.to?.region,
       toIndex: result.to?.index,
     });
+    this._recordCommit(result);
     // Announcements are keyed off action; the edit-mount a11y wrapper
     // handles friendlier phrasing where possible.
     return {
@@ -287,6 +309,44 @@ export class EditorAPI {
       widgetId: result.widgetId,
       from: result.from,
       to: result.to,
+    };
+  }
+
+  _recordCommit(result) {
+    this._lastCommit = {
+      surfaceId: this._surfaceId,
+      intent: result.action,
+      patch: {
+        instanceId: result.instanceId,
+        widgetId: result.widgetId,
+        from: result.from ?? null,
+        to: result.to ?? null,
+      },
+      at: Date.now(),
+    };
+    this._dirty = true;
+  }
+
+  /**
+   * Reset the dirty flag (e.g. after an external save). Does not affect
+   * `lastCommit` — tests can still inspect the most recent intent.
+   */
+  markClean() {
+    this._dirty = false;
+  }
+
+  /**
+   * Record a commit for an intent that didn't flow through the apply*
+   * primitives (e.g. DnD drops that wrap a move, resize gestures).
+   * Callers are responsible for ensuring the underlying state change
+   * actually happened (typically via the other commit methods).
+   */
+  recordExternalCommit(intent, patch) {
+    this._lastCommit = {
+      surfaceId: this._surfaceId,
+      intent,
+      patch: patch ?? {},
+      at: Date.now(),
     };
   }
 }
