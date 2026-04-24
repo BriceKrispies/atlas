@@ -17,5 +17,11 @@ import './charts/atlas-chart-legend.js';
 import './charts/atlas-chart.js';
 import './charts/atlas-sparkline.js';
 import './charts/atlas-kpi-tile.js';
+import './charts/atlas-chart-card.js';
+import './charts/atlas-chart-time-range.js';
+import './charts/atlas-chart-filter-panel.js';
+import './charts/atlas-chart-drilldown.js';
+import './charts/atlas-chart-export-button.js';
+import './charts/atlas-chart-config-panel.js';
 
 export * from './data-source/index.js';

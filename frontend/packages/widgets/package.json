@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
-    "@atlas/design": "workspace:*"
+    "@atlas/design": "workspace:*",
+    "@atlas/test-state": "workspace:*"
   },
   "devDependencies": {
     "linkedom": "^0.18.0"

@@ -1119,6 +1119,88 @@ S({
 });
 
 
+// ── Chart card (full interactive surface) ───────────────────────
+//
+// Demonstrates the committed-state contract (see interaction-contracts.md):
+// one <atlas-chart-card> owns a ChartStateStore; children (config, time
+// range, filters, legend, drilldown, export) commit intents that the
+// __atlasTest registry exposes to Playwright.
+
+const CARD_BAR_DATA = {
+  series: [
+    { id: 'desktop', name: 'Desktop', color: '#4b7bec',
+      values: [{ x: 'Q1', y: 30, region: 'NA' }, { x: 'Q2', y: 45, region: 'NA' }, { x: 'Q3', y: 60, region: 'EU' }, { x: 'Q4', y: 50, region: 'APAC' }] },
+    { id: 'mobile', name: 'Mobile', color: '#26de81',
+      values: [{ x: 'Q1', y: 20, region: 'NA' }, { x: 'Q2', y: 35, region: 'EU' }, { x: 'Q3', y: 40, region: 'EU' }, { x: 'Q4', y: 55, region: 'APAC' }] },
+  ],
+};
+
+const CARD_DRILLDOWNS = {
+  desktop: {
+    series: [
+      { id: 'desktop-chrome', name: 'Chrome', values: [{ x: 'Q1', y: 18 }, { x: 'Q2', y: 28 }, { x: 'Q3', y: 38 }, { x: 'Q4', y: 32 }] },
+      { id: 'desktop-safari', name: 'Safari', values: [{ x: 'Q1', y: 7 }, { x: 'Q2', y: 11 }, { x: 'Q3', y: 14 }, { x: 'Q4', y: 12 }] },
+      { id: 'desktop-firefox', name: 'Firefox', values: [{ x: 'Q1', y: 5 }, { x: 'Q2', y: 6 }, { x: 'Q3', y: 8 }, { x: 'Q4', y: 6 }] },
+    ],
+  },
+  mobile: {
+    series: [
+      { id: 'mobile-ios', name: 'iOS', values: [{ x: 'Q1', y: 12 }, { x: 'Q2', y: 21 }, { x: 'Q3', y: 24 }, { x: 'Q4', y: 33 }] },
+      { id: 'mobile-android', name: 'Android', values: [{ x: 'Q1', y: 8 }, { x: 'Q2', y: 14 }, { x: 'Q3', y: 16 }, { x: 'Q4', y: 22 }] },
+    ],
+  },
+};
+
+function mountChartCard(demo, { config, onLog }) {
+  const card = document.createElement('atlas-chart-card');
+  card.setAttribute('chart-id', config.chartId ?? 'sales');
+
+  card.innerHTML = `
+    <atlas-chart-config-panel>
+      <atlas-chart-config-field field="type" label="Type" options="bar,line,area,stacked-bar"></atlas-chart-config-field>
+    </atlas-chart-config-panel>
+    <atlas-chart-time-range presets="1d,7d,30d,all"></atlas-chart-time-range>
+    <atlas-chart-filter-panel>
+      <atlas-chart-filter field="region" op="=" label="Region">
+        <option value="NA">North America</option>
+        <option value="EU">Europe</option>
+        <option value="APAC">APAC</option>
+      </atlas-chart-filter>
+    </atlas-chart-filter-panel>
+    <atlas-chart-drilldown></atlas-chart-drilldown>
+    <atlas-chart type="bar" height="240px" label="Sales by device" show-axes></atlas-chart>
+    <atlas-chart-legend></atlas-chart-legend>
+    <atlas-chart-export-button format="csv" label="Export CSV"></atlas-chart-export-button>
+    <atlas-chart-export-button format="png" label="Export PNG"></atlas-chart-export-button>
+  `;
+
+  card.data = config.data ?? CARD_BAR_DATA;
+  card.drilldowns = config.drilldowns ?? CARD_DRILLDOWNS;
+  card.initialConfig = { type: 'bar' };
+
+  demo.appendChild(card);
+
+  const logHandler = (e) => onLog(e.type, e.detail ?? {});
+  card.addEventListener('point-click', logHandler);
+
+  return () => {
+    card.removeEventListener('point-click', logHandler);
+    card.remove();
+  };
+}
+
+S({
+  id: 'widgets.chart-card',
+  name: 'Chart card (stateful)',
+  tag: 'atlas-chart-card',
+  group: 'Widgets',
+  mount: mountChartCard,
+  configVariants: [
+    { name: 'Sales by device', config: { chartId: 'sales', data: CARD_BAR_DATA, drilldowns: CARD_DRILLDOWNS } },
+  ],
+});
+
+
 S({
   id: 'widgets.sparkline',
   name: 'Sparkline',
