@@ -61,3 +61,17 @@ import './atlas-kbd.ts';
 import './atlas-link.ts';
 import './atlas-scroll-area.ts';
 import './atlas-spinner.ts';
+
+// C2 primitives
+import './atlas-tabs.ts';
+import './atlas-segmented-control.ts';
+import './atlas-accordion.ts';
+import './atlas-empty-state.ts';
+import './atlas-alert.ts';
+
+// C3 primitives (overlays + ephemera)
+import './atlas-tooltip.ts';
+import './atlas-dialog.ts';
+import './atlas-drawer.ts';
+import './atlas-toast.ts';
+import './atlas-command-palette.ts';

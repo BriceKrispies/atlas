@@ -45,9 +45,21 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
   'skeleton':       { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'placeholder'] },
   'spinner':        { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'busy', 'indicator'] },
+  'alert':          { category: 'primitives', subcategory: 'Feedback',   tags: ['banner', 'notice', 'info', 'warning', 'danger'] },
+  'empty-state':    { category: 'primitives', subcategory: 'Feedback',   tags: ['empty', 'placeholder', 'zero'] },
 
   // Primitives — Navigation
-  'nav':            { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },
+  'nav':               { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },
+  'tabs':              { category: 'primitives', subcategory: 'Navigation', tags: ['tabs', 'views', 'underline'] },
+  'segmented-control': { category: 'primitives', subcategory: 'Navigation', tags: ['segmented', 'picker', 'radiogroup', 'toggle'] },
+  'accordion':         { category: 'primitives', subcategory: 'Navigation', tags: ['expand', 'collapse', 'disclosure', 'details'] },
+
+  // Primitives — Overlays
+  'tooltip':           { category: 'primitives', subcategory: 'Overlays',   tags: ['hover', 'popover', 'hint'] },
+  'dialog':            { category: 'primitives', subcategory: 'Overlays',   tags: ['modal', 'confirm', 'alert'] },
+  'drawer':            { category: 'primitives', subcategory: 'Overlays',   tags: ['sheet', 'side-panel', 'slide'] },
+  'toast':             { category: 'primitives', subcategory: 'Overlays',   tags: ['notification', 'ephemeral', 'snackbar'] },
+  'command-palette':   { category: 'primitives', subcategory: 'Overlays',   tags: ['cmdk', 'search', 'palette', 'jump'] },
 
   // Primitives — Data
   'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },

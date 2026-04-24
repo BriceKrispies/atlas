@@ -16,6 +16,7 @@ import './primitives/controls-selection.ts';
 import './primitives/controls-specialized.ts';
 import './primitives/feedback.ts';
 import './primitives/navigation.ts';
+import './primitives/overlays.ts';
 import './primitives/data.ts';
 
 // Patterns
