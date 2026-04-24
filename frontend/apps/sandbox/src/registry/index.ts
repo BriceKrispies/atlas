@@ -1,0 +1,86 @@
+import type { Category, Status, TaxonomyEntry } from './types.ts';
+
+export type { Category, Status, TaxonomyEntry } from './types.ts';
+export { CATEGORIES } from './types.ts';
+
+// Fixed-id taxonomy. Id = key. Source of truth for where each specimen
+// lives in the two-tier (category / subcategory) nav. Tags feed the
+// sidebar search. Status drives the Badge on the preview header.
+const STATIC: Record<string, TaxonomyEntry> = {
+  // Primitives — Layout
+  'box':            { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'container'] },
+  'stack':          { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'flex', 'row', 'column'] },
+
+  // Primitives — Typography
+  'heading':        { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'h1', 'h2', 'h3', 'title'] },
+  'text':           { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'paragraph', 'body'] },
+
+  // Primitives — Controls
+  'button':         { category: 'primitives', subcategory: 'Controls',   tags: ['action', 'cta', 'submit'] },
+  'input':          { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'text', 'field'] },
+  'textarea':       { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'multiline', 'field'] },
+  'number-input':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'number', 'field'] },
+  'search-input':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'search', 'field'] },
+  'select':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'dropdown', 'choice'] },
+  'multi-select':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'dropdown', 'multi', 'tags'] },
+  'checkbox':       { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'boolean', 'choice'] },
+  'radio-group':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'choice', 'radio'] },
+  'switch':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'toggle', 'boolean'] },
+  'slider':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'range'] },
+  'date-picker':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'date', 'calendar'] },
+  'file-upload':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'upload', 'file'] },
+  'form-field':     { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'label', 'wrapper'] },
+
+  // Primitives — Feedback
+  'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
+  'skeleton':       { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'placeholder'] },
+
+  // Primitives — Navigation
+  'nav':            { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },
+
+  // Primitives — Data
+  'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
+
+  // Patterns — Page / Forms / Shell
+  'page-header':    { category: 'patterns',   subcategory: 'Page',       tags: ['header', 'title', 'actions'] },
+  'form-group':     { category: 'patterns',   subcategory: 'Forms',      tags: ['form', 'group', 'layout'] },
+  'shell-header':   { category: 'patterns',   subcategory: 'Shell',      tags: ['header', 'topbar', 'chrome'] },
+
+  // Patterns — Surface states
+  'surface-pages-list': { category: 'patterns', subcategory: 'Surfaces', tags: ['surface', 'pages', 'list'] },
+  'surface-detail':     { category: 'patterns', subcategory: 'Surfaces', tags: ['surface', 'detail'] },
+
+  // Patterns — Widgets
+  'widget.content.announcements': { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'announcements', 'content'] },
+  'widgets.data-table':           { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'table', 'data'] },
+  'widgets.chart':                { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'viz'] },
+  'widgets.chart-card':           { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'card', 'stateful'] },
+  'widgets.sparkline':            { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'sparkline'] },
+  'widgets.kpi-tile':             { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'kpi', 'metric', 'tile'] },
+
+  // Templates — editors
+  'page-templates.block-editor':  { category: 'templates', subcategory: 'Editors',       tags: ['template', 'block', 'editor'] },
+  'layout-editor.blank':          { category: 'templates', subcategory: 'Layout Editor', tags: ['layout', 'editor', 'blank'] },
+};
+
+// Patterned ids whose exact id is generated at load time (per-preset or
+// per-seed-document). Ordered from most-specific to least-specific — first
+// match wins.
+const PATTERNS: Array<{ prefix: string; entry: TaxonomyEntry }> = [
+  { prefix: 'page-editor.',    entry: { category: 'templates', subcategory: 'Page Editor',    tags: ['page', 'editor'] } },
+  { prefix: 'layout-editor.',  entry: { category: 'templates', subcategory: 'Layout Editor',  tags: ['layout', 'editor'] } },
+  { prefix: 'layout.',         entry: { category: 'templates', subcategory: 'Layouts',        tags: ['layout', 'preview', 'grid'] } },
+  { prefix: 'gallery.',        entry: { category: 'templates', subcategory: 'Layout Gallery', tags: ['layout', 'gallery'] } },
+  { prefix: 'page.',            entry: { category: 'pages',     subcategory: 'Content',        tags: ['page', 'content'] } },
+];
+
+export function resolveTaxonomy(id: string): TaxonomyEntry {
+  const fixed = STATIC[id];
+  if (fixed) return fixed;
+  for (const { prefix, entry } of PATTERNS) {
+    if (id.startsWith(prefix)) return entry;
+  }
+  // Unknown id — put it under an explicit "Unsorted" bucket so missing
+  // taxonomy is visible rather than silent.
+  return { category: 'primitives', subcategory: 'Unsorted', status: 'review', tags: [] };
+}

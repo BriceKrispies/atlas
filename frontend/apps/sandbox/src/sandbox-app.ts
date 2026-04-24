@@ -2,6 +2,11 @@ import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import '@atlas/design';
+import {
+  resolveTaxonomy,
+  type Category,
+  type Status,
+} from './registry/index.ts';
 // Template layout chrome (grid rules keyed off `template-*` custom element
 // tags). Because the sandbox shell uses Shadow DOM, document-level
 // stylesheets do NOT pierce it — we must inline this CSS into the shadow
@@ -34,11 +39,37 @@ export interface Specimen {
   id: string;
   name: string;
   tag: string;
+  /** Legacy single-level group. Ignored at render time — taxonomy now
+   *  comes from `resolveTaxonomy(id)` in `registry/index.ts`. Left here
+   *  so existing `S({...group:'X'})` calls in specimens.ts stay valid
+   *  TypeScript; remove once registrations drop it. */
   group?: string;
+  category?: Category;
+  subcategory?: string;
+  status?: Status;
+  tags?: readonly string[];
   variants?: SpecimenVariant[];
   states?: Record<string, string>;
   mount?: SpecimenMountFn;
   configVariants?: SpecimenConfigVariant[];
+}
+
+interface ResolvedSpecimen extends Specimen {
+  category: Category;
+  subcategory: string;
+  status: Status;
+  tags: readonly string[];
+}
+
+function resolve(spec: Specimen): ResolvedSpecimen {
+  const tax = resolveTaxonomy(spec.id);
+  return {
+    ...spec,
+    category: spec.category ?? tax.category,
+    subcategory: spec.subcategory ?? tax.subcategory,
+    status: spec.status ?? tax.status ?? 'stable',
+    tags: spec.tags ?? tax.tags ?? [],
+  };
 }
 
 /**
@@ -99,17 +130,6 @@ const styles = `
     margin-top: 0;
   }
 
-  /* Developer-tool list density: the default nav-item is sized for
-     production touch targets (44×44). In the sandbox sidebar each item is
-     a specimen link in a scrollable list, so we collapse to text height
-     with just enough padding for a hit region. */
-  atlas-nav-item.item {
-    min-height: 0;
-    padding: 2px var(--atlas-space-md) 2px var(--atlas-space-lg);
-    border-radius: 0;
-    font-size: var(--atlas-font-size-sm);
-    line-height: var(--atlas-line-height-tight);
-  }
   atlas-nav-item.item[aria-selected="true"] {
     background: var(--atlas-color-primary-subtle);
     color: var(--atlas-color-primary);
@@ -257,7 +277,7 @@ export class AtlasSandbox extends AtlasSurface {
   static override surfaceId = 'sandbox';
 
   private _activeCleanups: Array<() => void> = [];
-  private _activeSpec: Specimen | null = null;
+  private _activeSpec: ResolvedSpecimen | null = null;
   private _onKey: ((e: KeyboardEvent) => void) | null = null;
 
   constructor() {
@@ -273,7 +293,15 @@ export class AtlasSandbox extends AtlasSurface {
     queueMicrotask(() => {
       this._render();
       const params = new URLSearchParams(location.search);
-      const initial = params.get('specimen') ?? AtlasSandbox.specimens[0]?.id;
+      const requestedId = params.get('specimen');
+      const requestedCat = params.get('category');
+      let initial: string | undefined;
+      if (requestedId && AtlasSandbox.specimens.some((s) => s.id === requestedId)) {
+        initial = requestedId;
+      } else if (requestedCat) {
+        initial = AtlasSandbox.specimens.find((s) => s.category === requestedCat)?.id;
+      }
+      initial ??= AtlasSandbox.specimens[0]?.id;
       if (initial) this._select(initial);
     });
   }
@@ -290,10 +318,9 @@ export class AtlasSandbox extends AtlasSurface {
   }
 
   private _render(): void {
-    const groups: Record<string, Specimen[]> = {};
+    const groups: Record<string, ResolvedSpecimen[]> = {};
     for (const spec of AtlasSandbox.specimens) {
-      const g = spec.group ?? 'Other';
-      (groups[g] ??= []).push(spec);
+      (groups[spec.subcategory] ??= []).push(spec);
     }
 
     const count = AtlasSandbox.specimens.length;
@@ -396,6 +423,7 @@ export class AtlasSandbox extends AtlasSurface {
 
     const url = new URL(location.href);
     url.searchParams.set('specimen', id);
+    url.searchParams.set('category', spec.category);
     history.replaceState(null, '', url);
 
     const root = this.shadowRoot as ShadowRoot;
@@ -576,10 +604,10 @@ export class AtlasSandbox extends AtlasSurface {
     container.appendChild(section);
   }
 
-  static specimens: Specimen[] = [];
+  static specimens: ResolvedSpecimen[] = [];
 
   static register(spec: Specimen): void {
-    AtlasSandbox.specimens.push(spec);
+    AtlasSandbox.specimens.push(resolve(spec));
   }
 }
 
