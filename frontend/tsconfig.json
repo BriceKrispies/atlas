@@ -1,0 +1,48 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vitest/globals"],
+    "paths": {
+      "@atlas/core": ["./packages/core/src/index.ts"],
+      "@atlas/core/*": ["./packages/core/src/*"],
+      "@atlas/design": ["./packages/design/src/index.ts"],
+      "@atlas/design/*": ["./packages/design/src/*"],
+      "@atlas/api-client": ["./packages/api-client/src/index.ts"],
+      "@atlas/api-client/*": ["./packages/api-client/src/*"],
+      "@atlas/widget-host": ["./packages/widget-host/src/index.ts"],
+      "@atlas/widget-host/*": ["./packages/widget-host/src/*"],
+      "@atlas/widgets": ["./packages/widgets/src/index.ts"],
+      "@atlas/widgets/*": ["./packages/widgets/src/*"],
+      "@atlas/page-templates": ["./packages/page-templates/src/index.ts"],
+      "@atlas/page-templates/*": ["./packages/page-templates/src/*"],
+      "@atlas/test-fixtures": ["./packages/test-fixtures/src/index.ts"],
+      "@atlas/test-fixtures/*": ["./packages/test-fixtures/src/*"],
+      "@atlas/test-state": ["./packages/test-state/src/index.ts"],
+      "@atlas/test-state/*": ["./packages/test-state/src/*"],
+      "@atlas/eslint-plugin-widgets": ["./packages/eslint-plugin-atlas-widgets/src/index.ts"],
+      "@atlas/bundle-standard": ["./bundles/standard/src/index.ts"],
+      "@atlas/bundle-standard/*": ["./bundles/standard/src/*"]
+    }
+  },
+  "include": [
+    "global.d.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/tests/**/*.ts",
+    "apps/*/vite.config.ts",
+    "apps/*/playwright.config.ts",
+    "bundles/*/src/**/*.ts",
+    "bundles/*/test/**/*.ts",
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "playwright.itest.config.ts",
+    "eslint.config.ts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    "**/test-results",
+    "**/playwright-report"
+  ]
+}

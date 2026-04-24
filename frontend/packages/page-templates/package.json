@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "dry-run": "node test/dry-run.mjs",
-    "test:dry-run": "node test/dry-run.mjs",
-    "test:editor-dry-run": "node test/editor-dry-run.mjs",
-    "test:dnd-dry-run": "node test/dnd-dry-run.mjs"
+    "dry-run": "tsx test/dry-run.ts",
+    "test:dry-run": "tsx test/dry-run.ts",
+    "test:editor-dry-run": "tsx test/editor-dry-run.ts",
+    "test:dnd-dry-run": "tsx test/dnd-dry-run.ts"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

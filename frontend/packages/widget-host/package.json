@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./hosts/inline": "./src/hosts/inline-host.js",
-    "./hosts/shadow": "./src/hosts/shadow-host.js"
+    ".": "./src/index.ts",
+    "./hosts/inline": "./src/hosts/inline-host.ts",
+    "./hosts/shadow": "./src/hosts/shadow-host.ts"
   },
   "scripts": {
-    "dry-run": "node test/dry-run.mjs",
-    "test:dry-run": "node test/dry-run.mjs",
-    "test:iframe": "node test/iframe-dry-run.mjs"
+    "dry-run": "tsx test/dry-run.ts",
+    "test:dry-run": "tsx test/dry-run.ts",
+    "test:iframe": "tsx test/iframe-dry-run.ts"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

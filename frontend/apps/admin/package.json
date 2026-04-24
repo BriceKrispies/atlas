@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "playwright test --config ../../playwright.config.js",
-    "test:ui": "playwright test --config ../../playwright.config.js --ui"
+    "test": "playwright test --config ../../playwright.config.ts",
+    "test:ui": "playwright test --config ../../playwright.config.ts --ui"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

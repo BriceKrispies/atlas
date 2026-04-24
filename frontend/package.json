@@ -6,13 +6,16 @@
     "dev": "pnpm --filter @atlas/admin dev",
     "sandbox": "pnpm --filter @atlas/sandbox dev",
     "build": "pnpm --filter './apps/*' build",
-    "test": "pnpm --filter './apps/*' test",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck:watch": "tsgo --noEmit -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:sandbox": "pnpm --filter @atlas/sandbox test:e2e",
-    "test:integration": "playwright test --config playwright.itest.config.js",
+    "test:integration": "playwright test --config playwright.itest.config.ts",
     "lint": "eslint .",
-    "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.js\"",
+    "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.ts\"",
     "test:lint-rules": "pnpm -C packages/eslint-plugin-atlas-widgets test"
   },
   "pnpm": {
@@ -23,6 +26,12 @@
   "devDependencies": {
     "@atlas/eslint-plugin-widgets": "workspace:*",
     "@playwright/test": "^1.59.1",
-    "eslint": "^9.0.0"
+    "@types/estree": "^1.0.8",
+    "@types/node": "^22.19.17",
+    "@typescript/native-preview": "7.0.0-dev.20260421.2",
+    "eslint": "^9.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
   }
 }
