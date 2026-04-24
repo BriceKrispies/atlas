@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: inline-flex;
     align-items: center;
@@ -66,7 +67,7 @@ const styles = `
     line-height: var(--atlas-line-height);
     user-select: none;
   }
-`;
+`);
 
 export interface AtlasSwitchChangeDetail {
   checked: boolean;
@@ -80,88 +81,135 @@ export interface AtlasSwitchChangeDetail {
  * later; use `<atlas-radio-group>` for exclusive choices.
  *
  * Attributes:
- *   checked   — boolean
- *   disabled  — boolean
- *   label     — text label (or use slotted text)
- *   name      — form name / testid suffix
+ *   checked   - boolean
+ *   disabled  - boolean
+ *   required  - boolean
+ *   label     - text label (or use slotted text)
+ *   name      - form name / testid suffix
  *
  * Events:
- *   change → CustomEvent<AtlasSwitchChangeDetail>
+ *   change -> CustomEvent<AtlasSwitchChangeDetail>
  */
 export class AtlasSwitch extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['checked', 'disabled', 'label'];
+    return ['checked', 'disabled', 'label', 'required'];
   }
 
-  private _inputId = `atlas-sw-${Math.random().toString(36).slice(2, 8)}`;
+  declare checked: boolean;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'checked', AtlasElement.boolAttr('checked'));
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+  }
+
+  private readonly _inputId = uid('atlas-sw');
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _input: HTMLInputElement | null = null;
+  private _labelEl: HTMLLabelElement | null = null;
+  private _onInputChange = (): void => {
+    if (!this._input) return;
+    this.checked = this._input.checked;
+    this._commit();
+    this.dispatchEvent(
+      new CustomEvent<AtlasSwitchChangeDetail>('change', {
+        detail: { checked: this.checked },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, {
+        checked: this.checked,
+      });
+    }
+  };
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-  }
-
-  get checked(): boolean {
-    return this.hasAttribute('checked');
-  }
-  set checked(v: boolean) {
-    if (v) this.setAttribute('checked', '');
-    else this.removeAttribute('checked');
-  }
-
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
+    this._internals = this.attachInternals();
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
-  override attributeChangedCallback(): void {
-    this._sync();
+  override attributeChangedCallback(name: string): void {
+    if (!this._built) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label') ?? '';
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    adoptSheet(root, sheet);
+    root.innerHTML = `
       <span class="track">
-        <input
-          id="${this._inputId}"
-          type="checkbox"
-          role="switch"
-          ${this.checked ? 'checked' : ''}
-          ${this.disabled ? 'disabled' : ''}
-        />
+        <input id="${escapeAttr(this._inputId)}" type="checkbox" role="switch" />
         <span class="thumb" aria-hidden="true"></span>
       </span>
-      <label class="label" for="${this._inputId}">${label}<slot></slot></label>
+      <label class="label" for="${escapeAttr(this._inputId)}"><span class="label-text"></span><slot></slot></label>
     `;
-    this._sync();
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
-    input?.addEventListener('change', () => {
-      this.checked = input.checked;
-      this.dispatchEvent(
-        new CustomEvent<AtlasSwitchChangeDetail>('change', {
-          detail: { checked: this.checked },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
+    this._input = root.querySelector<HTMLInputElement>('input');
+    this._labelEl = root.querySelector<HTMLLabelElement>('label.label');
+    this._input?.addEventListener('change', this._onInputChange);
+    this._built = true;
   }
 
-  private _sync(): void {
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('checked');
+    this._sync('disabled');
+    this._sync('required');
+    this._commit();
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
     if (!input) return;
-    input.checked = this.checked;
-    input.disabled = this.disabled;
-    input.setAttribute('aria-checked', String(this.checked));
+    switch (name) {
+      case 'checked':
+        input.checked = this.checked;
+        input.setAttribute('aria-checked', String(this.checked));
+        this._commit();
+        break;
+      case 'disabled':
+        input.disabled = this.disabled;
+        break;
+      case 'required':
+        input.required = this.required;
+        this._commit();
+        break;
+      case 'label': {
+        const labelText = this._labelEl?.querySelector<HTMLElement>('.label-text');
+        if (labelText) labelText.textContent = this.getAttribute('label') ?? '';
+        break;
+      }
+    }
+  }
+
+  private _commit(): void {
+    // A switch submits "on" when on and nothing when off — same as a checkbox.
+    const submitted = this.checked ? 'on' : null;
+    this._internals.setFormValue(submitted);
+    if (this.required && !this.checked) {
+      this._internals.setValidity(
+        { valueMissing: true },
+        'Required',
+        this._input ?? undefined,
+      );
+    } else {
+      this._internals.setValidity({});
+    }
   }
 }
 

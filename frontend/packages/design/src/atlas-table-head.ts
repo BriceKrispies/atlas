@@ -4,7 +4,7 @@ import { AtlasElement } from '@atlas/core';
  * <atlas-table-head> — table header group. Replaces <thead>.
  * Light DOM. Styled via elements.css.
  */
-class AtlasTableHead extends AtlasElement {
+export class AtlasTableHead extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'rowgroup');
@@ -12,3 +12,9 @@ class AtlasTableHead extends AtlasElement {
 }
 
 AtlasElement.define('atlas-table-head', AtlasTableHead);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-table-head': AtlasTableHead;
+  }
+}

@@ -23,6 +23,8 @@ import './harness/widget-harness.ts';
 // it are declared in specimens.js.
 import './page-editor/index.ts';
 
-// sandbox-app.js is imported by specimens.js (it needs the class export)
-// specimens register before the element is defined, so data is ready on connectedCallback
-import './specimens.ts';
+// sandbox-app.ts is imported by each specimen file (they need the class
+// export). Specimens register before the element is defined, so data is
+// ready on connectedCallback. The barrel imports every category file for
+// its side-effect registration.
+import './specimens/index.ts';

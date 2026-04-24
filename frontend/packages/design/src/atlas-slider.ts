@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
@@ -79,7 +80,7 @@ const styles = `
   input:disabled::-moz-range-thumb {
     background: var(--atlas-color-border-strong);
   }
-`;
+`);
 
 export interface AtlasSliderChangeDetail {
   value: number;
@@ -97,55 +98,97 @@ export interface AtlasSliderChangeDetail {
  *   label, name, value, min (default 0), max (default 100), step (default 1)
  *   show-value  — render the current value at the end of the header row
  *   disabled    — boolean
+ *   required    — boolean (for form validation)
  *   format      — "percent" | "plain" (default plain)
  *
  * Events:
- *   change → CustomEvent<AtlasSliderChangeDetail>
+ *   input  → every drag tick (intermediate)
+ *   change → CustomEvent<AtlasSliderChangeDetail> on commit (pointerup/keyup)
+ *
+ * Form-associated: submits its numeric value as a string via ElementInternals.
  */
 export class AtlasSlider extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['label', 'value', 'min', 'max', 'step', 'disabled', 'show-value', 'format'];
+    return [
+      'label',
+      'value',
+      'min',
+      'max',
+      'step',
+      'disabled',
+      'show-value',
+      'format',
+      'required',
+    ];
   }
 
-  private _inputId = `atlas-sld-${Math.random().toString(36).slice(2, 8)}`;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(
+      this.prototype,
+      'disabled',
+      AtlasElement.boolAttr('disabled'),
+    );
+    Object.defineProperty(
+      this.prototype,
+      'required',
+      AtlasElement.boolAttr('required'),
+    );
+  }
+
+  private readonly _inputId = uid('atlas-sld');
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _input: HTMLInputElement | null = null;
+  private _label: HTMLLabelElement | null = null;
+  private _header: HTMLDivElement | null = null;
+  private _valueOut: HTMLSpanElement | null = null;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
+    this._internals = this.attachInternals();
   }
 
   get value(): number {
-    const a = this.shadowRoot?.querySelector<HTMLInputElement>('input')?.value
-      ?? this.getAttribute('value');
-    const n = Number(a ?? 0);
+    const raw = this._input?.value ?? this.getAttribute('value');
+    const n = Number(raw ?? 0);
     return Number.isFinite(n) ? n : 0;
   }
   set value(v: number) {
-    this.setAttribute('value', String(v));
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
-    if (input) input.value = String(v);
+    const str = String(v);
+    this.setAttribute('value', str);
+    if (this._input) this._input.value = str;
     this._updateValueDisplay();
-  }
-
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
+    this._commit(str);
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
+    // Seed form state on connect.
+    this._commit(this._input?.value ?? this.getAttribute('value') ?? '0');
   }
 
-  override attributeChangedCallback(): void {
-    this._render();
+  override attributeChangedCallback(
+    name: string,
+    oldVal: string | null,
+    newVal: string | null,
+  ): void {
+    if (!this._built) return;
+    if (oldVal === newVal) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
     const label = this.getAttribute('label');
     const valueAttr = this.getAttribute('value') ?? '0';
     const min = this.getAttribute('min') ?? '0';
@@ -153,49 +196,222 @@ export class AtlasSlider extends AtlasElement {
     const step = this.getAttribute('step') ?? '1';
     const disabled = this.disabled;
     const showValue = this.hasAttribute('show-value');
+    const required = this.required;
 
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      ${label || showValue ? `
-        <div class="header">
-          ${label ? `<label for="${this._inputId}">${label}</label>` : '<span></span>'}
-          ${showValue ? `<span class="value" aria-live="polite"></span>` : ''}
-        </div>
-      ` : ''}
+    root.innerHTML = `
+      ${
+        label != null || showValue
+          ? `<div class="header">
+              ${
+                label != null
+                  ? `<label for="${escapeAttr(this._inputId)}">${escapeText(label)}</label>`
+                  : '<span></span>'
+              }
+              ${showValue ? `<span class="value" aria-live="polite"></span>` : ''}
+            </div>`
+          : ''
+      }
       <input
-        id="${this._inputId}"
+        id="${escapeAttr(this._inputId)}"
         type="range"
-        value="${valueAttr}"
-        min="${min}"
-        max="${max}"
-        step="${step}"
+        value="${escapeAttr(valueAttr)}"
+        min="${escapeAttr(min)}"
+        max="${escapeAttr(max)}"
+        step="${escapeAttr(step)}"
         ${disabled ? 'disabled' : ''}
+        ${required ? 'required' : ''}
       />
     `;
 
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
+    this._header = root.querySelector<HTMLDivElement>('.header');
+    this._label = root.querySelector<HTMLLabelElement>('label');
+    this._valueOut = root.querySelector<HTMLSpanElement>('.value');
+    this._input = root.querySelector<HTMLInputElement>('input');
+
+    const input = this._input;
+    if (input) {
+      // `input` fires on every drag tick — intermediate value.
+      input.addEventListener('input', () => {
+        this.setAttribute('value', input.value);
+        this._updateValueDisplay();
+        this.dispatchEvent(
+          new CustomEvent<AtlasSliderChangeDetail>('input', {
+            detail: { value: Number(input.value) },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      });
+      // `change` fires on commit — pointerup / keyup / blur per spec.
+      input.addEventListener('change', () => {
+        this.setAttribute('value', input.value);
+        this._updateValueDisplay();
+        this._commit(input.value);
+        this.dispatchEvent(
+          new CustomEvent<AtlasSliderChangeDetail>('change', {
+            detail: { value: Number(input.value) },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+        const name = this.getAttribute('name');
+        if (name && this.surfaceId) {
+          this.emit(`${this.surfaceId}.${name}-changed`, {
+            value: Number(input.value),
+          });
+        }
+      });
+    }
+
+    this._built = true;
+  }
+
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('show-value');
+    this._sync('value');
+    this._sync('min');
+    this._sync('max');
+    this._sync('step');
+    this._sync('disabled');
+    this._sync('required');
+    this._sync('format');
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
     if (!input) return;
-    input.addEventListener('input', () => {
-      this.setAttribute('value', input.value);
+    switch (name) {
+      case 'value': {
+        const v = this.getAttribute('value') ?? '0';
+        if (input.value !== v) input.value = v;
+        this._updateValueDisplay();
+        break;
+      }
+      case 'min': {
+        const v = this.getAttribute('min') ?? '0';
+        if (input.min !== v) input.min = v;
+        break;
+      }
+      case 'max': {
+        const v = this.getAttribute('max') ?? '100';
+        if (input.max !== v) input.max = v;
+        break;
+      }
+      case 'step': {
+        const v = this.getAttribute('step') ?? '1';
+        if (input.step !== v) input.step = v;
+        break;
+      }
+      case 'disabled':
+        input.disabled = this.disabled;
+        break;
+      case 'required':
+        input.required = this.required;
+        this._commit(input.value);
+        break;
+      case 'label':
+      case 'show-value':
+        this._updateHeader();
+        break;
+      case 'format':
+        this._updateValueDisplay();
+        break;
+    }
+  }
+
+  /** Update label text and value-output visibility without rebuilding shell. */
+  private _updateHeader(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const label = this.getAttribute('label');
+    const showValue = this.hasAttribute('show-value');
+    const needHeader = label != null || showValue;
+
+    if (!needHeader) {
+      if (this._header) {
+        this._header.remove();
+        this._header = null;
+        this._label = null;
+        this._valueOut = null;
+      }
+      return;
+    }
+
+    if (!this._header) {
+      const header = document.createElement('div');
+      header.className = 'header';
+      root.insertBefore(header, this._input);
+      this._header = header;
+    }
+
+    // Label
+    if (label != null) {
+      if (!this._label || this._label.tagName !== 'LABEL') {
+        this._header.textContent = '';
+        const lbl = document.createElement('label');
+        lbl.setAttribute('for', this._inputId);
+        this._header.appendChild(lbl);
+        this._label = lbl;
+      }
+      this._label.textContent = label;
+    } else if (this._label) {
+      this._label.remove();
+      this._label = null;
+      // Put in a placeholder span so the value output stays right-aligned.
+      if (!this._header.querySelector('span.spacer')) {
+        const spacer = document.createElement('span');
+        spacer.className = 'spacer';
+        this._header.insertBefore(spacer, this._header.firstChild);
+      }
+    }
+
+    // Value output
+    if (showValue) {
+      if (!this._valueOut) {
+        const out = document.createElement('span');
+        out.className = 'value';
+        out.setAttribute('aria-live', 'polite');
+        this._header.appendChild(out);
+        this._valueOut = out;
+      }
       this._updateValueDisplay();
-      this.dispatchEvent(
-        new CustomEvent<AtlasSliderChangeDetail>('change', {
-          detail: { value: Number(input.value) },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
-    this._updateValueDisplay();
+    } else if (this._valueOut) {
+      this._valueOut.remove();
+      this._valueOut = null;
+    }
   }
 
   private _updateValueDisplay(): void {
-    const out = this.shadowRoot?.querySelector<HTMLElement>('.value');
+    const out = this._valueOut;
     if (!out) return;
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
-    const v = Number(input?.value ?? this.getAttribute('value') ?? 0);
+    const v = Number(
+      this._input?.value ?? this.getAttribute('value') ?? 0,
+    );
     const fmt = this.getAttribute('format');
     out.textContent = fmt === 'percent' ? `${v}%` : String(v);
+  }
+
+  private _commit(value: string): void {
+    this._internals.setFormValue(value);
+    const n = Number(value);
+    const min = Number(this.getAttribute('min') ?? '0');
+    const max = Number(this.getAttribute('max') ?? '100');
+    if (this.required && (value === '' || !Number.isFinite(n))) {
+      this._internals.setValidity({ valueMissing: true }, 'Required');
+    } else if (Number.isFinite(n) && Number.isFinite(min) && n < min) {
+      this._internals.setValidity(
+        { rangeUnderflow: true },
+        `Must be ≥ ${min}`,
+      );
+    } else if (Number.isFinite(n) && Number.isFinite(max) && n > max) {
+      this._internals.setValidity(
+        { rangeOverflow: true },
+        `Must be ≤ ${max}`,
+      );
+    } else {
+      this._internals.setValidity({});
+    }
   }
 }
 

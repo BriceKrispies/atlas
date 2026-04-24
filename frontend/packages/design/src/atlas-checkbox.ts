@@ -1,6 +1,8 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
+import './atlas-icon.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: inline-flex;
     align-items: flex-start;
@@ -9,7 +11,7 @@ const styles = `
     color: var(--atlas-color-text);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    /* Preserve 44×44 touch target even if label text is short. */
+    /* Preserve 44x44 touch target even if label text is short. */
     min-height: var(--atlas-touch-target-min, 44px);
   }
   :host([disabled]) {
@@ -57,7 +59,7 @@ const styles = `
     border-radius: calc(var(--atlas-radius-sm) + 2px);
     pointer-events: none;
   }
-  .mark svg {
+  .mark atlas-icon {
     width: 14px;
     height: 14px;
     color: var(--atlas-color-text-inverse);
@@ -71,8 +73,8 @@ const styles = `
     background: var(--atlas-color-primary);
     border-color: var(--atlas-color-primary);
   }
-  :host([checked]) .mark svg,
-  :host([indeterminate]) .mark svg {
+  :host([checked]) .mark atlas-icon,
+  :host([indeterminate]) .mark atlas-icon {
     opacity: 1;
     transform: scale(1);
   }
@@ -96,7 +98,7 @@ const styles = `
     line-height: var(--atlas-line-height);
     user-select: none;
   }
-`;
+`);
 
 export interface AtlasCheckboxChangeDetail {
   checked: boolean;
@@ -112,55 +114,66 @@ export interface AtlasCheckboxChangeDetail {
  * "dark mode on"); use `<atlas-radio-group>` for mutually exclusive choices.
  *
  * Attributes:
- *   checked         — boolean
- *   indeterminate   — boolean (mutually exclusive w/ checked semantics)
- *   disabled        — boolean
- *   required        — boolean
- *   name            — form name / testid suffix
- *   value           — submitted value (default "on")
- *   label           — text label (text content also works via <slot>)
+ *   checked         - boolean
+ *   indeterminate   - boolean (mutually exclusive w/ checked semantics)
+ *   disabled        - boolean
+ *   required        - boolean
+ *   name            - form name / testid suffix
+ *   value           - submitted value (default "on")
+ *   label           - text label (text content also works via <slot>)
  *
  * Events:
- *   change → CustomEvent<AtlasCheckboxChangeDetail>
+ *   change -> CustomEvent<AtlasCheckboxChangeDetail>
  */
 export class AtlasCheckbox extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['checked', 'disabled', 'indeterminate', 'label', 'required'];
+    return ['checked', 'disabled', 'indeterminate', 'label', 'required', 'value'];
   }
 
-  private _inputId = `atlas-cb-${Math.random().toString(36).slice(2, 8)}`;
+  declare checked: boolean;
+  declare indeterminate: boolean;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'checked', AtlasElement.boolAttr('checked'));
+    Object.defineProperty(this.prototype, 'indeterminate', AtlasElement.boolAttr('indeterminate'));
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+  }
+
+  private readonly _inputId = uid('atlas-cb');
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _input: HTMLInputElement | null = null;
+  private _labelEl: HTMLLabelElement | null = null;
+  private _onInputChange = (): void => {
+    if (!this._input) return;
+    if (this.indeterminate) this.indeterminate = false;
+    this.checked = this._input.checked;
+    this._commit();
+    this.dispatchEvent(
+      new CustomEvent<AtlasCheckboxChangeDetail>('change', {
+        detail: { checked: this.checked, value: this.value },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, {
+        checked: this.checked,
+        value: this.value,
+      });
+    }
+  };
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-  }
-
-  get checked(): boolean {
-    return this.hasAttribute('checked');
-  }
-  set checked(v: boolean) {
-    this._setBoolAttr('checked', v);
-  }
-
-  get indeterminate(): boolean {
-    return this.hasAttribute('indeterminate');
-  }
-  set indeterminate(v: boolean) {
-    this._setBoolAttr('indeterminate', v);
-  }
-
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    this._setBoolAttr('disabled', v);
-  }
-
-  get required(): boolean {
-    return this.hasAttribute('required');
-  }
-  set required(v: boolean) {
-    this._setBoolAttr('required', v);
+    this._internals = this.attachInternals();
   }
 
   get value(): string {
@@ -172,63 +185,89 @@ export class AtlasCheckbox extends AtlasElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
-  override attributeChangedCallback(): void {
-    this._sync();
+  override attributeChangedCallback(name: string): void {
+    if (!this._built) return;
+    this._sync(name);
   }
 
-  private _setBoolAttr(name: string, v: boolean): void {
-    if (v) this.setAttribute(name, '');
-    else this.removeAttribute(name);
-  }
-
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label') ?? '';
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    adoptSheet(root, sheet);
+    root.innerHTML = `
       <span class="control">
-        <input
-          id="${this._inputId}"
-          type="checkbox"
-          ${this.checked ? 'checked' : ''}
-          ${this.disabled ? 'disabled' : ''}
-          ${this.required ? 'required' : ''}
-          aria-describedby=""
-        />
+        <input id="${escapeAttr(this._inputId)}" type="checkbox" aria-describedby="" />
         <span class="mark" aria-hidden="true">
-          <svg class="tick" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 7,12 13,4"/></svg>
-          <svg class="dash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="8" x2="13" y2="8"/></svg>
+          <atlas-icon class="tick" name="check"></atlas-icon>
+          <atlas-icon class="dash" name="dash"></atlas-icon>
         </span>
       </span>
-      <label class="label" for="${this._inputId}">${label}<slot></slot></label>
+      <label class="label" for="${escapeAttr(this._inputId)}"><span class="label-text"></span><slot></slot></label>
     `;
-    this._sync();
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
-    if (!input) return;
-    input.addEventListener('change', () => {
-      if (this.indeterminate) this.indeterminate = false;
-      this.checked = input.checked;
-      this.dispatchEvent(
-        new CustomEvent<AtlasCheckboxChangeDetail>('change', {
-          detail: { checked: this.checked, value: this.value },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
+    this._input = root.querySelector<HTMLInputElement>('input');
+    this._labelEl = root.querySelector<HTMLLabelElement>('label.label');
+    this._input?.addEventListener('change', this._onInputChange);
+    this._built = true;
   }
 
-  private _sync(): void {
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('checked');
+    this._sync('disabled');
+    this._sync('required');
+    this._sync('indeterminate');
+    this._commit();
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
     if (!input) return;
-    input.checked = this.checked;
-    input.disabled = this.disabled;
-    input.required = this.required;
-    input.indeterminate = this.indeterminate;
-    input.setAttribute('aria-checked', this.indeterminate ? 'mixed' : String(this.checked));
+    switch (name) {
+      case 'checked':
+        input.checked = this.checked;
+        input.setAttribute('aria-checked', this.indeterminate ? 'mixed' : String(this.checked));
+        this._commit();
+        break;
+      case 'indeterminate':
+        input.indeterminate = this.indeterminate;
+        input.setAttribute('aria-checked', this.indeterminate ? 'mixed' : String(this.checked));
+        break;
+      case 'disabled':
+        input.disabled = this.disabled;
+        break;
+      case 'required':
+        input.required = this.required;
+        this._commit();
+        break;
+      case 'value':
+        this._commit();
+        break;
+      case 'label': {
+        const labelText = this._labelEl?.querySelector<HTMLElement>('.label-text');
+        if (labelText) labelText.textContent = this.getAttribute('label') ?? '';
+        break;
+      }
+    }
+  }
+
+  /** Update form value + validity. Safe to call repeatedly. */
+  private _commit(): void {
+    // Native checkbox behaviour: when checked, submit `value`; when not, submit null.
+    const submitted = this.checked ? this.value : null;
+    this._internals.setFormValue(submitted);
+    if (this.required && !this.checked) {
+      this._internals.setValidity(
+        { valueMissing: true },
+        'Required',
+        this._input ?? undefined,
+      );
+    } else {
+      this._internals.setValidity({});
+    }
   }
 }
 

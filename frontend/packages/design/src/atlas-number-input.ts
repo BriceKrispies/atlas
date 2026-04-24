@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
@@ -72,53 +73,80 @@ const styles = `
     color: var(--atlas-color-text-muted);
     cursor: not-allowed;
   }
-`;
+`);
 
 export interface AtlasNumberInputChangeDetail {
+  value: number | null;
+}
+export interface AtlasNumberInputInputDetail {
   value: number | null;
 }
 
 /**
  * `<atlas-number-input>` — numeric input with − / + steppers.
  *
- * When to use: bounded integer or decimal fields (quantities, limits).
- * When NOT to use: use `<atlas-slider>` when the user is picking a value
- * from a visible range; use `<atlas-input type="tel">` for phone numbers.
- *
- * Attributes:
- *   label, name, placeholder, disabled, required
- *   value — current value (string form; coerced to number for emits)
- *   min   — default -Infinity
- *   max   — default +Infinity
- *   step  — default 1
+ * Render strategy: shadow-DOM shell is built ONCE in `connectedCallback`.
+ * Structural attr that triggers a full rebuild: `label` presence toggle.
+ * All numeric attrs (min/max/step/value/disabled/required/placeholder) are
+ * surgical. Stepper click handlers are delegated onto the `.group` container
+ * so they survive any future surgical updates without rewiring.
  *
  * Events:
- *   change → CustomEvent<AtlasNumberInputChangeDetail>
+ *   input  → CustomEvent<AtlasNumberInputInputDetail>  — every keystroke / stepper press
+ *   change → CustomEvent<AtlasNumberInputChangeDetail> — on commit (blur / stepper release)
+ *
+ * Form-associated: participates in `<form>` + `FormData` via ElementInternals.
  */
 export class AtlasNumberInput extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['label', 'placeholder', 'value', 'min', 'max', 'step', 'disabled', 'required'];
+    return [
+      'label',
+      'placeholder',
+      'value',
+      'min',
+      'max',
+      'step',
+      'disabled',
+      'required',
+    ];
   }
 
-  private _inputId = `atlas-num-${Math.random().toString(36).slice(2, 8)}`;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+  }
+
+  private readonly _inputId = uid('atlas-num');
+  private readonly _internals: ElementInternals;
+  private _built = false;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
+    this._internals = this.attachInternals();
   }
 
   get value(): number | null {
-    const v = this.shadowRoot?.querySelector<HTMLInputElement>('input')?.value
-      ?? this.getAttribute('value') ?? '';
-    if (v === '') return null;
-    const n = Number(v);
+    const input = this._input;
+    const raw = input?.value ?? this.getAttribute('value') ?? '';
+    if (raw === '') return null;
+    const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   }
   set value(v: number | null) {
     const str = v == null ? '' : String(v);
     this.setAttribute('value', str);
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
-    if (input) input.value = str;
+    const input = this._input;
+    if (input && input.value !== str) input.value = str;
+    this._internals.setFormValue(str);
+    this._updateValidity(str);
+    this._updateStepperState();
   }
 
   get min(): number {
@@ -135,21 +163,36 @@ export class AtlasNumberInput extends AtlasElement {
     return Number.isFinite(n) && n > 0 ? n : 1;
   }
 
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
+  private get _input(): HTMLInputElement | null {
+    return this.shadowRoot?.querySelector<HTMLInputElement>('input') ?? null;
   }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
+
+  private get _group(): HTMLElement | null {
+    return this.shadowRoot?.querySelector<HTMLElement>('.group') ?? null;
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
-  override attributeChangedCallback(): void {
-    this._render();
+  override attributeChangedCallback(
+    name: string,
+    oldVal: string | null,
+    newVal: string | null,
+  ): void {
+    if (!this._built) return;
+    if (oldVal === newVal) return;
+    if (name === 'label') {
+      const wasPresent = oldVal !== null;
+      const isPresent = newVal !== null;
+      if (wasPresent !== isPresent) {
+        this._rebuildShell();
+        return;
+      }
+    }
+    this._sync(name);
   }
 
   stepUp(): void {
@@ -159,13 +202,169 @@ export class AtlasNumberInput extends AtlasElement {
     this._applyStep(-1);
   }
 
+  private _rebuildShell(): void {
+    this._built = false;
+    this._buildShell();
+    this._syncAll();
+  }
+
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const label = this.getAttribute('label') ?? '';
+
+    root.innerHTML = `
+      ${label ? `<label for="${escapeAttr(this._inputId)}">${escapeText(label)}</label>` : ''}
+      <div class="group">
+        <button type="button" data-dir="down" aria-label="Decrease">−</button>
+        <input
+          id="${escapeAttr(this._inputId)}"
+          type="number"
+          inputmode="decimal"
+          role="spinbutton"
+        />
+        <button type="button" data-dir="up" aria-label="Increase">+</button>
+      </div>
+    `;
+
+    const input = this._input;
+    const group = this._group;
+    if (!input || !group) return;
+
+    input.addEventListener('input', () => {
+      // Keep the attribute in sync so ::get value stays accurate if input
+      // is queried before the next sync. Use the attribute so observers
+      // still see a consistent value; don't setAttribute to avoid observedAttr
+      // roundtrip — setFormValue is enough.
+      this._internals.setFormValue(input.value);
+      this._updateValidity(input.value);
+      this._updateStepperState();
+      this.dispatchEvent(
+        new CustomEvent<AtlasNumberInputInputDetail>('input', {
+          detail: { value: this._coerce(input.value) },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    });
+
+    input.addEventListener('change', () => {
+      // Commit — reflect to attribute so `value` attr observers get a
+      // consistent external read.
+      this.setAttribute('value', input.value);
+      this._internals.setFormValue(input.value);
+      this._updateValidity(input.value);
+      this._emitChange();
+    });
+
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        this.stepUp();
+      } else if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        this.stepDown();
+      }
+    });
+
+    // Event delegation on the .group container so the stepper wiring
+    // survives any surgical update without needing rebind.
+    group.addEventListener('click', (ev) => {
+      const target = ev.target as Element | null;
+      const btn = target?.closest<HTMLButtonElement>('button[data-dir]');
+      if (!btn) return;
+      if (btn.disabled) return;
+      if (btn.dataset['dir'] === 'up') this.stepUp();
+      else this.stepDown();
+    });
+
+    this._built = true;
+  }
+
+  private _syncAll(): void {
+    this._sync('value');
+    this._sync('placeholder');
+    this._sync('min');
+    this._sync('max');
+    this._sync('step');
+    this._sync('disabled');
+    this._sync('required');
+    this._updateStepperState();
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
+    if (!input) return;
+    switch (name) {
+      case 'value': {
+        const v = this.getAttribute('value') ?? '';
+        if (input.value !== v) {
+          input.value = v;
+          this._internals.setFormValue(v);
+          this._updateValidity(v);
+        }
+        input.setAttribute('aria-valuenow', v);
+        this._updateStepperState();
+        break;
+      }
+      case 'placeholder': {
+        const p = this.getAttribute('placeholder');
+        if (p == null) input.removeAttribute('placeholder');
+        else input.setAttribute('placeholder', p);
+        break;
+      }
+      case 'min': {
+        const v = this.getAttribute('min');
+        if (v == null) input.removeAttribute('min');
+        else input.setAttribute('min', v);
+        this._updateStepperState();
+        break;
+      }
+      case 'max': {
+        const v = this.getAttribute('max');
+        if (v == null) input.removeAttribute('max');
+        else input.setAttribute('max', v);
+        this._updateStepperState();
+        break;
+      }
+      case 'step': {
+        const v = this.getAttribute('step') ?? '1';
+        input.setAttribute('step', v);
+        break;
+      }
+      case 'disabled': {
+        const d = this.hasAttribute('disabled');
+        input.disabled = d;
+        this._updateStepperState();
+        break;
+      }
+      case 'required':
+        input.required = this.hasAttribute('required');
+        this._updateValidity(input.value);
+        break;
+    }
+  }
+
   private _applyStep(dir: 1 | -1): void {
     if (this.disabled) return;
     const current = this.value ?? 0;
     const next = current + dir * this.step;
     const clamped = Math.max(this.min, Math.min(this.max, next));
-    this.value = this._roundToStep(clamped);
-    this._emit();
+    const rounded = this._roundToStep(clamped);
+    this.value = rounded;
+    const input = this._input;
+    // stepper press → treat as input+change (keystroke+commit) for consistency
+    // with native <input type="number"> +/- keyboard arrows.
+    if (input) {
+      this.dispatchEvent(
+        new CustomEvent<AtlasNumberInputInputDetail>('input', {
+          detail: { value: rounded },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+    this._emitChange();
     this._updateStepperState();
   }
 
@@ -176,66 +375,10 @@ export class AtlasNumberInput extends AtlasElement {
     return Number(n.toFixed(decimals));
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label') ?? '';
-    const placeholder = this.getAttribute('placeholder') ?? '';
-    const valueAttr = this.getAttribute('value') ?? '';
-    const disabled = this.disabled;
-    const required = this.hasAttribute('required');
-    const min = this.getAttribute('min');
-    const max = this.getAttribute('max');
-    const step = this.getAttribute('step') ?? '1';
-
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      ${label ? `<label for="${this._inputId}">${label}</label>` : ''}
-      <div class="group">
-        <button type="button" data-dir="down" aria-label="Decrease" ${disabled ? 'disabled' : ''}>−</button>
-        <input
-          id="${this._inputId}"
-          type="number"
-          inputmode="decimal"
-          role="spinbutton"
-          value="${valueAttr}"
-          placeholder="${placeholder}"
-          step="${step}"
-          ${min != null ? `min="${min}"` : ''}
-          ${max != null ? `max="${max}"` : ''}
-          ${disabled ? 'disabled' : ''}
-          ${required ? 'required' : ''}
-          aria-valuenow="${valueAttr}"
-        />
-        <button type="button" data-dir="up" aria-label="Increase" ${disabled ? 'disabled' : ''}>+</button>
-      </div>
-    `;
-
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
-    const btns = this.shadowRoot.querySelectorAll<HTMLButtonElement>('button');
-    if (!input) return;
-
-    input.addEventListener('input', () => {
-      this.setAttribute('value', input.value);
-      this._emit();
-      this._updateStepperState();
-    });
-    input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'ArrowUp') {
-        ev.preventDefault();
-        this.stepUp();
-      } else if (ev.key === 'ArrowDown') {
-        ev.preventDefault();
-        this.stepDown();
-      }
-    });
-    btns.forEach((b) => {
-      b.addEventListener('click', () => {
-        if (b.dataset['dir'] === 'up') this.stepUp();
-        else this.stepDown();
-      });
-    });
-
-    this._updateStepperState();
+  private _coerce(raw: string): number | null {
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
   }
 
   private _updateStepperState(): void {
@@ -246,11 +389,11 @@ export class AtlasNumberInput extends AtlasElement {
     const down = root.querySelector<HTMLButtonElement>('button[data-dir="down"]');
     if (up) up.disabled = this.disabled || (v != null && v >= this.max);
     if (down) down.disabled = this.disabled || (v != null && v <= this.min);
-    const input = root.querySelector<HTMLInputElement>('input');
+    const input = this._input;
     if (input && v != null) input.setAttribute('aria-valuenow', String(v));
   }
 
-  private _emit(): void {
+  private _emitChange(): void {
     this.dispatchEvent(
       new CustomEvent<AtlasNumberInputChangeDetail>('change', {
         detail: { value: this.value },
@@ -258,6 +401,23 @@ export class AtlasNumberInput extends AtlasElement {
         composed: true,
       }),
     );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, { value: this.value });
+    }
+  }
+
+  private _updateValidity(value: string): void {
+    const anchor = this._input ?? undefined;
+    if (this.hasAttribute('required') && value === '') {
+      this._internals.setValidity(
+        { valueMissing: true },
+        'This field is required.',
+        anchor,
+      );
+      return;
+    }
+    this._internals.setValidity({});
   }
 }
 

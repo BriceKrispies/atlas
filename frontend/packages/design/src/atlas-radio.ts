@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
 
-const radioStyles = `
+const radioSheet = createSheet(`
   :host {
     display: inline-flex;
     align-items: flex-start;
@@ -88,9 +89,9 @@ const radioStyles = `
     line-height: var(--atlas-line-height);
     user-select: none;
   }
-`;
+`);
 
-const groupStyles = `
+const groupSheet = createSheet(`
   :host {
     display: flex;
     flex-direction: column;
@@ -109,7 +110,8 @@ const groupStyles = `
     color: var(--atlas-color-text);
     margin-bottom: var(--atlas-space-xs);
   }
-`;
+  .legend[hidden] { display: none; }
+`);
 
 /**
  * `<atlas-radio>` — single option inside an `<atlas-radio-group>`.
@@ -117,29 +119,32 @@ const groupStyles = `
  * Do not use standalone — selection state is owned by the parent group.
  *
  * Attributes:
- *   value     — required, must be unique within the group
- *   checked   — set by the group; do not toggle directly
- *   disabled  — boolean
- *   label     — option label (or use slotted text)
+ *   value     - required, must be unique within the group
+ *   checked   - set by the group; do not toggle directly
+ *   disabled  - boolean
+ *   label     - option label (or use slotted text)
  */
 export class AtlasRadio extends AtlasElement {
   static override get observedAttributes(): readonly string[] {
     return ['checked', 'disabled', 'label'];
   }
 
-  private _inputId = `atlas-radio-${Math.random().toString(36).slice(2, 8)}`;
+  declare checked: boolean;
+  declare disabled: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'checked', AtlasElement.boolAttr('checked'));
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+  }
+
+  private readonly _inputId = uid('atlas-radio');
+  private _built = false;
+  private _input: HTMLInputElement | null = null;
+  private _labelEl: HTMLLabelElement | null = null;
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-  }
-
-  get checked(): boolean {
-    return this.hasAttribute('checked');
-  }
-  set checked(v: boolean) {
-    if (v) this.setAttribute('checked', '');
-    else this.removeAttribute('checked');
   }
 
   get value(): string {
@@ -149,51 +154,58 @@ export class AtlasRadio extends AtlasElement {
     this.setAttribute('value', v);
   }
 
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'radio');
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
-  override attributeChangedCallback(): void {
-    this._sync();
+  override attributeChangedCallback(name: string): void {
+    if (!this._built) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label') ?? '';
-    this.shadowRoot.innerHTML = `
-      <style>${radioStyles}</style>
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    adoptSheet(root, radioSheet);
+    root.innerHTML = `
       <span class="control">
-        <input
-          id="${this._inputId}"
-          type="radio"
-          tabindex="-1"
-          ${this.checked ? 'checked' : ''}
-          ${this.disabled ? 'disabled' : ''}
-        />
+        <input id="${escapeAttr(this._inputId)}" type="radio" tabindex="-1" />
         <span class="dot" aria-hidden="true"></span>
       </span>
-      <label class="label" for="${this._inputId}">${label}<slot></slot></label>
+      <label class="label" for="${escapeAttr(this._inputId)}"><span class="label-text"></span><slot></slot></label>
     `;
-    this._sync();
+    this._input = root.querySelector<HTMLInputElement>('input');
+    this._labelEl = root.querySelector<HTMLLabelElement>('label.label');
+    this._built = true;
   }
 
-  private _sync(): void {
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('checked');
+    this._sync('disabled');
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
     if (!input) return;
-    input.checked = this.checked;
-    input.disabled = this.disabled;
-    this.setAttribute('aria-checked', String(this.checked));
-    this.setAttribute('aria-disabled', String(this.disabled));
+    switch (name) {
+      case 'checked':
+        input.checked = this.checked;
+        this.setAttribute('aria-checked', String(this.checked));
+        break;
+      case 'disabled':
+        input.disabled = this.disabled;
+        this.setAttribute('aria-disabled', String(this.disabled));
+        break;
+      case 'label': {
+        const labelText = this._labelEl?.querySelector<HTMLElement>('.label-text');
+        if (labelText) labelText.textContent = this.getAttribute('label') ?? '';
+        break;
+      }
+    }
   }
 }
 
@@ -209,27 +221,43 @@ export interface AtlasRadioGroupChangeDetail {
  * children. Implements the WAI-ARIA radiogroup pattern: arrow keys move
  * focus and selection across items; Home/End jump to the first/last.
  *
- * When to use: mutually exclusive choices with ≤ ~6 options.
+ * When to use: mutually exclusive choices with <= ~6 options.
  * When NOT to use: use `<atlas-select>` for longer lists; use `<atlas-switch>`
  * or `<atlas-checkbox>` for a single opt-in.
  *
  * Attributes:
- *   value        — currently selected radio value
- *   disabled     — disables the whole group
- *   label        — legend text for the group
- *   orientation  — "column" (default) | "row"
+ *   value        - currently selected radio value
+ *   disabled     - disables the whole group
+ *   required     - marks the group as required for form validity
+ *   label        - legend text for the group
+ *   orientation  - "column" (default) | "row"
  *
  * Events:
- *   change → CustomEvent<AtlasRadioGroupChangeDetail>
+ *   change -> CustomEvent<AtlasRadioGroupChangeDetail>
  */
 export class AtlasRadioGroup extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['value', 'disabled', 'label'];
+    return ['value', 'disabled', 'label', 'required'];
   }
+
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+  }
+
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _legendEl: HTMLElement | null = null;
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this._internals = this.attachInternals();
   }
 
   get value(): string | null {
@@ -240,20 +268,13 @@ export class AtlasRadioGroup extends AtlasElement {
     else this.setAttribute('value', v);
   }
 
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'radiogroup');
-    this._render();
+    if (!this._built) this._buildShell();
     this.addEventListener('click', this._onClick);
     this.addEventListener('keydown', this._onKey);
+    this._syncAll();
   }
 
   override disconnectedCallback(): void {
@@ -263,19 +284,56 @@ export class AtlasRadioGroup extends AtlasElement {
   }
 
   override attributeChangedCallback(name: string): void {
-    if (name === 'label') this._render();
-    else this._syncChildren();
+    if (!this._built) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label');
-    this.shadowRoot.innerHTML = `
-      <style>${groupStyles}</style>
-      ${label ? `<span class="legend">${label}</span>` : ''}
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    adoptSheet(root, groupSheet);
+    root.innerHTML = `
+      <span class="legend" hidden></span>
       <slot></slot>
     `;
-    queueMicrotask(() => this._syncChildren());
+    this._legendEl = root.querySelector<HTMLElement>('.legend');
+    this._built = true;
+  }
+
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('disabled');
+    this._sync('required');
+    // Value sync updates children; defer one microtask so slotted radios exist.
+    queueMicrotask(() => {
+      this._syncChildren();
+      this._commit();
+    });
+  }
+
+  private _sync(name: string): void {
+    switch (name) {
+      case 'label': {
+        if (!this._legendEl) return;
+        const label = this.getAttribute('label');
+        if (label != null && label !== '') {
+          this._legendEl.textContent = label;
+          this._legendEl.hidden = false;
+        } else {
+          this._legendEl.textContent = '';
+          this._legendEl.hidden = true;
+        }
+        break;
+      }
+      case 'value':
+      case 'disabled':
+        this._syncChildren();
+        this._commit();
+        break;
+      case 'required':
+        this._commit();
+        break;
+    }
   }
 
   private _items(): AtlasRadio[] {
@@ -289,8 +347,10 @@ export class AtlasRadioGroup extends AtlasElement {
     let hasFocusable = false;
     for (const item of items) {
       const isChecked = value != null && item.value === value;
-      item.checked = isChecked;
-      if (disabled) item.disabled = true;
+      if (item.checked !== isChecked) item.checked = isChecked;
+      if (disabled) {
+        if (!item.disabled) item.disabled = true;
+      }
       const focusable = isChecked && !item.disabled;
       if (!hasFocusable && focusable) {
         item.setAttribute('tabindex', '0');
@@ -304,6 +364,16 @@ export class AtlasRadioGroup extends AtlasElement {
     if (!hasFocusable) {
       const first = items.find((i) => !i.disabled);
       if (first) first.setAttribute('tabindex', '0');
+    }
+  }
+
+  private _commit(): void {
+    const v = this.value;
+    this._internals.setFormValue(v);
+    if (this.required && (v == null || v === '')) {
+      this._internals.setValidity({ valueMissing: true }, 'Required');
+    } else {
+      this._internals.setValidity({});
     }
   }
 
@@ -358,6 +428,7 @@ export class AtlasRadioGroup extends AtlasElement {
     if (previousValue === item.value) return;
     this.value = item.value;
     this._syncChildren();
+    this._commit();
     this.dispatchEvent(
       new CustomEvent<AtlasRadioGroupChangeDetail>('change', {
         detail: { value: item.value, previousValue },
@@ -365,6 +436,13 @@ export class AtlasRadioGroup extends AtlasElement {
         composed: true,
       }),
     );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, {
+        value: item.value,
+        previousValue,
+      });
+    }
   }
 }
 

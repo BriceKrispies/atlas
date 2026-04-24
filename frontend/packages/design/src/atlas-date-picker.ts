@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
@@ -39,7 +40,7 @@ const styles = `
   :host([invalid]) input {
     border-color: var(--atlas-color-danger);
   }
-`;
+`);
 
 export interface AtlasDatePickerChangeDetail {
   value: string;
@@ -60,28 +61,63 @@ export interface AtlasDatePickerChangeDetail {
  *   label, name, value, min, max, disabled, required, placeholder
  *
  * Events:
- *   change → CustomEvent<AtlasDatePickerChangeDetail>
+ *   change → CustomEvent<AtlasDatePickerChangeDetail> on commit
+ *
+ * Form-associated: submits its ISO-date string via ElementInternals.
  */
 export class AtlasDatePicker extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
-    return ['label', 'value', 'min', 'max', 'disabled', 'required', 'placeholder'];
+    return [
+      'label',
+      'value',
+      'min',
+      'max',
+      'disabled',
+      'required',
+      'placeholder',
+    ];
   }
 
-  private _inputId = `atlas-date-${Math.random().toString(36).slice(2, 8)}`;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(
+      this.prototype,
+      'disabled',
+      AtlasElement.boolAttr('disabled'),
+    );
+    Object.defineProperty(
+      this.prototype,
+      'required',
+      AtlasElement.boolAttr('required'),
+    );
+  }
+
+  private readonly _inputId = uid('atlas-date');
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _input: HTMLInputElement | null = null;
+  private _label: HTMLLabelElement | null = null;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
+    this._internals = this.attachInternals();
   }
 
   get value(): string {
-    return this.shadowRoot?.querySelector<HTMLInputElement>('input')?.value
-      ?? this.getAttribute('value') ?? '';
+    return (
+      this._input?.value ?? this.getAttribute('value') ?? ''
+    );
   }
   set value(v: string) {
     this.setAttribute('value', v);
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
-    if (input) input.value = v;
+    if (this._input) this._input.value = v;
+    this._commit(v);
   }
 
   get valueAsDate(): Date | null {
@@ -91,49 +127,59 @@ export class AtlasDatePicker extends AtlasElement {
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
+    this._commit(this._input?.value ?? this.getAttribute('value') ?? '');
   }
 
-  override attributeChangedCallback(): void {
-    this._render();
+  override attributeChangedCallback(
+    name: string,
+    oldVal: string | null,
+    newVal: string | null,
+  ): void {
+    if (!this._built) return;
+    if (oldVal === newVal) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
     const label = this.getAttribute('label');
     const valueAttr = this.getAttribute('value') ?? '';
     const min = this.getAttribute('min');
     const max = this.getAttribute('max');
+    const placeholder = this.getAttribute('placeholder');
     const disabled = this.disabled;
-    const required = this.hasAttribute('required');
+    const required = this.required;
 
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      ${label ? `<label for="${this._inputId}">${label}</label>` : ''}
+    root.innerHTML = `
+      ${
+        label != null
+          ? `<label for="${escapeAttr(this._inputId)}">${escapeText(label)}</label>`
+          : ''
+      }
       <input
-        id="${this._inputId}"
+        id="${escapeAttr(this._inputId)}"
         type="date"
-        value="${valueAttr}"
-        ${min ? `min="${min}"` : ''}
-        ${max ? `max="${max}"` : ''}
+        value="${escapeAttr(valueAttr)}"
+        ${min != null ? `min="${escapeAttr(min)}"` : ''}
+        ${max != null ? `max="${escapeAttr(max)}"` : ''}
+        ${placeholder != null ? `placeholder="${escapeAttr(placeholder)}"` : ''}
         ${disabled ? 'disabled' : ''}
         ${required ? 'required' : ''}
       />
     `;
 
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
+    this._label = root.querySelector<HTMLLabelElement>('label');
+    this._input = root.querySelector<HTMLInputElement>('input');
+
+    const input = this._input;
     input?.addEventListener('change', () => {
       this.setAttribute('value', input.value);
+      this._commit(input.value);
       this.dispatchEvent(
         new CustomEvent<AtlasDatePickerChangeDetail>('change', {
           detail: { value: input.value, valueAsDate: this.valueAsDate },
@@ -141,7 +187,111 @@ export class AtlasDatePicker extends AtlasElement {
           composed: true,
         }),
       );
+      const name = this.getAttribute('name');
+      if (name && this.surfaceId) {
+        this.emit(`${this.surfaceId}.${name}-changed`, {
+          value: input.value,
+        });
+      }
     });
+
+    this._built = true;
+  }
+
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('value');
+    this._sync('min');
+    this._sync('max');
+    this._sync('disabled');
+    this._sync('required');
+    this._sync('placeholder');
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
+    const root = this.shadowRoot;
+    if (!input || !root) return;
+    switch (name) {
+      case 'label': {
+        const label = this.getAttribute('label');
+        if (label != null) {
+          if (!this._label) {
+            const lbl = document.createElement('label');
+            lbl.setAttribute('for', this._inputId);
+            root.insertBefore(lbl, input);
+            this._label = lbl;
+          }
+          this._label.textContent = label;
+        } else if (this._label) {
+          this._label.remove();
+          this._label = null;
+        }
+        break;
+      }
+      case 'value': {
+        const v = this.getAttribute('value') ?? '';
+        if (input.value !== v) input.value = v;
+        this._commit(v);
+        break;
+      }
+      case 'min': {
+        const v = this.getAttribute('min');
+        if (v == null) input.removeAttribute('min');
+        else input.min = v;
+        this._commit(input.value);
+        break;
+      }
+      case 'max': {
+        const v = this.getAttribute('max');
+        if (v == null) input.removeAttribute('max');
+        else input.max = v;
+        this._commit(input.value);
+        break;
+      }
+      case 'disabled':
+        input.disabled = this.disabled;
+        break;
+      case 'required':
+        input.required = this.required;
+        this._commit(input.value);
+        break;
+      case 'placeholder': {
+        const v = this.getAttribute('placeholder');
+        if (v == null) input.removeAttribute('placeholder');
+        else input.placeholder = v;
+        break;
+      }
+    }
+  }
+
+  private _commit(value: string): void {
+    this._internals.setFormValue(value);
+    if (this.required && !value) {
+      this._internals.setValidity({ valueMissing: true }, 'Required');
+      return;
+    }
+    if (!value) {
+      this._internals.setValidity({});
+      return;
+    }
+    const min = this.getAttribute('min');
+    const max = this.getAttribute('max');
+    if (min && value < min) {
+      this._internals.setValidity(
+        { rangeUnderflow: true },
+        `Must be on or after ${min}`,
+      );
+      return;
+    }
+    if (max && value > max) {
+      this._internals.setValidity(
+        { rangeOverflow: true },
+        `Must be on or before ${max}`,
+      );
+      return;
+    }
+    this._internals.setValidity({});
   }
 }
 

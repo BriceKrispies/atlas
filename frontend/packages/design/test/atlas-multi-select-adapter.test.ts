@@ -12,47 +12,24 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { parseHTML } from 'linkedom';
 
-// ── DOM bootstrap ──────────────────────────────────────────────────
-
-const dom = parseHTML('<!doctype html><html><head></head><body></body></html>');
-
-interface GlobalLike {
-  window: unknown;
-  document: unknown;
-  HTMLElement: unknown;
-  DocumentFragment: unknown;
-  customElements: unknown;
-  Node: unknown;
-  Event: unknown;
-  CustomEvent: unknown;
-  ShadowRoot: unknown;
-  structuredClone?: unknown;
-}
-
-const g = globalThis as unknown as GlobalLike;
-g.window = dom;
-g.document = dom.document;
-g.HTMLElement = dom.HTMLElement;
-g.DocumentFragment = dom.DocumentFragment;
-g.customElements = dom.customElements;
-g.Node = dom.Node;
-g.Event = dom.Event;
-g.CustomEvent = dom.CustomEvent;
-// linkedom doesn't expose ShadowRoot on the window; AtlasElement.surface
-// uses `instanceof ShadowRoot` so provide a never-matches stub.
-g.ShadowRoot =
-  (dom as unknown as { ShadowRoot?: unknown }).ShadowRoot ??
-  class ShadowRoot {};
-if (!g.structuredClone) {
-  g.structuredClone = (v: unknown) => JSON.parse(JSON.stringify(v)) as unknown;
-}
+// DOM globals (document, HTMLElement, customElements, CSSStyleSheet,
+// ElementInternals, FormData, ShadowRoot, adoptedStyleSheets patch) are
+// installed by the global vitest setup — see
+// `frontend/test-setup/linkedom-shims.ts`.
 
 // Minimal aliases to the linkedom shapes we use in tests.
 // Functional at runtime; we keep them as `any`-like via `unknown` where
 // the linkedom shape doesn't line up with DOM lib types.
 type AnyEl = any;
+
+// Handy references to the globals the shim installed.
+const dom = {
+  document: globalThis.document,
+  HTMLElement: globalThis.HTMLElement,
+  customElements: globalThis.customElements,
+  Event: globalThis.Event,
+};
 
 beforeAll(async () => {
   // Import AFTER globals are installed so the element registers against

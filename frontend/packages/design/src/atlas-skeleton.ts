@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     padding: var(--atlas-space-sm) 0;
@@ -23,27 +24,55 @@ const styles = `
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.4; }
   }
-`;
+`);
 
-class AtlasSkeleton extends AtlasElement {
+/**
+ * <atlas-skeleton> — row-based loading shimmer. `rows` attribute controls how
+ * many shimmer bars are rendered (default 5). Rebuilt only when `rows`
+ * changes; otherwise the DOM is inert.
+ */
+export class AtlasSkeleton extends AtlasElement {
+  static override get observedAttributes(): readonly string[] {
+    return ['rows'];
+  }
+
+  private _built = false;
+
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('aria-busy', 'true');
+    this._buildRows();
+    this._built = true;
+  }
 
-    const rows = parseInt(this.getAttribute('rows') ?? '5', 10);
-    let inner = `<style>${styles}</style>`;
-    for (let i = 0; i < rows; i++) {
-      inner += '<div class="row"></div>';
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.innerHTML = inner;
+  override attributeChangedCallback(name: string): void {
+    if (!this._built) return;
+    if (name === 'rows') this._buildRows();
+  }
+
+  private _buildRows(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const count = Math.max(0, parseInt(this.getAttribute('rows') ?? '5', 10) || 0);
+    root.textContent = '';
+    for (let i = 0; i < count; i++) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      root.appendChild(row);
     }
   }
 }
 
 AtlasElement.define('atlas-skeleton', AtlasSkeleton);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-skeleton': AtlasSkeleton;
+  }
+}

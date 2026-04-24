@@ -5,9 +5,10 @@ import { AtlasElement } from '@atlas/core';
  * Light DOM. Styled via elements.css.
  *
  * Attributes:
- *   header — boolean, renders as column header
+ *   header — (boolean) renders as column header
+ *   align  — start | center | end   (text alignment inside the cell)
  */
-class AtlasTableCell extends AtlasElement {
+export class AtlasTableCell extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     const isHeader = this.hasAttribute('header');
@@ -16,3 +17,9 @@ class AtlasTableCell extends AtlasElement {
 }
 
 AtlasElement.define('atlas-table-cell', AtlasTableCell);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-table-cell': AtlasTableCell;
+  }
+}

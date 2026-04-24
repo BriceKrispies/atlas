@@ -1,6 +1,8 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
+import './atlas-icon.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
@@ -36,7 +38,7 @@ const styles = `
     color: var(--atlas-color-text-muted);
     pointer-events: none;
   }
-  .icon svg { width: 16px; height: 16px; }
+  .icon atlas-icon { width: 16px; height: 16px; }
   input {
     flex: 1 1 auto;
     min-width: 0;
@@ -70,7 +72,7 @@ const styles = `
     outline-offset: -2px;
     border-radius: var(--atlas-radius-md);
   }
-  .clear svg { width: 14px; height: 14px; }
+  .clear atlas-icon { width: 14px; height: 14px; }
   :host([has-value]) .clear { display: inline-flex; }
   :host([disabled]) .group {
     background: var(--atlas-color-surface);
@@ -80,9 +82,12 @@ const styles = `
     color: var(--atlas-color-text-muted);
     cursor: not-allowed;
   }
-`;
+`);
 
 export interface AtlasSearchInputChangeDetail {
+  value: string;
+}
+export interface AtlasSearchInputInputDetail {
   value: string;
 }
 export interface AtlasSearchInputSearchDetail {
@@ -92,114 +97,154 @@ export interface AtlasSearchInputSearchDetail {
 /**
  * `<atlas-search-input>` — text input pre-styled for searching.
  *
- * Emits `change` on every keystroke and `search` debounced (default 200ms)
- * for server-backed searches that shouldn't fire per-keypress.
- *
- * When to use: search fields above a list or table.
- * When NOT to use: use `<atlas-input type="text">` for generic text entry.
- *
- * Attributes:
- *   label, placeholder, name, disabled, value
- *   debounce — debounce ms for `search` event (default 200)
+ * Render strategy: shadow-DOM shell is built ONCE in `connectedCallback`.
+ * Structural attr that triggers full rebuild: `label` presence toggle. All
+ * others (placeholder, value, disabled) are surgical.
  *
  * Events:
- *   change → CustomEvent<AtlasSearchInputChangeDetail> (immediate)
- *   search → CustomEvent<AtlasSearchInputSearchDetail> (debounced)
+ *   input  → CustomEvent<AtlasSearchInputInputDetail>  — every keystroke
+ *   change → CustomEvent<AtlasSearchInputChangeDetail> — on commit (blur)
+ *   search → CustomEvent<AtlasSearchInputSearchDetail> — debounced (default 200ms)
+ *
+ * Form-associated: participates in `<form>` + `FormData` via ElementInternals.
  */
 export class AtlasSearchInput extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
     return ['label', 'placeholder', 'value', 'disabled'];
   }
 
-  private _inputId = `atlas-search-${Math.random().toString(36).slice(2, 8)}`;
+  declare disabled: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+  }
+
+  private readonly _inputId = uid('atlas-search');
+  private readonly _internals: ElementInternals;
+  private _built = false;
+  private _pendingValue: string | null = null;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
+    this._internals = this.attachInternals();
   }
 
   get value(): string {
-    return this.shadowRoot?.querySelector<HTMLInputElement>('input')?.value
-      ?? this.getAttribute('value') ?? '';
+    return this._input?.value ?? this._pendingValue ?? this.getAttribute('value') ?? '';
   }
   set value(v: string) {
-    this.setAttribute('value', v);
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
-    if (input) input.value = v;
+    const str = v == null ? '' : String(v);
+    this._pendingValue = str;
+    this.setAttribute('value', str);
+    const input = this._input;
+    if (input && input.value !== str) input.value = str;
     this._toggleHasValue();
+    this._internals.setFormValue(str);
   }
 
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
+  private get _input(): HTMLInputElement | null {
+    return this.shadowRoot?.querySelector<HTMLInputElement>('input') ?? null;
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
   override disconnectedCallback(): void {
-    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
     super.disconnectedCallback();
   }
 
-  override attributeChangedCallback(): void {
-    this._render();
+  override attributeChangedCallback(
+    name: string,
+    oldVal: string | null,
+    newVal: string | null,
+  ): void {
+    if (!this._built) return;
+    if (oldVal === newVal) return;
+    if (name === 'label') {
+      const wasPresent = oldVal !== null;
+      const isPresent = newVal !== null;
+      if (wasPresent !== isPresent) {
+        this._rebuildShell();
+        return;
+      }
+    }
+    this._sync(name);
   }
 
   clear(): void {
+    const input = this._input;
     this.value = '';
     this._emitChange();
     this._scheduleSearch();
-    this.shadowRoot?.querySelector<HTMLInputElement>('input')?.focus();
+    input?.focus();
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label');
-    const placeholder = this.getAttribute('placeholder') ?? 'Search…';
-    const valueAttr = this.getAttribute('value') ?? '';
-    const disabled = this.disabled;
+  private _rebuildShell(): void {
+    this._built = false;
+    this._buildShell();
+    this._syncAll();
+  }
 
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      ${label ? `<label for="${this._inputId}">${label}</label>` : ''}
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const label = this.getAttribute('label');
+
+    root.innerHTML = `
+      ${label ? `<label for="${escapeAttr(this._inputId)}">${escapeText(label)}</label>` : ''}
       <div class="group" role="search">
         <span class="icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <circle cx="9" cy="9" r="6"/>
-            <line x1="14" y1="14" x2="18" y2="18"/>
-          </svg>
+          <atlas-icon name="search"></atlas-icon>
         </span>
         <input
-          id="${this._inputId}"
+          id="${escapeAttr(this._inputId)}"
           type="search"
-          value="${valueAttr}"
-          placeholder="${placeholder}"
-          ${disabled ? 'disabled' : ''}
+          inputmode="search"
+          enterkeyhint="search"
           autocomplete="off"
           spellcheck="false"
         />
         <button type="button" class="clear" aria-label="Clear search" tabindex="-1">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="5" y1="5" x2="15" y2="15"/>
-            <line x1="15" y1="5" x2="5" y2="15"/>
-          </svg>
+          <atlas-icon name="x"></atlas-icon>
         </button>
       </div>
     `;
 
-    const input = this.shadowRoot.querySelector<HTMLInputElement>('input');
-    const clearBtn = this.shadowRoot.querySelector<HTMLButtonElement>('.clear');
+    const input = this._input;
+    const clearBtn = root.querySelector<HTMLButtonElement>('.clear');
     if (!input) return;
 
-    this._toggleHasValue();
     input.addEventListener('input', () => {
+      this._pendingValue = input.value;
       this._toggleHasValue();
-      this._emitChange();
+      this._internals.setFormValue(input.value);
+      this.dispatchEvent(
+        new CustomEvent<AtlasSearchInputInputDetail>('input', {
+          detail: { value: input.value },
+          bubbles: true,
+          composed: true,
+        }),
+      );
       this._scheduleSearch();
     });
+
+    input.addEventListener('change', () => {
+      this._internals.setFormValue(input.value);
+      this._emitChange();
+    });
+
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && input.value !== '') {
         ev.preventDefault();
@@ -207,17 +252,51 @@ export class AtlasSearchInput extends AtlasElement {
       }
     });
     clearBtn?.addEventListener('click', () => this.clear());
+
+    this._built = true;
+  }
+
+  private _syncAll(): void {
+    this._sync('placeholder');
+    this._sync('value');
+    this._sync('disabled');
+    this._toggleHasValue();
+  }
+
+  private _sync(name: string): void {
+    const input = this._input;
+    if (!input) return;
+    switch (name) {
+      case 'placeholder': {
+        const p = this.getAttribute('placeholder') ?? 'Search…';
+        input.setAttribute('placeholder', p);
+        break;
+      }
+      case 'value': {
+        const v = this.getAttribute('value') ?? '';
+        if (input.value !== v) {
+          input.value = v;
+          this._pendingValue = v;
+          this._internals.setFormValue(v);
+          this._toggleHasValue();
+        }
+        break;
+      }
+      case 'disabled':
+        input.disabled = this.hasAttribute('disabled');
+        break;
+    }
   }
 
   private _toggleHasValue(): void {
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+    const input = this._input;
     if (!input) return;
     if (input.value) this.setAttribute('has-value', '');
     else this.removeAttribute('has-value');
   }
 
   private _emitChange(): void {
-    const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+    const input = this._input;
     if (!input) return;
     this.dispatchEvent(
       new CustomEvent<AtlasSearchInputChangeDetail>('change', {
@@ -226,13 +305,17 @@ export class AtlasSearchInput extends AtlasElement {
         composed: true,
       }),
     );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, { value: input.value });
+    }
   }
 
   private _scheduleSearch(): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     const ms = Number(this.getAttribute('debounce') ?? '200') || 0;
     const fire = (): void => {
-      const input = this.shadowRoot?.querySelector<HTMLInputElement>('input');
+      const input = this._input;
       if (!input) return;
       this.dispatchEvent(
         new CustomEvent<AtlasSearchInputSearchDetail>('search', {

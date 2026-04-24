@@ -1,17 +1,20 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
+import './atlas-icon.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
   }
-  label {
+  label.field-label {
     display: block;
     font-size: var(--atlas-font-size-sm);
     font-weight: var(--atlas-font-weight-medium);
     color: var(--atlas-color-text);
     margin-bottom: var(--atlas-space-xs);
   }
+  label.field-label[hidden] { display: none; }
   .group {
     position: relative;
   }
@@ -51,11 +54,11 @@ const styles = `
     pointer-events: none;
     color: var(--atlas-color-text-muted);
   }
-  .caret svg { width: 12px; height: 12px; display: block; }
+  .caret atlas-icon { width: 12px; height: 12px; display: block; }
   :host([invalid]) select {
     border-color: var(--atlas-color-danger);
   }
-`;
+`);
 
 export interface AtlasSelectOption {
   value: string;
@@ -78,7 +81,7 @@ interface RawOption {
  *
  * When to use: mutually exclusive choice from ~6+ options where a radio
  * group would be too tall.
- * When NOT to use: use `<atlas-radio-group>` for ≤ 5 options where all
+ * When NOT to use: use `<atlas-radio-group>` for <= 5 options where all
  * should be visible; use `<atlas-multi-select>` for picking multiple values.
  *
  * Native `<select>` is chosen for accessibility: it opens a real OS-level
@@ -92,20 +95,54 @@ interface RawOption {
  *   label, name, placeholder, disabled, required, invalid
  *
  * Events:
- *   change → CustomEvent<AtlasSelectChangeDetail>
+ *   change -> CustomEvent<AtlasSelectChangeDetail>
  */
 export class AtlasSelect extends AtlasElement {
+  static formAssociated = true;
+
   static override get observedAttributes(): readonly string[] {
     return ['label', 'placeholder', 'disabled', 'required'];
   }
 
-  private _inputId = `atlas-sel-${Math.random().toString(36).slice(2, 8)}`;
+  declare disabled: boolean;
+  declare required: boolean;
+
+  static {
+    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+  }
+
+  private readonly _inputId = uid('atlas-sel');
+  private readonly _internals: ElementInternals;
   private _options: AtlasSelectOption[] = [];
+  /** Pending value set programmatically before the shell is built, or before
+   *  the matching option exists. Flushed when the select is next rendered. */
   private _pendingValue: string | null = null;
+  private _built = false;
+  private _select: HTMLSelectElement | null = null;
+  private _labelEl: HTMLLabelElement | null = null;
+  private _onChange = (): void => {
+    const sel = this._select;
+    if (!sel) return;
+    this._pendingValue = sel.value;
+    this._commit();
+    this.dispatchEvent(
+      new CustomEvent<AtlasSelectChangeDetail>('change', {
+        detail: { value: sel.value },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    const name = this.getAttribute('name');
+    if (name && this.surfaceId) {
+      this.emit(`${this.surfaceId}.${name}-changed`, { value: sel.value });
+    }
+  };
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this._internals = this.attachInternals();
   }
 
   get options(): AtlasSelectOption[] {
@@ -122,94 +159,164 @@ export class AtlasSelect extends AtlasElement {
           return opt;
         })
       : [];
-    this._render();
+    if (this._built) {
+      this._rebuildOptions();
+      this._applyPendingValue();
+      this._commit();
+    }
   }
 
   get value(): string {
-    const sel = this.shadowRoot?.querySelector<HTMLSelectElement>('select');
-    return sel?.value ?? this._pendingValue ?? '';
+    return this._select?.value ?? this._pendingValue ?? '';
   }
   set value(v: string) {
     this._pendingValue = v;
-    const sel = this.shadowRoot?.querySelector<HTMLSelectElement>('select');
-    if (sel) sel.value = v;
-  }
-
-  get disabled(): boolean {
-    return this.hasAttribute('disabled');
-  }
-  set disabled(v: boolean) {
-    if (v) this.setAttribute('disabled', '');
-    else this.removeAttribute('disabled');
+    if (this._select) {
+      this._select.value = v;
+      this._commit();
+    }
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this._render();
+    if (!this._built) this._buildShell();
+    this._syncAll();
   }
 
-  override attributeChangedCallback(): void {
-    this._render();
+  override attributeChangedCallback(name: string): void {
+    if (!this._built) return;
+    this._sync(name);
   }
 
-  private _render(): void {
-    if (!this.shadowRoot) return;
-    const label = this.getAttribute('label') ?? '';
-    const placeholder = this.getAttribute('placeholder');
-    const disabled = this.disabled;
-    const required = this.hasAttribute('required');
-
-    const optsHtml = this._options
-      .map((o) => {
-        const attrs = [
-          `value="${escapeAttr(o.value)}"`,
-          o.disabled ? 'disabled' : '',
-        ]
-          .filter(Boolean)
-          .join(' ');
-        return `<option ${attrs}>${escapeText(o.label)}</option>`;
-      })
-      .join('');
-
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      ${label ? `<label for="${this._inputId}">${label}</label>` : ''}
+  private _buildShell(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    adoptSheet(root, sheet);
+    root.innerHTML = `
+      <label class="field-label" for="${escapeAttr(this._inputId)}" hidden></label>
       <div class="group">
-        <select
-          id="${this._inputId}"
-          ${disabled ? 'disabled' : ''}
-          ${required ? 'required' : ''}
-        >
-          ${placeholder != null ? `<option value="" disabled ${this._pendingValue ? '' : 'selected'}>${escapeText(placeholder)}</option>` : ''}
-          ${optsHtml}
-        </select>
+        <select id="${escapeAttr(this._inputId)}"></select>
         <span class="caret" aria-hidden="true">
-          <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1,1.5 6,6.5 11,1.5"/></svg>
+          <atlas-icon name="caret-down"></atlas-icon>
         </span>
       </div>
     `;
-
-    const sel = this.shadowRoot.querySelector<HTMLSelectElement>('select');
-    if (!sel) return;
-    if (this._pendingValue != null) sel.value = this._pendingValue;
-    sel.addEventListener('change', () => {
-      this._pendingValue = sel.value;
-      this.dispatchEvent(
-        new CustomEvent<AtlasSelectChangeDetail>('change', {
-          detail: { value: sel.value },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
+    this._select = root.querySelector<HTMLSelectElement>('select');
+    this._labelEl = root.querySelector<HTMLLabelElement>('label.field-label');
+    this._select?.addEventListener('change', this._onChange);
+    this._rebuildOptions();
+    this._built = true;
   }
-}
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-function escapeText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  private _syncAll(): void {
+    this._sync('label');
+    this._sync('placeholder');
+    this._sync('disabled');
+    this._sync('required');
+    this._applyPendingValue();
+    this._commit();
+  }
+
+  private _sync(name: string): void {
+    const sel = this._select;
+    if (!sel) return;
+    switch (name) {
+      case 'label': {
+        if (!this._labelEl) return;
+        const label = this.getAttribute('label') ?? '';
+        if (label) {
+          this._labelEl.textContent = label;
+          this._labelEl.hidden = false;
+        } else {
+          this._labelEl.textContent = '';
+          this._labelEl.hidden = true;
+        }
+        break;
+      }
+      case 'placeholder':
+        this._syncPlaceholder();
+        break;
+      case 'disabled':
+        sel.disabled = this.disabled;
+        break;
+      case 'required':
+        sel.required = this.required;
+        this._commit();
+        break;
+    }
+  }
+
+  /** Rebuild the entire <option> list — call when `.options` is reassigned. */
+  private _rebuildOptions(): void {
+    const sel = this._select;
+    if (!sel) return;
+    // Remove all existing options, then reappend. Avoids innerHTML so the
+    // live <select> element retains identity (event listeners, focus).
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    const placeholder = this.getAttribute('placeholder');
+    if (placeholder != null) {
+      sel.appendChild(this._buildPlaceholderOption(placeholder));
+    }
+    for (const o of this._options) {
+      const el = document.createElement('option');
+      el.value = o.value;
+      el.textContent = o.label;
+      if (o.disabled) el.disabled = true;
+      sel.appendChild(el);
+    }
+  }
+
+  /** Replace (or insert/remove) only the placeholder <option> node. */
+  private _syncPlaceholder(): void {
+    const sel = this._select;
+    if (!sel) return;
+    const first = sel.firstElementChild as HTMLOptionElement | null;
+    const existingIsPlaceholder = !!first && first.disabled && first.value === '';
+    const placeholder = this.getAttribute('placeholder');
+    if (placeholder == null) {
+      if (existingIsPlaceholder && first) sel.removeChild(first);
+      return;
+    }
+    const node = this._buildPlaceholderOption(placeholder);
+    if (existingIsPlaceholder && first) {
+      sel.replaceChild(node, first);
+    } else {
+      sel.insertBefore(node, sel.firstChild);
+    }
+  }
+
+  private _buildPlaceholderOption(text: string): HTMLOptionElement {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.disabled = true;
+    opt.textContent = text;
+    if (!this._pendingValue) opt.selected = true;
+    return opt;
+  }
+
+  /** If a value was queued (via `.value =` before render or before options
+   *  arrived), try to apply it now. */
+  private _applyPendingValue(): void {
+    const sel = this._select;
+    if (!sel) return;
+    if (this._pendingValue != null) {
+      sel.value = this._pendingValue;
+    }
+  }
+
+  private _commit(): void {
+    const v = this.value;
+    this._internals.setFormValue(v);
+    if (this.required && !v) {
+      this._internals.setValidity(
+        { valueMissing: true },
+        'Required',
+        this._select ?? undefined,
+      );
+    } else {
+      this._internals.setValidity({});
+    }
+  }
 }
 
 AtlasElement.define('atlas-select', AtlasSelect);

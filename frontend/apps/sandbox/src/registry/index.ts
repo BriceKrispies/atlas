@@ -74,6 +74,11 @@ const PATTERNS: Array<{ prefix: string; entry: TaxonomyEntry }> = [
   { prefix: 'page.',            entry: { category: 'pages',     subcategory: 'Content',        tags: ['page', 'content'] } },
 ];
 
+// Warn-once cache so a specimen with a missing taxonomy entry logs a
+// single console.warn instead of one per resolveTaxonomy() call (which
+// happens every time the sandbox re-renders the sidebar).
+const warnedUnknownIds = new Set<string>();
+
 export function resolveTaxonomy(id: string): TaxonomyEntry {
   const fixed = STATIC[id];
   if (fixed) return fixed;
@@ -82,5 +87,12 @@ export function resolveTaxonomy(id: string): TaxonomyEntry {
   }
   // Unknown id — put it under an explicit "Unsorted" bucket so missing
   // taxonomy is visible rather than silent.
+  if (!warnedUnknownIds.has(id)) {
+    warnedUnknownIds.add(id);
+    console.warn(
+      '[sandbox] specimen id "%s" has no taxonomy entry; using Unsorted fallback',
+      id,
+    );
+  }
   return { category: 'primitives', subcategory: 'Unsorted', status: 'review', tags: [] };
 }

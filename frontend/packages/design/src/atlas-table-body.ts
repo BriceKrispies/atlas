@@ -4,7 +4,7 @@ import { AtlasElement } from '@atlas/core';
  * <atlas-table-body> — table body group. Replaces <tbody>.
  * Light DOM. Styled via elements.css.
  */
-class AtlasTableBody extends AtlasElement {
+export class AtlasTableBody extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'rowgroup');
@@ -12,3 +12,9 @@ class AtlasTableBody extends AtlasElement {
 }
 
 AtlasElement.define('atlas-table-body', AtlasTableBody);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-table-body': AtlasTableBody;
+  }
+}

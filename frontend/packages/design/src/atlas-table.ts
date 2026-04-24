@@ -7,7 +7,7 @@ import { AtlasElement } from '@atlas/core';
  * Attributes:
  *   label — accessible name for the table
  */
-class AtlasTable extends AtlasElement {
+export class AtlasTable extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'table');
@@ -19,3 +19,9 @@ class AtlasTable extends AtlasElement {
 }
 
 AtlasElement.define('atlas-table', AtlasTable);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-table': AtlasTable;
+  }
+}

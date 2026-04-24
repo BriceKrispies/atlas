@@ -112,7 +112,7 @@ export class MultiSelectCore {
   closeOnSelect: boolean;
   disabled: boolean;
 
-  _source: OptionsSource | null;
+  private _source: OptionsSource | null;
   private _loadToken = 0;
 
   private _listeners: Set<Listener> = new Set();
@@ -383,6 +383,15 @@ export class MultiSelectCore {
       this._notify();
       return this._status;
     }
+  }
+
+  /**
+   * Read the currently-configured OptionsSource port, if any.
+   * Public accessor — adapters must use this instead of reaching into
+   * the (now truly private) `_source` field.
+   */
+  getSource(): OptionsSource | null {
+    return this._source;
   }
 
   setOptionsSource(source: OptionsSource | null | undefined): void {

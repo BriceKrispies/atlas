@@ -1,4 +1,6 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
+import './atlas-icon.ts';
 import {
   MultiSelectCore,
   LIFECYCLE,
@@ -8,7 +10,7 @@ import {
   type Status,
 } from './multi-select-core.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: block;
     font-family: var(--atlas-font-family);
@@ -117,6 +119,101 @@ const styles = `
     overflow: hidden;
   }
   :host([open]) .listbox { display: flex; }
+
+  /* ── Bottom-sheet mode (mobile only, chosen at open time) ──
+     Presentation is toggled by data-presentation="sheet" on the host.
+     In sheet mode: the listbox is pinned to the viewport bottom and slides
+     up; a scrim dims the page behind it and is tappable to close. The
+     sheet header (shown only in sheet mode) holds the field label and a
+     close button so users have an explicit dismissal affordance.
+     Above 640px, consumers never see this — the breakpoint check in JS
+     keeps data-presentation="popover". */
+  .scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 999;
+    animation: ms-scrim-in var(--atlas-transition-base) both;
+  }
+  .sheet-header {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--atlas-space-sm);
+    padding: var(--atlas-space-sm) var(--atlas-space-md);
+    border-bottom: 1px solid var(--atlas-color-border);
+    background: var(--atlas-color-bg);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .sheet-title {
+    font-size: var(--atlas-font-size-md);
+    font-weight: var(--atlas-font-weight-semibold);
+    color: var(--atlas-color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sheet-close {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--atlas-color-text-muted);
+    cursor: pointer;
+    padding: 0;
+    width: var(--atlas-touch-target-min, 44px);
+    height: var(--atlas-touch-target-min, 44px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--atlas-radius-sm);
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sheet-close:hover { background: var(--atlas-color-surface-hover); color: var(--atlas-color-text); }
+  .sheet-close:focus-visible {
+    outline: 2px solid var(--atlas-color-primary);
+    outline-offset: -2px;
+  }
+
+  :host([data-presentation="sheet"][open]) .scrim { display: block; }
+  :host([data-presentation="sheet"][open]) .sheet-header { display: flex; }
+  :host([data-presentation="sheet"]) .listbox {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin-top: 0;
+    width: 100vw;
+    max-height: 70vh;
+    border-radius: var(--atlas-radius-lg) var(--atlas-radius-lg) 0 0;
+    border: 1px solid var(--atlas-color-border);
+    border-bottom: none;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+    z-index: 1000;
+    overscroll-behavior: contain;
+    animation: ms-sheet-up var(--atlas-transition-base) both;
+  }
+  :host([data-presentation="sheet"]) .options {
+    overscroll-behavior: contain;
+  }
+  :host([data-presentation="sheet"]) .search-wrap {
+    position: sticky;
+    top: var(--atlas-touch-target-min, 44px);
+    background: var(--atlas-color-bg);
+    z-index: 1;
+  }
+  @keyframes ms-sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @keyframes ms-scrim-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 
   .search-wrap {
     padding: var(--atlas-space-xs);
@@ -243,7 +340,7 @@ const styles = `
       border-color: var(--atlas-color-border);
     }
   }
-`;
+`);
 
 /**
  * <atlas-multi-select> — adapter around MultiSelectCore.
@@ -269,22 +366,28 @@ const styles = `
  *
  * See the core module for API docs and event contract.
  */
-class AtlasMultiSelect extends AtlasElement {
+export class AtlasMultiSelect extends AtlasElement {
+  static formAssociated = true;
+
   private _core: MultiSelectCore;
   private _unsub: () => void;
   private _onDocClick: (e: MouseEvent) => void;
   private _listboxId: string;
   private _errorId: string;
   private _shellBuilt = false;
+  private _prevBodyOverflow: string | null = null;
+  private readonly _internals: ElementInternals;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open' });
+    adoptSheet(root, sheet);
+    this._internals = this.attachInternals();
     this._core = new MultiSelectCore({});
     this._unsub = this._core.subscribe(() => this._syncHostAndUpdate());
     this._onDocClick = (e: MouseEvent) => this._handleDocClick(e);
-    this._listboxId = `lb-${Math.random().toString(36).slice(2, 8)}`;
-    this._errorId = `err-${Math.random().toString(36).slice(2, 8)}`;
+    this._listboxId = uid('lb');
+    this._errorId = uid('err');
   }
 
   static override get observedAttributes(): string[] {
@@ -299,6 +402,7 @@ class AtlasMultiSelect extends AtlasElement {
       'allow-create',
       'close-on-select',
       'max',
+      'required',
     ];
   }
 
@@ -334,7 +438,7 @@ class AtlasMultiSelect extends AtlasElement {
    * OptionsSource port. Setting this triggers loadOptions() automatically.
    */
   get optionsSource(): OptionsSource | null {
-    return this._core._source;
+    return this._core.getSource();
   }
   set optionsSource(src: OptionsSource | null | undefined) {
     this._core.setOptionsSource(src);
@@ -373,11 +477,17 @@ class AtlasMultiSelect extends AtlasElement {
     this._hydrateFromAttributes();
     this._buildShell();
     this._syncHostAndUpdate();
+    this._commit();
   }
 
   override disconnectedCallback(): void {
     this._unsub();
     document.removeEventListener('mousedown', this._onDocClick, true);
+    // If we were ripped out of the DOM while open in sheet mode, make sure
+    // we don't leave the body permanently un-scrollable.
+    if (this.getAttribute('data-presentation') === 'sheet') {
+      this._unlockBodyScroll();
+    }
     super.disconnectedCallback();
   }
 
@@ -433,6 +543,9 @@ class AtlasMultiSelect extends AtlasElement {
         this._updateError();
         this._updateTrigger();
         break;
+      case 'required':
+        this._commit();
+        break;
     }
   }
 
@@ -464,12 +577,15 @@ class AtlasMultiSelect extends AtlasElement {
     const s = this._core.getState();
     this.setAttribute('data-state', s.status);
     this.setAttribute('data-value', JSON.stringify(s.selected));
+    const wasOpen = this.hasAttribute('open');
     if (s.open) {
       this.setAttribute('open', '');
       document.addEventListener('mousedown', this._onDocClick, true);
+      if (!wasOpen) this._onOpen();
     } else {
       this.removeAttribute('open');
       document.removeEventListener('mousedown', this._onDocClick, true);
+      if (wasOpen) this._onClose();
     }
     if (!this._shellBuilt) return;
     this._updateTrigger();
@@ -477,6 +593,114 @@ class AtlasMultiSelect extends AtlasElement {
     this._updateSearchValue();
     this._updateListbox();
     this._updateError();
+  }
+
+  /**
+   * Called once when the listbox transitions closed → open.
+   * Picks presentation (sheet vs popover) based on viewport width at open
+   * time, locks body scroll in sheet mode, and moves focus into the sheet.
+   *
+   * Trade-off: presentation is chosen ONCE at open time. If the user rotates
+   * across the 640px breakpoint while open, we don't switch modes; the user
+   * can close and reopen to re-pick. Live-switching is doable (listen to
+   * MediaQueryList on this instance) but adds complexity for a corner case.
+   */
+  private _onOpen(): void {
+    const isSheet = this._shouldUseSheet();
+    this.setAttribute(
+      'data-presentation',
+      isSheet ? 'sheet' : 'popover',
+    );
+    if (isSheet) {
+      this._lockBodyScroll();
+      // A11y: the sheet is modal. Announce as dialog so AT treats it as one.
+      const listbox = this.shadowRoot?.querySelector<HTMLElement>('.listbox');
+      listbox?.setAttribute('role', 'dialog');
+      listbox?.setAttribute('aria-modal', 'true');
+      // Focus the search input if searchable, else the first option once
+      // rendered. Defer so the listbox finishes populating first.
+      queueMicrotask(() => this._focusSheetInitial());
+    }
+  }
+
+  private _onClose(): void {
+    const wasSheet = this.getAttribute('data-presentation') === 'sheet';
+    if (wasSheet) this._unlockBodyScroll();
+    this.removeAttribute('data-presentation');
+    const listbox = this.shadowRoot?.querySelector<HTMLElement>('.listbox');
+    listbox?.removeAttribute('role');
+    listbox?.removeAttribute('aria-modal');
+  }
+
+  private _shouldUseSheet(): boolean {
+    if (typeof window === 'undefined') return false;
+    if (typeof window.matchMedia !== 'function') return false;
+    // Sheet mode when narrower than the sm breakpoint.
+    return !window.matchMedia('(min-width: 640px)').matches;
+  }
+
+  private _focusSheetInitial(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const search = root.querySelector<HTMLInputElement>('.search');
+    if (search) {
+      search.focus();
+      return;
+    }
+    const firstOption = root.querySelector<HTMLElement>('.option');
+    firstOption?.focus();
+  }
+
+  private _lockBodyScroll(): void {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (this._prevBodyOverflow == null) {
+      this._prevBodyOverflow = document.body.style.overflow;
+    }
+    document.body.style.overflow = 'hidden';
+  }
+
+  private _unlockBodyScroll(): void {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (this._prevBodyOverflow != null) {
+      document.body.style.overflow = this._prevBodyOverflow;
+      this._prevBodyOverflow = null;
+    } else {
+      document.body.style.overflow = '';
+    }
+  }
+
+  /** Focus trap for sheet mode: Tab / Shift+Tab cycle within the sheet. */
+  private _onSheetKey(e: KeyboardEvent): void {
+    if (this.getAttribute('data-presentation') !== 'sheet') return;
+    if (e.key !== 'Tab') return;
+    const root = this.shadowRoot;
+    if (!root) return;
+    const focusable = this._sheetFocusables();
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    // Active element inside shadow DOM — linkedom may not implement
+    // shadowRoot.activeElement, so fall back to document.activeElement.
+    const active =
+      (root as ShadowRoot).activeElement ?? document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last?.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first?.focus();
+    }
+  }
+
+  private _sheetFocusables(): HTMLElement[] {
+    const root = this.shadowRoot;
+    if (!root) return [];
+    const listbox = root.querySelector<HTMLElement>('.listbox');
+    if (!listbox) return [];
+    const nodes = listbox.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    return Array.from(nodes).filter((n) => !n.hasAttribute('disabled'));
   }
 
   /** Build the persistent shadow-DOM shell once. */
@@ -489,35 +713,40 @@ class AtlasMultiSelect extends AtlasElement {
     const triggerTestId = this._childTestId('trigger');
     const searchTestId = this._childTestId('search');
 
+    const sheetLabel = label || placeholder;
     root.innerHTML = `
-      <style>${styles}</style>
-      ${label ? `<label class="field-label" id="${this._listboxId}-label">${escHtml(label)}</label>` : ''}
+      ${label ? `<label class="field-label" id="${escapeAttr(this._listboxId)}-label">${escapeText(label)}</label>` : ''}
       <div class="trigger" role="combobox" tabindex="0"
-           aria-haspopup="listbox" aria-expanded="false" aria-controls="${this._listboxId}"
-           ${label ? `aria-labelledby="${this._listboxId}-label"` : ''}
-           ${triggerTestId ? `data-testid="${triggerTestId}"` : ''}>
+           aria-haspopup="listbox" aria-expanded="false" aria-controls="${escapeAttr(this._listboxId)}"
+           ${label ? `aria-labelledby="${escapeAttr(this._listboxId)}-label"` : ''}
+           ${triggerTestId ? `data-testid="${escapeAttr(triggerTestId)}"` : ''}>
         <span class="chips"></span>
-        <span class="placeholder">${escHtml(placeholder)}</span>
-        <svg class="caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <span class="placeholder">${escapeText(placeholder)}</span>
+        <atlas-icon class="caret" name="chevron-down"></atlas-icon>
       </div>
-      <div class="listbox" id="${this._listboxId}">
+      <div class="scrim" aria-hidden="true" data-action="scrim-close"></div>
+      <div class="listbox" id="${escapeAttr(this._listboxId)}">
+        <div class="sheet-header">
+          <span class="sheet-title">${escapeText(sheetLabel)}</span>
+          <button type="button" class="sheet-close" aria-label="Close" data-action="sheet-close">
+            <atlas-icon name="x"></atlas-icon>
+          </button>
+        </div>
         ${
           searchable
             ? `
           <div class="search-wrap">
             <input type="text" class="search" placeholder="Filter…" aria-label="Filter options"
-                   aria-autocomplete="list" aria-controls="${this._listboxId}-list"
-                   ${searchTestId ? `data-testid="${searchTestId}"` : ''} />
+                   aria-autocomplete="list" aria-controls="${escapeAttr(this._listboxId)}-list"
+                   ${searchTestId ? `data-testid="${escapeAttr(searchTestId)}"` : ''} />
           </div>`
             : ''
         }
-        <ul class="options" id="${this._listboxId}-list" role="listbox"
+        <ul class="options" id="${escapeAttr(this._listboxId)}-list" role="listbox"
             aria-multiselectable="true"
-            ${label ? `aria-labelledby="${this._listboxId}-label"` : ''}></ul>
+            ${label ? `aria-labelledby="${escapeAttr(this._listboxId)}-label"` : ''}></ul>
       </div>
-      <div class="error" role="alert" id="${this._errorId}" hidden></div>
+      <div class="error" role="alert" id="${escapeAttr(this._errorId)}" hidden></div>
     `;
 
     // Persistent handlers — wired once, never rewired.
@@ -573,6 +802,21 @@ class AtlasMultiSelect extends AtlasElement {
       this._onChipsClick(e as MouseEvent),
     );
 
+    // Scrim + sheet-close (bottom-sheet mode only; hidden in popover mode).
+    const scrim = root.querySelector<HTMLElement>('.scrim');
+    scrim?.addEventListener('click', () => this.close());
+    const sheetClose = root.querySelector<HTMLElement>('.sheet-close');
+    sheetClose?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.close();
+    });
+
+    // Focus trap for sheet mode: Tab / Shift+Tab wrap within the listbox.
+    const listbox = root.querySelector<HTMLElement>('.listbox');
+    listbox?.addEventListener('keydown', (e) =>
+      this._onSheetKey(e as KeyboardEvent),
+    );
+
     this._shellBuilt = true;
   }
 
@@ -608,10 +852,10 @@ class AtlasMultiSelect extends AtlasElement {
     chipsEl.innerHTML = selected
       .map(
         (o) => `
-      <span class="chip" data-value="${escAttr(o.value)}">
-        <span class="chip-label">${escHtml(o.label)}</span>
-        <button type="button" class="chip-remove" aria-label="Remove ${escAttr(o.label)}"
-                data-action="remove" data-value="${escAttr(o.value)}">×</button>
+      <span class="chip" data-value="${escapeAttr(o.value)}">
+        <span class="chip-label">${escapeText(o.label)}</span>
+        <button type="button" class="chip-remove" aria-label="${escapeAttr(`Remove ${o.label}`)}"
+                data-action="remove" data-value="${escapeAttr(o.value)}">×</button>
       </span>
     `,
       )
@@ -638,7 +882,7 @@ class AtlasMultiSelect extends AtlasElement {
     if (s.status === LIFECYCLE.LOADING) {
       const tid = this._childTestId('loading');
       list.innerHTML = `<li class="status-row" role="presentation" data-kind="loading"
-            ${tid ? `data-testid="${tid}"` : ''}>
+            ${tid ? `data-testid="${escapeAttr(tid)}"` : ''}>
           <span class="spinner" aria-hidden="true"></span><span>Loading…</span>
         </li>`;
       return;
@@ -646,9 +890,9 @@ class AtlasMultiSelect extends AtlasElement {
     if (s.status === LIFECYCLE.ERROR) {
       const retryTid = this._childTestId('retry');
       list.innerHTML = `<li class="status-row" role="alert" data-kind="error">
-          <span>${escHtml(s.error || 'Failed to load')}</span>
+          <span>${escapeText(s.error || 'Failed to load')}</span>
           <button type="button" class="retry-btn" data-action="retry"
-                  ${retryTid ? `data-testid="${retryTid}"` : ''}>Retry</button>
+                  ${retryTid ? `data-testid="${escapeAttr(retryTid)}"` : ''}>Retry</button>
         </li>`;
       return;
     }
@@ -657,7 +901,7 @@ class AtlasMultiSelect extends AtlasElement {
     if (visible.length === 0 && !this._core.canCreate()) {
       const msg =
         s.status === LIFECYCLE.EMPTY ? 'No options available' : 'No matches';
-      list.innerHTML = `<li class="status-row" role="presentation" data-kind="empty">${escHtml(msg)}</li>`;
+      list.innerHTML = `<li class="status-row" role="presentation" data-kind="empty">${escapeText(msg)}</li>`;
       return;
     }
 
@@ -665,21 +909,19 @@ class AtlasMultiSelect extends AtlasElement {
       .map((o, i) => {
         const isSel = s.selected.includes(o.value);
         const isActive = i === s.activeIndex;
-        return `<li class="option" role="option" id="${this._listboxId}-opt-${i}"
-          data-value="${escAttr(o.value)}" data-index="${i}"
+        return `<li class="option" role="option" id="${escapeAttr(this._listboxId)}-opt-${i}"
+          data-value="${escapeAttr(o.value)}" data-index="${i}"
           aria-selected="${isSel}" aria-disabled="${o.disabled ? 'true' : 'false'}"
           ${isActive ? 'data-active="true"' : ''}>
-        <svg class="check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M3 8.5l3.5 3.5L13 5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="option-label">${escHtml(o.label)}</span>
+        <atlas-icon class="check" name="check-path"></atlas-icon>
+        <span class="option-label">${escapeText(o.label)}</span>
       </li>`;
       })
       .join('');
 
     if (this._core.canCreate()) {
       html += `<li class="create-hint" role="option" aria-selected="false"
-                   data-action="create">+ Create "${escHtml(s.query.trim())}"</li>`;
+                   data-action="create">+ Create "${escapeText(s.query.trim())}"</li>`;
     }
     list.innerHTML = html;
   }
@@ -896,6 +1138,7 @@ class AtlasMultiSelect extends AtlasElement {
     delta: Delta,
     extra: Record<string, unknown> = {},
   ): void {
+    this._commit();
     const name = this.getAttribute('name');
     if (this.surfaceId && name) {
       this.emit(`${this.surfaceId}.${name}-changed`, {
@@ -918,19 +1161,41 @@ class AtlasMultiSelect extends AtlasElement {
       }),
     );
   }
+
+  /**
+   * Mirror current selection into ElementInternals and compute validity.
+   * Multi-value convention: append one FormData entry per selected value
+   * under the element's `name` — mirrors how a native <select multiple>
+   * submits. When selection is empty, clear form value.
+   */
+  private _commit(): void {
+    const values = this.value;
+    const name = this.getAttribute('name');
+    if (values.length === 0) {
+      this._internals.setFormValue(null);
+    } else if (name) {
+      const fd = new FormData();
+      for (const v of values) fd.append(name, v);
+      this._internals.setFormValue(fd);
+    } else {
+      this._internals.setFormValue(values.join(','));
+    }
+
+    const required = this.hasAttribute('required');
+    const max = this._core.max;
+    if (required && values.length === 0) {
+      this._internals.setValidity({ valueMissing: true }, 'Required');
+    } else if (max != null && values.length > max) {
+      this._internals.setValidity(
+        { rangeOverflow: true },
+        `At most ${max} selections`,
+      );
+    } else {
+      this._internals.setValidity({});
+    }
+  }
 }
 
-function escHtml(s: unknown): string {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-function escAttr(s: unknown): string {
-  return escHtml(s);
-}
 function normNum(n: string | null | undefined): number | null {
   if (n == null) return null;
   const x = Number(n);
@@ -938,3 +1203,9 @@ function normNum(n: string | null | undefined): number | null {
 }
 
 AtlasElement.define('atlas-multi-select', AtlasMultiSelect);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-multi-select': AtlasMultiSelect;
+  }
+}

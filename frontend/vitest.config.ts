@@ -7,6 +7,9 @@ import { defineConfig } from 'vitest/config';
 // another runner.
 export default defineConfig({
   test: {
+    // Global DOM shims for linkedom (CSSStyleSheet, ElementInternals,
+    // FormData, adoptedStyleSheets). See test-setup/linkedom-shims.ts.
+    setupFiles: ['./test-setup/linkedom-shims.ts'],
     include: [
       'packages/*/test/**/*.test.ts',
       'packages/*/src/**/*.test.ts',

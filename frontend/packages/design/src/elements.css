@@ -18,6 +18,72 @@ atlas-box[padding="lg"]  { padding: var(--atlas-space-lg); }
 atlas-box[padding="xl"]  { padding: var(--atlas-space-xl); }
 atlas-box[padding="2xl"] { padding: var(--atlas-space-2xl); }
 
+atlas-box[margin="xs"]  { margin: var(--atlas-space-xs); }
+atlas-box[margin="sm"]  { margin: var(--atlas-space-sm); }
+atlas-box[margin="md"]  { margin: var(--atlas-space-md); }
+atlas-box[margin="lg"]  { margin: var(--atlas-space-lg); }
+atlas-box[margin="xl"]  { margin: var(--atlas-space-xl); }
+atlas-box[margin="2xl"] { margin: var(--atlas-space-2xl); }
+
+/* Background variants — map to semantic color tokens. `shell` uses the
+   dark shell palette and inverts text color so consumers don't have to
+   re-apply it (topbar / sidebar chrome pattern). */
+atlas-box[background="bg"]              { background: var(--atlas-color-bg); }
+atlas-box[background="surface"]         { background: var(--atlas-color-surface); }
+atlas-box[background="surface-hover"]   { background: var(--atlas-color-surface-hover); }
+atlas-box[background="primary-subtle"]  { background: var(--atlas-color-primary-subtle); }
+atlas-box[background="shell"] {
+  background: var(--atlas-color-shell-bg);
+  color: var(--atlas-color-shell-text);
+}
+
+/* Border. Presence-only = all sides; directional values override. */
+atlas-box[border]              { border: 1px solid var(--atlas-color-border); }
+atlas-box[border="top"]        { border: 0; border-top:    1px solid var(--atlas-color-border); }
+atlas-box[border="bottom"]     { border: 0; border-bottom: 1px solid var(--atlas-color-border); }
+atlas-box[border="left"]       { border: 0; border-left:   1px solid var(--atlas-color-border); }
+atlas-box[border="right"]      { border: 0; border-right:  1px solid var(--atlas-color-border); }
+atlas-box[border="x"]          { border: 0; border-left:   1px solid var(--atlas-color-border); border-right:  1px solid var(--atlas-color-border); }
+atlas-box[border="y"]          { border: 0; border-top:    1px solid var(--atlas-color-border); border-bottom: 1px solid var(--atlas-color-border); }
+
+atlas-box[rounded="none"] { border-radius: 0; }
+atlas-box[rounded="sm"]   { border-radius: var(--atlas-radius-sm); }
+atlas-box[rounded="md"]   { border-radius: var(--atlas-radius-md); }
+atlas-box[rounded="lg"]   { border-radius: var(--atlas-radius-lg); }
+
+atlas-box[elevation="none"] { box-shadow: none; }
+atlas-box[elevation="sm"]   { box-shadow: var(--atlas-shadow-sm); }
+atlas-box[elevation="md"]   { box-shadow: var(--atlas-shadow-md); }
+atlas-box[elevation="lg"]   { box-shadow: var(--atlas-shadow-lg); }
+
+atlas-box[grow] { flex: 1 1 auto; }
+
+/* Scroll — mobile-first: touch momentum is on by default for any axis we
+   scroll. `min-height: 0` / `min-width: 0` so an atlas-box that grows
+   inside a flex parent can actually shrink and trigger its own overflow
+   rather than pushing its parent. */
+atlas-box[scroll="x"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  min-width: 0;
+}
+atlas-box[scroll="y"] {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+atlas-box[scroll="both"] {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  min-width: 0;
+  min-height: 0;
+}
+atlas-box[scroll="none"] {
+  overflow: hidden;
+}
+
 
 /* ── atlas-text ───────────────────────────────────────────────── */
 
@@ -38,6 +104,18 @@ atlas-text[variant="medium"] { font-weight: var(--atlas-font-weight-medium); }
 atlas-text[variant="small"]  { font-size: var(--atlas-font-size-sm); color: var(--atlas-color-text-muted); }
 atlas-text[variant="error"]  { color: var(--atlas-color-danger); }
 atlas-text[variant="mono"]   { font-family: var(--atlas-font-mono); font-size: var(--atlas-font-size-sm); }
+
+/* Truncate — single-line ellipsis. Forces block so the ellipsis rules
+   apply (inline boxes don't respect overflow). Useful inside flex rows
+   where the parent may constrain width; caller must give the ancestor a
+   bounded width for the ellipsis to actually trigger. */
+atlas-text[truncate] {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
 
 
 /* ── atlas-heading ────────────────────────────────────────────── */
@@ -96,6 +174,48 @@ atlas-stack[justify="space-between"] { justify-content: space-between; }
 atlas-stack[justify="space-around"]  { justify-content: space-around; }
 
 atlas-stack[wrap] { flex-wrap: wrap; }
+
+atlas-stack[padding="xs"]  { padding: var(--atlas-space-xs); }
+atlas-stack[padding="sm"]  { padding: var(--atlas-space-sm); }
+atlas-stack[padding="md"]  { padding: var(--atlas-space-md); }
+atlas-stack[padding="lg"]  { padding: var(--atlas-space-lg); }
+atlas-stack[padding="xl"]  { padding: var(--atlas-space-xl); }
+atlas-stack[padding="2xl"] { padding: var(--atlas-space-2xl); }
+
+atlas-stack[margin="xs"]  { margin: var(--atlas-space-xs); }
+atlas-stack[margin="sm"]  { margin: var(--atlas-space-sm); }
+atlas-stack[margin="md"]  { margin: var(--atlas-space-md); }
+atlas-stack[margin="lg"]  { margin: var(--atlas-space-lg); }
+atlas-stack[margin="xl"]  { margin: var(--atlas-space-xl); }
+atlas-stack[margin="2xl"] { margin: var(--atlas-space-2xl); }
+
+atlas-stack[grow] { flex: 1 1 auto; }
+
+/* Separator — a 1px line between siblings. `>* + *` so the first child
+   has no leading rule. Direction-aware: in a column stack the line sits
+   on top; in a row stack it sits on the start edge. */
+atlas-stack[separator] > * + *,
+atlas-stack[separator="solid"] > * + * {
+  border-top: 1px solid var(--atlas-color-border);
+  padding-top: var(--atlas-space-sm);
+}
+atlas-stack[separator="dotted"] > * + * {
+  border-top: 1px dotted var(--atlas-color-border);
+  padding-top: var(--atlas-space-sm);
+}
+atlas-stack[direction="row"][separator] > * + *,
+atlas-stack[direction="row"][separator="solid"] > * + * {
+  border-top: 0;
+  border-left: 1px solid var(--atlas-color-border);
+  padding-top: 0;
+  padding-left: var(--atlas-space-sm);
+}
+atlas-stack[direction="row"][separator="dotted"] > * + * {
+  border-top: 0;
+  border-left: 1px dotted var(--atlas-color-border);
+  padding-top: 0;
+  padding-left: var(--atlas-space-sm);
+}
 
 /* [orientation] declarative responsive direction. Consumers write e.g.
      <atlas-stack orientation="stack-on-mobile">
@@ -183,6 +303,10 @@ atlas-table-cell[header] {
   white-space: nowrap;
 }
 
+atlas-table-cell[align="start"]  { text-align: start; }
+atlas-table-cell[align="center"] { text-align: center; }
+atlas-table-cell[align="end"]    { text-align: end; }
+
 
 /* ── atlas-nav ────────────────────────────────────────────────── */
 
@@ -220,6 +344,12 @@ atlas-nav-item[active] {
 
 atlas-nav-item[active]:hover {
   background: var(--atlas-color-primary-hover);
+}
+
+atlas-nav-item[disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: default;
 }
 
 

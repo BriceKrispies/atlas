@@ -22,6 +22,9 @@ export type SurfaceState =
   | 'error'
   | 'unauthorized';
 
+/** Tags we've already warned about for conflicting re-registration. */
+const _defineWarned = new Set<string>();
+
 export class AtlasElement extends HTMLElement {
   protected _renderDispose: EffectCleanup | null = null;
 
@@ -44,11 +47,78 @@ export class AtlasElement extends HTMLElement {
 
   /**
    * Register this element as a custom element.
+   *
+   * Idempotent: if the tag is already registered (e.g. a module was imported
+   * twice via differing path aliases), this is a no-op. A one-time warning is
+   * logged in dev when the existing registration is a DIFFERENT constructor.
    */
   static define(tag: string, elementClass: CustomElementConstructor): void {
-    if (!customElements.get(tag)) {
-      customElements.define(tag, elementClass);
+    const existing = customElements.get(tag);
+    if (existing) {
+      if (existing !== elementClass && !_defineWarned.has(tag)) {
+        _defineWarned.add(tag);
+        console.warn(
+          `[atlas] AtlasElement.define("${tag}"): tag already registered to a different constructor; ignoring re-registration.`,
+        );
+      }
+      return;
     }
+    customElements.define(tag, elementClass);
+  }
+
+  /**
+   * Property descriptor factory for a reflected boolean attribute.
+   *
+   * Usage (inside a class body):
+   *
+   *   static {
+   *     Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+   *   }
+   *
+   * Reading returns `hasAttribute(name)`; writing toggles the attribute
+   * (presence-only — value is always the empty string when set). Replaces the
+   * ~30 repeated `get/set` blocks across the design-system element files.
+   */
+  static boolAttr(name: string): PropertyDescriptor {
+    return {
+      configurable: true,
+      enumerable: true,
+      get(this: HTMLElement): boolean {
+        return this.hasAttribute(name);
+      },
+      set(this: HTMLElement, v: unknown): void {
+        if (v) this.setAttribute(name, '');
+        else this.removeAttribute(name);
+      },
+    };
+  }
+
+  /**
+   * Property descriptor factory for a reflected string attribute with an
+   * optional default when the attribute is absent.
+   *
+   * Usage:
+   *
+   *   static {
+   *     Object.defineProperty(this.prototype, 'type', AtlasElement.strAttr('type', 'text'));
+   *   }
+   *
+   * Reading returns the attribute value, or `defaultValue` when unset. Writing
+   * coerces to string and sets the attribute; writing `null`/`undefined`
+   * removes it.
+   */
+  static strAttr(name: string, defaultValue: string = ''): PropertyDescriptor {
+    return {
+      configurable: true,
+      enumerable: true,
+      get(this: HTMLElement): string {
+        return this.getAttribute(name) ?? defaultValue;
+      },
+      set(this: HTMLElement, v: unknown): void {
+        if (v == null) this.removeAttribute(name);
+        else this.setAttribute(name, String(v));
+      },
+    };
   }
 
   connectedCallback(): void {

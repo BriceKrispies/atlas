@@ -6,8 +6,12 @@ import { AtlasElement } from '@atlas/core';
  *
  * Attributes:
  *   key — parameterized identifier, appended to data-testid
+ *
+ * Emits native `click` events naturally via DOM bubbling. No custom
+ * interactive role is added — if consumers need row selection semantics
+ * they should compose an atlas-button or nav-item inside.
  */
-class AtlasRow extends AtlasElement {
+export class AtlasRow extends AtlasElement {
   protected override _applyTestId(): void {
     const name = this.getAttribute('name');
     const key = this.getAttribute('key');
@@ -26,3 +30,9 @@ class AtlasRow extends AtlasElement {
 }
 
 AtlasElement.define('atlas-row', AtlasRow);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-row': AtlasRow;
+  }
+}

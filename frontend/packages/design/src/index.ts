@@ -5,7 +5,11 @@ import './elements.css';
 export { BREAKPOINTS, matchesBreakpoint } from './breakpoints.ts';
 export type { BreakpointName } from './breakpoints.ts';
 
+// Shared utilities for element authors (also importable via '@atlas/design/util')
+export { uid, escapeAttr, escapeText, createSheet, adoptSheet } from './util.ts';
+
 // Interactive elements (Shadow DOM)
+import './atlas-icon.ts';
 import './atlas-button.ts';
 import './atlas-input.ts';
 import './atlas-multi-select.ts';

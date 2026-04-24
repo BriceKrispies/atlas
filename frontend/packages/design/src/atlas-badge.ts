@@ -1,6 +1,7 @@
 import { AtlasElement } from '@atlas/core';
+import { adoptSheet, createSheet } from './util.ts';
 
-const styles = `
+const sheet = createSheet(`
   :host {
     display: inline-flex;
     align-items: center;
@@ -25,14 +26,36 @@ const styles = `
     background: var(--atlas-color-surface);
     color: var(--atlas-color-text-muted);
   }
-`;
+`);
 
-class AtlasBadge extends AtlasElement {
+/**
+ * <atlas-badge> — inline status pill. Consumers style via the `status`
+ * attribute (`published` | `draft` | `archived`). The shadow tree is a single
+ * `<slot>` so content remains in the light DOM.
+ */
+export class AtlasBadge extends AtlasElement {
+  declare status: string;
+
+  static {
+    Object.defineProperty(
+      this.prototype,
+      'status',
+      AtlasElement.strAttr('status', ''),
+    );
+  }
+
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${styles}</style><slot></slot>`;
+    adoptSheet(root, sheet);
+    root.appendChild(document.createElement('slot'));
   }
 }
 
 AtlasElement.define('atlas-badge', AtlasBadge);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-badge': AtlasBadge;
+  }
+}

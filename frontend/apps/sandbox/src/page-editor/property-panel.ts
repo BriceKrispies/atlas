@@ -197,7 +197,10 @@ export class PageEditorPropertyPanel extends AtlasElement {
       const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
       if (inner && inner.value !== String(value)) inner.value = String(value);
     });
-    input.addEventListener('change', (e: Event) => {
+    // Live property preview: update the selected block per keystroke.
+    // Phase 2a moved per-keystroke semantics onto `input`; `change`
+    // now fires only on blur/commit.
+    input.addEventListener('input', (e: Event) => {
       const detail = (e as CustomEvent<{ value?: string }>).detail;
       this._update(key, detail?.value ?? '');
     });
@@ -217,7 +220,10 @@ export class PageEditorPropertyPanel extends AtlasElement {
       const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
       if (inner && inner.value !== String(value)) inner.value = String(value);
     });
-    input.addEventListener('change', (e: Event) => {
+    // Live numeric preview: parse + update on every keystroke. Invalid
+    // intermediate values (empty, partial like "-" or "1.") drop through
+    // without clobbering the last valid state.
+    input.addEventListener('input', (e: Event) => {
       const detail = (e as CustomEvent<{ value?: string }>).detail;
       const raw = detail?.value ?? '';
       if (raw === '') {
@@ -312,7 +318,9 @@ export class PageEditorPropertyPanel extends AtlasElement {
         const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
         if (inner && inner.value !== text) inner.value = text;
       });
-      input.addEventListener('change', (e: Event) => {
+      // Live comma-separated list preview: re-parse per keystroke so the
+      // preview tracks typing (same rationale as the scalar fields).
+      input.addEventListener('input', (e: Event) => {
         const detail = (e as CustomEvent<{ value?: string }>).detail;
         const raw = String(detail?.value ?? '').trim();
         if (!raw) return this._update(key, []);

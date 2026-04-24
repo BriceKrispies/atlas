@@ -310,8 +310,11 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
       input.setAttribute('label', col.filter?.label ?? col.label ?? key);
       input.setAttribute('placeholder', col.filter?.placeholder ?? `Filter ${col.label ?? key}`);
       input.setAttribute('data-column-key', key);
-      input.addEventListener('change', (e) => {
-        const detail = (e as CustomEvent).detail as { value?: unknown } | null;
+      // Live filter updates: react on every keystroke. Phase 2a made
+      // atlas-input fire `input` per keystroke and `change` only on
+      // blur/commit — use `input` so the table filters as the user types.
+      input.addEventListener('input', (e) => {
+        const detail = (e as unknown as CustomEvent).detail as { value?: unknown } | null;
         const value = detail?.value;
         this._core.setFilter(key, value);
         this._emitTelemetry('filter-applied', { columnKey: key, value });

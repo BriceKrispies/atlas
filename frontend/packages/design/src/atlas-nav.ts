@@ -7,7 +7,7 @@ import { AtlasElement } from '@atlas/core';
  * Attributes:
  *   label — accessible name for the navigation region
  */
-class AtlasNav extends AtlasElement {
+export class AtlasNav extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'navigation');
@@ -19,3 +19,9 @@ class AtlasNav extends AtlasElement {
 }
 
 AtlasElement.define('atlas-nav', AtlasNav);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-nav': AtlasNav;
+  }
+}
