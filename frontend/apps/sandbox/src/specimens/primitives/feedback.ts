@@ -33,3 +33,38 @@ S({
     },
   ],
 });
+
+S({
+  id: 'spinner',
+  name: 'Spinner',
+  tag: 'atlas-spinner',
+  variants: [
+    {
+      name: 'Sizes',
+      html: `
+        <atlas-stack direction="row" gap="lg" align="center">
+          <atlas-spinner size="sm"></atlas-spinner>
+          <atlas-spinner size="md"></atlas-spinner>
+          <atlas-spinner size="lg"></atlas-spinner>
+          <atlas-text variant="muted">sm · md · lg</atlas-text>
+        </atlas-stack>
+      `,
+    },
+    {
+      name: 'Inline (1em)',
+      html: `
+        <atlas-text>Loading feed <atlas-spinner size="1em"></atlas-spinner> one moment…</atlas-text>
+      `,
+    },
+    {
+      name: 'Colour inheritance',
+      html: `
+        <atlas-stack gap="sm">
+          <atlas-box style="color: var(--atlas-color-primary)"><atlas-spinner label="Loading"></atlas-spinner></atlas-box>
+          <atlas-box style="color: var(--atlas-color-warning-text)"><atlas-spinner></atlas-spinner></atlas-box>
+          <atlas-box style="color: var(--atlas-color-danger)"><atlas-spinner></atlas-spinner></atlas-box>
+        </atlas-stack>
+      `,
+    },
+  ],
+});

@@ -10,10 +10,20 @@ const STATIC: Record<string, TaxonomyEntry> = {
   // Primitives — Layout
   'box':            { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'container'] },
   'stack':          { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'flex', 'row', 'column'] },
+  'card':           { category: 'primitives', subcategory: 'Layout',     tags: ['surface', 'container', 'bordered'] },
+  'divider':        { category: 'primitives', subcategory: 'Layout',     tags: ['rule', 'separator', 'hr'] },
+  'grid':           { category: 'primitives', subcategory: 'Layout',     tags: ['grid', 'columns', 'auto-fit'] },
+  'scroll-area':    { category: 'primitives', subcategory: 'Layout',     tags: ['scroll', 'overflow', 'region'] },
 
   // Primitives — Typography
   'heading':        { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'h1', 'h2', 'h3', 'title'] },
   'text':           { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'paragraph', 'body'] },
+  'label':          { category: 'primitives', subcategory: 'Typography', tags: ['caption', 'eyebrow', 'uppercase'] },
+  'code':           { category: 'primitives', subcategory: 'Typography', tags: ['mono', 'inline', 'block', 'snippet'] },
+  'code-editor':    { category: 'primitives', subcategory: 'Typography', tags: ['monaco', 'editor', 'code', 'lazy'] },
+  'kbd':            { category: 'primitives', subcategory: 'Typography', tags: ['keyboard', 'shortcut', 'pill'] },
+  'link':           { category: 'primitives', subcategory: 'Typography', tags: ['anchor', 'href', 'navigation'] },
+  'icon':           { category: 'primitives', subcategory: 'Typography', tags: ['svg', 'visual', 'glyph'] },
 
   // Primitives — Controls
   'button':         { category: 'primitives', subcategory: 'Controls',   tags: ['action', 'cta', 'submit'] },
@@ -34,6 +44,7 @@ const STATIC: Record<string, TaxonomyEntry> = {
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
   'skeleton':       { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'placeholder'] },
+  'spinner':        { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'busy', 'indicator'] },
 
   // Primitives — Navigation
   'nav':            { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },

@@ -48,3 +48,16 @@ import './atlas-table-cell.ts';
 // Navigation elements (Light DOM)
 import './atlas-nav.ts';
 import './atlas-nav-item.ts';
+
+// C1 primitives (Light DOM)
+import './atlas-card.ts';
+import './atlas-divider.ts';
+import './atlas-grid.ts';
+import './atlas-label.ts';
+import './atlas-code.ts';
+// Stub only — Monaco is dynamic-imported by the stub on first connect.
+import './atlas-code-editor.ts';
+import './atlas-kbd.ts';
+import './atlas-link.ts';
+import './atlas-scroll-area.ts';
+import './atlas-spinner.ts';

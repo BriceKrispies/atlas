@@ -14,7 +14,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@atlas/core": "workspace:*"
+    "@atlas/core": "workspace:*",
+    "monaco-editor": "^0.54.0"
   },
   "devDependencies": {
     "linkedom": "^0.18.0"

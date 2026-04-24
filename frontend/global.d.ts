@@ -31,6 +31,11 @@ declare module '*?raw' {
   export default content;
 }
 
+declare module '*?worker' {
+  const WorkerCtor: new () => Worker;
+  export default WorkerCtor;
+}
+
 // Vite env typing. Mirrors `vite/client` but defined locally so tsgo
 // does not need to resolve `vite` from the workspace root.
 interface ImportMetaEnv {
