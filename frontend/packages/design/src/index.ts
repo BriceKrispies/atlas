@@ -13,6 +13,21 @@ import './atlas-skeleton.ts';
 import './atlas-badge.ts';
 import './atlas-tab-bar.ts';
 
+// Form controls (Batch 1)
+import './atlas-checkbox.ts';
+import './atlas-radio.ts';
+import './atlas-switch.ts';
+import './atlas-textarea.ts';
+import './atlas-number-input.ts';
+import './atlas-search-input.ts';
+import './atlas-select.ts';
+import './atlas-slider.ts';
+import './atlas-date-picker.ts';
+import './atlas-file-upload.ts';
+
+// Form field wrapper (Light DOM)
+import './atlas-form-field.ts';
+
 // Layout elements (Light DOM)
 import './atlas-box.ts';
 import './atlas-text.ts';

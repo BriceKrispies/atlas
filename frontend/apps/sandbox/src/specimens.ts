@@ -1448,6 +1448,312 @@ S({
   ],
 });
 
+// ── Forms (Batch 1 primitives) ──────────────────────────────────
+
+S({
+  id: 'checkbox',
+  name: 'Checkbox',
+  tag: 'atlas-checkbox',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default, checked, indeterminate, disabled',
+      html: `
+        <atlas-stack gap="sm">
+          <atlas-checkbox label="Unchecked"></atlas-checkbox>
+          <atlas-checkbox label="Checked" checked></atlas-checkbox>
+          <atlas-checkbox label="Indeterminate" indeterminate></atlas-checkbox>
+          <atlas-checkbox label="Required" required></atlas-checkbox>
+          <atlas-checkbox label="Disabled" disabled></atlas-checkbox>
+          <atlas-checkbox label="Disabled + checked" disabled checked></atlas-checkbox>
+        </atlas-stack>
+      `,
+    },
+    {
+      name: 'Long label wraps',
+      html: `
+        <atlas-box style="max-width: 320px">
+          <atlas-checkbox label="I agree to the Terms of Service, the Privacy Policy, and understand this is a demonstration label that needs to wrap across multiple lines."></atlas-checkbox>
+        </atlas-box>
+      `,
+    },
+  ],
+});
+
+S({
+  id: 'radio-group',
+  name: 'Radio / RadioGroup',
+  tag: 'atlas-radio-group',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Vertical (default), one selected',
+      html: `
+        <atlas-radio-group label="Plan" value="pro">
+          <atlas-radio value="free" label="Free"></atlas-radio>
+          <atlas-radio value="pro" label="Pro — $12/mo"></atlas-radio>
+          <atlas-radio value="team" label="Team — $40/mo"></atlas-radio>
+        </atlas-radio-group>
+      `,
+    },
+    {
+      name: 'Horizontal',
+      html: `
+        <atlas-radio-group label="Priority" value="medium" orientation="row">
+          <atlas-radio value="low" label="Low"></atlas-radio>
+          <atlas-radio value="medium" label="Medium"></atlas-radio>
+          <atlas-radio value="high" label="High"></atlas-radio>
+        </atlas-radio-group>
+      `,
+    },
+    {
+      name: 'Disabled option + disabled group',
+      html: `
+        <atlas-stack gap="lg">
+          <atlas-radio-group label="With one disabled option" value="a">
+            <atlas-radio value="a" label="Option A"></atlas-radio>
+            <atlas-radio value="b" label="Option B (disabled)" disabled></atlas-radio>
+            <atlas-radio value="c" label="Option C"></atlas-radio>
+          </atlas-radio-group>
+          <atlas-radio-group label="Fully disabled group" value="b" disabled>
+            <atlas-radio value="a" label="A"></atlas-radio>
+            <atlas-radio value="b" label="B"></atlas-radio>
+          </atlas-radio-group>
+        </atlas-stack>
+      `,
+    },
+  ],
+});
+
+S({
+  id: 'switch',
+  name: 'Switch',
+  tag: 'atlas-switch',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default, on, disabled',
+      html: `
+        <atlas-stack gap="sm">
+          <atlas-switch label="Off"></atlas-switch>
+          <atlas-switch label="On" checked></atlas-switch>
+          <atlas-switch label="Disabled" disabled></atlas-switch>
+          <atlas-switch label="Disabled + on" disabled checked></atlas-switch>
+        </atlas-stack>
+      `,
+    },
+  ],
+});
+
+S({
+  id: 'textarea',
+  name: 'Textarea',
+  tag: 'atlas-textarea',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default',
+      html: `<atlas-textarea label="Comment" placeholder="Share your thoughts…" rows="3"></atlas-textarea>`,
+    },
+    {
+      name: 'With max length counter',
+      html: `<atlas-textarea label="Bio" placeholder="Tell us about you" maxlength="140" rows="3"></atlas-textarea>`,
+    },
+    {
+      name: 'Autoresize + pre-filled',
+      html: `
+        <atlas-textarea label="Notes" autoresize rows="2">Autoresize grows the textarea as the user types.
+Try adding more lines here — it should expand without a manual resize handle.</atlas-textarea>
+      `,
+    },
+    {
+      name: 'Disabled & readonly',
+      html: `
+        <atlas-stack gap="sm">
+          <atlas-textarea label="Disabled" disabled rows="2">Can't touch this.</atlas-textarea>
+          <atlas-textarea label="Readonly" readonly rows="2">Readonly — selection allowed, editing not.</atlas-textarea>
+        </atlas-stack>
+      `,
+    },
+  ],
+});
+
+S({
+  id: 'number-input',
+  name: 'NumberInput',
+  tag: 'atlas-number-input',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default',
+      html: `<atlas-number-input label="Quantity" value="1" min="0" max="99"></atlas-number-input>`,
+    },
+    {
+      name: 'Decimal step',
+      html: `<atlas-number-input label="Price" value="19.99" min="0" step="0.01"></atlas-number-input>`,
+    },
+    {
+      name: 'Clamped to range',
+      html: `<atlas-number-input label="Rating (1-5)" value="5" min="1" max="5"></atlas-number-input>`,
+    },
+    {
+      name: 'Disabled',
+      html: `<atlas-number-input label="Locked" value="42" disabled></atlas-number-input>`,
+    },
+  ],
+});
+
+S({
+  id: 'search-input',
+  name: 'SearchInput',
+  tag: 'atlas-search-input',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default',
+      html: `<atlas-search-input placeholder="Search pages…"></atlas-search-input>`,
+    },
+    {
+      name: 'With label and value',
+      html: `<atlas-search-input label="Find user" value="alice" placeholder="Name or email"></atlas-search-input>`,
+    },
+    {
+      name: 'Disabled',
+      html: `<atlas-search-input placeholder="Indexing…" disabled></atlas-search-input>`,
+    },
+  ],
+});
+
+S({
+  id: 'select',
+  name: 'Select',
+  tag: 'atlas-select',
+  group: 'Forms',
+  mount: (el, { onLog }) => {
+    const sel = document.createElement('atlas-select');
+    sel.setAttribute('label', 'Status');
+    sel.setAttribute('placeholder', 'Choose one');
+    sel.options = [
+      { value: 'draft', label: 'Draft' },
+      { value: 'review', label: 'In review' },
+      { value: 'published', label: 'Published' },
+      { value: 'archived', label: 'Archived', disabled: true },
+    ];
+    sel.addEventListener('change', (ev) => {
+      onLog('change', (ev as CustomEvent).detail);
+    });
+    el.appendChild(sel);
+    return () => {};
+  },
+  configVariants: [
+    { name: 'default', config: {} },
+  ],
+});
+
+S({
+  id: 'slider',
+  name: 'Slider',
+  tag: 'atlas-slider',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default with value readout',
+      html: `<atlas-slider label="Volume" value="40" min="0" max="100" show-value format="percent"></atlas-slider>`,
+    },
+    {
+      name: 'Custom range / step',
+      html: `<atlas-slider label="Temperature" value="20" min="16" max="28" step="0.5" show-value></atlas-slider>`,
+    },
+    {
+      name: 'Disabled',
+      html: `<atlas-slider label="Locked" value="50" min="0" max="100" disabled></atlas-slider>`,
+    },
+  ],
+});
+
+S({
+  id: 'date-picker',
+  name: 'DatePicker',
+  tag: 'atlas-date-picker',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default',
+      html: `<atlas-date-picker label="Due date"></atlas-date-picker>`,
+    },
+    {
+      name: 'With min/max and preset value',
+      html: `<atlas-date-picker label="Event date" value="2026-05-01" min="2026-04-24" max="2026-12-31"></atlas-date-picker>`,
+    },
+    {
+      name: 'Disabled',
+      html: `<atlas-date-picker label="Archived" value="2024-01-01" disabled></atlas-date-picker>`,
+    },
+  ],
+});
+
+S({
+  id: 'file-upload',
+  name: 'FileUpload',
+  tag: 'atlas-file-upload',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Default (single file)',
+      html: `<atlas-file-upload label="Avatar" accept="image/*"></atlas-file-upload>`,
+    },
+    {
+      name: 'Multiple with size limit',
+      html: `<atlas-file-upload label="Attachments" multiple max-size="5242880"></atlas-file-upload>`,
+    },
+    {
+      name: 'Disabled',
+      html: `<atlas-file-upload label="Disabled" disabled></atlas-file-upload>`,
+    },
+  ],
+});
+
+S({
+  id: 'form-field',
+  name: 'FormField',
+  tag: 'atlas-form-field',
+  group: 'Forms',
+  variants: [
+    {
+      name: 'Label + description',
+      html: `
+        <atlas-form-field label="Email" description="We'll only use this to send account notifications.">
+          <atlas-input type="email" placeholder="you@example.com"></atlas-input>
+        </atlas-form-field>
+      `,
+    },
+    {
+      name: 'Required + error',
+      html: `
+        <atlas-form-field label="Password" required error="Must be at least 8 characters.">
+          <atlas-input type="password"></atlas-input>
+        </atlas-form-field>
+      `,
+    },
+    {
+      name: 'Wraps a select',
+      html: `
+        <atlas-form-field label="Plan" description="You can change this later.">
+          <atlas-select placeholder="Pick one"></atlas-select>
+        </atlas-form-field>
+      `,
+    },
+    {
+      name: 'Wraps a textarea with error',
+      html: `
+        <atlas-form-field label="Reason" required error="Tell us why, please." description="Will be shared with reviewers.">
+          <atlas-textarea rows="3"></atlas-textarea>
+        </atlas-form-field>
+      `,
+    },
+  ],
+});
+
 declare global {
   interface Window {
     __atlasTestDataSource?: unknown;

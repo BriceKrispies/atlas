@@ -221,3 +221,40 @@ atlas-nav-item[active] {
 atlas-nav-item[active]:hover {
   background: var(--atlas-color-primary-hover);
 }
+
+
+/* ── atlas-form-field ─────────────────────────────────────────── */
+
+atlas-form-field {
+  display: block;
+  font-family: var(--atlas-font-family);
+}
+
+atlas-form-field > [data-atlas-field-part="label"] {
+  display: block;
+  font-size: var(--atlas-font-size-sm);
+  font-weight: var(--atlas-font-weight-medium);
+  color: var(--atlas-color-text);
+  margin-bottom: var(--atlas-space-xs);
+}
+
+atlas-form-field > [data-atlas-field-part="description"] {
+  display: block;
+  margin-top: var(--atlas-space-xs);
+  font-size: var(--atlas-font-size-sm);
+  color: var(--atlas-color-text-muted);
+  line-height: var(--atlas-line-height);
+}
+
+atlas-form-field > [data-atlas-field-part="error"] {
+  display: block;
+  margin-top: var(--atlas-space-xs);
+  font-size: var(--atlas-font-size-sm);
+  color: var(--atlas-color-danger);
+  line-height: var(--atlas-line-height);
+}
+
+atlas-form-field [data-atlas-field-required] {
+  color: var(--atlas-color-danger);
+}
+
