@@ -12,13 +12,10 @@
  * is never allocated and every call is a no-op that bundlers can strip.
  */
 
-const DEV_MODE = (() => {
-  try {
-    return import.meta.env?.DEV === true;
-  } catch {
-    return false;
-  }
-})();
+// Vite replaces `import.meta.env.DEV` with a boolean literal at build time,
+// so in prod bundles this becomes `const DEV_MODE = false;` and every
+// `if (DEV_MODE)` / `DEV_MODE ? … : …` below dead-code eliminates.
+const DEV_MODE = import.meta.env.DEV;
 
 /** @type {Map<string, () => unknown> | null} */
 const readers = DEV_MODE ? new Map() : null;

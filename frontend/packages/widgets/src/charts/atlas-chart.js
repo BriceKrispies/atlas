@@ -187,6 +187,7 @@ class AtlasChart extends AtlasElement {
     // Keyboard navigation + focus telemetry: delegate on svg.
     svg.addEventListener('focusin', (e) => this._onFocus(e));
     svg.addEventListener('focusout', (e) => this._onBlur(e));
+    svg.addEventListener('click', (e) => this._onClick(e));
   }
 
   _renderRadial(svg, type, normalized, { width, height, colors }) {
@@ -217,6 +218,19 @@ class AtlasChart extends AtlasElement {
 
   _onBlur() {
     this.dispatchEvent(new CustomEvent('point-blur', { bubbles: true }));
+  }
+
+  _onClick(e) {
+    const target = e.target;
+    const seriesIdx = Number(target?.getAttribute?.('data-series'));
+    const index = Number(target?.getAttribute?.('data-index'));
+    const seriesId = target?.getAttribute?.('data-series-id') ?? null;
+    const pointValue = target?.getAttribute?.('data-x') ?? null;
+    if (!Number.isFinite(seriesIdx) && !Number.isFinite(index) && !seriesId) return;
+    this.dispatchEvent(new CustomEvent('point-click', {
+      bubbles: true,
+      detail: { seriesIdx, index, seriesId, pointValue },
+    }));
   }
 }
 
