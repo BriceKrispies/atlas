@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/heading/config.v1.json",
+  "title": "HeadingWidgetConfig",
+  "description": "Config for sandbox.heading — a single atlas-heading at the chosen level.",
+  "type": "object",
+  "required": ["level", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 6,
+      "default": 1,
+      "description": "Semantic heading level (1 through 6)."
+    },
+    "text": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 200,
+      "default": "",
+      "description": "Heading content."
+    }
+  }
+}

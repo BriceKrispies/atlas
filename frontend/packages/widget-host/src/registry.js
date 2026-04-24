@@ -12,14 +12,14 @@ import { WidgetManifestError } from './errors.js';
 
 export class WidgetRegistry {
   constructor() {
-    /** @type {Map<string, { manifest: object, element: Function }>} */
+    /** @type {Map<string, { manifest: object, element: Function, schema: object | null }>} */
     this._entries = new Map();
   }
 
   /**
-   * @param {{ manifest: object, element: Function }} entry
+   * @param {{ manifest: object, element: Function, schema?: object | null }} entry
    */
-  register({ manifest, element }) {
+  register({ manifest, element, schema = null }) {
     if (!manifest || typeof manifest !== 'object') {
       throw new WidgetManifestError('manifest must be an object');
     }
@@ -35,7 +35,7 @@ export class WidgetRegistry {
         { errors },
       );
     }
-    this._entries.set(manifest.widgetId, { manifest, element });
+    this._entries.set(manifest.widgetId, { manifest, element, schema });
   }
 
   has(widgetId) {

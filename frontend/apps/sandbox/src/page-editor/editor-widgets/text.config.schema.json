@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/text/config.v1.json",
+  "title": "TextWidgetConfig",
+  "description": "Config for sandbox.text — a single atlas-text block.",
+  "type": "object",
+  "required": ["content"],
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 2000,
+      "default": "",
+      "description": "The text to display."
+    },
+    "variant": {
+      "type": "string",
+      "enum": ["body", "muted", "medium", "error", "small", "mono"],
+      "default": "body"
+    },
+    "block": {
+      "type": "boolean",
+      "default": false,
+      "description": "Render as a block-level element."
+    }
+  }
+}

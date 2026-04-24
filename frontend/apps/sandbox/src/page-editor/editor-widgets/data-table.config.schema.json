@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/data-table/config.v1.json",
+  "title": "DataTableWidgetConfig",
+  "description": "Config for sandbox.data-table.",
+  "type": "object",
+  "required": ["columns"],
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 120,
+      "default": "",
+      "description": "Accessible label / caption for the table."
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 10,
+      "description": "Rows per page; 0 disables pagination."
+    },
+    "density": {
+      "type": "string",
+      "enum": ["compact", "cozy", "comfortable"],
+      "default": "cozy"
+    },
+    "selection": {
+      "type": "string",
+      "enum": ["none", "single", "multi"],
+      "default": "none"
+    },
+    "rowKey": {
+      "type": "string",
+      "default": "id",
+      "description": "Field name used as the stable row key."
+    },
+    "resourceType": {
+      "type": "string",
+      "default": "",
+      "description": "Projection resource type for SSE streaming. Blank disables."
+    },
+    "emptyHeading": {
+      "type": "string",
+      "default": "No data",
+      "maxLength": 80
+    },
+    "emptyBody": {
+      "type": "string",
+      "default": "",
+      "maxLength": 240
+    },
+    "columns": {
+      "type": "array",
+      "description": "Column configurations. Each item must have a key and label; sortable is optional.",
+      "items": {
+        "type": "object",
+        "required": ["key", "label"],
+        "additionalProperties": true,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "sortable": { "type": "boolean" }
+        }
+      },
+      "default": []
+    },
+    "data": {
+      "type": "array",
+      "description": "Inline rows. Each row is an object keyed by column keys.",
+      "items": { "type": "object" },
+      "default": []
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/sparkline/config.v1.json",
+  "title": "SparklineWidgetConfig",
+  "description": "Config for sandbox.sparkline.",
+  "type": "object",
+  "required": ["values"],
+  "additionalProperties": false,
+  "properties": {
+    "values": {
+      "type": "string",
+      "default": "",
+      "description": "Comma-separated numeric series."
+    },
+    "color": {
+      "type": "string",
+      "default": "",
+      "description": "CSS color; blank uses --atlas-chart-color-1."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 120,
+      "default": "",
+      "description": "Accessible label."
+    },
+    "showLastPoint": {
+      "type": "boolean",
+      "default": false,
+      "description": "Draw a marker at the last point."
+    }
+  }
+}

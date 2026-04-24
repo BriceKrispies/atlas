@@ -143,6 +143,22 @@ export class EditorController {
     return regions.find((r) => r.name === regionName) ?? null;
   }
 
+  /**
+   * Look up the config JSON schema for a widgetId, if the registry has one.
+   * Returns null when the registry doesn't know the widget or carries no
+   * schema for it.
+   */
+  getSchema(widgetId) {
+    const reg = this._registry;
+    if (!reg || typeof reg.get !== 'function') return null;
+    try {
+      const entry = reg.get(widgetId);
+      return entry?.schema ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   _isWidgetKnown(widgetId) {
     const reg = this._registry;
     if (!reg) return false;

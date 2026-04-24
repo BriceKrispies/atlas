@@ -28,6 +28,11 @@ import {
 import { seedPages, gallerySeedPages } from '@atlas/bundle-standard/seed-pages';
 import { arrayDataSource } from '@atlas/widgets';
 
+// Page-editor sandbox surface: provides a mount helper + its own seed
+// pages so the "Page Editor" group is isolated from the Pages / Layout
+// Gallery stores.
+import { createMountPageEditor, editorSeedPages } from './page-editor/index.js';
+
 // Sandbox-scoped layout registry seeded with every bundled preset. Shared
 // across all Layout + Layout Gallery specimens so "edit one, see another"
 // can be demoed later without re-seeding.
@@ -830,6 +835,42 @@ for (const doc of gallerySeedPages) {
     configVariants: [
       { name: 'View', config: { pageId: doc.pageId, edit: false } },
       { name: 'Edit', config: { pageId: doc.pageId, edit: true } },
+    ],
+  });
+}
+
+
+// ── Page Editor ─────────────────────────────────────────────────
+//
+// <sandbox-page-editor> specimens. A dedicated PageStore keeps editor
+// edits isolated from the Pages / Layout Gallery groups so each group
+// starts from a known baseline. Phase A mounts the shell in its full
+// chrome (toolbar, palette, canvas, inspector, preview-toggle) with
+// stubbed toolbar handlers; later phases wire real behaviour behind the
+// same surface.
+
+const sandboxPageEditorStore = new ValidatingPageStore(new InMemoryPageStore());
+for (const doc of editorSeedPages) {
+  sandboxPageEditorStore.save(doc.pageId, doc);
+}
+
+const mountPageEditor = createMountPageEditor({
+  pageStore: sandboxPageEditorStore,
+  layoutRegistry: sandboxLayoutRegistry,
+  tenantId: 'acme',
+  capabilities: sandboxCapabilities,
+  principal: { id: 'u_sandbox', roles: [] },
+});
+
+for (const doc of editorSeedPages) {
+  S({
+    id: `page-editor.${doc.pageId}`,
+    name: doc.meta?.title ?? doc.pageId,
+    tag: 'sandbox-page-editor',
+    group: 'Page Editor',
+    mount: mountPageEditor,
+    configVariants: [
+      { name: 'Edit', config: { pageId: doc.pageId } },
     ],
   });
 }

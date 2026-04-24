@@ -217,6 +217,26 @@ export class ContentPageElement extends AtlasSurface {
     // Intentionally empty — connectedCallback runs the imperative mount.
   }
 
+  /**
+   * Re-read the doc from `pageStore` and remount the template + editor.
+   * Used by hosting shells that mutate the store outside the editor API
+   * (e.g. undo/redo replays a previous doc through `pageStore.save`, but
+   * the editor controller only knows about its own in-memory copy; a
+   * reload re-syncs the canvas with the store).
+   */
+  async reload() {
+    this._detachEditor();
+    if (this._widgetHostEl && this._widgetHostEl.parentNode) {
+      this._widgetHostEl.parentNode.removeChild(this._widgetHostEl);
+    }
+    this._widgetHostEl = null;
+    this._templateEl = null;
+    this._editLayoutEl = null;
+    this._paletteEl = null;
+    this.textContent = '';
+    await this._loadAndMount();
+  }
+
   // ---- internal ----
 
   _renderError(message) {

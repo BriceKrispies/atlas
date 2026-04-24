@@ -85,6 +85,26 @@ template-two-column > widget-host > section[data-slot="sidebar"] {
   min-width: 0;
 }
 
+/* Wrap-to-stack when the template is narrower than its two columns can
+ * fit side-by-side. Using `repeat(auto-fit, minmax(320px, 1fr))` keeps the
+ * layout usable when the template is embedded inside a constrained canvas
+ * (e.g. the page editor's shell, which reserves width for the palette and
+ * property panel) — no viewport media query needed. Grid areas stay
+ * meaningful because each section claims its own row when the track can
+ * only fit one column. */
+@supports (grid-template-columns: repeat(auto-fit, minmax(0, 1fr))) {
+  template-two-column {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-template-areas: none;
+  }
+  template-two-column > widget-host > section[data-slot="main"] {
+    grid-area: auto;
+  }
+  template-two-column > widget-host > section[data-slot="sidebar"] {
+    grid-area: auto;
+  }
+}
+
 @media (max-width: 768px) {
   template-two-column {
     grid-template-columns: 1fr;

@@ -71,6 +71,27 @@ export function freshInstanceId(widgetId) {
   return `w-${prefix}-${stamp}-${rand}`;
 }
 
+/**
+ * Extract top-level property defaults from a JSON Schema (draft-07) object.
+ * Only reads `properties[key].default` — nested defaults and `$ref`s are
+ * out of scope; widget schemas in this repo are flat.
+ * @param {object | null | undefined} schema
+ * @returns {object}
+ */
+function schemaDefaults(schema) {
+  if (!schema || typeof schema !== 'object') return {};
+  const props = schema.properties;
+  if (!props || typeof props !== 'object') return {};
+  const out = {};
+  for (const key of Object.keys(props)) {
+    const prop = props[key];
+    if (prop && typeof prop === 'object' && 'default' in prop) {
+      out[key] = prop.default;
+    }
+  }
+  return out;
+}
+
 export class EditorAPI {
   /**
    * @param {object} options
@@ -196,10 +217,12 @@ export class EditorAPI {
     if (!args || !args.widgetId || !args.region) {
       return { ok: false, reason: 'invalid-entry' };
     }
+    const schema = this._controller.getSchema?.(args.widgetId) ?? null;
+    const defaults = schemaDefaults(schema);
     const entry = {
       widgetId: args.widgetId,
       instanceId: args.instanceId ?? freshInstanceId(args.widgetId),
-      config: args.config ?? {},
+      config: { ...defaults, ...(args.config ?? {}) },
     };
     const result = this._controller.applyAdd({
       entry,

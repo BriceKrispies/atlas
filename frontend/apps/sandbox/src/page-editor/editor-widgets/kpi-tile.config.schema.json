@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/kpi-tile/config.v1.json",
+  "title": "KpiTileWidgetConfig",
+  "description": "Config for sandbox.kpi-tile.",
+  "type": "object",
+  "required": ["value"],
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 120,
+      "default": "",
+      "description": "Caption rendered above the value."
+    },
+    "value": {
+      "type": "string",
+      "maxLength": 40,
+      "default": "0",
+      "description": "Headline figure — numbers are accepted as strings (no formatting)."
+    },
+    "unit": {
+      "type": "string",
+      "maxLength": 20,
+      "default": "",
+      "description": "Optional unit appended to the value (e.g. %, req/s)."
+    },
+    "trend": {
+      "type": "string",
+      "enum": ["up", "down", "flat", ""],
+      "default": "",
+      "description": "Colorizes the trend badge; blank hides it."
+    },
+    "trendLabel": {
+      "type": "string",
+      "maxLength": 60,
+      "default": "",
+      "description": "Display text for the trend, e.g. \"+5.2% vs. last week\"."
+    },
+    "sparklineValues": {
+      "type": "string",
+      "default": "",
+      "description": "Comma-separated numeric series rendered below the value."
+    }
+  }
+}

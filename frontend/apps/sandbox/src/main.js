@@ -19,6 +19,9 @@ registerAllTemplates();
 import '@atlas/bundle-standard/templates';
 // Widget development harness — registers <widget-harness>.
 import './harness/widget-harness.js';
+// Page editor shell — registers <sandbox-page-editor>. Specimens that mount
+// it are declared in specimens.js.
+import './page-editor/index.js';
 
 // sandbox-app.js is imported by specimens.js (it needs the class export)
 // specimens register before the element is defined, so data is ready on connectedCallback

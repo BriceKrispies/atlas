@@ -104,7 +104,12 @@
       "Bash(pnpm --filter @atlas/sandbox test:e2e -- --reporter=list)",
       "Bash(pnpm exec *)",
       "Bash(pnpm --filter @atlas/bundle-standard test)",
-      "Bash(pnpm --filter @atlas/bundle-standard test:register)"
+      "Bash(pnpm --filter @atlas/bundle-standard test:register)",
+      "Bash(pnpm -F @atlas/sandbox build)",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
+      "Bash(git rebase *)",
+      "Bash(pnpm playwright *)"
     ]
   }
 }
