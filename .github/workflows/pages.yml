@@ -51,8 +51,8 @@ jobs:
           mkdir -p dist/admin dist/sandbox
           cp frontend/deploy/index.html dist/index.html
           cp frontend/deploy/index.html dist/404.html
-          cp -r frontend/apps/admin/dist/. dist/admin/
-          cp -r frontend/apps/sandbox/dist/. dist/sandbox/
+          cp -r frontend/dist/admin/. dist/admin/
+          cp -r frontend/dist/sandbox/. dist/sandbox/
 
       - uses: actions/upload-pages-artifact@v3
         with:
