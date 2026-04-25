@@ -40,6 +40,8 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'date-picker':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'date', 'calendar'] },
   'file-upload':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'upload', 'file'] },
   'form-field':     { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'label', 'wrapper'] },
+  'split-button':   { category: 'primitives', subcategory: 'Controls',   tags: ['button', 'dropdown', 'menu', 'composite'] },
+  'toggle-group':   { category: 'primitives', subcategory: 'Controls',   tags: ['toggle', 'multi-select', 'segmented', 'pressed'] },
 
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
@@ -63,6 +65,8 @@ const STATIC: Record<string, TaxonomyEntry> = {
 
   // Primitives — Data
   'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
+  'timeline':       { category: 'primitives', subcategory: 'Data',       tags: ['timeline', 'log', 'events', 'history'] },
+  'stat':           { category: 'primitives', subcategory: 'Data',       tags: ['metric', 'kpi', 'number', 'tile'] },
 
   // Patterns — Page / Forms / Shell
   'page-header':    { category: 'patterns',   subcategory: 'Page',       tags: ['header', 'title', 'actions'] },

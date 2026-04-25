@@ -18,6 +18,7 @@ import './primitives/feedback.ts';
 import './primitives/navigation.ts';
 import './primitives/overlays.ts';
 import './primitives/data.ts';
+import './primitives/data-composites.ts';
 
 // Patterns
 import './patterns/page.ts';

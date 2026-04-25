@@ -49,4 +49,19 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
+  // Batch Data & Composites — specimens smoke
+  const dataAndComposites: Array<{ id: string; tag: string }> = [
+    { id: 'timeline',     tag: 'atlas-timeline' },
+    { id: 'stat',         tag: 'atlas-stat' },
+    { id: 'split-button', tag: 'atlas-split-button' },
+    { id: 'toggle-group', tag: 'atlas-toggle-group' },
+  ];
+
+  for (const { id, tag } of dataAndComposites) {
+    test(`Batch Data & Composites — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
 });

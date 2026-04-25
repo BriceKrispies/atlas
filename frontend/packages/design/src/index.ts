@@ -75,3 +75,13 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Data display
+import './atlas-stat.ts';
+import './atlas-timeline.ts';
+import './atlas-timeline-item.ts';
+
+// Control composites
+import './atlas-split-button.ts';
+import './atlas-toggle-group.ts';
+import './atlas-toggle-group-item.ts';
