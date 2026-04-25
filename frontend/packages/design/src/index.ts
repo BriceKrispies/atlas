@@ -75,3 +75,17 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Mobile overlay primitives
+import './atlas-bottom-sheet.ts';
+import './atlas-action-sheet.ts';
+import './atlas-fab.ts';
+
+// Agent surfaces primitives
+import './atlas-diff.ts';
+import './atlas-json-view.ts';
+import './atlas-activity.ts';
+import './atlas-consent-banner.ts';
+import './atlas-capability-tile.ts';
+import './atlas-capability-grid.ts';
+import './atlas-resource-picker.ts';

@@ -49,4 +49,52 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
+  // Batch Mobile overlays — specimens smoke. Sheets/dialogs are display:
+  // contents at rest, so we trigger their open mechanism (or, for FAB,
+  // assert the host element directly) before asserting visibility.
+  const mobileOverlays: Array<{ id: string; tag: string }> = [
+    { id: 'bottom-sheet', tag: 'atlas-bottom-sheet' },
+    { id: 'action-sheet', tag: 'atlas-action-sheet' },
+    { id: 'fab',          tag: 'atlas-fab' },
+  ];
+
+  for (const { id, tag } of mobileOverlays) {
+    test(`Mobile overlays specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      // FAB is a positioned button — visible immediately. Sheets render
+      // via display:contents until opened, so for those we click the
+      // first trigger and then assert the dialog inside is visible.
+      if (tag === 'atlas-fab') {
+        await expect(page.locator(tag).first()).toBeVisible();
+      } else {
+        // Each sheet specimen mounts an atlas-button trigger row; tapping
+        // the first one opens the first sheet. The shadow-DOM dialog is
+        // observable via the host's [open] reflected attribute.
+        const triggers = page.locator('atlas-button');
+        await triggers.first().click();
+        await expect(page.locator(`${tag}[open]`).first()).toHaveAttribute('open', '');
+      }
+    });
+  }
+
+  // Batch Agent — specimens smoke. Each agent-oriented primitive renders
+  // at least one of its tag in the preview body. The resource-picker
+  // host element is present at mount time (it slots a trigger button +
+  // a closed picker shell), so a tag-only assertion is sufficient.
+  const agentPrimitives: Array<{ id: string; tag: string }> = [
+    { id: 'diff',             tag: 'atlas-diff' },
+    { id: 'json-view',        tag: 'atlas-json-view' },
+    { id: 'activity',         tag: 'atlas-activity' },
+    { id: 'consent-banner',   tag: 'atlas-consent-banner' },
+    { id: 'capability-grid',  tag: 'atlas-capability-grid' },
+    { id: 'resource-picker',  tag: 'atlas-resource-picker' },
+  ];
+
+  for (const { id, tag } of agentPrimitives) {
+    test(`Batch Agent — specimens smoke "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
 });

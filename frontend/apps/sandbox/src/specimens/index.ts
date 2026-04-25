@@ -17,7 +17,9 @@ import './primitives/controls-specialized.ts';
 import './primitives/feedback.ts';
 import './primitives/navigation.ts';
 import './primitives/overlays.ts';
+import './primitives/mobile-overlays.ts';
 import './primitives/data.ts';
+import './primitives/agent.ts';
 
 // Patterns
 import './patterns/page.ts';

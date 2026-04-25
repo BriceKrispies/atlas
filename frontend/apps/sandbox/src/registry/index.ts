@@ -61,8 +61,21 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'toast':             { category: 'primitives', subcategory: 'Overlays',   tags: ['notification', 'ephemeral', 'snackbar'] },
   'command-palette':   { category: 'primitives', subcategory: 'Overlays',   tags: ['cmdk', 'search', 'palette', 'jump'] },
 
+  // Primitives — Mobile
+  'bottom-sheet':      { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'sheet', 'modal', 'drag', 'snap'] },
+  'action-sheet':      { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'sheet', 'menu', 'ios', 'destructive'] },
+  'fab':               { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'floating', 'action', 'button', 'cta'] },
+
   // Primitives — Data
   'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
+
+  // Primitives — Agent
+  'diff':              { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'diff', 'lcs', 'unified', 'split', 'review'] },
+  'json-view':         { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'json', 'tree', 'inspect', 'debug'] },
+  'activity':          { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'status', 'run', 'tool-call', 'streaming'] },
+  'consent-banner':    { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'consent', 'approve', 'deny', 'permission'] },
+  'capability-grid':   { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'capability', 'permission', 'grant', 'tile'] },
+  'resource-picker':   { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'picker', 'resource', 'page', 'media', 'user'] },
 
   // Patterns — Page / Forms / Shell
   'page-header':    { category: 'patterns',   subcategory: 'Page',       tags: ['header', 'title', 'actions'] },
