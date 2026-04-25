@@ -45,14 +45,20 @@ jobs:
           VITE_BASE: /atlas/sandbox/
         run: pnpm --filter @atlas/sandbox build
 
+      - name: Build authoring
+        env:
+          VITE_BASE: /atlas/authoring/
+        run: pnpm --filter @atlas/authoring build
+
       - name: Assemble site
         working-directory: ${{ github.workspace }}
         run: |
-          mkdir -p dist/admin dist/sandbox
+          mkdir -p dist/admin dist/sandbox dist/authoring
           cp frontend/deploy/index.html dist/index.html
           cp frontend/deploy/index.html dist/404.html
           cp -r frontend/dist/admin/. dist/admin/
           cp -r frontend/dist/sandbox/. dist/sandbox/
+          cp -r frontend/dist/authoring/. dist/authoring/
 
       - uses: actions/upload-pages-artifact@v3
         with:
