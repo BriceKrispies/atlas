@@ -86,6 +86,11 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of gestureSpecimens) {
     test(`Batch Gestures — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
+
   // Batch Identity & Chips — specimens smoke
   const identityAndChips: Array<{ id: string; tag: string }> = [
     { id: 'avatar',       tag: 'atlas-avatar' },
@@ -98,6 +103,11 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of identityAndChips) {
     test(`Batch Identity & Chips — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
+
   // Batch Nav structure — specimens smoke
   const navStructure: Array<{ id: string; tag: string }> = [
     { id: 'breadcrumbs', tag: 'atlas-breadcrumbs' },
@@ -109,6 +119,11 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of navStructure) {
     test(`Nav structure specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
+
   // Batch Data & Composites — specimens smoke
   const dataAndComposites: Array<{ id: string; tag: string }> = [
     { id: 'timeline',     tag: 'atlas-timeline' },
@@ -119,6 +134,11 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of dataAndComposites) {
     test(`Batch Data & Composites — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
+
   // Batch Content authoring — specimens smoke
   const contentPrimitives: Array<{ id: string; tag: string }> = [
     { id: 'color-picker', tag: 'atlas-color-picker' },

@@ -612,7 +612,7 @@ export class AtlasMediaPicker extends AtlasElement {
 
     // Wire events
     search.addEventListener('input', (ev) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
+      const detail = (ev as unknown as CustomEvent<{ value: string }>).detail;
       this._query = detail?.value ?? '';
       this._page = 1;
       this._renderGrid();

@@ -234,7 +234,7 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     this._body = body;
     this.appendChild(body);
 
-    const pagination = document.createElement('atlas-pagination') as HTMLElement & {
+    const pagination = document.createElement('atlas-pagination') as unknown as HTMLElement & {
       hidden: boolean;
       pageCount?: number;
       pageSize?: number;
