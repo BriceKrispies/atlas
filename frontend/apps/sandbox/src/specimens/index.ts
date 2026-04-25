@@ -35,9 +35,9 @@ import './patterns/shell.ts';
 import './patterns/surfaces.ts';
 import './patterns/widgets.ts';
 
-// Pages
-import './pages/content.ts';
+// Layouts
+import './layouts/seed-pages.ts';
+import './layouts/presets.ts';
 
-// Templates
-import './templates/layouts.ts';
-import './templates/authoring-previews.ts';
+// Authoring
+import './authoring/previews.ts';
