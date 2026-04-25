@@ -54,6 +54,10 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'segmented-control': { category: 'primitives', subcategory: 'Navigation', tags: ['segmented', 'picker', 'radiogroup', 'toggle'] },
   'accordion':         { category: 'primitives', subcategory: 'Navigation', tags: ['expand', 'collapse', 'disclosure', 'details'] },
 
+  // Primitives — Mobile
+  'app-bar':           { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'chrome', 'topbar'] },
+  'bottom-nav':        { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'nav', 'tabbar'] },
+
   // Primitives — Overlays
   'tooltip':           { category: 'primitives', subcategory: 'Overlays',   tags: ['hover', 'popover', 'hint'] },
   'dialog':            { category: 'primitives', subcategory: 'Overlays',   tags: ['modal', 'confirm', 'alert'] },

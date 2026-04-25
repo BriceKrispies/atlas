@@ -81,6 +81,10 @@ import './atlas-bottom-sheet.ts';
 import './atlas-action-sheet.ts';
 import './atlas-fab.ts';
 
+// Mobile nav chrome
+import './atlas-app-bar.ts';
+import './atlas-bottom-nav.ts';
+
 // Agent surfaces primitives
 import './atlas-diff.ts';
 import './atlas-json-view.ts';
