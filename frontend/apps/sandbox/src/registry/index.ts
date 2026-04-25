@@ -40,6 +40,14 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'date-picker':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'date', 'calendar'] },
   'file-upload':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'upload', 'file'] },
   'form-field':     { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'label', 'wrapper'] },
+  'chip':           { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'filter', 'choice', 'tag'] },
+  'chip-group':     { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'group', 'selection'] },
+  'chip-input':     { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'input', 'tags', 'form'] },
+
+  // Primitives — Identity
+  'avatar':         { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'user', 'profile', 'image'] },
+  'avatar-group':   { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'group', 'cluster', 'overflow'] },
+  'tag':            { category: 'primitives', subcategory: 'Identity',   tags: ['tag', 'label', 'pill', 'metadata'] },
 
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },

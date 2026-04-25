@@ -75,3 +75,13 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Identity primitives
+import './atlas-avatar.ts';
+import './atlas-avatar-group.ts';
+import './atlas-tag.ts';
+
+// Chip primitives
+import './atlas-chip.ts';
+import './atlas-chip-group.ts';
+import './atlas-chip-input.ts';
