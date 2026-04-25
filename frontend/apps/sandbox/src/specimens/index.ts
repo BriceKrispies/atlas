@@ -26,6 +26,7 @@ import './primitives/gestures.ts';
 import './primitives/agent.ts';
 import './primitives/identity-chips.ts';
 import './primitives/data-composites.ts';
+import './primitives/content.ts';
 
 // Patterns
 import './patterns/page.ts';

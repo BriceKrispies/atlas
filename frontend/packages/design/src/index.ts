@@ -129,3 +129,13 @@ import './atlas-timeline-item.ts';
 import './atlas-split-button.ts';
 import './atlas-toggle-group.ts';
 import './atlas-toggle-group-item.ts';
+// Content authoring primitives
+import './atlas-color-picker.ts';
+import './atlas-media-picker.ts';
+
+export type {
+  MediaItem,
+  AtlasMediaPickerChangeDetail,
+  AtlasMediaPickerRequestDetail,
+} from './atlas-media-picker.ts';
+export type { AtlasColorPickerChangeDetail } from './atlas-color-picker.ts';

@@ -50,6 +50,10 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'tag':            { category: 'primitives', subcategory: 'Identity',   tags: ['tag', 'label', 'pill', 'metadata'] },
   'split-button':   { category: 'primitives', subcategory: 'Controls',   tags: ['button', 'dropdown', 'menu', 'composite'] },
   'toggle-group':   { category: 'primitives', subcategory: 'Controls',   tags: ['toggle', 'multi-select', 'segmented', 'pressed'] },
+  'color-picker':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'color', 'hex', 'hsl', 'rgb'] },
+
+  // Primitives — Content authoring
+  'media-picker':   { category: 'primitives', subcategory: 'Content',    tags: ['media', 'image', 'video', 'library', 'picker'] },
 
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
