@@ -156,9 +156,8 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
     await page.click(action('insert-text'));
     expect(((await readEditorState(page, SEEDED_ID)) as { dirty: boolean }).dirty).toBe(true);
 
-    // The toolbar's _save calls controller.markClean(); the controller
-    // does not register `save` as a mutation intent (so it has no
-    // committed-state record), so we observe the dirty transition.
+    // Save is a host-app concern, not a controller intent — the toolbar
+    // calls markClean() directly. Observable contract is the dirty flag.
     await page.click(action('save'));
     await expect
       .poll(async () => ((await readEditorState(page, SEEDED_ID)) as { dirty: boolean }).dirty)

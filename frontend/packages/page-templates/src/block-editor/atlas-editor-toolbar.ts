@@ -97,7 +97,6 @@ class AtlasEditorToolbar extends AtlasElement {
   private _save(): void {
     const editor = this._editor;
     if (!editor?.controller) return;
-    editor.controller.commit('save', {});
     editor.controller.markClean();
     this.dispatchEvent(
       new CustomEvent('editor-save', {
