@@ -26,9 +26,6 @@ import { AtlasElement } from '@atlas/core';
  */
 export class AtlasAvatarGroup extends AtlasElement {
   private _observer: MutationObserver | null = null;
-  /** Re-entrancy guard: `_sync()` mutates light-DOM children, which the
-   *  observer would notice and re-trigger. Without this we'd loop. */
-  private _syncing = false;
 
   static override get observedAttributes(): readonly string[] {
     return ['max'];
@@ -46,11 +43,7 @@ export class AtlasAvatarGroup extends AtlasElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'group');
-    this._observer = new MutationObserver(() => {
-      if (this._syncing) return;
-      this._sync();
-    });
-    this._observer.observe(this, { childList: true, subtree: false });
+    this._observer = new MutationObserver(() => this._sync());
     this._sync();
   }
 
@@ -65,7 +58,12 @@ export class AtlasAvatarGroup extends AtlasElement {
   }
 
   private _sync(): void {
-    this._syncing = true;
+    // MutationObserver callbacks fire as microtasks, which a synchronous
+    // boolean guard can't gate (the guard clears before the microtask runs,
+    // so the observer re-enters and we loop until the browser locks). Disconnect
+    // around our own mutations and reconnect after, draining any records we
+    // queued ourselves via takeRecords() so they don't fire on reconnect.
+    this._observer?.disconnect();
     try {
       // Remove any previously-rendered overflow chip; we recompute fresh.
       const previous = this.querySelector<HTMLElement>(':scope > [data-atlas-overflow]');
@@ -110,7 +108,12 @@ export class AtlasAvatarGroup extends AtlasElement {
         this.appendChild(chip);
       }
     } finally {
-      this._syncing = false;
+      // Drain records we queued ourselves so the next observe() doesn't
+      // immediately re-fire with our own mutations.
+      this._observer?.takeRecords();
+      if (this.isConnected && this._observer) {
+        this._observer.observe(this, { childList: true, subtree: false });
+      }
     }
   }
 }
