@@ -73,6 +73,10 @@ const STATIC: Record<string, TaxonomyEntry> = {
   // Primitives — Data
   'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
 
+  // Primitives — Mobile (gestures)
+  'pull-to-refresh':   { category: 'primitives', subcategory: 'Mobile',    tags: ['mobile', 'gesture', 'touch', 'refresh'] },
+  'swipe-actions':     { category: 'primitives', subcategory: 'Mobile',    tags: ['mobile', 'gesture', 'swipe', 'row'] },
+
   // Primitives — Agent
   'diff':              { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'diff', 'lcs', 'unified', 'split', 'review'] },
   'json-view':         { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'json', 'tree', 'inspect', 'debug'] },

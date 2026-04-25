@@ -20,6 +20,7 @@ import './primitives/mobile-nav.ts';
 import './primitives/overlays.ts';
 import './primitives/mobile-overlays.ts';
 import './primitives/data.ts';
+import './primitives/gestures.ts';
 import './primitives/agent.ts';
 
 // Patterns

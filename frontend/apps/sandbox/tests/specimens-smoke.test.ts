@@ -78,6 +78,19 @@ test.describe('sandbox — specimens smoke', () => {
     });
   }
 
+  // Batch Gestures — specimens smoke
+  const gestureSpecimens: Array<{ id: string; tag: string }> = [
+    { id: 'pull-to-refresh', tag: 'atlas-pull-to-refresh' },
+    { id: 'swipe-actions',   tag: 'atlas-swipe-actions' },
+  ];
+
+  for (const { id, tag } of gestureSpecimens) {
+    test(`Batch Gestures — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
+
   // Batch Agent — specimens smoke. Each agent-oriented primitive renders
   // at least one of its tag in the preview body. The resource-picker
   // host element is present at mount time (it slots a trigger button +
@@ -97,6 +110,7 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
   // Batch Mobile nav — specimens smoke. The two new chrome primitives
   // are mobile-first so we just verify their tag mounts. Active-state
   // and keyboard nav are exercised in the dedicated component tests.

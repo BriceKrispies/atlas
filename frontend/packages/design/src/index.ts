@@ -85,6 +85,10 @@ import './atlas-fab.ts';
 import './atlas-app-bar.ts';
 import './atlas-bottom-nav.ts';
 
+// Gesture primitives
+import './atlas-pull-to-refresh.ts';
+import './atlas-swipe-actions.ts';
+
 // Agent surfaces primitives
 import './atlas-diff.ts';
 import './atlas-json-view.ts';
