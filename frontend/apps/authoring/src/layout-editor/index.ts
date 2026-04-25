@@ -74,19 +74,20 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
       <style>${styles}</style>
       <atlas-box data-role="picker">
         <atlas-text variant="medium">Layout</atlas-text>
-        <select data-role="layout-select" aria-label="Layout"></select>
+        <atlas-select data-role="layout-select" aria-label="Layout"></atlas-select>
       </atlas-box>
       <atlas-box data-role="canvas"></atlas-box>
     `;
 
-    const select = this._root.querySelector('select[data-role="layout-select"]') as HTMLSelectElement | null;
+    const select = this._root.querySelector('atlas-select[data-role="layout-select"]') as
+      | (HTMLElement & { options: unknown; value: string })
+      | null;
     if (select) {
-      select.innerHTML = options
-        .map((o) => `<option value="${o.value}">${o.label}</option>`)
-        .join('');
+      select.options = options;
       select.value = initial;
-      select.addEventListener('change', () => {
-        this._activeLayoutId = select.value === BLANK_VALUE ? null : select.value;
+      select.addEventListener('change', (ev) => {
+        const next = (ev as CustomEvent<{ value: string }>).detail?.value ?? select.value;
+        this._activeLayoutId = next === BLANK_VALUE ? null : next;
         void this._mountEditor();
       });
     }
