@@ -23,12 +23,14 @@ Constitutional rules: `specs/frontend/constitution.md` (15 rules, C1-C15)
 | `packages/test-fixtures` (`@atlas/test-fixtures`) | Playwright helpers: `atlasTest`, `mockApi`, `loginAs`, `telemetrySpy` |
 | `apps/admin` (`@atlas/admin`) | Tenant admin console |
 | `apps/sandbox` (`@atlas/sandbox`) | Design system sandbox / component playground |
+| `apps/authoring` (`@atlas/authoring`) | Interactive page / layout / block editors |
 
 ## Commands
 
 ```bash
 pnpm dev              # start admin dev server
 pnpm sandbox          # start design sandbox
+pnpm authoring        # start authoring app (page/layout/block editors)
 pnpm build            # build all apps
 pnpm test             # run unit tests
 pnpm test:e2e         # Playwright tests

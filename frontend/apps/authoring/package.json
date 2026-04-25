@@ -1,0 +1,22 @@
+{
+  "name": "@atlas/authoring",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@atlas/core": "workspace:*",
+    "@atlas/design": "workspace:*",
+    "@atlas/widgets": "workspace:*",
+    "@atlas/widget-host": "workspace:*",
+    "@atlas/page-templates": "workspace:*",
+    "@atlas/bundle-standard": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/test-fixtures": "workspace:*",
+    "vite": "^6.0.0"
+  }
+}

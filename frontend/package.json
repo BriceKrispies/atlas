@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm --filter @atlas/admin dev",
     "sandbox": "pnpm --filter @atlas/sandbox dev",
+    "authoring": "pnpm --filter @atlas/authoring dev",
     "build": "pnpm --filter './apps/*' build",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "typecheck:watch": "tsgo --noEmit -p tsconfig.json --watch",

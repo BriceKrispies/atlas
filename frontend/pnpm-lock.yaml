@@ -61,6 +61,34 @@ importers:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@22.19.17)(tsx@4.21.0)
 
+  apps/authoring:
+    dependencies:
+      '@atlas/bundle-standard':
+        specifier: workspace:*
+        version: link:../../bundles/standard
+      '@atlas/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@atlas/design':
+        specifier: workspace:*
+        version: link:../../packages/design
+      '@atlas/page-templates':
+        specifier: workspace:*
+        version: link:../../packages/page-templates
+      '@atlas/widget-host':
+        specifier: workspace:*
+        version: link:../../packages/widget-host
+      '@atlas/widgets':
+        specifier: workspace:*
+        version: link:../../packages/widgets
+    devDependencies:
+      '@atlas/test-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/test-fixtures
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.2(@types/node@22.19.17)(tsx@4.21.0)
+
   apps/sandbox:
     dependencies:
       '@atlas/bundle-standard':

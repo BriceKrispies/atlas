@@ -39,8 +39,5 @@ import './patterns/widgets.ts';
 import './pages/content.ts';
 
 // Templates
-import './templates/editors.ts';
 import './templates/layouts.ts';
-import './templates/gallery.ts';
-import './templates/page-editor.ts';
-import './templates/layout-editor.ts';
+import './templates/authoring-previews.ts';

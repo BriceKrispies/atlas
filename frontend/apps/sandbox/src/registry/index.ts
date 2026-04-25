@@ -4,142 +4,141 @@ export type { Category, Status, TaxonomyEntry } from './types.ts';
 export { CATEGORIES } from './types.ts';
 
 // Fixed-id taxonomy. Id = key. Source of truth for where each specimen
-// lives in the two-tier (category / subcategory) nav. Tags feed the
-// sidebar search. Status drives the Badge on the preview header.
+// lives in the sidebar. Tags feed the sidebar search. Status drives the
+// Badge on the preview header. Subcategory is optional — most categories
+// list specimens flat; only `inputs` is large enough to warrant grouping.
 const STATIC: Record<string, TaxonomyEntry> = {
-  // Primitives — Layout
-  'box':            { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'container'] },
-  'stack':          { category: 'primitives', subcategory: 'Layout',     tags: ['layout', 'flex', 'row', 'column'] },
-  'card':           { category: 'primitives', subcategory: 'Layout',     tags: ['surface', 'container', 'bordered'] },
-  'divider':        { category: 'primitives', subcategory: 'Layout',     tags: ['rule', 'separator', 'hr'] },
-  'grid':           { category: 'primitives', subcategory: 'Layout',     tags: ['grid', 'columns', 'auto-fit'] },
-  'scroll-area':    { category: 'primitives', subcategory: 'Layout',     tags: ['scroll', 'overflow', 'region'] },
+  // Foundations (layout primitives)
+  'box':            { category: 'foundations', tags: ['layout', 'container'] },
+  'stack':          { category: 'foundations', tags: ['layout', 'flex', 'row', 'column'] },
+  'card':           { category: 'foundations', tags: ['surface', 'container', 'bordered'] },
+  'divider':        { category: 'foundations', tags: ['rule', 'separator', 'hr'] },
+  'grid':           { category: 'foundations', tags: ['grid', 'columns', 'auto-fit'] },
+  'scroll-area':    { category: 'foundations', tags: ['scroll', 'overflow', 'region'] },
 
-  // Primitives — Typography
-  'heading':        { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'h1', 'h2', 'h3', 'title'] },
-  'text':           { category: 'primitives', subcategory: 'Typography', tags: ['typography', 'paragraph', 'body'] },
-  'label':          { category: 'primitives', subcategory: 'Typography', tags: ['caption', 'eyebrow', 'uppercase'] },
-  'code':           { category: 'primitives', subcategory: 'Typography', tags: ['mono', 'inline', 'block', 'snippet'] },
-  'code-editor':    { category: 'primitives', subcategory: 'Typography', tags: ['monaco', 'editor', 'code', 'lazy'] },
-  'kbd':            { category: 'primitives', subcategory: 'Typography', tags: ['keyboard', 'shortcut', 'pill'] },
-  'link':           { category: 'primitives', subcategory: 'Typography', tags: ['anchor', 'href', 'navigation'] },
-  'icon':           { category: 'primitives', subcategory: 'Typography', tags: ['svg', 'visual', 'glyph'] },
+  // Typography
+  'heading':        { category: 'typography', tags: ['typography', 'h1', 'h2', 'h3', 'title'] },
+  'text':           { category: 'typography', tags: ['typography', 'paragraph', 'body'] },
+  'label':          { category: 'typography', tags: ['caption', 'eyebrow', 'uppercase'] },
+  'code':           { category: 'typography', tags: ['mono', 'inline', 'block', 'snippet'] },
+  'code-editor':    { category: 'typography', tags: ['monaco', 'editor', 'code', 'lazy'] },
+  'kbd':            { category: 'typography', tags: ['keyboard', 'shortcut', 'pill'] },
+  'link':           { category: 'typography', tags: ['anchor', 'href', 'navigation'] },
+  'icon':           { category: 'typography', tags: ['svg', 'visual', 'glyph'] },
 
-  // Primitives — Controls
-  'button':         { category: 'primitives', subcategory: 'Controls',   tags: ['action', 'cta', 'submit'] },
-  'input':          { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'text', 'field'] },
-  'textarea':       { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'multiline', 'field'] },
-  'number-input':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'number', 'field'] },
-  'search-input':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'search', 'field'] },
-  'select':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'dropdown', 'choice'] },
-  'multi-select':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'dropdown', 'multi', 'tags'] },
-  'checkbox':       { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'boolean', 'choice'] },
-  'radio-group':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'choice', 'radio'] },
-  'switch':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'toggle', 'boolean'] },
-  'slider':         { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'range'] },
-  'date-picker':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'date', 'calendar'] },
-  'file-upload':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'upload', 'file'] },
-  'form-field':     { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'label', 'wrapper'] },
-  'chip':           { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'filter', 'choice', 'tag'] },
-  'chip-group':     { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'group', 'selection'] },
-  'chip-input':     { category: 'primitives', subcategory: 'Controls',   tags: ['chip', 'input', 'tags', 'form'] },
+  // Inputs — Text
+  'button':         { category: 'inputs', subcategory: 'Text',        tags: ['action', 'cta', 'submit'] },
+  'input':          { category: 'inputs', subcategory: 'Text',        tags: ['form', 'text', 'field'] },
+  'textarea':       { category: 'inputs', subcategory: 'Text',        tags: ['form', 'multiline', 'field'] },
+  'number-input':   { category: 'inputs', subcategory: 'Text',        tags: ['form', 'number', 'field'] },
+  'search-input':   { category: 'inputs', subcategory: 'Text',        tags: ['form', 'search', 'field'] },
 
-  // Primitives — Identity
-  'avatar':         { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'user', 'profile', 'image'] },
-  'avatar-group':   { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'group', 'cluster', 'overflow'] },
-  'tag':            { category: 'primitives', subcategory: 'Identity',   tags: ['tag', 'label', 'pill', 'metadata'] },
-  'split-button':   { category: 'primitives', subcategory: 'Controls',   tags: ['button', 'dropdown', 'menu', 'composite'] },
-  'toggle-group':   { category: 'primitives', subcategory: 'Controls',   tags: ['toggle', 'multi-select', 'segmented', 'pressed'] },
-  'color-picker':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'color', 'hex', 'hsl', 'rgb'] },
+  // Inputs — Selection
+  'select':         { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'dropdown', 'choice'] },
+  'multi-select':   { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'dropdown', 'multi', 'tags'] },
+  'checkbox':       { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'boolean', 'choice'] },
+  'radio-group':    { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'choice', 'radio'] },
+  'switch':         { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'toggle', 'boolean'] },
+  'slider':         { category: 'inputs', subcategory: 'Selection',   tags: ['form', 'range'] },
+  'toggle-group':   { category: 'inputs', subcategory: 'Selection',   tags: ['toggle', 'multi-select', 'segmented', 'pressed'] },
 
-  // Primitives — Content authoring
-  'media-picker':   { category: 'primitives', subcategory: 'Content',    tags: ['media', 'image', 'video', 'library', 'picker'] },
+  // Inputs — Specialized
+  'date-picker':    { category: 'inputs', subcategory: 'Specialized', tags: ['form', 'date', 'calendar'] },
+  'file-upload':    { category: 'inputs', subcategory: 'Specialized', tags: ['form', 'upload', 'file'] },
+  'color-picker':   { category: 'inputs', subcategory: 'Specialized', tags: ['form', 'color', 'hex', 'hsl', 'rgb'] },
+  'form-field':     { category: 'inputs', subcategory: 'Specialized', tags: ['form', 'label', 'wrapper'] },
+  'split-button':   { category: 'inputs', subcategory: 'Specialized', tags: ['button', 'dropdown', 'menu', 'composite'] },
 
-  // Primitives — Feedback
-  'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
-  'skeleton':       { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'placeholder'] },
-  'spinner':        { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'busy', 'indicator'] },
-  'alert':          { category: 'primitives', subcategory: 'Feedback',   tags: ['banner', 'notice', 'info', 'warning', 'danger'] },
-  'empty-state':    { category: 'primitives', subcategory: 'Feedback',   tags: ['empty', 'placeholder', 'zero'] },
-  'progress':       { category: 'primitives', subcategory: 'Feedback',   tags: ['progress', 'bar', 'determinate', 'indeterminate'] },
+  // Inputs — Chips
+  'chip':           { category: 'inputs', subcategory: 'Chips',       tags: ['chip', 'filter', 'choice', 'tag'] },
+  'chip-group':     { category: 'inputs', subcategory: 'Chips',       tags: ['chip', 'group', 'selection'] },
+  'chip-input':     { category: 'inputs', subcategory: 'Chips',       tags: ['chip', 'input', 'tags', 'form'] },
 
-  // Primitives — Navigation
-  'nav':               { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },
-  'tabs':              { category: 'primitives', subcategory: 'Navigation', tags: ['tabs', 'views', 'underline'] },
-  'segmented-control': { category: 'primitives', subcategory: 'Navigation', tags: ['segmented', 'picker', 'radiogroup', 'toggle'] },
-  'accordion':         { category: 'primitives', subcategory: 'Navigation', tags: ['expand', 'collapse', 'disclosure', 'details'] },
-  'breadcrumbs':       { category: 'primitives', subcategory: 'Navigation', tags: ['breadcrumb', 'trail', 'navigation', 'path'] },
-  'tree':              { category: 'primitives', subcategory: 'Navigation', tags: ['tree', 'hierarchy', 'treeview', 'expand'] },
-  'stepper':           { category: 'primitives', subcategory: 'Navigation', tags: ['stepper', 'wizard', 'progress', 'steps'] },
-  'pagination':        { category: 'primitives', subcategory: 'Navigation', tags: ['pagination', 'pager', 'pages', 'next', 'prev'] },
+  // Identity
+  'avatar':         { category: 'identity', tags: ['avatar', 'user', 'profile', 'image'] },
+  'avatar-group':   { category: 'identity', tags: ['avatar', 'group', 'cluster', 'overflow'] },
+  'tag':            { category: 'identity', tags: ['tag', 'label', 'pill', 'metadata'] },
 
-  // Primitives — Mobile
-  'app-bar':           { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'chrome', 'topbar'] },
-  'bottom-nav':        { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'nav', 'tabbar'] },
+  // Media
+  'media-picker':   { category: 'media', tags: ['media', 'image', 'video', 'library', 'picker'] },
 
-  // Primitives — Overlays
-  'tooltip':           { category: 'primitives', subcategory: 'Overlays',   tags: ['hover', 'popover', 'hint'] },
-  'dialog':            { category: 'primitives', subcategory: 'Overlays',   tags: ['modal', 'confirm', 'alert'] },
-  'drawer':            { category: 'primitives', subcategory: 'Overlays',   tags: ['sheet', 'side-panel', 'slide'] },
-  'toast':             { category: 'primitives', subcategory: 'Overlays',   tags: ['notification', 'ephemeral', 'snackbar'] },
-  'command-palette':   { category: 'primitives', subcategory: 'Overlays',   tags: ['cmdk', 'search', 'palette', 'jump'] },
-  'menu':              { category: 'primitives', subcategory: 'Overlays',   tags: ['menu', 'dropdown', 'context', 'long-press'] },
-  'menu-item':         { category: 'primitives', subcategory: 'Overlays',   tags: ['menu', 'item', 'row'] },
-  'popover':           { category: 'primitives', subcategory: 'Overlays',   tags: ['popover', 'hover', 'click', 'positioned'] },
+  // Feedback
+  'badge':          { category: 'feedback', tags: ['status', 'chip', 'pill'] },
+  'skeleton':       { category: 'feedback', tags: ['loading', 'placeholder'] },
+  'spinner':        { category: 'feedback', tags: ['loading', 'busy', 'indicator'] },
+  'alert':          { category: 'feedback', tags: ['banner', 'notice', 'info', 'warning', 'danger'] },
+  'empty-state':    { category: 'feedback', tags: ['empty', 'placeholder', 'zero'] },
+  'progress':       { category: 'feedback', tags: ['progress', 'bar', 'determinate', 'indeterminate'] },
 
-  // Primitives — Mobile
-  'bottom-sheet':      { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'sheet', 'modal', 'drag', 'snap'] },
-  'action-sheet':      { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'sheet', 'menu', 'ios', 'destructive'] },
-  'fab':               { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'floating', 'action', 'button', 'cta'] },
+  // Navigation
+  'nav':               { category: 'navigation', tags: ['navigation', 'links', 'sidebar'] },
+  'tabs':              { category: 'navigation', tags: ['tabs', 'views', 'underline'] },
+  'segmented-control': { category: 'navigation', tags: ['segmented', 'picker', 'radiogroup', 'toggle'] },
+  'accordion':         { category: 'navigation', tags: ['expand', 'collapse', 'disclosure', 'details'] },
+  'breadcrumbs':       { category: 'navigation', tags: ['breadcrumb', 'trail', 'navigation', 'path'] },
+  'tree':              { category: 'navigation', tags: ['tree', 'hierarchy', 'treeview', 'expand'] },
+  'stepper':           { category: 'navigation', tags: ['stepper', 'wizard', 'progress', 'steps'] },
+  'pagination':        { category: 'navigation', tags: ['pagination', 'pager', 'pages', 'next', 'prev'] },
 
-  // Primitives — Data
-  'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
-  'timeline':       { category: 'primitives', subcategory: 'Data',       tags: ['timeline', 'log', 'events', 'history'] },
-  'stat':           { category: 'primitives', subcategory: 'Data',       tags: ['metric', 'kpi', 'number', 'tile'] },
+  // Overlays
+  'tooltip':           { category: 'overlays', tags: ['hover', 'popover', 'hint'] },
+  'dialog':            { category: 'overlays', tags: ['modal', 'confirm', 'alert'] },
+  'drawer':            { category: 'overlays', tags: ['sheet', 'side-panel', 'slide'] },
+  'toast':             { category: 'overlays', tags: ['notification', 'ephemeral', 'snackbar'] },
+  'command-palette':   { category: 'overlays', tags: ['cmdk', 'search', 'palette', 'jump'] },
+  'menu':              { category: 'overlays', tags: ['menu', 'dropdown', 'context', 'long-press'] },
+  'menu-item':         { category: 'overlays', tags: ['menu', 'item', 'row'] },
+  'popover':           { category: 'overlays', tags: ['popover', 'hover', 'click', 'positioned'] },
 
-  // Primitives — Mobile (gestures)
-  'pull-to-refresh':   { category: 'primitives', subcategory: 'Mobile',    tags: ['mobile', 'gesture', 'touch', 'refresh'] },
-  'swipe-actions':     { category: 'primitives', subcategory: 'Mobile',    tags: ['mobile', 'gesture', 'swipe', 'row'] },
+  // Mobile
+  'app-bar':           { category: 'mobile', tags: ['mobile', 'chrome', 'topbar'] },
+  'bottom-nav':        { category: 'mobile', tags: ['mobile', 'nav', 'tabbar'] },
+  'bottom-sheet':      { category: 'mobile', tags: ['mobile', 'sheet', 'modal', 'drag', 'snap'] },
+  'action-sheet':      { category: 'mobile', tags: ['mobile', 'sheet', 'menu', 'ios', 'destructive'] },
+  'fab':               { category: 'mobile', tags: ['mobile', 'floating', 'action', 'button', 'cta'] },
+  'pull-to-refresh':   { category: 'mobile', tags: ['mobile', 'gesture', 'touch', 'refresh'] },
+  'swipe-actions':     { category: 'mobile', tags: ['mobile', 'gesture', 'swipe', 'row'] },
 
-  // Primitives — Agent
-  'diff':              { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'diff', 'lcs', 'unified', 'split', 'review'] },
-  'json-view':         { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'json', 'tree', 'inspect', 'debug'] },
-  'activity':          { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'status', 'run', 'tool-call', 'streaming'] },
-  'consent-banner':    { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'consent', 'approve', 'deny', 'permission'] },
-  'capability-grid':   { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'capability', 'permission', 'grant', 'tile'] },
-  'resource-picker':   { category: 'primitives', subcategory: 'Agent',     tags: ['agent', 'picker', 'resource', 'page', 'media', 'user'] },
+  // Data
+  'table':          { category: 'data', tags: ['table', 'grid', 'rows'] },
+  'timeline':       { category: 'data', tags: ['timeline', 'log', 'events', 'history'] },
+  'stat':           { category: 'data', tags: ['metric', 'kpi', 'number', 'tile'] },
 
-  // Patterns — Page / Forms / Shell
-  'page-header':    { category: 'patterns',   subcategory: 'Page',       tags: ['header', 'title', 'actions'] },
-  'form-group':     { category: 'patterns',   subcategory: 'Forms',      tags: ['form', 'group', 'layout'] },
-  'shell-header':   { category: 'patterns',   subcategory: 'Shell',      tags: ['header', 'topbar', 'chrome'] },
+  // Agent
+  'diff':              { category: 'agent', tags: ['agent', 'diff', 'lcs', 'unified', 'split', 'review'] },
+  'json-view':         { category: 'agent', tags: ['agent', 'json', 'tree', 'inspect', 'debug'] },
+  'activity':          { category: 'agent', tags: ['agent', 'status', 'run', 'tool-call', 'streaming'] },
+  'consent-banner':    { category: 'agent', tags: ['agent', 'consent', 'approve', 'deny', 'permission'] },
+  'capability-grid':   { category: 'agent', tags: ['agent', 'capability', 'permission', 'grant', 'tile'] },
+  'resource-picker':   { category: 'agent', tags: ['agent', 'picker', 'resource', 'page', 'media', 'user'] },
 
-  // Patterns — Surface states
+  // Patterns — Page / Forms / Shell / Surfaces
+  'page-header':        { category: 'patterns', subcategory: 'Page',     tags: ['header', 'title', 'actions'] },
+  'form-group':         { category: 'patterns', subcategory: 'Forms',    tags: ['form', 'group', 'layout'] },
+  'shell-header':       { category: 'patterns', subcategory: 'Shell',    tags: ['header', 'topbar', 'chrome'] },
   'surface-pages-list': { category: 'patterns', subcategory: 'Surfaces', tags: ['surface', 'pages', 'list'] },
   'surface-detail':     { category: 'patterns', subcategory: 'Surfaces', tags: ['surface', 'detail'] },
 
-  // Patterns — Widgets
-  'widget.content.announcements': { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'announcements', 'content'] },
-  'widgets.data-table':           { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'table', 'data'] },
-  'widgets.chart':                { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'viz'] },
-  'widgets.chart-card':           { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'card', 'stateful'] },
-  'widgets.sparkline':            { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'chart', 'sparkline'] },
-  'widgets.kpi-tile':             { category: 'patterns', subcategory: 'Widgets', tags: ['widget', 'kpi', 'metric', 'tile'] },
+  // Widgets — CMS content widgets
+  'widget.content.announcements': { category: 'widgets', tags: ['widget', 'announcements', 'content'] },
+  'widgets.data-table':           { category: 'widgets', tags: ['widget', 'table', 'data'] },
+  'widgets.chart':                { category: 'widgets', tags: ['widget', 'chart', 'viz'] },
+  'widgets.chart-card':           { category: 'widgets', tags: ['widget', 'chart', 'card', 'stateful'] },
+  'widgets.sparkline':            { category: 'widgets', tags: ['widget', 'chart', 'sparkline'] },
+  'widgets.kpi-tile':             { category: 'widgets', tags: ['widget', 'kpi', 'metric', 'tile'] },
 
-  // Templates — editors
-  'page-templates.block-editor':  { category: 'templates', subcategory: 'Editors',       tags: ['template', 'block', 'editor'] },
-  'layout-editor.blank':          { category: 'templates', subcategory: 'Layout Editor', tags: ['layout', 'editor', 'blank'] },
+  // Authoring previews — static host elements; full editors live in the
+  // authoring app.
+  'authoring-previews.layout-editor': { category: 'authoring-preview', tags: ['authoring', 'layout', 'editor', 'preview'] },
+  'authoring-previews.block-editor':  { category: 'authoring-preview', tags: ['authoring', 'block', 'editor', 'preview'] },
 };
 
 // Patterned ids whose exact id is generated at load time (per-preset or
 // per-seed-document). Ordered from most-specific to least-specific — first
 // match wins.
 const PATTERNS: Array<{ prefix: string; entry: TaxonomyEntry }> = [
-  { prefix: 'page-editor.',    entry: { category: 'templates', subcategory: 'Page Editor',    tags: ['page', 'editor'] } },
-  { prefix: 'layout-editor.',  entry: { category: 'templates', subcategory: 'Layout Editor',  tags: ['layout', 'editor'] } },
-  { prefix: 'layout.',         entry: { category: 'templates', subcategory: 'Layouts',        tags: ['layout', 'preview', 'grid'] } },
-  { prefix: 'gallery.',        entry: { category: 'templates', subcategory: 'Layout Gallery', tags: ['layout', 'gallery'] } },
-  { prefix: 'page.',            entry: { category: 'pages',     subcategory: 'Content',        tags: ['page', 'content'] } },
+  { prefix: 'layout.', entry: { category: 'layouts', subcategory: 'Presets',     tags: ['layout', 'preview', 'grid'] } },
+  { prefix: 'page.',   entry: { category: 'layouts', subcategory: 'Seed pages', tags: ['page', 'content'] } },
 ];
 
 // Warn-once cache so a specimen with a missing taxonomy entry logs a
@@ -162,5 +161,5 @@ export function resolveTaxonomy(id: string): TaxonomyEntry {
       id,
     );
   }
-  return { category: 'primitives', subcategory: 'Unsorted', status: 'review', tags: [] };
+  return { category: 'foundations', subcategory: 'Unsorted', status: 'review', tags: [] };
 }

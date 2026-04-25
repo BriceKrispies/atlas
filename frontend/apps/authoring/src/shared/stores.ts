@@ -1,21 +1,13 @@
-/**
- * Shared sandbox state for read-only specimens: layout registry, page
- * store, capability bridge.
- *
- * The interactive editor surfaces (page-editor, layout-editor, block-editor,
- * gallery edit variants) live in the authoring app — they own their own
- * layout/page stores. The sandbox keeps only what view-only specimens
- * (Pages content, Layouts) need.
- */
-
 import {
   InMemoryPageStore,
   ValidatingPageStore,
   presetLayouts,
   LayoutRegistry,
+  InMemoryLayoutStore,
+  ValidatingLayoutStore,
   type LayoutDocument,
 } from '@atlas/page-templates';
-import { seedPages } from '@atlas/bundle-standard/seed-pages';
+import { seedPages, gallerySeedPages } from '@atlas/bundle-standard/seed-pages';
 
 export interface SeedPageDoc {
   pageId: string;
@@ -25,17 +17,26 @@ export interface SeedPageDoc {
   [k: string]: unknown;
 }
 
-export const sandboxLayoutRegistry = new LayoutRegistry();
+export const authoringLayoutRegistry = new LayoutRegistry();
 for (const layout of presetLayouts as LayoutDocument[]) {
-  sandboxLayoutRegistry.register(layout);
+  authoringLayoutRegistry.register(layout);
 }
 
-export const sandboxPageStore = new ValidatingPageStore(new InMemoryPageStore());
+export const authoringLayoutStore = new ValidatingLayoutStore(
+  new InMemoryLayoutStore(
+    Object.fromEntries((presetLayouts as LayoutDocument[]).map((l) => [l.layoutId, l])),
+  ),
+);
+
+export const authoringPageStore = new ValidatingPageStore(new InMemoryPageStore());
 for (const doc of seedPages as SeedPageDoc[]) {
-  void sandboxPageStore.save(doc.pageId, doc);
+  void authoringPageStore.save(doc.pageId, doc);
+}
+for (const doc of gallerySeedPages as SeedPageDoc[]) {
+  void authoringPageStore.save(doc.pageId, doc);
 }
 
-export const sandboxCapabilities: Record<string, (args: unknown) => Promise<unknown>> = {
+export const authoringCapabilities: Record<string, (args: unknown) => Promise<unknown>> = {
   'backend.query': async (args: unknown) => {
     const { path } = (args ?? {}) as { path?: string };
     if (typeof path === 'string' && path.startsWith('/media/files/')) {
@@ -63,12 +64,12 @@ export function mountContentPage(
   const { pageId, edit } = config as unknown as ContentPageMountConfig;
   const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
   page['pageId'] = pageId;
-  page['pageStore'] = sandboxPageStore;
-  page['layoutRegistry'] = sandboxLayoutRegistry;
-  page['principal'] = { id: 'u_sandbox', roles: [] };
+  page['pageStore'] = authoringPageStore;
+  page['layoutRegistry'] = authoringLayoutRegistry;
+  page['principal'] = { id: 'u_authoring', roles: [] };
   page['tenantId'] = 'acme';
-  page['correlationId'] = `cid-sandbox-${pageId}-${Date.now()}`;
-  page['capabilities'] = sandboxCapabilities;
+  page['correlationId'] = `cid-authoring-${pageId}-${Date.now()}`;
+  page['capabilities'] = authoringCapabilities;
   page['edit'] = edit === true;
   page['onMediatorTrace'] = (evt: unknown) => onLog('mediator', evt);
   page['onCapabilityTrace'] = (evt: unknown) => onLog('capability', evt);

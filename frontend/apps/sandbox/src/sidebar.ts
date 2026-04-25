@@ -25,8 +25,12 @@ import type { ResolvedSpecimen } from './sandbox-app.ts';
 
 const styles = `
   :host {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "header header"
+      "cats   list";
     min-height: 0;
     height: 100%;
     background: var(--atlas-color-surface);
@@ -34,15 +38,22 @@ const styles = `
     color: var(--atlas-color-text);
   }
   .header {
-    flex: 0 0 auto;
+    grid-area: header;
     display: flex;
     flex-direction: column;
     gap: var(--atlas-space-sm);
     padding: var(--atlas-space-sm) var(--atlas-space-md);
     border-bottom: 1px solid var(--atlas-color-border);
   }
+  .categories {
+    grid-area: cats;
+    overflow-y: auto;
+    padding: var(--atlas-space-sm) 0;
+    border-right: 1px solid var(--atlas-color-border);
+    background: var(--atlas-color-surface);
+  }
   .scroll {
-    flex: 1 1 auto;
+    grid-area: list;
     overflow-y: auto;
     padding: var(--atlas-space-sm) 0;
   }
@@ -53,7 +64,8 @@ const styles = `
   .scroll atlas-heading[level="3"]:first-child {
     margin-top: 0;
   }
-  atlas-nav-item.item[aria-selected="true"] {
+  atlas-nav-item.item[aria-selected="true"],
+  atlas-nav-item.cat[aria-selected="true"] {
     background: var(--atlas-color-primary-subtle);
     color: var(--atlas-color-primary);
     font-weight: var(--atlas-font-weight-medium);
@@ -63,7 +75,6 @@ const styles = `
     color: var(--atlas-color-text-muted);
     font-size: var(--atlas-font-size-sm);
   }
-  atlas-tab-bar { width: 100%; }
 `;
 
 function escapeHtml(input: string): string {
@@ -87,7 +98,7 @@ function matchesSearch(spec: ResolvedSpecimen, q: string): boolean {
 
 export class AtlasSandboxSidebar extends AtlasElement {
   private _specimens: readonly ResolvedSpecimen[] = [];
-  private _activeCategory: Category = 'primitives';
+  private _activeCategory: Category = 'foundations';
   private _activeSpecimenId: string | null = null;
   private _searchValue = '';
   private _built = false;
@@ -152,27 +163,21 @@ export class AtlasSandboxSidebar extends AtlasElement {
           aria-label="Search specimens"
           data-testid="sandbox.search"
         ></atlas-search-input>
-        <atlas-tab-bar
-          name="category"
-          size="sm"
-          stretch
-          aria-label="Specimen category"
-          data-role="category-switcher"
-        ></atlas-tab-bar>
       </div>
+      <div class="categories" part="categories" data-role="category-switcher" aria-label="Specimen category"></div>
       <div class="scroll" part="scroll" data-role="scroll"></div>
     `;
 
-    const catBar = root.querySelector(
-      'atlas-tab-bar[data-role="category-switcher"]',
-    ) as HTMLElement & { tabs: Array<{ value: string; label: string }>; value: string };
-    catBar.tabs = CATEGORIES.map((c) => ({ value: c.id, label: c.label }));
-    catBar.value = this._activeCategory;
-    catBar.addEventListener('change', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
-      const next = CATEGORIES.find((c) => c.id === detail.value)?.id;
+    this._renderCategories();
+    const cats = root.querySelector('[data-role="category-switcher"]');
+    cats?.addEventListener('click', (e) => {
+      const target = e.target as Element | null;
+      const item = target?.closest('atlas-nav-item.cat') as HTMLElement | null;
+      if (!item) return;
+      const next = item.dataset['value'] as Category | undefined;
       if (!next || next === this._activeCategory) return;
       this._activeCategory = next;
+      this._syncCategoryBar();
       this._renderList();
       this.dispatchEvent(
         new CustomEvent('category-change', {
@@ -225,11 +230,28 @@ export class AtlasSandboxSidebar extends AtlasElement {
     this._renderList();
   }
 
+  private _renderCategories(): void {
+    const cats = this.shadowRoot?.querySelector('[data-role="category-switcher"]');
+    if (!cats) return;
+    let html = '<atlas-nav label="Categories">';
+    for (const c of CATEGORIES) {
+      const selected = c.id === this._activeCategory;
+      html += `<atlas-nav-item class="cat" data-value="${c.id}" role="option" aria-selected="${selected}"${selected ? ' active' : ''}>${escapeHtml(c.label)}</atlas-nav-item>`;
+    }
+    html += '</atlas-nav>';
+    cats.innerHTML = html;
+  }
+
   private _syncCategoryBar(): void {
-    const bar = this.shadowRoot?.querySelector(
-      'atlas-tab-bar[data-role="category-switcher"]',
-    ) as (HTMLElement & { value: string }) | null;
-    if (bar) bar.value = this._activeCategory;
+    const root = this.shadowRoot;
+    if (!root) return;
+    for (const el of Array.from(root.querySelectorAll('atlas-nav-item.cat'))) {
+      const item = el as HTMLElement;
+      const isActive = item.dataset['value'] === this._activeCategory;
+      item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      if (isActive) item.setAttribute('active', '');
+      else item.removeAttribute('active');
+    }
   }
 
   private _syncSearchInput(): void {
@@ -269,18 +291,23 @@ export class AtlasSandboxSidebar extends AtlasElement {
       return;
     }
 
+    const flat: ResolvedSpecimen[] = [];
     const groups: Record<string, ResolvedSpecimen[]> = {};
     for (const spec of visible) {
-      (groups[spec.subcategory] ??= []).push(spec);
+      if (spec.subcategory) (groups[spec.subcategory] ??= []).push(spec);
+      else flat.push(spec);
     }
 
+    const renderItem = (item: ResolvedSpecimen): string => {
+      const selected = item.id === this._activeSpecimenId;
+      return `<atlas-nav-item class="item" data-id="${item.id}" role="option" aria-selected="${selected}"${selected ? ' active' : ''}>${escapeHtml(item.name)}</atlas-nav-item>`;
+    };
+
     let navHtml = '';
+    for (const item of flat) navHtml += renderItem(item);
     for (const [group, items] of Object.entries(groups)) {
       navHtml += `<atlas-heading level="3">${escapeHtml(group)}</atlas-heading>`;
-      for (const item of items) {
-        const selected = item.id === this._activeSpecimenId;
-        navHtml += `<atlas-nav-item class="item" data-id="${item.id}" role="option" aria-selected="${selected}"${selected ? ' active' : ''}>${escapeHtml(item.name)}</atlas-nav-item>`;
-      }
+      for (const item of items) navHtml += renderItem(item);
     }
     scroll.innerHTML = `<atlas-nav label="Specimens">${navHtml}</atlas-nav>`;
   }

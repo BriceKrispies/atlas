@@ -59,7 +59,7 @@ export interface Specimen {
 
 export interface ResolvedSpecimen extends Specimen {
   category: Category;
-  subcategory: string;
+  subcategory?: string;
   status: Status;
   tags: readonly string[];
 }
@@ -100,10 +100,11 @@ function matchesSearch(spec: ResolvedSpecimen, q: string): boolean {
 
 function resolve(spec: Specimen): ResolvedSpecimen {
   const tax = resolveTaxonomy(spec.id);
+  const subcategory = spec.subcategory ?? tax.subcategory;
   return {
     ...spec,
     category: spec.category ?? tax.category,
-    subcategory: spec.subcategory ?? tax.subcategory,
+    ...(subcategory !== undefined ? { subcategory } : {}),
     status: spec.status ?? tax.status ?? 'stable',
     tags: spec.tags ?? tax.tags ?? [],
   };
@@ -280,7 +281,7 @@ const styles = `
     top: 48px;
     left: 0;
     bottom: 0;
-    width: min(320px, 90vw);
+    width: min(460px, 95vw);
     transform: translateX(-100%);
     transition: transform var(--atlas-transition-base);
     box-shadow: var(--atlas-shadow-lg, 0 8px 24px rgba(0,0,0,0.12));
@@ -307,7 +308,7 @@ const styles = `
      BREAKPOINTS.md. */
   @media (min-width: 900px) {
     :host {
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 460px 1fr;
       grid-template-rows: 40px 1fr;
       grid-template-areas:
         "topbar  topbar"
@@ -330,7 +331,7 @@ export class AtlasSandbox extends AtlasSurface {
 
   private _activeCleanups: Array<() => void> = [];
   private _activeSpec: ResolvedSpecimen | null = null;
-  private _activeCategory: Category = 'primitives';
+  private _activeCategory: Category = 'foundations';
   private _activeSearch = '';
   private _activeTab: PreviewTab = 'preview';
   private _onKey: ((e: KeyboardEvent) => void) | null = null;
@@ -365,7 +366,7 @@ export class AtlasSandbox extends AtlasSurface {
       } else if (requestedCat && CATEGORIES.some((c) => c.id === requestedCat)) {
         this._activeCategory = requestedCat;
       } else {
-        this._activeCategory = AtlasSandbox.specimens[0]?.category ?? 'primitives';
+        this._activeCategory = AtlasSandbox.specimens[0]?.category ?? 'foundations';
       }
 
       this._render();
