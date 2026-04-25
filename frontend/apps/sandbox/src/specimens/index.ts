@@ -19,6 +19,7 @@ import './primitives/navigation.ts';
 import './primitives/mobile-nav.ts';
 import './primitives/overlays.ts';
 import './primitives/mobile-overlays.ts';
+import './primitives/popups.ts';
 import './primitives/data.ts';
 import './primitives/gestures.ts';
 import './primitives/agent.ts';

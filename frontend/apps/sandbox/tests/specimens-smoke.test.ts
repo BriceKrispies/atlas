@@ -144,4 +144,16 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(bar).toHaveAttribute('role', 'banner');
     });
   });
+  // Batch Popups — anchored overlay specimens.
+  const popups: Array<{ id: string; tag: string }> = [
+    { id: 'menu',    tag: 'atlas-menu' },
+    { id: 'popover', tag: 'atlas-popover' },
+  ];
+
+  for (const { id, tag } of popups) {
+    test(`Popups specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeAttached();
+    });
+  }
 });

@@ -97,3 +97,8 @@ import './atlas-consent-banner.ts';
 import './atlas-capability-tile.ts';
 import './atlas-capability-grid.ts';
 import './atlas-resource-picker.ts';
+// Popup surfaces (anchored, non-modal)
+import './atlas-menu.ts';
+import './atlas-menu-item.ts';
+import './atlas-menu-separator.ts';
+import './atlas-popover.ts';

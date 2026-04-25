@@ -64,6 +64,9 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'drawer':            { category: 'primitives', subcategory: 'Overlays',   tags: ['sheet', 'side-panel', 'slide'] },
   'toast':             { category: 'primitives', subcategory: 'Overlays',   tags: ['notification', 'ephemeral', 'snackbar'] },
   'command-palette':   { category: 'primitives', subcategory: 'Overlays',   tags: ['cmdk', 'search', 'palette', 'jump'] },
+  'menu':              { category: 'primitives', subcategory: 'Overlays',   tags: ['menu', 'dropdown', 'context', 'long-press'] },
+  'menu-item':         { category: 'primitives', subcategory: 'Overlays',   tags: ['menu', 'item', 'row'] },
+  'popover':           { category: 'primitives', subcategory: 'Overlays',   tags: ['popover', 'hover', 'click', 'positioned'] },
 
   // Primitives — Mobile
   'bottom-sheet':      { category: 'primitives', subcategory: 'Mobile',     tags: ['mobile', 'sheet', 'modal', 'drag', 'snap'] },
