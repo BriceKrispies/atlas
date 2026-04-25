@@ -75,3 +75,7 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Mobile nav chrome
+import './atlas-app-bar.ts';
+import './atlas-bottom-nav.ts';

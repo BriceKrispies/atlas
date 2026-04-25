@@ -49,4 +49,38 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
+  // Batch Mobile nav — specimens smoke. The two new chrome primitives
+  // are mobile-first so we just verify their tag mounts. Active-state
+  // and keyboard nav are exercised in the dedicated component tests.
+  test.describe('Batch Mobile nav — specimens smoke', () => {
+    const mobileNavSpecimens: Array<{ id: string; tag: string }> = [
+      { id: 'app-bar',    tag: 'atlas-app-bar' },
+      { id: 'bottom-nav', tag: 'atlas-bottom-nav' },
+    ];
+
+    for (const { id, tag } of mobileNavSpecimens) {
+      test(`Mobile nav specimen "${id}" renders ${tag}`, async ({ page }) => {
+        await openSpecimen(page, id);
+        await expect(page.locator(tag).first()).toBeVisible();
+      });
+    }
+
+    test('bottom-nav exposes role="tablist" and one selected item', async ({
+      page,
+    }) => {
+      await openSpecimen(page, 'bottom-nav');
+      const bar = page.locator('atlas-bottom-nav').first();
+      await expect(bar).toHaveAttribute('role', 'tablist');
+      await expect(
+        bar.locator('atlas-bottom-nav-item[aria-selected="true"]').first(),
+      ).toBeVisible();
+    });
+
+    test('app-bar implies role="banner"', async ({ page }) => {
+      await openSpecimen(page, 'app-bar');
+      const bar = page.locator('atlas-app-bar').first();
+      await expect(bar).toHaveAttribute('role', 'banner');
+    });
+  });
 });
