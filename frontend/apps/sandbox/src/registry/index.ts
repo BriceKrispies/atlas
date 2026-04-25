@@ -47,12 +47,17 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'spinner':        { category: 'primitives', subcategory: 'Feedback',   tags: ['loading', 'busy', 'indicator'] },
   'alert':          { category: 'primitives', subcategory: 'Feedback',   tags: ['banner', 'notice', 'info', 'warning', 'danger'] },
   'empty-state':    { category: 'primitives', subcategory: 'Feedback',   tags: ['empty', 'placeholder', 'zero'] },
+  'progress':       { category: 'primitives', subcategory: 'Feedback',   tags: ['progress', 'bar', 'determinate', 'indeterminate'] },
 
   // Primitives — Navigation
   'nav':               { category: 'primitives', subcategory: 'Navigation', tags: ['navigation', 'links', 'sidebar'] },
   'tabs':              { category: 'primitives', subcategory: 'Navigation', tags: ['tabs', 'views', 'underline'] },
   'segmented-control': { category: 'primitives', subcategory: 'Navigation', tags: ['segmented', 'picker', 'radiogroup', 'toggle'] },
   'accordion':         { category: 'primitives', subcategory: 'Navigation', tags: ['expand', 'collapse', 'disclosure', 'details'] },
+  'breadcrumbs':       { category: 'primitives', subcategory: 'Navigation', tags: ['breadcrumb', 'trail', 'navigation', 'path'] },
+  'tree':              { category: 'primitives', subcategory: 'Navigation', tags: ['tree', 'hierarchy', 'treeview', 'expand'] },
+  'stepper':           { category: 'primitives', subcategory: 'Navigation', tags: ['stepper', 'wizard', 'progress', 'steps'] },
+  'pagination':        { category: 'primitives', subcategory: 'Navigation', tags: ['pagination', 'pager', 'pages', 'next', 'prev'] },
 
   // Primitives — Overlays
   'tooltip':           { category: 'primitives', subcategory: 'Overlays',   tags: ['hover', 'popover', 'hint'] },
