@@ -98,6 +98,17 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of identityAndChips) {
     test(`Batch Identity & Chips — specimen "${id}" renders ${tag}`, async ({ page }) => {
+  // Batch Nav structure — specimens smoke
+  const navStructure: Array<{ id: string; tag: string }> = [
+    { id: 'breadcrumbs', tag: 'atlas-breadcrumbs' },
+    { id: 'tree',        tag: 'atlas-tree' },
+    { id: 'stepper',     tag: 'atlas-stepper' },
+    { id: 'pagination',  tag: 'atlas-pagination' },
+    { id: 'progress',    tag: 'atlas-progress' },
+  ];
+
+  for (const { id, tag } of navStructure) {
+    test(`Nav structure specimen "${id}" renders ${tag}`, async ({ page }) => {
       await openSpecimen(page, id);
       await expect(page.locator(tag).first()).toBeVisible();
     });

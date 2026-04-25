@@ -111,3 +111,12 @@ import './atlas-tag.ts';
 import './atlas-chip.ts';
 import './atlas-chip-group.ts';
 import './atlas-chip-input.ts';
+// Navigation structure primitives
+import './atlas-breadcrumbs.ts';
+import './atlas-breadcrumb-item.ts';
+import './atlas-tree.ts';
+import './atlas-tree-item.ts';
+import './atlas-stepper.ts';
+import './atlas-step.ts';
+import './atlas-pagination.ts';
+import './atlas-progress.ts';
