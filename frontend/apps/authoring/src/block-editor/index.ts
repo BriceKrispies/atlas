@@ -22,6 +22,7 @@ const styles = `
   }
   atlas-box[data-role="picker"] {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--atlas-space-sm);
     padding: var(--atlas-space-md);

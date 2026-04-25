@@ -14,11 +14,16 @@ const styles = `
   }
   atlas-box[data-role="picker"] {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--atlas-space-md);
+    gap: var(--atlas-space-sm) var(--atlas-space-md);
     padding: var(--atlas-space-md);
     border-bottom: 1px solid var(--atlas-color-border);
     background: var(--atlas-color-surface);
+  }
+  atlas-box[data-role="picker"] atlas-select {
+    flex: 1 1 200px;
+    min-width: 0;
   }
   atlas-box[data-role="canvas"] {
     flex: 1;
