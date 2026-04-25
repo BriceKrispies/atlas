@@ -80,12 +80,12 @@ export class AuthoringPageEditorRoute extends AtlasSurface {
       <style>${styles}</style>
       <atlas-box data-role="picker">
         <atlas-text variant="medium">Page</atlas-text>
-        <atlas-select data-role="page-select" aria-label="Page"></atlas-select>
+        <atlas-select name="page-select" aria-label="Page"></atlas-select>
       </atlas-box>
       <atlas-box data-role="canvas"></atlas-box>
     `;
 
-    const select = this._root.querySelector('atlas-select[data-role="page-select"]') as
+    const select = this._root.querySelector('atlas-select[name="page-select"]') as
       | (HTMLElement & { options: unknown; value: string })
       | null;
     if (select) {

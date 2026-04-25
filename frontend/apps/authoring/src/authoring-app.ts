@@ -76,7 +76,7 @@ function readRouteFromHash(): string {
 }
 
 export class AtlasAuthoring extends AtlasSurface {
-  static override surfaceId = 'authoring';
+  static override surfaceId = 'authoring.shell';
 
   private readonly _root: ShadowRoot;
   private _activeRouteId: string = ROUTES[0]!.id;
@@ -115,12 +115,12 @@ export class AtlasAuthoring extends AtlasSurface {
         <atlas-heading level="3">Atlas Authoring</atlas-heading>
       </atlas-box>
       <atlas-box data-role="sidebar">
-        <atlas-nav data-role="route-nav"></atlas-nav>
+        <atlas-nav name="route-nav" label="Authoring navigation"></atlas-nav>
       </atlas-box>
       <atlas-box data-role="content"></atlas-box>
     `;
 
-    const nav = this._root.querySelector('atlas-nav[data-role="route-nav"]');
+    const nav = this._root.querySelector('atlas-nav[name="route-nav"]');
     if (nav) {
       for (const route of ROUTES) {
         const item = document.createElement('atlas-nav-item');

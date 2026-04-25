@@ -10,24 +10,42 @@ export default defineConfig({
   reporter: 'html',
 
   use: {
-    baseURL: 'http://localhost:5199',
     trace: 'on-first-retry',
   },
 
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'admin',
+      testDir: './apps/admin',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5199',
+      },
+    },
+    {
+      name: 'authoring',
+      testDir: './apps/authoring',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5181',
+      },
     },
   ],
 
-  webServer: {
-    command: 'pnpm --filter @atlas/admin dev --port 5199',
-    port: 5199,
-    reuseExistingServer: !process.env['CI'],
-    env: {
-      VITE_BACKEND: 'http',
-      VITE_API_URL: 'http://localhost:9999',
+  webServer: [
+    {
+      command: 'pnpm --filter @atlas/admin dev --port 5199',
+      port: 5199,
+      reuseExistingServer: !process.env['CI'],
+      env: {
+        VITE_BACKEND: 'http',
+        VITE_API_URL: 'http://localhost:9999',
+      },
     },
-  },
+    {
+      command: 'pnpm --filter @atlas/authoring dev --port 5181',
+      port: 5181,
+      reuseExistingServer: !process.env['CI'],
+    },
+  ],
 });

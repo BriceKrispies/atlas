@@ -74,12 +74,12 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
       <style>${styles}</style>
       <atlas-box data-role="picker">
         <atlas-text variant="medium">Layout</atlas-text>
-        <atlas-select data-role="layout-select" aria-label="Layout"></atlas-select>
+        <atlas-select name="layout-select" aria-label="Layout"></atlas-select>
       </atlas-box>
       <atlas-box data-role="canvas"></atlas-box>
     `;
 
-    const select = this._root.querySelector('atlas-select[data-role="layout-select"]') as
+    const select = this._root.querySelector('atlas-select[name="layout-select"]') as
       | (HTMLElement & { options: unknown; value: string })
       | null;
     if (select) {
