@@ -49,4 +49,17 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
+  // Batch Gestures — specimens smoke
+  const gestureSpecimens: Array<{ id: string; tag: string }> = [
+    { id: 'pull-to-refresh', tag: 'atlas-pull-to-refresh' },
+    { id: 'swipe-actions',   tag: 'atlas-swipe-actions' },
+  ];
+
+  for (const { id, tag } of gestureSpecimens) {
+    test(`Batch Gestures — specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
 });

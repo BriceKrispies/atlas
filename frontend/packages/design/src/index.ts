@@ -75,3 +75,7 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Gesture primitives
+import './atlas-pull-to-refresh.ts';
+import './atlas-swipe-actions.ts';
