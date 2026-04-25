@@ -1,21 +1,24 @@
 /**
- * <authoring-page-editor-shell> — the shell that hosts a full-featured page
- * editor inside the authoring app. See
- * `specs/frontend/surfaces/sandbox-page-editor.md` for the contract (the spec
- * file pre-dates the move from sandbox to authoring). Phase A lays down the
- * structural skeleton:
+ * <authoring-page-editor-shell> — host for the page editor.
  *
- *   toolbar (undo, redo, template switcher stub, save status, preview toggle)
- *   canvas  (content-page edit=true — drives EditorAPI + palette)
- *   inspector (property panel — schema-driven in Phase C)
- *   preview (view-mode content-page, mirror of canvas pageId — Phase F)
+ * The shell is a thin renderer over `PageEditorController` (see state.ts).
+ * The controller owns the page document, derived regions / widget instances,
+ * selection, mode, drawer state, save status, and history. The shell
+ * subscribes and re-renders the parts whose snapshot changed.
  *
- * Later phases add behaviour behind the stubbed toolbar controls:
- *   - Phase C: inspector content + editor.update wiring
- *   - Phase D: history stack + undo/redo buttons
- *   - Phase E: multi-select + bulk delete
- *   - Phase F: live-reactive preview pane
- *   - Phase G: template switcher dropdown + diff/confirm flow
+ * Layout:
+ *
+ *   +------------------------------------------+
+ *   | topbar  (mode tabs, undo, redo, save)    |
+ *   +-----+-------------------------+----------+
+ *   | nav | canvas (content-page)   | drawer   |
+ *   |     |                         |          |
+ *   +-----+-------------------------+----------+
+ *
+ * Modes:
+ *   structure — template/slot manipulation; drawer holds template settings.
+ *   content   — widget operations; drawer holds palette OR widget settings.
+ *   preview   — page renders without editor chrome; only an exit button.
  */
 
 import { AtlasElement, AtlasSurface } from '@atlas/core';
@@ -24,19 +27,23 @@ import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
 import './property-panel.ts';
 import { editorWidgetSchemas } from './editor-widgets/index.ts';
-import { HistoryStack, wrapStoreWithHistory, type WrappedPageStore } from './history.ts';
 import { moduleDefaultTemplateRegistry } from '@atlas/page-templates';
-import type { PageDocument, PageStore, WidgetInstance } from '@atlas/page-templates';
+import type {
+  EditorAPI,
+  PageDocument,
+  PageStore,
+  WidgetInstance,
+} from '@atlas/page-templates';
+import type { WrappedPageStore } from './history.ts';
 import type { PageEditorPropertyPanel } from './property-panel.ts';
+import {
+  PageEditorController,
+  type DrawerState,
+  type EditorMode,
+  type PageEditorStateSnapshot,
+} from './state.ts';
 
 type OnLogFn = (kind: string, payload: unknown) => void;
-
-interface EditorAPI {
-  get(instanceId: string): { widgetId: string; instanceId: string; config: Record<string, unknown> } | undefined;
-  update(args: { instanceId: string; config: Record<string, unknown> }): Promise<{ ok?: boolean; reason?: string } | undefined>;
-  remove(args: { instanceId: string }): Promise<{ ok?: boolean; reason?: string } | undefined>;
-  [k: string]: unknown;
-}
 
 interface ContentPageElement extends HTMLElement {
   pageId?: string;
@@ -50,12 +57,13 @@ interface ContentPageElement extends HTMLElement {
   edit?: boolean;
   onMediatorTrace?: (evt: unknown) => void;
   onCapabilityTrace?: (evt: unknown) => void;
-  editor?: EditorAPI;
+  editor?: EditorAPI | null;
   reload?: () => Promise<void>;
   _currentDoc?: PageDocument | null;
 }
 
 interface TemplateManifest {
+  templateId?: string;
   version?: string;
   displayName?: string;
   regions: Array<{ name: string }>;
@@ -64,16 +72,17 @@ interface TemplateManifest {
 interface TemplateRegistry {
   list?: () => Array<{ templateId: string; displayName?: string }>;
   get: (id: string) => { manifest: TemplateManifest };
+  has?: (id: string) => boolean;
 }
 
 const styles = `
   :host {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 56px 1fr auto;
     grid-template-rows: 48px 1fr;
     grid-template-areas:
-      "toolbar   toolbar"
-      "canvas    inspector";
+      "topbar  topbar  topbar"
+      "nav     canvas  drawer";
     width: 100%;
     height: min(720px, 80vh);
     min-height: 480px;
@@ -85,15 +94,20 @@ const styles = `
     overflow: hidden;
   }
 
-  :host([preview-open]) {
-    grid-template-columns: 1fr 320px minmax(280px, 1fr);
+  :host([data-mode="preview"]) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-areas:
-      "toolbar   toolbar   toolbar"
-      "canvas    inspector preview";
+      "topbar"
+      "canvas";
+  }
+  :host([data-mode="preview"]) atlas-box[data-role="nav"],
+  :host([data-mode="preview"]) atlas-box[data-role="drawer"] {
+    display: none;
   }
 
-  atlas-box[data-role="toolbar"] {
-    grid-area: toolbar;
+  atlas-box[data-role="topbar"] {
+    grid-area: topbar;
     display: flex;
     align-items: center;
     gap: var(--atlas-space-sm);
@@ -102,8 +116,19 @@ const styles = `
     border-bottom: 1px solid var(--atlas-color-border);
     min-height: 48px;
   }
-  atlas-box[data-role="toolbar"] atlas-box[data-role="spacer"] {
+  atlas-box[data-role="topbar"] atlas-box[data-role="spacer"] {
     flex: 1;
+  }
+
+  atlas-box[data-role="nav"] {
+    grid-area: nav;
+    display: flex;
+    flex-direction: column;
+    gap: var(--atlas-space-sm);
+    padding: var(--atlas-space-sm) var(--atlas-space-xs);
+    background: var(--atlas-color-surface);
+    border-right: 1px solid var(--atlas-color-border);
+    align-items: center;
   }
 
   atlas-box[data-role="canvas"] {
@@ -113,33 +138,71 @@ const styles = `
     min-width: 0;
     background: var(--atlas-color-bg);
   }
+  :host([data-mode="preview"]) atlas-box[data-role="canvas"] {
+    padding: 0;
+  }
 
-  atlas-box[data-role="inspector"] {
-    grid-area: inspector;
+  atlas-box[data-role="drawer"] {
+    grid-area: drawer;
+    width: 320px;
     overflow: auto;
     padding: var(--atlas-space-md);
     border-left: 1px solid var(--atlas-color-border);
     background: var(--atlas-color-surface);
   }
-
-  atlas-box[data-role="preview"] {
-    grid-area: preview;
-    overflow: auto;
-    padding: var(--atlas-space-md);
-    border-left: 1px solid var(--atlas-color-border);
-    background: var(--atlas-color-bg);
-  }
-  :host(:not([preview-open])) atlas-box[data-role="preview"] {
+  atlas-box[data-role="drawer"][data-drawer-kind="closed"] {
     display: none;
   }
 
-  /* Multi-select visual: an additional outline that co-exists with
-     edit-mount's single-selection outline. Dashed to distinguish the two. */
+  /* Multi-select visual outline (dashed) so it co-exists with edit-mount's
+     single-selection ring without colliding visually. */
   atlas-box[data-role="canvas"] [data-widget-cell][data-multi-selected="true"] {
     outline: 2px dashed var(--atlas-color-primary);
     outline-offset: 4px;
   }
+
+  /* In content mode, hide widget chrome unless the widget is hovered or
+     selected. edit-mount's CSS already shows the chrome when
+     :hover / :focus-within / [data-selected="true"] match; we suppress the
+     baseline opacity:0.4 that would otherwise leak through. */
+  :host([data-mode="content"]) atlas-box[data-role="canvas"]
+    content-page[edit] [data-widget-cell] [data-cell-chrome] {
+    opacity: 0;
+  }
+  :host([data-mode="content"]) atlas-box[data-role="canvas"]
+    content-page[edit] [data-widget-cell]:hover [data-cell-chrome],
+  :host([data-mode="content"]) atlas-box[data-role="canvas"]
+    content-page[edit] [data-widget-cell]:focus-within [data-cell-chrome],
+  :host([data-mode="content"]) atlas-box[data-role="canvas"]
+    content-page[edit] [data-widget-cell][data-selected="true"] [data-cell-chrome],
+  :host([data-mode="content"]) atlas-box[data-role="canvas"]
+    content-page[edit] [data-widget-cell][data-multi-selected="true"] [data-cell-chrome] {
+    opacity: 1;
+  }
+
+  /* In structure mode, the slot drop targets become the visual emphasis. */
+  :host([data-mode="structure"]) atlas-box[data-role="canvas"]
+    section[data-editor-slot] {
+    outline: 1px dashed var(--atlas-color-border-strong, #94a3b8);
+    outline-offset: 2px;
+  }
+
+  atlas-segmented-control[name="mode"] {
+    margin-right: var(--atlas-space-sm);
+  }
+
+  atlas-text[name="save-status"] {
+    margin-right: var(--atlas-space-sm);
+  }
+
+  atlas-button[disabled] { opacity: 0.5; pointer-events: none; }
 `;
+
+const MODE_OPTIONS: Array<{ value: EditorMode; label: string; testValue: string }> = [
+  { value: 'structure', label: 'Structure', testValue: 'mode-structure' },
+  { value: 'content', label: 'Content', testValue: 'mode-content' },
+  { value: 'preview', label: 'Preview', testValue: 'mode-preview' },
+];
 
 export class AuthoringPageEditorShellElement extends AtlasSurface {
   static override surfaceId = 'authoring.page-editor.shell';
@@ -154,17 +217,15 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   capabilities: Record<string, (args: unknown) => Promise<unknown>> = {};
   onLog: OnLogFn = () => {};
 
+  private _controller: PageEditorController | null = null;
   private _canvasPage: ContentPageElement | null = null;
-  private _previewPage: ContentPageElement | null = null;
-  private _previewOpen = false;
-  private _selectedInstanceIds: Set<string> = new Set();
-  private _inspectorEl: (PageEditorPropertyPanel & HTMLElement) | null = null;
   private _canvasHost: HTMLElement | null = null;
+  private _drawerEl: HTMLElement | null = null;
+  private _propertyPanel: (PageEditorPropertyPanel & HTMLElement) | null = null;
   private _onCanvasClick: (e: Event) => void;
   private _onKeyDown: (e: KeyboardEvent) => void;
-  private _history: HistoryStack | null = null;
-  private _wrappedStore: WrappedPageStore | null = null;
-  private _previewUnsubscribe: (() => void) | null = null;
+  private _unsubscribe: (() => void) | null = null;
+  private _lastSnapshot: PageEditorStateSnapshot | null = null;
 
   constructor() {
     super();
@@ -179,175 +240,371 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   override connectedCallback(): void {
     super.connectedCallback?.();
     this._applyTestId?.();
-    // Defer one microtask so properties set by the mount helper just before
-    // insertion (pageId, pageStore, etc.) are populated before we render.
-    queueMicrotask(() => this._render());
+    queueMicrotask(() => void this._init());
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback?.();
     this._canvasHost?.removeEventListener('click', this._onCanvasClick, true);
     document.removeEventListener('keydown', this._onKeyDown);
-    this._previewUnsubscribe?.();
-    this._previewUnsubscribe = null;
+    this._unsubscribe?.();
+    this._unsubscribe = null;
+    this._controller?.dispose();
+    this._controller = null;
     this._canvasPage = null;
-    this._previewPage = null;
     this._canvasHost = null;
-    this._inspectorEl = null;
-    this._history = null;
-    this._wrappedStore = null;
+    this._drawerEl = null;
+    this._propertyPanel = null;
+    this._lastSnapshot = null;
   }
 
-  private _render(): void {
-    const root = this.shadowRoot as ShadowRoot;
-    root.innerHTML = `
-      <style>${styles}\n${templatesCssText}</style>
-      <atlas-box data-role="toolbar" name="toolbar">
-        <atlas-button name="undo" variant="ghost" size="sm" aria-label="Undo">Undo</atlas-button>
-        <atlas-button name="redo" variant="ghost" size="sm" aria-label="Redo">Redo</atlas-button>
-        <atlas-text variant="muted" name="save-status">saved</atlas-text>
-        <atlas-box data-role="spacer"></atlas-box>
-        <atlas-text variant="small" name="template-label">Template:</atlas-text>
-        <atlas-stack direction="row" gap="xs" name="template-switcher"></atlas-stack>
-        <atlas-button name="toggle-preview" variant="ghost" size="sm" aria-label="Toggle live preview">Preview</atlas-button>
-      </atlas-box>
-      <atlas-box data-role="canvas" name="canvas" tabindex="-1"></atlas-box>
-      <atlas-box data-role="inspector" name="inspector">
-        <page-editor-property-panel name="property-panel"></page-editor-property-panel>
-      </atlas-box>
-      <atlas-box data-role="preview" name="preview"></atlas-box>
-    `;
+  /** Imperative handle for tests / caller code that needs the controller. */
+  get editorState(): PageEditorController | null {
+    return this._controller;
+  }
 
-    const previewBtn = root.querySelector('atlas-button[name="toggle-preview"]');
-    previewBtn?.addEventListener('click', () => this._togglePreview());
+  /** Snapshot accessor for tests. */
+  getEditorSnapshot(): PageEditorStateSnapshot | null {
+    return this._controller?.getSnapshot() ?? null;
+  }
 
-    const undoBtn = root.querySelector('atlas-button[name="undo"]');
-    const redoBtn = root.querySelector('atlas-button[name="redo"]');
-    undoBtn?.addEventListener('click', () => void this._undo());
-    redoBtn?.addEventListener('click', () => void this._redo());
+  /** Direct mutator API exposed for tests that need to bypass the DOM. */
+  get editor(): EditorAPI | null {
+    return this._canvasPage?.editor ?? null;
+  }
 
-    document.addEventListener('keydown', this._onKeyDown);
+  // ---- init ----
 
-    this._inspectorEl = root.querySelector('page-editor-property-panel') as
-      (PageEditorPropertyPanel & HTMLElement) | null;
-    if (this._inspectorEl) {
-      this._inspectorEl.onChange = (nextConfig: Record<string, unknown>) =>
-        void this._commitConfig(nextConfig);
-    }
+  private async _init(): Promise<void> {
+    if (!this.pageStore) return;
+    const initialDoc = await this.pageStore.get(this.pageId);
+    this._controller = new PageEditorController({
+      pageId: this.pageId,
+      pageStore: this.pageStore,
+      initialDoc,
+      initialMode: 'content',
+    });
+    this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
 
-    this._canvasHost = root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
-    // Capture phase: edit-mount's cell click handlers call
-    // `stopPropagation()` to keep their internal selection self-contained.
-    // Listening in capture means the shell sees the click before edit-mount
-    // swallows the bubble, so the inspector + multi-select state stay in
-    // sync with user intent without having to change edit-mount semantics.
-    this._canvasHost?.addEventListener('click', this._onCanvasClick, true);
-
-    void this._mountCanvas().then(() => this._renderTemplateSwitcher());
-
+    this._renderShell();
+    await this._mountCanvas();
+    // Sync the initial snapshot now that the canvas has an editor handle.
+    this._onSnapshot(this._controller.getSnapshot());
     this.onLog?.('editor-mount', { pageId: this.pageId });
   }
 
-  private _handleCanvasClick(event: Event): void {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const cell = target.closest('[data-widget-cell]');
-    if (!cell) {
-      if (this._selectedInstanceIds.size > 0) {
-        this._setSelection(new Set());
-      }
-      return;
-    }
-    const instanceId = cell.getAttribute('data-instance-id');
-    if (!instanceId) return;
+  private _renderShell(): void {
+    const root = this.shadowRoot as ShadowRoot;
+    root.innerHTML = `
+      <style>${styles}\n${templatesCssText}</style>
+      <atlas-box data-role="topbar" name="topbar">
+        <atlas-segmented-control name="mode" aria-label="Editor mode" size="sm"></atlas-segmented-control>
+        <atlas-button name="undo" variant="ghost" size="sm" aria-label="Undo">Undo</atlas-button>
+        <atlas-button name="redo" variant="ghost" size="sm" aria-label="Redo">Redo</atlas-button>
+        <atlas-button name="save" variant="ghost" size="sm" aria-label="Save">Save</atlas-button>
+        <atlas-text variant="muted" name="save-status">saved</atlas-text>
+        <atlas-box data-role="spacer"></atlas-box>
+        <atlas-text variant="small" name="page-title"></atlas-text>
+        <atlas-button name="preview-toggle" variant="ghost" size="sm" aria-label="Preview">Preview</atlas-button>
+        <atlas-button name="exit-preview" variant="ghost" size="sm" aria-label="Exit preview">Exit preview</atlas-button>
+      </atlas-box>
+      <atlas-box data-role="nav" name="nav">
+        <atlas-button name="nav-templates" variant="ghost" size="sm" aria-label="Templates">T</atlas-button>
+      </atlas-box>
+      <atlas-box data-role="canvas" name="canvas" tabindex="-1"></atlas-box>
+      <atlas-box data-role="drawer" name="drawer" data-drawer-kind="closed"></atlas-box>
+    `;
 
-    const mouseEv = event as MouseEvent;
-    const additive = mouseEv.shiftKey || mouseEv.metaKey || mouseEv.ctrlKey;
-    const next = new Set(additive ? this._selectedInstanceIds : []);
-    if (additive && next.has(instanceId)) {
-      next.delete(instanceId);
-    } else {
-      next.add(instanceId);
+    const segmented = root.querySelector('atlas-segmented-control[name="mode"]') as
+      (HTMLElement & { options: unknown; value: string | null }) | null;
+    if (segmented) {
+      segmented.options = MODE_OPTIONS.map((m) => ({ value: m.testValue, label: m.label }));
+      segmented.value = 'mode-content';
+      segmented.addEventListener('change', (ev) => {
+        const value = (ev as CustomEvent<{ value: string }>).detail?.value;
+        const mode = MODE_OPTIONS.find((m) => m.testValue === value)?.value;
+        if (mode) this._controller?.setMode(mode);
+      });
     }
-    this._setSelection(next);
+
+    const undoBtn = root.querySelector('atlas-button[name="undo"]');
+    const redoBtn = root.querySelector('atlas-button[name="redo"]');
+    const saveBtn = root.querySelector('atlas-button[name="save"]');
+    const previewBtn = root.querySelector('atlas-button[name="preview-toggle"]');
+    const exitPreviewBtn = root.querySelector('atlas-button[name="exit-preview"]');
+    const navTemplatesBtn = root.querySelector('atlas-button[name="nav-templates"]');
+
+    undoBtn?.addEventListener('click', () => void this._undo());
+    redoBtn?.addEventListener('click', () => void this._redo());
+    saveBtn?.addEventListener('click', () => void this._controller?.save());
+    previewBtn?.addEventListener('click', () => this._controller?.setMode('preview'));
+    exitPreviewBtn?.addEventListener('click', () => this._controller?.setMode('content'));
+    navTemplatesBtn?.addEventListener('click', () => {
+      this._controller?.setMode('structure');
+    });
+
+    document.addEventListener('keydown', this._onKeyDown);
+
+    this._canvasHost = root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
+    this._canvasHost?.addEventListener('click', this._onCanvasClick, true);
+
+    this._drawerEl = root.querySelector('atlas-box[data-role="drawer"]') as HTMLElement | null;
   }
 
-  private _setSelection(nextSet: Set<string>): void {
-    // Clear previous multi-select marks.
-    for (const id of this._selectedInstanceIds) {
-      const cell = this._canvasHost?.querySelector(
-        `[data-widget-cell][data-instance-id="${CSS.escape(id)}"]`,
-      );
-      cell?.removeAttribute('data-multi-selected');
+  private async _mountCanvas(): Promise<void> {
+    if (!this._canvasHost || !this._controller) return;
+    this._canvasHost.textContent = '';
+    const page = document.createElement('content-page') as ContentPageElement;
+    page.pageId = this.pageId;
+    page.pageStore = this._controller.wrappedStore;
+    if (this.layoutRegistry) page.layoutRegistry = this.layoutRegistry;
+    if (this.templateRegistry) page.templateRegistry = this.templateRegistry;
+    page.principal = this.principal;
+    page.tenantId = this.tenantId;
+    page.correlationId = this.correlationId;
+    page.capabilities = this.capabilities ?? {};
+    page.edit = this._controller.getSnapshot().mode !== 'preview';
+    page.onMediatorTrace = (evt) => this.onLog?.('mediator', evt);
+    page.onCapabilityTrace = (evt) => this.onLog?.('capability', evt);
+    this._canvasHost.appendChild(page);
+    this._canvasPage = page;
+    // The content-page mounts asynchronously; poll a few microtasks for its
+    // editor handle to appear, then hand it to the controller.
+    await this._waitForEditor();
+    this._controller.setEditor(this._canvasPage?.editor ?? null);
+  }
+
+  private async _waitForEditor(): Promise<void> {
+    for (let i = 0; i < 30; i++) {
+      if (this._canvasPage?.editor) return;
+      await new Promise<void>((r) => queueMicrotask(() => r()));
     }
-    this._selectedInstanceIds = nextSet;
-    if (nextSet.size > 1) {
-      // Mark all selected cells.
-      for (const id of nextSet) {
-        const cell = this._canvasHost?.querySelector(
+  }
+
+  // ---- snapshot rendering ----
+
+  private _onSnapshot(snap: PageEditorStateSnapshot): void {
+    const prev = this._lastSnapshot;
+    this._lastSnapshot = snap;
+    const root = this.shadowRoot as ShadowRoot | null;
+    if (!root) return;
+
+    if (!prev || prev.mode !== snap.mode) {
+      this.setAttribute('data-mode', snap.mode);
+      const seg = root.querySelector('atlas-segmented-control[name="mode"]') as
+        (HTMLElement & { value: string | null }) | null;
+      if (seg) seg.value = `mode-${snap.mode}`;
+      const exit = root.querySelector('atlas-button[name="exit-preview"]') as HTMLElement | null;
+      const previewBtn = root.querySelector('atlas-button[name="preview-toggle"]') as HTMLElement | null;
+      if (exit) exit.style.display = snap.mode === 'preview' ? '' : 'none';
+      if (previewBtn) previewBtn.style.display = snap.mode === 'preview' ? 'none' : '';
+      void this._reflectModeOnCanvas(snap.mode);
+    }
+
+    if (!prev || prev.status !== snap.status) {
+      const el = root.querySelector('atlas-text[name="save-status"]');
+      if (el) el.textContent = snap.status;
+    }
+
+    if (
+      !prev ||
+      prev.history.canUndo !== snap.history.canUndo ||
+      prev.history.canRedo !== snap.history.canRedo
+    ) {
+      const undoBtn = root.querySelector('atlas-button[name="undo"]') as HTMLElement | null;
+      const redoBtn = root.querySelector('atlas-button[name="redo"]') as HTMLElement | null;
+      if (undoBtn) toggleDisabled(undoBtn, !snap.history.canUndo);
+      if (redoBtn) toggleDisabled(redoBtn, !snap.history.canRedo);
+    }
+
+    if (
+      !prev ||
+      prev.pageDocument !== snap.pageDocument ||
+      (prev.pageDocument?.['meta'] as { title?: string } | undefined)?.title !==
+        (snap.pageDocument?.['meta'] as { title?: string } | undefined)?.title
+    ) {
+      const titleEl = root.querySelector('atlas-text[name="page-title"]');
+      if (titleEl) {
+        const t = (snap.pageDocument?.['meta'] as { title?: string } | undefined)?.title ?? snap.pageId;
+        titleEl.textContent = t;
+      }
+    }
+
+    if (!prev || prev.selectedWidgetInstanceIds.join(',') !== snap.selectedWidgetInstanceIds.join(',')) {
+      this._reflectMultiSelect(snap.selectedWidgetInstanceIds);
+    }
+
+    if (!prev || prev.mode !== snap.mode || drawerChanged(prev.drawer, snap.drawer)) {
+      this._renderDrawer(snap);
+    }
+  }
+
+  private async _reflectModeOnCanvas(mode: EditorMode): Promise<void> {
+    if (!this._canvasPage) return;
+    const wantsEdit = mode !== 'preview';
+    if (this._canvasPage.edit === wantsEdit) return;
+    this._canvasPage.edit = wantsEdit;
+    try {
+      await this._canvasPage.reload?.();
+    } finally {
+      this._controller?.setEditor(this._canvasPage.editor ?? null);
+    }
+  }
+
+  private _reflectMultiSelect(ids: ReadonlyArray<string>): void {
+    if (!this._canvasHost) return;
+    const all = this._canvasHost.querySelectorAll('[data-widget-cell][data-multi-selected="true"]');
+    for (const el of all) el.removeAttribute('data-multi-selected');
+    if (ids.length > 1) {
+      for (const id of ids) {
+        const cell = this._canvasHost.querySelector(
           `[data-widget-cell][data-instance-id="${CSS.escape(id)}"]`,
         );
         cell?.setAttribute('data-multi-selected', 'true');
       }
     }
-    // Sync inspector:
-    if (nextSet.size === 1) {
-      const [only] = nextSet;
-      if (only) this._populateInspector(only);
-    } else if (nextSet.size > 1) {
-      this._inspectorEl?.clear();
-      this._showMultiSelectInspector(nextSet.size);
-    } else {
-      this._inspectorEl?.clear();
-    }
-    this.onLog?.('selection-changed', { count: nextSet.size });
   }
 
-  private _showMultiSelectInspector(count: number): void {
-    // Replace the inspector body with a simple multi-select notice. The
-    // existing property-panel element is left in place but cleared — we
-    // append a sibling notice.
-    const inspector = this.shadowRoot?.querySelector('atlas-box[data-role="inspector"]');
-    if (!inspector) return;
-    const existingNotice = inspector.querySelector('[data-role="multi-select-notice"]');
-    existingNotice?.remove();
-    const notice = document.createElement('atlas-stack');
-    notice.setAttribute('gap', 'sm');
-    notice.setAttribute('data-role', 'multi-select-notice');
+  private _renderDrawer(snap: PageEditorStateSnapshot): void {
+    const drawer = this._drawerEl;
+    if (!drawer) return;
+    drawer.setAttribute('data-drawer-kind', snap.drawer.kind);
+    drawer.textContent = '';
+
+    if (snap.mode === 'preview' || snap.drawer.kind === 'closed') {
+      this._propertyPanel = null;
+      return;
+    }
+
+    if (snap.mode === 'structure') {
+      drawer.appendChild(this._buildTemplateDrawer(snap));
+      return;
+    }
+
+    // content mode
+    if (snap.drawer.kind === 'palette') {
+      drawer.appendChild(this._buildAddWidgetDrawer(snap));
+    } else if (snap.drawer.kind === 'settings') {
+      drawer.appendChild(this._buildSettingsDrawer(snap.drawer.widgetInstanceId));
+    }
+  }
+
+  private _buildTemplateDrawer(snap: PageEditorStateSnapshot): HTMLElement {
+    const wrap = document.createElement('atlas-stack');
+    wrap.setAttribute('gap', 'sm');
+    wrap.setAttribute('name', 'template-drawer-content');
 
     const heading = document.createElement('atlas-heading');
     heading.setAttribute('level', '4');
-    heading.textContent = `${count} widgets selected`;
-    notice.appendChild(heading);
+    heading.textContent = 'Template';
+    wrap.appendChild(heading);
 
-    const msg = document.createElement('atlas-text');
-    msg.setAttribute('variant', 'muted');
-    msg.textContent = 'Press Delete or Backspace to remove all. Shift- or cmd-click to adjust selection.';
-    notice.appendChild(msg);
+    const sub = document.createElement('atlas-text');
+    sub.setAttribute('variant', 'muted');
+    sub.textContent = 'Select a template for this page. Widgets in regions that no longer exist will be removed.';
+    wrap.appendChild(sub);
 
-    inspector.appendChild(notice);
+    const select = document.createElement('atlas-select') as HTMLElement & {
+      options: unknown;
+      value: string;
+    };
+    select.setAttribute('name', 'template-select');
+    select.setAttribute('aria-label', 'Template');
+
+    const registry: TemplateRegistry =
+      this.templateRegistry ?? (moduleDefaultTemplateRegistry as unknown as TemplateRegistry);
+    const list = registry.list?.() ?? [];
+    select.options = list.map((t) => ({ value: t.templateId, label: t.displayName ?? t.templateId }));
+    select.value = snap.layoutTemplateId;
+    select.addEventListener('change', (ev) => {
+      const next = (ev as CustomEvent<{ value: string }>).detail?.value ?? select.value;
+      if (next && next !== snap.layoutTemplateId) {
+        void this._switchTemplate(next);
+      }
+    });
+    wrap.appendChild(select);
+
+    return wrap;
   }
 
-  private _populateInspector(instanceId: string): void {
-    // Clear any lingering multi-select notice before populating the
-    // schema-driven property panel.
-    const inspector = this.shadowRoot?.querySelector('atlas-box[data-role="inspector"]');
-    inspector?.querySelector('[data-role="multi-select-notice"]')?.remove();
-    if (!this._inspectorEl) return;
+  private _buildAddWidgetDrawer(snap: PageEditorStateSnapshot): HTMLElement {
+    const wrap = document.createElement('atlas-stack');
+    wrap.setAttribute('gap', 'sm');
+    wrap.setAttribute('name', 'add-widget-drawer-content');
+
+    const heading = document.createElement('atlas-heading');
+    heading.setAttribute('level', '4');
+    heading.textContent = 'Add widget';
+    wrap.appendChild(heading);
+
+    const hint = document.createElement('atlas-text');
+    hint.setAttribute('variant', 'muted');
+    const firstRegion = snap.regions[0]?.name;
+    hint.textContent = firstRegion
+      ? `Select a chip to add into "${firstRegion}", or drag onto a region.`
+      : 'Pick a template with regions to enable adding widgets.';
+    wrap.appendChild(hint);
+
+    const list = document.createElement('atlas-stack');
+    list.setAttribute('gap', 'xs');
+
+    const seen = new Set<string>();
+    for (const widgetId of Object.keys(editorWidgetSchemas)) {
+      if (seen.has(widgetId)) continue;
+      seen.add(widgetId);
+      const chip = document.createElement('atlas-button');
+      chip.setAttribute('name', `palette-${widgetId}`);
+      chip.setAttribute('data-palette-chip', '');
+      chip.setAttribute('data-widget-id', widgetId);
+      chip.setAttribute('size', 'sm');
+      chip.setAttribute('variant', 'ghost');
+      chip.textContent = widgetId;
+      chip.addEventListener('click', () => {
+        if (firstRegion) {
+          void this._controller?.addWidget({ widgetId, region: firstRegion });
+        }
+      });
+      list.appendChild(chip);
+    }
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  private _buildSettingsDrawer(instanceId: string): HTMLElement {
+    const wrap = document.createElement('atlas-stack');
+    wrap.setAttribute('gap', 'sm');
+    wrap.setAttribute('name', 'settings-drawer-content');
+
+    const panel = document.createElement('page-editor-property-panel') as
+      PageEditorPropertyPanel & HTMLElement;
+    panel.setAttribute('name', 'property-panel');
+    panel.onChange = (cfg) => void this._controller?.updateWidgetConfig(instanceId, cfg);
+    wrap.appendChild(panel);
+    this._propertyPanel = panel;
+
+    queueMicrotask(() => this._populatePanel(instanceId));
+    return wrap;
+  }
+
+  private _populatePanel(instanceId: string): void {
+    if (!this._propertyPanel) return;
     const editor = this._canvasPage?.editor;
-    if (!editor) return;
+    if (!editor) {
+      this._propertyPanel.clear();
+      return;
+    }
     const entry = editor.get(instanceId);
     if (!entry) {
-      this._inspectorEl.clear();
+      this._propertyPanel.clear();
       return;
     }
     const schema = editorWidgetSchemas[entry.widgetId];
     if (!schema) {
-      this._inspectorEl.clear();
+      this._propertyPanel.clear();
       this.onLog?.('inspector-no-schema', { widgetId: entry.widgetId });
       return;
     }
-    this._inspectorEl.configure({
+    this._propertyPanel.configure({
       widgetId: entry.widgetId,
       instanceId: entry.instanceId,
       config: entry.config,
@@ -355,201 +612,30 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     });
   }
 
-  private async _commitConfig(nextConfig: Record<string, unknown>): Promise<void> {
-    const editor = this._canvasPage?.editor;
-    if (!editor) return;
-    // Config edits only make sense for a single selection. Multi-select
-    // suppresses the inspector's property panel, so this is defensive.
-    if (this._selectedInstanceIds.size !== 1) return;
-    const [instanceId] = this._selectedInstanceIds;
+  // ---- canvas click -> selection ----
+
+  private _handleCanvasClick(event: Event): void {
+    if (!this._controller) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const cell = target.closest('[data-widget-cell]');
+    if (!cell) {
+      this._controller.selectWidget(null);
+      return;
+    }
+    const instanceId = cell.getAttribute('data-instance-id');
     if (!instanceId) return;
-    this._setSaveStatus('saving');
-    try {
-      const res = await editor.update({ instanceId, config: nextConfig });
-      if (res?.ok === false) {
-        this._inspectorEl?.setError(res.reason ?? 'invalid-config');
-        this.onLog?.('editor-update-rejected', { reason: res.reason });
-        this._setSaveStatus('error');
-        return;
-      }
-      this._inspectorEl?.setError(null);
-      this._setSaveStatus('saved');
-      this.onLog?.('editor-update', { instanceId });
-      // Re-populate after remount to pick up any normalizations the editor applied.
-      queueMicrotask(() => {
-        if (this._selectedInstanceIds.has(instanceId)) this._populateInspector(instanceId);
-      });
-    } catch (err) {
-      this._inspectorEl?.setError(err instanceof Error ? err.message : 'persist-failed');
-      this._setSaveStatus('error');
-    }
+    const me = event as MouseEvent;
+    const additive = me.shiftKey || me.metaKey || me.ctrlKey;
+    this._controller.selectWidget(instanceId, { additive });
   }
 
-  private async _deleteSelected(): Promise<void> {
-    const editor = this._canvasPage?.editor;
-    if (!editor || this._selectedInstanceIds.size === 0) return;
-    const ids = [...this._selectedInstanceIds];
-    this._setSaveStatus('saving');
-    let removed = 0;
-    for (const instanceId of ids) {
-      try {
-        const res = await editor.remove({ instanceId });
-        if (res?.ok !== false) removed++;
-        else this.onLog?.('editor-remove-rejected', { instanceId, reason: res.reason });
-      } catch (err) {
-        this.onLog?.('editor-remove-error', {
-          instanceId,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-    this._setSelection(new Set());
-    this._setSaveStatus(removed > 0 ? 'saved' : 'error');
-    this.onLog?.('bulk-delete', { attempted: ids.length, removed });
-  }
-
-  private _setSaveStatus(kind: string): void {
-    const el = this.shadowRoot?.querySelector('atlas-text[name="save-status"]');
-    if (!el) return;
-    el.textContent = kind;
-  }
-
-  private async _mountCanvas(): Promise<void> {
-    const host = this.shadowRoot?.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
-    if (!host || !this.pageStore) return;
-    host.textContent = '';
-
-    // Seed the history stack with the pristine doc BEFORE any edits.
-    const initialDoc = await this.pageStore.get(this.pageId);
-    this._history = new HistoryStack({
-      pageId: this.pageId,
-      initialDoc,
-      onChange: () => this._refreshUndoRedoButtons(),
-    });
-    this._wrappedStore = wrapStoreWithHistory(this.pageStore, this._history);
-    this._refreshUndoRedoButtons();
-
-    const page = document.createElement('content-page') as ContentPageElement;
-    page.pageId = this.pageId;
-    page.pageStore = this._wrappedStore;
-    if (this.layoutRegistry) page.layoutRegistry = this.layoutRegistry;
-    if (this.templateRegistry) page.templateRegistry = this.templateRegistry;
-    page.principal = this.principal;
-    page.tenantId = this.tenantId;
-    page.correlationId = this.correlationId;
-    page.capabilities = this.capabilities ?? {};
-    page.edit = true;
-    page.onMediatorTrace = (evt) => this.onLog?.('mediator', evt);
-    page.onCapabilityTrace = (evt) => this.onLog?.('capability', evt);
-    host.appendChild(page);
-    this._canvasPage = page;
-  }
-
-  private async _undo(): Promise<void> {
-    if (!this._history || !this._wrappedStore) return;
-    const store = this._wrappedStore;
-    const frame = await this._history.undo((doc) =>
-      store.save(this.pageId, doc as PageDocument),
-    );
-    if (frame) {
-      // The canvas content-page holds its own in-memory doc (via its
-      // editor controller) and doesn't auto-refresh from the store, so we
-      // reload it against the replayed doc.
-      await this._canvasPage?.reload?.();
-      this.onLog?.('undo', { depth: this._history.depth });
-      this._setSaveStatus('saved');
-    }
-  }
-
-  private async _redo(): Promise<void> {
-    if (!this._history || !this._wrappedStore) return;
-    const store = this._wrappedStore;
-    const frame = await this._history.redo((doc) => store.save(this.pageId, doc));
-    if (frame) {
-      await this._canvasPage?.reload?.();
-      this.onLog?.('redo', { depth: this._history.depth });
-      this._setSaveStatus('saved');
-    }
-  }
-
-  private _handleKeyDown(e: KeyboardEvent): void {
-    // Only react when the editor is mounted AND focus is somewhere inside
-    // this shell — avoid hijacking shortcuts when the user is typing
-    // elsewhere on the page.
-    if (!this._history) return;
-    const path = e.composedPath();
-    if (!path.includes(this)) return;
-
-    // Don't steal Backspace/Delete from form fields (property-panel inputs).
-    const inField = path.some(
-      (el) =>
-        el instanceof Element &&
-        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'),
-    );
-
-    const isMeta = e.metaKey || e.ctrlKey;
-    const key = e.key.toLowerCase();
-
-    if (isMeta && key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      void this._undo();
-      return;
-    }
-    if (isMeta && ((key === 'z' && e.shiftKey) || key === 'y')) {
-      e.preventDefault();
-      void this._redo();
-      return;
-    }
-    if (!inField && (e.key === 'Delete' || e.key === 'Backspace') && this._selectedInstanceIds.size > 0) {
-      e.preventDefault();
-      void this._deleteSelected();
-      return;
-    }
-    if (e.key === 'Escape' && this._selectedInstanceIds.size > 0) {
-      this._setSelection(new Set());
-    }
-  }
-
-  private _refreshUndoRedoButtons(): void {
-    const undoBtn = this.shadowRoot?.querySelector('atlas-button[name="undo"]') as HTMLElement | null;
-    const redoBtn = this.shadowRoot?.querySelector('atlas-button[name="redo"]') as HTMLElement | null;
-    if (undoBtn) toggleDisabled(undoBtn, !this._history?.canUndo);
-    if (redoBtn) toggleDisabled(redoBtn, !this._history?.canRedo);
-  }
-
-  private async _renderTemplateSwitcher(): Promise<void> {
-    const container = this.shadowRoot?.querySelector('atlas-stack[name="template-switcher"]') as HTMLElement | null;
-    if (!container) return;
-    const registry: TemplateRegistry =
-      this.templateRegistry ?? (moduleDefaultTemplateRegistry as unknown as TemplateRegistry);
-    const templates = registry.list?.() ?? [];
-    // Prefer the live canvas doc, but fall back to the store — the canvas
-    // content-page loads its doc asynchronously, so during initial mount
-    // `_currentDoc` is null and every chip would render as "ghost". Reading
-    // the store directly avoids a frame-dependent primary chip selection.
-    const fromStore = await this.pageStore?.get?.(this.pageId);
-    const currentId: string | null =
-      this._canvasPage?._currentDoc?.templateId ??
-      fromStore?.templateId ??
-      null;
-    container.textContent = '';
-    for (const t of templates) {
-      const btn = document.createElement('atlas-button');
-      btn.setAttribute('name', `template-${t.templateId}`);
-      btn.setAttribute('variant', t.templateId === currentId ? 'primary' : 'ghost');
-      btn.setAttribute('size', 'sm');
-      btn.textContent = t.displayName ?? t.templateId;
-      btn.addEventListener('click', () => void this._switchTemplate(t.templateId));
-      container.appendChild(btn);
-    }
-  }
+  // ---- template switching ----
 
   private async _switchTemplate(nextTemplateId: string): Promise<void> {
-    const editor = this._canvasPage?.editor;
-    if (!editor || !this.pageStore) return;
-    const currentDoc = await this.pageStore.get(this.pageId);
-    if (!currentDoc) return;
-    if (currentDoc.templateId === nextTemplateId) return;
+    if (!this._controller || !this.pageStore) return;
+    const currentDoc = this._controller.getSnapshot().pageDocument;
+    if (!currentDoc || currentDoc.templateId === nextTemplateId) return;
     const registry: TemplateRegistry =
       this.templateRegistry ?? (moduleDefaultTemplateRegistry as unknown as TemplateRegistry);
     let nextManifest: TemplateManifest;
@@ -560,12 +646,12 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       return;
     }
     const nextRegionNames = new Set(nextManifest.regions.map((r) => r.name));
-    // Collect widgets that would be dropped.
     const dropped: Array<{ instanceId: string; widgetId: string; region: string }> = [];
     for (const [regionName, entries] of Object.entries(currentDoc.regions ?? {})) {
       if (!nextRegionNames.has(regionName)) {
-        for (const e of entries as WidgetInstance[])
+        for (const e of entries as WidgetInstance[]) {
           dropped.push({ instanceId: e.instanceId, widgetId: e.widgetId, region: regionName });
+        }
       }
     }
     if (dropped.length > 0) {
@@ -577,7 +663,6 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
         return;
       }
     }
-    // Build the next doc: keep widgets in regions that still exist; drop the rest.
     const nextRegions: Record<string, WidgetInstance[]> = {};
     for (const [regionName, entries] of Object.entries(currentDoc.regions ?? {})) {
       if (nextRegionNames.has(regionName)) nextRegions[regionName] = entries as WidgetInstance[];
@@ -591,96 +676,90 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       ...(nextManifest.version !== undefined ? { templateVersion: nextManifest.version } : {}),
       regions: nextRegions,
     };
-    // Save through the wrapped store so history captures this as a single
-    // frame (prev = current doc, next = template-swapped doc).
-    this._setSaveStatus('saving');
-    try {
-      const store = this._wrappedStore ?? this.pageStore;
-      await store.save(this.pageId, nextDoc);
-      this._setSaveStatus('saved');
-      this.onLog?.('template-switched', {
-        from: currentDoc.templateId,
-        to: nextTemplateId,
-        widgetsRemoved: dropped.length,
-      });
-      // Remount the canvas so content-page picks up the new template.
-      this._setSelection(new Set());
-      await this._mountCanvas();
-      void this._renderTemplateSwitcher();
-    } catch (err) {
-      this._setSaveStatus('error');
-      this.onLog?.('template-switch-error', {
-        message: err instanceof Error ? err.message : String(err),
-      });
+    const result = await this._controller.setLayoutTemplate(nextDoc);
+    if (!result.ok) return;
+    // Remount the canvas so content-page picks up the new template.
+    await this._mountCanvas();
+    this._controller.setDocument(nextDoc);
+    this.onLog?.('template-switched', {
+      from: currentDoc.templateId,
+      to: nextTemplateId,
+      widgetsRemoved: dropped.length,
+    });
+  }
+
+  // ---- undo / redo ----
+
+  private async _undo(): Promise<void> {
+    if (!this._controller) return;
+    const ok = await this._controller.undo();
+    if (ok) {
+      await this._canvasPage?.reload?.();
+      this._controller.setEditor(this._canvasPage?.editor ?? null);
     }
   }
 
-  private _togglePreview(): void {
-    this._previewOpen = !this._previewOpen;
-    this.toggleAttribute('preview-open', this._previewOpen);
-    const host = this.shadowRoot?.querySelector('atlas-box[data-role="preview"]') as HTMLElement | null;
-    if (!host) return;
-
-    if (this._previewOpen) {
-      this._mountPreview(host);
-      // Re-mount the preview every time the canvas commits an edit so the
-      // view-mode content-page picks up the new document. The wrapper's
-      // subscribe() fires after each save (including undo/redo replays).
-      if (this._wrappedStore?.subscribe) {
-        this._previewUnsubscribe?.();
-        this._previewUnsubscribe = this._wrappedStore.subscribe(this.pageId, () => {
-          if (this._previewOpen) this._mountPreview(host);
-        });
-      }
-    } else {
-      this._previewUnsubscribe?.();
-      this._previewUnsubscribe = null;
-      host.textContent = '';
-      this._previewPage = null;
+  private async _redo(): Promise<void> {
+    if (!this._controller) return;
+    const ok = await this._controller.redo();
+    if (ok) {
+      await this._canvasPage?.reload?.();
+      this._controller.setEditor(this._canvasPage?.editor ?? null);
     }
-
-    this.onLog?.('preview-toggled', { open: this._previewOpen });
   }
 
-  private _mountPreview(host: HTMLElement): void {
-    host.textContent = '';
-    const page = document.createElement('content-page') as ContentPageElement;
-    page.pageId = this.pageId;
-    page.pageStore = this._wrappedStore ?? this.pageStore ?? null;
-    if (this.layoutRegistry) page.layoutRegistry = this.layoutRegistry;
-    if (this.templateRegistry) page.templateRegistry = this.templateRegistry;
-    page.principal = this.principal;
-    page.tenantId = this.tenantId;
-    page.correlationId = `${this.correlationId}-preview`;
-    page.capabilities = this.capabilities ?? {};
-    page.edit = false;
-    host.appendChild(page);
-    this._previewPage = page;
-  }
+  // ---- keyboard ----
 
-  /**
-   * Expose the underlying content-page element for tests and later phases
-   * (undo/redo wiring, multi-select overlay) that need to reach through.
-   */
-  get canvasContentPage(): ContentPageElement | null {
-    return this._canvasPage;
-  }
+  private _handleKeyDown(e: KeyboardEvent): void {
+    if (!this._controller) return;
+    const path = e.composedPath();
+    if (!path.includes(this)) return;
 
-  get previewContentPage(): ContentPageElement | null {
-    return this._previewPage;
+    const inField = path.some(
+      (el) =>
+        el instanceof Element &&
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'),
+    );
+    const isMeta = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
+
+    if (isMeta && key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      void this._undo();
+      return;
+    }
+    if (isMeta && ((key === 'z' && e.shiftKey) || key === 'y')) {
+      e.preventDefault();
+      void this._redo();
+      return;
+    }
+    const snap = this._controller.getSnapshot();
+    if (
+      !inField &&
+      (e.key === 'Delete' || e.key === 'Backspace') &&
+      snap.selectedWidgetInstanceIds.length > 0
+    ) {
+      e.preventDefault();
+      void this._controller.removeSelected();
+      return;
+    }
+    if (e.key === 'Escape' && snap.selectedWidgetInstanceIds.length > 0) {
+      this._controller.selectWidget(null);
+    }
   }
 }
 
-function toggleDisabled(el: HTMLElement, disabled: boolean): void {
-  if (disabled) {
-    el.setAttribute('disabled', '');
-    el.style.opacity = '0.5';
-    el.style.pointerEvents = 'none';
-  } else {
-    el.removeAttribute('disabled');
-    el.style.opacity = '';
-    el.style.pointerEvents = '';
+function drawerChanged(a: DrawerState, b: DrawerState): boolean {
+  if (a.kind !== b.kind) return true;
+  if (a.kind === 'settings' && b.kind === 'settings') {
+    return a.widgetInstanceId !== b.widgetInstanceId;
   }
+  return false;
+}
+
+function toggleDisabled(el: HTMLElement, disabled: boolean): void {
+  if (disabled) el.setAttribute('disabled', '');
+  else el.removeAttribute('disabled');
 }
 
 AtlasElement.define('authoring-page-editor-shell', AuthoringPageEditorShellElement);

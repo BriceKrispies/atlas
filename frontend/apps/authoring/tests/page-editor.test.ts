@@ -1,15 +1,10 @@
 /**
  * authoring.page-editor — Playwright coverage.
  *
- * The authoring page-editor route hosts the inner `<authoring-page-editor-shell>`
- * shell against an in-memory page store seeded with two starter pages
- * (editor-starter, editor-blank). The route surface owns the picker; the
- * inner shell owns toolbar, canvas, inspector, palette, undo/redo,
- * multi-select, preview, and template switcher.
- *
- * These tests cover both layers: the route picker mounts and remounts the
- * shell, and the inner shell exposes its functional contract through the
- * imperative `editor` API plus deep-pierced DOM assertions.
+ * Covers the route-level surface (picker mount/remount) and the inner
+ * `<authoring-page-editor-shell>` whose three modes (structure / content /
+ * preview), drawer state machine, undo/redo, and selection behaviour are
+ * exercised through both DOM assertions and the imperative editor API.
  */
 
 import { test, expect } from '@atlas/test-fixtures';
@@ -26,8 +21,7 @@ interface EditorOpResult {
 
 /**
  * Wait for the inner editor shell to mount its content-page editor API
- * for the given pageId. The shell is two shadow roots deep
- * (`<atlas-authoring>` -> route element -> `<authoring-page-editor-shell>`).
+ * for the given pageId (two shadow roots deep).
  */
 async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
@@ -48,27 +42,23 @@ async function waitForEditor(page: Page, pageId: string): Promise<void> {
   }, pageId);
 }
 
-/**
- * Open the page editor route and wait for the inner editor to mount on
- * the given seed pageId. Picker is changed if needed.
- */
 async function openEditor(page: Page, pageId: string): Promise<void> {
   await page.goto(`/${ROUTE}`);
   await page.locator(ROUTE_SURFACE).waitFor();
-  // Switch picker if the requested seed isn't the default.
   const select = page.locator(`${ROUTE_SURFACE} >> [data-testid="authoring.page-editor.page-select"]`);
   await select.waitFor();
   const current = await select.evaluate((el: HTMLElement & { value?: string }) => el.value ?? '');
   if (current !== pageId) {
     await select.evaluate((el: HTMLElement & { value: string }, next: string) => {
       el.value = next;
-      el.dispatchEvent(new CustomEvent('change', { detail: { value: next }, bubbles: true, composed: true }));
+      el.dispatchEvent(
+        new CustomEvent('change', { detail: { value: next }, bubbles: true, composed: true }),
+      );
     }, pageId);
   }
   await waitForEditor(page, pageId);
 }
 
-/** Run an op against the imperative editor API on the active content-page. */
 async function runEditorOp(
   page: Page,
   pageId: string,
@@ -104,7 +94,51 @@ async function listEditor(
   >;
 }
 
-/** Read a property from the inner shell's shadow root by selector. */
+interface ShellSnapshot {
+  pageId: string;
+  mode: string;
+  drawer: { kind: string; widgetInstanceId?: string };
+  selectedWidgetInstanceIds: string[];
+  status: string;
+  history: { canUndo: boolean; canRedo: boolean };
+  regions: Array<{ name: string; widgetIds: string[] }>;
+  widgetInstances: Array<{ instanceId: string; widgetId: string }>;
+}
+
+async function readShellSnapshot(page: Page): Promise<ShellSnapshot | null> {
+  return page.evaluate(() => {
+    const stack: Array<Document | ShadowRoot | Element> = [document];
+    while (stack.length) {
+      const root = stack.shift()!;
+      if (!('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell') as
+        (Element & { getEditorSnapshot?: () => unknown }) | null;
+      if (el && typeof el.getEditorSnapshot === 'function') {
+        const snap = el.getEditorSnapshot() as Record<string, unknown> | null;
+        if (!snap) return null;
+        return {
+          pageId: snap['pageId'],
+          mode: snap['mode'],
+          drawer: snap['drawer'],
+          selectedWidgetInstanceIds: snap['selectedWidgetInstanceIds'],
+          status: snap['status'],
+          history: snap['history'],
+          regions: snap['regions'],
+          widgetInstances: (snap['widgetInstances'] as Array<{ instanceId: string; widgetId: string }>).map(
+            (w) => ({ instanceId: w.instanceId, widgetId: w.widgetId }),
+          ),
+        } as unknown as ShellSnapshot;
+      }
+      const all = root.querySelectorAll('*');
+      for (const e of all) {
+        const node = e as Element & { shadowRoot?: ShadowRoot };
+        if (node.shadowRoot) stack.push(node.shadowRoot);
+      }
+    }
+    return null;
+  });
+}
+
 async function shellShadowQuery(
   page: Page,
   selector: string,
@@ -130,7 +164,50 @@ async function shellShadowQuery(
   }, selector);
 }
 
-/** Click an element inside the inner shell's shadow root. */
+async function shellShadowAttr(
+  page: Page,
+  selector: string,
+  attr: string,
+): Promise<string | null> {
+  return page.evaluate(({ sel, attr }: { sel: string; attr: string }) => {
+    const stack: Array<Document | ShadowRoot | Element> = [document];
+    while (stack.length) {
+      const root = stack.shift()!;
+      if (!('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell') as
+        (Element & { shadowRoot?: ShadowRoot }) | null;
+      if (el?.shadowRoot) {
+        const hit = el.shadowRoot.querySelector(sel);
+        if (hit) return hit.getAttribute(attr);
+      }
+      const all = root.querySelectorAll('*');
+      for (const e of all) {
+        const node = e as Element & { shadowRoot?: ShadowRoot };
+        if (node.shadowRoot) stack.push(node.shadowRoot);
+      }
+    }
+    return null;
+  }, { sel: selector, attr });
+}
+
+async function shellHostAttr(page: Page, attr: string): Promise<string | null> {
+  return page.evaluate((attr: string) => {
+    const stack: Array<Document | ShadowRoot | Element> = [document];
+    while (stack.length) {
+      const root = stack.shift()!;
+      if (!('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell');
+      if (el) return el.getAttribute(attr);
+      const all = root.querySelectorAll('*');
+      for (const e of all) {
+        const node = e as Element & { shadowRoot?: ShadowRoot };
+        if (node.shadowRoot) stack.push(node.shadowRoot);
+      }
+    }
+    return null;
+  }, attr);
+}
+
 async function clickInShell(page: Page, selector: string): Promise<void> {
   const handle: JSHandle<Element | null> = await page.evaluateHandle((sel: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
@@ -156,7 +233,6 @@ async function clickInShell(page: Page, selector: string): Promise<void> {
   await el.click();
 }
 
-/** Click a widget cell by instance id inside the inner shell. */
 async function clickCell(
   page: Page,
   instanceId: string,
@@ -188,6 +264,27 @@ async function clickCell(
   await el.click({ modifiers: modifier ? [modifier] : [] });
 }
 
+async function setMode(page: Page, mode: 'structure' | 'content' | 'preview'): Promise<void> {
+  await page.evaluate((m: string) => {
+    const stack: Array<Document | ShadowRoot | Element> = [document];
+    while (stack.length) {
+      const root = stack.shift()!;
+      if (!('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell') as
+        (Element & { editorState?: { setMode: (m: string) => void } }) | null;
+      if (el?.editorState) {
+        el.editorState.setMode(m);
+        return;
+      }
+      const all = root.querySelectorAll('*');
+      for (const e of all) {
+        const node = e as Element & { shadowRoot?: ShadowRoot };
+        if (node.shadowRoot) stack.push(node.shadowRoot);
+      }
+    }
+  }, mode);
+}
+
 // ── states ──────────────────────────────────────────────────────────
 
 test.describe('authoring.page-editor — states', () => {
@@ -205,27 +302,20 @@ test.describe('authoring.page-editor — states', () => {
     await expect(select).toBeVisible();
   });
 
-  test('inner editor shell mounts on the default seed', async ({ page }) => {
+  test('shell mounts with topbar, canvas, drawer (default content mode)', async ({ page }) => {
     await openEditor(page, 'editor-starter');
-    const toolbar = await shellShadowQuery(page, 'atlas-box[data-role="toolbar"]');
-    expect(toolbar.ok).toBe(true);
-    const canvas = await shellShadowQuery(page, 'atlas-box[data-role="canvas"]');
-    expect(canvas.ok).toBe(true);
+    expect((await shellShadowQuery(page, 'atlas-box[data-role="topbar"]')).ok).toBe(true);
+    expect((await shellShadowQuery(page, 'atlas-box[data-role="canvas"]')).ok).toBe(true);
+    expect((await shellShadowQuery(page, 'atlas-box[data-role="drawer"]')).ok).toBe(true);
+    expect((await shellShadowQuery(page, 'atlas-box[data-role="nav"]')).ok).toBe(true);
+    await expect.poll(() => shellHostAttr(page, 'data-mode')).toBe('content');
   });
 });
 
 // ── shell + seed ────────────────────────────────────────────────────
 
 test.describe('authoring.page-editor — shell + seed', () => {
-  test('starter mounts with toolbar, canvas, inspector', async ({ page }) => {
-    await openEditor(page, 'editor-starter');
-
-    expect((await shellShadowQuery(page, 'atlas-button[name="undo"]')).ok).toBe(true);
-    expect((await shellShadowQuery(page, 'atlas-button[name="redo"]')).ok).toBe(true);
-    expect((await shellShadowQuery(page, 'page-editor-property-panel')).ok).toBe(true);
-  });
-
-  test('starter renders the four seeded widgets', async ({ page }) => {
+  test('starter renders the seeded widgets', async ({ page }) => {
     await openEditor(page, 'editor-starter');
     const list = await listEditor(page, 'editor-starter');
     const widgetIds = list.map((e) => e.widgetId).sort();
@@ -240,35 +330,63 @@ test.describe('authoring.page-editor — shell + seed', () => {
     expect(list).toEqual([]);
   });
 
-  test('save-status initialises to "saved"', async ({ page }) => {
+  test('save-status starts as "saved"', async ({ page }) => {
     await openEditor(page, 'editor-starter');
     const status = await shellShadowQuery(page, 'atlas-text[name="save-status"]');
     expect(status.text?.trim()).toBe('saved');
   });
+
+  test('topbar exposes auto-test-ids for save / undo / redo / preview-toggle', async ({ page }) => {
+    await openEditor(page, 'editor-starter');
+    expect(await shellShadowAttr(page, 'atlas-button[name="save"]', 'data-testid')).toBe(
+      'authoring.page-editor.shell.save',
+    );
+    expect(await shellShadowAttr(page, 'atlas-button[name="undo"]', 'data-testid')).toBe(
+      'authoring.page-editor.shell.undo',
+    );
+    expect(await shellShadowAttr(page, 'atlas-button[name="redo"]', 'data-testid')).toBe(
+      'authoring.page-editor.shell.redo',
+    );
+    expect(
+      await shellShadowAttr(page, 'atlas-button[name="preview-toggle"]', 'data-testid'),
+    ).toBe('authoring.page-editor.shell.preview-toggle');
+  });
 });
 
-// ── palette ─────────────────────────────────────────────────────────
+// ── multi-select ────────────────────────────────────────────────────
 
-test.describe('authoring.page-editor — palette', () => {
-  test('palette lists all five editor widgets as chips', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    const expected = [
-      'sandbox.heading',
-      'sandbox.text',
-      'sandbox.kpi-tile',
-      'sandbox.sparkline',
-      'sandbox.data-table',
-    ];
-    for (const id of expected) {
-      const chip = await shellShadowQuery(
-        page,
-        `[data-palette-chip][data-widget-id="${id}"]`,
-      );
-      expect(chip.ok, `palette chip for ${id} should be present`).toBe(true);
-    }
+test.describe('authoring.page-editor — multi-select', () => {
+  test('shift-click adds to selection; plain click replaces', async ({ page }) => {
+    await openEditor(page, 'editor-starter');
+    await clickCell(page, 'w-editor-starter-main-heading');
+    await clickCell(page, 'w-editor-starter-main-text', 'Shift');
+
+    await expect.poll(async () => {
+      const snap = await readShellSnapshot(page);
+      return snap?.selectedWidgetInstanceIds.slice().sort();
+    }).toEqual(
+      ['w-editor-starter-main-heading', 'w-editor-starter-main-text'].sort(),
+    );
   });
 
-  test('adding via editor.add appends the widget to its region', async ({ page }) => {
+  test('Delete key removes every selected widget', async ({ page }) => {
+    await openEditor(page, 'editor-starter');
+    const before = (await listEditor(page, 'editor-starter')).length;
+
+    await clickCell(page, 'w-editor-starter-main-heading');
+    await clickCell(page, 'w-editor-starter-main-text', 'Shift');
+    await page.keyboard.press('Delete');
+
+    await expect
+      .poll(async () => (await listEditor(page, 'editor-starter')).length)
+      .toBe(before - 2);
+  });
+});
+
+// ── add via imperative API + reasons ───────────────────────────────
+
+test.describe('authoring.page-editor — adding widgets', () => {
+  test('editor.add commits to the document', async ({ page }) => {
     await openEditor(page, 'editor-blank');
     const res = await runEditorOp(page, 'editor-blank', 'add', {
       widgetId: 'sandbox.heading',
@@ -282,7 +400,7 @@ test.describe('authoring.page-editor — palette', () => {
     expect(list[0]!.region).toBe('main');
   });
 
-  test('adding an unknown widget returns reason=unknown-widget', async ({ page }) => {
+  test('unknown widget id returns reason=unknown-widget', async ({ page }) => {
     await openEditor(page, 'editor-blank');
     const res = await runEditorOp(page, 'editor-blank', 'add', {
       widgetId: 'does.not.exist',
@@ -292,7 +410,7 @@ test.describe('authoring.page-editor — palette', () => {
     expect(res.reason).toBe('unknown-widget');
   });
 
-  test('adding into an invalid region returns reason=region-invalid', async ({ page }) => {
+  test('invalid region returns reason=region-invalid', async ({ page }) => {
     await openEditor(page, 'editor-blank');
     const res = await runEditorOp(page, 'editor-blank', 'add', {
       widgetId: 'sandbox.heading',
@@ -303,83 +421,101 @@ test.describe('authoring.page-editor — palette', () => {
   });
 });
 
-// ── property panel ──────────────────────────────────────────────────
+// ── acceptance: 5 required tests ───────────────────────────────────
 
-test.describe('authoring.page-editor — property panel', () => {
-  test('clicking a widget populates the inspector', async ({ page }) => {
+test.describe('authoring.page-editor — acceptance', () => {
+  test('1) switching modes updates the editor shell correctly', async ({ page }) => {
     await openEditor(page, 'editor-starter');
-    await clickCell(page, 'w-editor-starter-main-heading');
 
-    const title = await shellShadowQuery(page, 'atlas-heading[name="inspector-title"]');
-    expect(title.ok).toBe(true);
-    expect(title.text).toMatch(/Heading/i);
+    // default: content
+    await expect.poll(() => shellHostAttr(page, 'data-mode')).toBe('content');
+    expect((await shellShadowQuery(page, 'atlas-box[data-role="nav"]')).ok).toBe(true);
+    expect(await shellShadowAttr(page, 'atlas-box[data-role="drawer"]', 'data-drawer-kind')).toBe(
+      'palette',
+    );
 
-    const subtitle = await shellShadowQuery(page, 'atlas-text[name="inspector-subtitle"]');
-    expect(subtitle.ok).toBe(true);
-    expect(subtitle.text).toContain('sandbox.heading');
+    // switch to structure
+    await setMode(page, 'structure');
+    await expect.poll(() => shellHostAttr(page, 'data-mode')).toBe('structure');
+    await expect
+      .poll(() => shellShadowAttr(page, 'atlas-box[data-role="drawer"]', 'data-drawer-kind'))
+      .not.toBe('closed');
+    expect(
+      (await shellShadowQuery(page, 'atlas-stack[name="template-drawer-content"]')).ok,
+    ).toBe(true);
+
+    // switch to preview
+    await setMode(page, 'preview');
+    await expect.poll(() => shellHostAttr(page, 'data-mode')).toBe('preview');
   });
 
-  test('clicking the canvas clears the inspector', async ({ page }) => {
-    await openEditor(page, 'editor-starter');
-    await clickCell(page, 'w-editor-starter-main-heading');
-    expect((await shellShadowQuery(page, 'atlas-heading[name="inspector-title"]')).ok).toBe(true);
-
-    await clickInShell(page, 'atlas-box[data-role="canvas"]');
-    expect((await shellShadowQuery(page, 'atlas-heading[name="inspector-title"]')).ok).toBe(false);
-  });
-});
-
-// ── undo / redo ─────────────────────────────────────────────────────
-
-test.describe('authoring.page-editor — undo/redo', () => {
-  test('add → undo → redo round-trips', async ({ page }) => {
+  test('2) adding a widget creates a committed widget instance in the page document', async ({
+    page,
+  }) => {
     await openEditor(page, 'editor-blank');
+    const before = (await listEditor(page, 'editor-blank')).length;
+    expect(before).toBe(0);
+
     const res = await runEditorOp(page, 'editor-blank', 'add', {
       widgetId: 'sandbox.heading',
       region: 'main',
-      config: { level: 2, text: 'round-trip' },
+      config: { level: 2, text: 'Acceptance add' },
     });
     expect(res.ok).toBe(true);
-    await expect.poll(async () => (await listEditor(page, 'editor-blank')).length).toBe(1);
 
-    await clickInShell(page, 'atlas-button[name="undo"]');
-    await expect.poll(async () => (await listEditor(page, 'editor-blank')).length).toBe(0);
+    const list = await listEditor(page, 'editor-blank');
+    expect(list.length).toBe(1);
+    expect(list[0]!.widgetId).toBe('sandbox.heading');
 
-    await clickInShell(page, 'atlas-button[name="redo"]');
-    await expect.poll(async () => (await listEditor(page, 'editor-blank')).length).toBe(1);
+    // Confirm the controller's snapshot also reflects the new widget instance
+    // (i.e. the document model picked up the change, not just the DOM).
+    await expect.poll(async () => {
+      const snap = await readShellSnapshot(page);
+      return snap?.widgetInstances.length ?? 0;
+    }).toBe(1);
   });
-});
 
-// ── multi-select ────────────────────────────────────────────────────
-
-test.describe('authoring.page-editor — multi-select', () => {
-  test('shift-click adds to selection; plain click replaces', async ({ page }) => {
+  test('3) selecting a widget opens the settings drawer', async ({ page }) => {
     await openEditor(page, 'editor-starter');
     await clickCell(page, 'w-editor-starter-main-heading');
-    await clickCell(page, 'w-editor-starter-main-text', 'Shift');
 
-    const both = await page.evaluate(() => {
+    await expect
+      .poll(async () => (await readShellSnapshot(page))?.drawer?.kind)
+      .toBe('settings');
+    await expect
+      .poll(async () => (await readShellSnapshot(page))?.drawer?.widgetInstanceId)
+      .toBe('w-editor-starter-main-heading');
+
+    expect(
+      (await shellShadowQuery(page, 'atlas-stack[name="settings-drawer-content"]')).ok,
+    ).toBe(true);
+    expect(
+      (await shellShadowQuery(page, 'page-editor-property-panel[name="property-panel"]')).ok,
+    ).toBe(true);
+  });
+
+  test('4) preview mode hides editor-only controls', async ({ page }) => {
+    await openEditor(page, 'editor-starter');
+    await setMode(page, 'preview');
+
+    await expect.poll(() => shellHostAttr(page, 'data-mode')).toBe('preview');
+
+    // rail hidden
+    const navHidden = await page.evaluate(() => {
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
         const root = stack.shift()!;
-        const shell = ('querySelector' in root && root.querySelector)
-          ? (root.querySelector('authoring-page-editor-shell') as (Element & { shadowRoot?: ShadowRoot }) | null)
-          : null;
-        if (shell?.shadowRoot) {
-          const a = shell.shadowRoot.querySelector(
-            '[data-widget-cell][data-instance-id="w-editor-starter-main-heading"]',
-          );
-          const b = shell.shadowRoot.querySelector(
-            '[data-widget-cell][data-instance-id="w-editor-starter-main-text"]',
-          );
-          if (a && b) {
-            return {
-              a: a.getAttribute('data-multi-selected'),
-              b: b.getAttribute('data-multi-selected'),
-            };
+        if (!('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as
+          (Element & { shadowRoot?: ShadowRoot }) | null;
+        if (el?.shadowRoot) {
+          const nav = el.shadowRoot.querySelector('atlas-box[data-role="nav"]') as HTMLElement | null;
+          if (nav) {
+            const cs = getComputedStyle(nav);
+            return cs.display === 'none';
           }
         }
-        const all = ('querySelectorAll' in root && root.querySelectorAll) ? root.querySelectorAll('*') : [];
+        const all = root.querySelectorAll('*');
         for (const e of all) {
           const node = e as Element & { shadowRoot?: ShadowRoot };
           if (node.shadowRoot) stack.push(node.shadowRoot);
@@ -387,49 +523,63 @@ test.describe('authoring.page-editor — multi-select', () => {
       }
       return null;
     });
-    expect(both).toEqual({ a: 'true', b: 'true' });
-  });
+    expect(navHidden).toBe(true);
 
-  test('Delete key removes every selected widget', async ({ page }) => {
-    await openEditor(page, 'editor-starter');
-    const before = (await listEditor(page, 'editor-starter')).length;
+    // drawer hidden via state
+    expect(
+      await shellShadowAttr(page, 'atlas-box[data-role="drawer"]', 'data-drawer-kind'),
+    ).toBe('closed');
 
-    await clickCell(page, 'w-editor-starter-main-heading');
-    await clickCell(page, 'w-editor-starter-main-text', 'Shift');
-    await page.keyboard.press('Delete');
-
-    await expect.poll(async () => (await listEditor(page, 'editor-starter')).length).toBe(before - 2);
-  });
-});
-
-// ── live preview ────────────────────────────────────────────────────
-
-test.describe('authoring.page-editor — live preview', () => {
-  test('preview toggle opens and closes the pane', async ({ page }) => {
-    await openEditor(page, 'editor-starter');
-
-    const isOpen = async (): Promise<boolean | null> =>
-      page.evaluate(() => {
-        const stack: Array<Document | ShadowRoot | Element> = [document];
-        while (stack.length) {
-          const root = stack.shift()!;
-          const shell = ('querySelector' in root && root.querySelector)
-            ? root.querySelector('authoring-page-editor-shell')
-            : null;
-          if (shell) return shell.hasAttribute('preview-open');
-          const kids = ('querySelectorAll' in root && root.querySelectorAll) ? root.querySelectorAll('*') : [];
-          for (const e of kids) {
-            const node = e as Element & { shadowRoot?: ShadowRoot };
-            if (node.shadowRoot) stack.push(node.shadowRoot);
+    // exit-preview visible
+    const exitVisible = await page.evaluate(() => {
+      const stack: Array<Document | ShadowRoot | Element> = [document];
+      while (stack.length) {
+        const root = stack.shift()!;
+        if (!('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as
+          (Element & { shadowRoot?: ShadowRoot }) | null;
+        if (el?.shadowRoot) {
+          const btn = el.shadowRoot.querySelector(
+            'atlas-button[name="exit-preview"]',
+          ) as HTMLElement | null;
+          if (btn) {
+            const cs = getComputedStyle(btn);
+            return cs.display !== 'none';
           }
         }
-        return null;
-      });
+        const all = root.querySelectorAll('*');
+        for (const e of all) {
+          const node = e as Element & { shadowRoot?: ShadowRoot };
+          if (node.shadowRoot) stack.push(node.shadowRoot);
+        }
+      }
+      return null;
+    });
+    expect(exitVisible).toBe(true);
+  });
 
-    expect(await isOpen()).toBe(false);
-    await clickInShell(page, 'atlas-button[name="toggle-preview"]');
-    await expect.poll(isOpen).toBe(true);
-    await clickInShell(page, 'atlas-button[name="toggle-preview"]');
-    await expect.poll(isOpen).toBe(false);
+  test('5) undo / redo round-trip the page document state', async ({ page }) => {
+    await openEditor(page, 'editor-blank');
+    const res = await runEditorOp(page, 'editor-blank', 'add', {
+      widgetId: 'sandbox.heading',
+      region: 'main',
+      config: { level: 2, text: 'undo-roundtrip' },
+    });
+    expect(res.ok).toBe(true);
+    await expect
+      .poll(async () => (await listEditor(page, 'editor-blank')).length)
+      .toBe(1);
+
+    await clickInShell(page, 'atlas-button[name="undo"]');
+    await waitForEditor(page, 'editor-blank');
+    await expect
+      .poll(async () => (await listEditor(page, 'editor-blank')).length)
+      .toBe(0);
+
+    await clickInShell(page, 'atlas-button[name="redo"]');
+    await waitForEditor(page, 'editor-blank');
+    await expect
+      .poll(async () => (await listEditor(page, 'editor-blank')).length)
+      .toBe(1);
   });
 });
