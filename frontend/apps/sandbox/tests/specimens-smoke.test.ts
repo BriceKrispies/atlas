@@ -49,4 +49,17 @@ test.describe('sandbox — specimens smoke', () => {
       await expect(page.locator(tag).first()).toBeVisible();
     });
   }
+
+  // Batch Content authoring — specimens smoke
+  const contentPrimitives: Array<{ id: string; tag: string }> = [
+    { id: 'color-picker', tag: 'atlas-color-picker' },
+    { id: 'media-picker', tag: 'atlas-media-picker' },
+  ];
+
+  for (const { id, tag } of contentPrimitives) {
+    test(`Content authoring specimen "${id}" renders ${tag}`, async ({ page }) => {
+      await openSpecimen(page, id);
+      await expect(page.locator(tag).first()).toBeVisible();
+    });
+  }
 });

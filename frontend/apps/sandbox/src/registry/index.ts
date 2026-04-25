@@ -40,6 +40,10 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'date-picker':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'date', 'calendar'] },
   'file-upload':    { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'upload', 'file'] },
   'form-field':     { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'label', 'wrapper'] },
+  'color-picker':   { category: 'primitives', subcategory: 'Controls',   tags: ['form', 'color', 'hex', 'hsl', 'rgb'] },
+
+  // Primitives — Content authoring
+  'media-picker':   { category: 'primitives', subcategory: 'Content',    tags: ['media', 'image', 'video', 'library', 'picker'] },
 
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },

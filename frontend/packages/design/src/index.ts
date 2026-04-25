@@ -75,3 +75,14 @@ import './atlas-dialog.ts';
 import './atlas-drawer.ts';
 import './atlas-toast.ts';
 import './atlas-command-palette.ts';
+
+// Content authoring primitives
+import './atlas-color-picker.ts';
+import './atlas-media-picker.ts';
+
+export type {
+  MediaItem,
+  AtlasMediaPickerChangeDetail,
+  AtlasMediaPickerRequestDetail,
+} from './atlas-media-picker.ts';
+export type { AtlasColorPickerChangeDetail } from './atlas-color-picker.ts';
