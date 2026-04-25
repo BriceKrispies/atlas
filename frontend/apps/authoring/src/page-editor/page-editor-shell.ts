@@ -1,7 +1,9 @@
 /**
- * <sandbox-page-editor> — the shell that hosts a full-featured page editor
- * inside the sandbox. See `specs/frontend/surfaces/sandbox-page-editor.md`
- * for the contract. Phase A lays down the structural skeleton:
+ * <authoring-page-editor-shell> — the shell that hosts a full-featured page
+ * editor inside the authoring app. See
+ * `specs/frontend/surfaces/sandbox-page-editor.md` for the contract (the spec
+ * file pre-dates the move from sandbox to authoring). Phase A lays down the
+ * structural skeleton:
  *
  *   toolbar (undo, redo, template switcher stub, save status, preview toggle)
  *   canvas  (content-page edit=true — drives EditorAPI + palette)
@@ -139,8 +141,8 @@ const styles = `
   }
 `;
 
-export class SandboxPageEditorElement extends AtlasSurface {
-  static override surfaceId = 'sandbox.page-editor';
+export class AuthoringPageEditorShellElement extends AtlasSurface {
+  static override surfaceId = 'authoring.page-editor.shell';
 
   pageId = '';
   pageStore: PageStore | null = null;
@@ -681,4 +683,4 @@ function toggleDisabled(el: HTMLElement, disabled: boolean): void {
   }
 }
 
-AtlasElement.define('sandbox-page-editor', SandboxPageEditorElement);
+AtlasElement.define('authoring-page-editor-shell', AuthoringPageEditorShellElement);

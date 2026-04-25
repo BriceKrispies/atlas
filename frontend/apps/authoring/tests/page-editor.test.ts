@@ -1,7 +1,7 @@
 /**
  * authoring.page-editor — Playwright coverage.
  *
- * The authoring page-editor route hosts the inner `<sandbox-page-editor>`
+ * The authoring page-editor route hosts the inner `<authoring-page-editor-shell>`
  * shell against an in-memory page store seeded with two starter pages
  * (editor-starter, editor-blank). The route surface owns the picker; the
  * inner shell owns toolbar, canvas, inspector, palette, undo/redo,
@@ -27,7 +27,7 @@ interface EditorOpResult {
 /**
  * Wait for the inner editor shell to mount its content-page editor API
  * for the given pageId. The shell is two shadow roots deep
- * (`<atlas-authoring>` -> route element -> `<sandbox-page-editor>`).
+ * (`<atlas-authoring>` -> route element -> `<authoring-page-editor-shell>`).
  */
 async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
@@ -114,7 +114,7 @@ async function shellShadowQuery(
     while (stack.length) {
       const root = stack.shift()!;
       if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('sandbox-page-editor') as
+      const el = root.querySelector('authoring-page-editor-shell') as
         (Element & { shadowRoot?: ShadowRoot }) | null;
       if (el?.shadowRoot) {
         const hit = el.shadowRoot.querySelector(sel) as HTMLElement | null;
@@ -137,7 +137,7 @@ async function clickInShell(page: Page, selector: string): Promise<void> {
     while (stack.length) {
       const root = stack.shift()!;
       if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('sandbox-page-editor') as
+      const el = root.querySelector('authoring-page-editor-shell') as
         (Element & { shadowRoot?: ShadowRoot }) | null;
       if (el?.shadowRoot) {
         const hit = el.shadowRoot.querySelector(sel);
@@ -167,7 +167,7 @@ async function clickCell(
     while (stack.length) {
       const root = stack.shift()!;
       if (!('querySelector' in root) || !root.querySelector) continue;
-      const shell = root.querySelector('sandbox-page-editor') as
+      const shell = root.querySelector('authoring-page-editor-shell') as
         (Element & { shadowRoot?: ShadowRoot }) | null;
       if (shell?.shadowRoot) {
         const hit = shell.shadowRoot.querySelector(
@@ -363,7 +363,7 @@ test.describe('authoring.page-editor — multi-select', () => {
       while (stack.length) {
         const root = stack.shift()!;
         const shell = ('querySelector' in root && root.querySelector)
-          ? (root.querySelector('sandbox-page-editor') as (Element & { shadowRoot?: ShadowRoot }) | null)
+          ? (root.querySelector('authoring-page-editor-shell') as (Element & { shadowRoot?: ShadowRoot }) | null)
           : null;
         if (shell?.shadowRoot) {
           const a = shell.shadowRoot.querySelector(
@@ -414,7 +414,7 @@ test.describe('authoring.page-editor — live preview', () => {
         while (stack.length) {
           const root = stack.shift()!;
           const shell = ('querySelector' in root && root.querySelector)
-            ? root.querySelector('sandbox-page-editor')
+            ? root.querySelector('authoring-page-editor-shell')
             : null;
           if (shell) return shell.hasAttribute('preview-open');
           const kids = ('querySelectorAll' in root && root.querySelectorAll) ? root.querySelectorAll('*') : [];

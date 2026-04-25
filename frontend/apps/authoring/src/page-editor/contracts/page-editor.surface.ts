@@ -2,14 +2,13 @@
  * Surface contract: authoring.page-editor
  *
  * The page editor route in the authoring app. Hosts the full-featured page
- * editor shell (`<sandbox-page-editor>`) inside an authoring route surface
- * with a seed-page picker for switching between starter / blank.
+ * editor shell (`<authoring-page-editor-shell>`) inside an authoring route
+ * surface with a seed-page picker for switching between starter / blank.
  *
- * The inner shell is its own surface (`sandbox.page-editor`) with toolbar,
- * canvas, inspector, and live-preview regions. This contract describes the
- * route-level surface; tests that need to drive the inner shell can target
- * its own surfaceId. See sandbox tests for shell-level coverage of the
- * editor itself.
+ * The inner shell is its own surface (`authoring.page-editor.shell`) with
+ * toolbar, canvas, inspector, and live-preview regions. This contract
+ * describes the route-level surface; tests that need to drive the inner
+ * shell can target its own surfaceId.
  */
 
 export interface SurfaceAuth {

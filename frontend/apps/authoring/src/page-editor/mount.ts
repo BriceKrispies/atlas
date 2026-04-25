@@ -1,5 +1,5 @@
 /**
- * mountPageEditor — sandbox specimen mount helper for <sandbox-page-editor>.
+ * mountPageEditor — mount helper for <authoring-page-editor-shell>.
  *
  * Matches the `spec.mount` contract used by sandbox-app.js:
  *   (demoEl, { config, onLog }) => cleanupFn
@@ -49,7 +49,7 @@ export function createMountPageEditor(ctx: MountPageEditorCtx): MountPageEditorF
 
   return function mountPageEditor(demoEl, { config, onLog }): () => void {
     const { pageId } = (config ?? {}) as { pageId?: string };
-    const shell = document.createElement('sandbox-page-editor') as HTMLElement &
+    const shell = document.createElement('authoring-page-editor-shell') as HTMLElement &
       Record<string, unknown>;
     shell['pageId'] = pageId;
     shell['pageStore'] = pageStore;
