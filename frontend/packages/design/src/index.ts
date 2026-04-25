@@ -120,3 +120,12 @@ import './atlas-stepper.ts';
 import './atlas-step.ts';
 import './atlas-pagination.ts';
 import './atlas-progress.ts';
+// Data display
+import './atlas-stat.ts';
+import './atlas-timeline.ts';
+import './atlas-timeline-item.ts';
+
+// Control composites
+import './atlas-split-button.ts';
+import './atlas-toggle-group.ts';
+import './atlas-toggle-group-item.ts';

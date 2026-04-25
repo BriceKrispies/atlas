@@ -48,6 +48,8 @@ const STATIC: Record<string, TaxonomyEntry> = {
   'avatar':         { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'user', 'profile', 'image'] },
   'avatar-group':   { category: 'primitives', subcategory: 'Identity',   tags: ['avatar', 'group', 'cluster', 'overflow'] },
   'tag':            { category: 'primitives', subcategory: 'Identity',   tags: ['tag', 'label', 'pill', 'metadata'] },
+  'split-button':   { category: 'primitives', subcategory: 'Controls',   tags: ['button', 'dropdown', 'menu', 'composite'] },
+  'toggle-group':   { category: 'primitives', subcategory: 'Controls',   tags: ['toggle', 'multi-select', 'segmented', 'pressed'] },
 
   // Primitives — Feedback
   'badge':          { category: 'primitives', subcategory: 'Feedback',   tags: ['status', 'chip', 'pill'] },
@@ -88,6 +90,8 @@ const STATIC: Record<string, TaxonomyEntry> = {
 
   // Primitives — Data
   'table':          { category: 'primitives', subcategory: 'Data',       tags: ['table', 'grid', 'rows'] },
+  'timeline':       { category: 'primitives', subcategory: 'Data',       tags: ['timeline', 'log', 'events', 'history'] },
+  'stat':           { category: 'primitives', subcategory: 'Data',       tags: ['metric', 'kpi', 'number', 'tile'] },
 
   // Primitives — Mobile (gestures)
   'pull-to-refresh':   { category: 'primitives', subcategory: 'Mobile',    tags: ['mobile', 'gesture', 'touch', 'refresh'] },
