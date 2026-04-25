@@ -86,6 +86,18 @@ test.describe('sandbox — specimens smoke', () => {
 
   for (const { id, tag } of gestureSpecimens) {
     test(`Batch Gestures — specimen "${id}" renders ${tag}`, async ({ page }) => {
+  // Batch Identity & Chips — specimens smoke
+  const identityAndChips: Array<{ id: string; tag: string }> = [
+    { id: 'avatar',       tag: 'atlas-avatar' },
+    { id: 'avatar-group', tag: 'atlas-avatar-group' },
+    { id: 'tag',          tag: 'atlas-tag' },
+    { id: 'chip',         tag: 'atlas-chip' },
+    { id: 'chip-group',   tag: 'atlas-chip-group' },
+    { id: 'chip-input',   tag: 'atlas-chip-input' },
+  ];
+
+  for (const { id, tag } of identityAndChips) {
+    test(`Batch Identity & Chips — specimen "${id}" renders ${tag}`, async ({ page }) => {
       await openSpecimen(page, id);
       await expect(page.locator(tag).first()).toBeVisible();
     });

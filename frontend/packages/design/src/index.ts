@@ -102,3 +102,12 @@ import './atlas-menu.ts';
 import './atlas-menu-item.ts';
 import './atlas-menu-separator.ts';
 import './atlas-popover.ts';
+// Identity primitives
+import './atlas-avatar.ts';
+import './atlas-avatar-group.ts';
+import './atlas-tag.ts';
+
+// Chip primitives
+import './atlas-chip.ts';
+import './atlas-chip-group.ts';
+import './atlas-chip-input.ts';

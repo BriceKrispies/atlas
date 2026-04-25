@@ -23,6 +23,7 @@ import './primitives/popups.ts';
 import './primitives/data.ts';
 import './primitives/gestures.ts';
 import './primitives/agent.ts';
+import './primitives/identity-chips.ts';
 
 // Patterns
 import './patterns/page.ts';

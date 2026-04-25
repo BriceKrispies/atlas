@@ -1318,3 +1318,124 @@ atlas-command-palette [data-part="empty"] {
   font-size: var(--atlas-font-size-sm);
 }
 
+
+/* ── atlas-avatar-group ───────────────────────────────────────────
+   Light DOM. Children (atlas-avatar + the overflow chip) overlap on
+   the inline axis. Each child gets a 2px ring of the page background
+   so the overlap reads as separate tiles, not a smear. */
+
+atlas-avatar-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  font-family: var(--atlas-font-family);
+}
+atlas-avatar-group > atlas-avatar,
+atlas-avatar-group > [data-atlas-overflow] {
+  margin-inline-start: -8px;
+  /* Custom property the avatar reads — implemented as a host box-shadow
+     so it tracks the avatar's border-radius (circle/rounded/square). */
+  --avatar-ring: 0 0 0 2px var(--atlas-color-bg);
+}
+atlas-avatar-group > atlas-avatar:first-child,
+atlas-avatar-group > [data-atlas-overflow]:first-child {
+  margin-inline-start: 0;
+}
+
+/* Overflow chip — a real <button> for keyboard reachability. Shape
+   matches the avatar so the cluster reads as a single rhythm. */
+atlas-avatar-group > [data-atlas-overflow] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* WCAG 2.5.5: chip is the only interactive element in the group, and
+     it must hit 44×44 like any other tap target. We grow the *hit area*
+     via a pseudo-element rather than the visible width, so a tightly-
+     packed cluster keeps its compact look on screens that have hover. */
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--atlas-color-surface);
+  color: var(--atlas-color-text-muted);
+  font-family: var(--atlas-font-family);
+  font-size: var(--atlas-font-size-xs);
+  font-weight: var(--atlas-font-weight-semibold);
+  cursor: pointer;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+atlas-avatar-group > [data-atlas-overflow]::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  /* Touch slop — keeps 44×44 effective hit-area without enlarging the
+     visual chip. Mirrors the pattern used in atlas-multi-select chips. */
+}
+atlas-avatar-group > [data-atlas-overflow]:hover {
+  background: var(--atlas-color-surface-hover);
+  color: var(--atlas-color-text);
+}
+atlas-avatar-group > [data-atlas-overflow]:focus-visible {
+  outline: 2px solid var(--atlas-color-primary);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  atlas-avatar-group > [data-atlas-overflow] {
+    width: var(--atlas-touch-target-min, 44px);
+    height: var(--atlas-touch-target-min, 44px);
+    min-width: var(--atlas-touch-target-min, 44px);
+    min-height: var(--atlas-touch-target-min, 44px);
+  }
+}
+
+
+/* ── atlas-tag ────────────────────────────────────────────────────
+   Light DOM read-only label pill. Distinct from atlas-badge:
+     atlas-badge — stateful status carrier (published/draft/archived)
+     atlas-tag   — neutral metadata label, variant-coloured. */
+
+atlas-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--atlas-space-xs);
+  padding: 1px var(--atlas-space-sm);
+  border-radius: var(--atlas-radius-sm);
+  background: var(--atlas-color-surface);
+  color: var(--atlas-color-text);
+  border: 1px solid var(--atlas-color-border);
+  font-family: var(--atlas-font-family);
+  font-size: var(--atlas-font-size-xs);
+  font-weight: var(--atlas-font-weight-medium);
+  line-height: 1.5;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+atlas-tag[variant="info"] {
+  background: var(--atlas-color-primary-subtle);
+  color: var(--atlas-color-primary);
+  border-color: transparent;
+}
+atlas-tag[variant="success"] {
+  background: var(--atlas-color-success-subtle);
+  color: var(--atlas-color-success-text);
+  border-color: transparent;
+}
+atlas-tag[variant="warning"] {
+  background: var(--atlas-color-warning-subtle);
+  color: var(--atlas-color-warning-text);
+  border-color: transparent;
+}
+atlas-tag[variant="danger"] {
+  background: var(--atlas-color-danger-subtle, var(--atlas-color-surface));
+  color: var(--atlas-color-danger);
+  border-color: transparent;
+}
+atlas-tag[size="md"] {
+  font-size: var(--atlas-font-size-sm);
+  padding: 2px var(--atlas-space-sm);
+}
+
