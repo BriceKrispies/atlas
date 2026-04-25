@@ -27,14 +27,15 @@ const sheet = createSheet(`
     position: relative;
   }
   /* Vertical rail rendered as a positioned pseudo element on the host
-     so the line cannot fragment across long content. The last item
-     trims its rail. */
+     so the line cannot fragment across long content. Starts at the
+     dot's bottom edge (28px) so the rail is not visually dependent on
+     the dot's bg masking it. The last item trims its rail. */
   :host::before {
     content: "";
     position: absolute;
     left: 13px; /* (28px - 2px) / 2 */
-    top: 18px;
-    bottom: -8px;
+    top: 28px;
+    bottom: 0;
     width: 2px;
     background: var(--atlas-color-border);
   }
@@ -42,7 +43,7 @@ const sheet = createSheet(`
 
   .dot {
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1;
     width: 28px;
     height: 28px;
     border-radius: 999px;
