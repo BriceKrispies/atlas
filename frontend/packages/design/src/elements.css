@@ -143,6 +143,14 @@ atlas-heading[level="5"] { font-size: var(--atlas-font-size-sm); font-weight: va
 atlas-heading[level="6"] { font-size: var(--atlas-font-size-sm); font-weight: var(--atlas-font-weight-normal); color: var(--atlas-color-text-muted); }
 
 
+/* ── atlas-timeline ──────────────────────────────────────────────
+   Light-DOM container. Items own their own grid + rail rendering. */
+
+atlas-timeline {
+  display: block;
+  position: relative;
+}
+
 /* ── atlas-stack ──────────────────────────────────────────────── */
 
 atlas-stack {

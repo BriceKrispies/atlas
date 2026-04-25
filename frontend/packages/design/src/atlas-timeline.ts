@@ -1,53 +1,29 @@
 import { AtlasElement } from '@atlas/core';
-import { adoptSheet, createSheet } from './util.ts';
 
 /**
  * <atlas-timeline> — vertical, ordered log of events.
  *
  * Composition: expects one or more `<atlas-timeline-item>` children.
- * The timeline is the policy holder for layout (rail line + dot grid)
- * and a11y semantics (`role="list"`); each item carries its own
- * timestamp, variant, and slots.
+ * The timeline is a thin container that sets `role="list"` and lets
+ * its items lay out themselves; each item carries its own timestamp,
+ * variant, dot, and rail segment.
  *
- * Light DOM. The vertical rail is rendered via a positioned pseudo
- * element on the host so the line cannot break across long content
- * (rule from brief: no background-image rail).
+ * Light DOM — like atlas-card / atlas-stack / atlas-nav. A previous
+ * iteration used a shadow root with a `::slotted(atlas-timeline-item)
+ * { display: block }` rule, which under the CSS Scoping cascade
+ * (outer encapsulation context wins over inner for normal decls)
+ * overrode the items' own `:host { display: grid }`, collapsing each
+ * item to a stacked block and pushing the rail through the body text.
  *
  * Attributes: none currently. Future: `compact`, `reverse-chronology`.
  *
- * a11y:
- *   role="list" on parent, role="listitem" on each child.
+ * a11y: role="list" on parent, role="listitem" on each child.
  */
 
-const sheet = createSheet(`
-  :host {
-    display: block;
-    position: relative;
-    padding: 0;
-    margin: 0;
-  }
-  ::slotted(atlas-timeline-item) {
-    display: block;
-  }
-`);
-
 export class AtlasTimeline extends AtlasElement {
-  private _built = false;
-
-  constructor() {
-    super();
-    const root = this.attachShadow({ mode: 'open' });
-    adoptSheet(root, sheet);
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'list');
-    if (!this._built) {
-      const slot = document.createElement('slot');
-      this.shadowRoot?.appendChild(slot);
-      this._built = true;
-    }
   }
 }
 
