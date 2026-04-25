@@ -3,6 +3,7 @@ import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts'
 import { BREAKPOINTS } from './breakpoints.ts';
 import './atlas-dialog.ts';
 import './atlas-drawer.ts';
+import './atlas-bottom-sheet.ts';
 import './atlas-search-input.ts';
 import './atlas-tabs.ts';
 import './atlas-button.ts';
@@ -36,8 +37,9 @@ import './atlas-button.ts';
  * Out of scope: actual upload, network fetch. The host owns those.
  *
  * Responsive: viewport ≥ 900px (`--atlas-bp-md`) renders in
- * `<atlas-dialog>`; narrower renders in `<atlas-drawer side="bottom">`
- * as a bottom-sheet fallback (until a dedicated `<atlas-bottom-sheet>`
+ * `<atlas-dialog>`; narrower renders in `<atlas-bottom-sheet>` when
+ * available, falling back to `<atlas-drawer side="bottom">` (until a
+ * dedicated `<atlas-bottom-sheet>` element
  * lands).
  *
  * NOTE: this element is NOT itself form-associated. Its emitted
@@ -514,13 +516,23 @@ export class AtlasMediaPicker extends AtlasElement {
     if (this.disabled) return;
 
     const useDialog = this._useDialog();
-    const tag = useDialog ? 'atlas-dialog' : 'atlas-drawer';
+    // Mobile: prefer atlas-bottom-sheet (registered in batch 1) when present;
+    // fall back to atlas-drawer side="bottom" if the element is unavailable
+    // at runtime (older bundles).
+    const hasBottomSheet =
+      typeof customElements !== 'undefined' &&
+      customElements.get('atlas-bottom-sheet') !== undefined;
+    const tag = useDialog
+      ? 'atlas-dialog'
+      : hasBottomSheet
+        ? 'atlas-bottom-sheet'
+        : 'atlas-drawer';
     const overlay = document.createElement(tag) as HTMLElement & {
       open: () => void;
       close: (v?: string) => void;
     };
     overlay.setAttribute('heading', this.getAttribute('label') || 'Choose media');
-    if (!useDialog) {
+    if (!useDialog && tag === 'atlas-drawer') {
       overlay.setAttribute('side', 'bottom');
       overlay.setAttribute('size', 'lg');
     } else {
