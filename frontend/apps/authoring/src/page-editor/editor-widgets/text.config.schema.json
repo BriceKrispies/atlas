@@ -6,23 +6,55 @@
   "type": "object",
   "required": ["content"],
   "additionalProperties": false,
+  "x-atlas-section-order": [
+    { "id": "content", "label": "Content", "defaultOpen": true },
+    { "id": "appearance", "label": "Appearance", "defaultOpen": true }
+  ],
+  "x-atlas-presets": [
+    {
+      "id": "body-paragraph",
+      "label": "Body paragraph",
+      "description": "Standard reading text in a block-level paragraph.",
+      "config": { "variant": "body", "block": true }
+    },
+    {
+      "id": "muted-caption",
+      "label": "Muted caption",
+      "description": "Small de-emphasized text — captions, metadata.",
+      "config": { "variant": "small", "block": false }
+    },
+    {
+      "id": "error-callout",
+      "label": "Error callout",
+      "description": "Red error-toned text suitable for inline warnings.",
+      "config": { "variant": "error", "block": true }
+    }
+  ],
   "properties": {
     "content": {
       "type": "string",
+      "title": "Content",
       "minLength": 0,
       "maxLength": 2000,
       "default": "",
-      "description": "The text to display."
+      "description": "The text to display. Plain text only — markup is escaped.",
+      "x-atlas-section": "content",
+      "x-atlas-control": "textarea"
     },
     "variant": {
       "type": "string",
+      "title": "Variant",
       "enum": ["body", "muted", "medium", "error", "small", "mono"],
-      "default": "body"
+      "default": "body",
+      "description": "Visual variant. body is the default reading style.",
+      "x-atlas-section": "appearance"
     },
     "block": {
       "type": "boolean",
+      "title": "Block-level",
       "default": false,
-      "description": "Render as a block-level element."
+      "description": "Render as a block-level element (own line). Off renders inline.",
+      "x-atlas-section": "appearance"
     }
   }
 }

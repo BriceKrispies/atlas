@@ -75,6 +75,9 @@ importers:
       '@atlas/page-templates':
         specifier: workspace:*
         version: link:../../packages/page-templates
+      '@atlas/test-state':
+        specifier: workspace:*
+        version: link:../../packages/test-state
       '@atlas/widget-host':
         specifier: workspace:*
         version: link:../../packages/widget-host

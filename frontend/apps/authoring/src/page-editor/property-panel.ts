@@ -6,18 +6,17 @@
  * debounced onChange callback propagates edits back to the shell, which
  * commits them via `contentPageEl.editor.update({ instanceId, config })`.
  *
- * Control mapping for Phase C (v0):
- *   - string + enum           → button row (chip per enum value)
- *   - string                  → <atlas-input type="text">
- *   - integer / number        → <atlas-input type="number">
- *   - boolean                 → toggle button
- *   - array (primitive items) → <atlas-input> with comma-separated values
- *   - array (object items)    → <atlas-input> with JSON fallback textarea
- *   - object                  → JSON textarea fallback
+ * Stage 4 adds support for the `x-atlas-*` extension vocabulary documented
+ * in `editor-widgets/_schema-extensions.md`:
+ *   - `x-atlas-section`        — group fields into collapsible sections.
+ *   - `x-atlas-section-order`  — section render order, labels, defaultOpen.
+ *   - `x-atlas-when`           — single-field equality conditional visibility.
+ *   - `x-atlas-control`        — control-type override (textarea, csv, color).
  *
- * On ok=false from the editor, the shell calls `panel.setError(reason)` and
- * the latest reason is shown inline. Stable reason codes map to friendlier
- * messages.
+ * Public contract preserved (the shell still consumes this element directly
+ * today): `configure({ widgetId, instanceId, config, schema })`, `clear()`,
+ * `setError(reason)`, `onChange` callback. Field-only render is exposed via
+ * `setVisibleFields(...)` for the multi-select inspector path.
  *
  * C2: elements use `name` attributes so testIds derive automatically.
  * C11: rendering uses atlas-* elements + a single native <textarea>
@@ -38,6 +37,20 @@ interface JsonSchema {
   items?: JsonSchema;
   [k: string]: unknown;
 }
+
+interface SectionDescriptor {
+  id: string;
+  label: string;
+  defaultOpen: boolean;
+}
+
+interface WhenClause {
+  field: string;
+  equals: unknown;
+}
+
+const DEFAULT_SECTION_ID = '__default__';
+const DEFAULT_SECTION_LABEL = 'General';
 
 export interface PropertyPanelConfigureArgs {
   widgetId: string;
@@ -67,8 +80,21 @@ export class PageEditorPropertyPanel extends AtlasElement {
   private _schema: JsonSchema | null = null;
   private _error: string | null = null;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When non-null, only fields whose key is in this set are rendered. */
+  private _visibleFieldsAllowList: Set<string> | null = null;
+  /**
+   * Open/closed state for sections, keyed by section id. Populated lazily
+   * from the schema on first render; mutated by the section-toggle button.
+   * Survives `configure()` calls so a user that opened "Advanced" stays
+   * landed there as they switch between sibling widgets.
+   */
+  private _sectionOpen: Map<string, boolean> = new Map();
+  /** Suppress header (title + subtitle) — used by the inspector wrapper. */
+  private _headerSuppressed = false;
 
   onChange: (config: PropertyConfig) => void = () => {};
+  /** Optional hook fired when the user toggles a section (open or close). */
+  onSectionToggle: (section: string, open: boolean) => void = () => {};
 
   /**
    * Populate the panel with a widget's current config + schema.
@@ -79,6 +105,7 @@ export class PageEditorPropertyPanel extends AtlasElement {
     this._config = cloneDeep(config ?? {}) as PropertyConfig;
     this._schema = schema;
     this._error = null;
+    this._seedSectionState(schema);
     if (this.isConnected) this._render();
   }
 
@@ -88,7 +115,40 @@ export class PageEditorPropertyPanel extends AtlasElement {
     this._config = {};
     this._schema = null;
     this._error = null;
+    this._visibleFieldsAllowList = null;
     if (this.isConnected) this._render();
+  }
+
+  /**
+   * Limit the rendered field set to a given allow-list (used by the
+   * multi-select inspector to render only the intersection of shared
+   * fields). Pass `null` to clear and render all schema fields.
+   */
+  setVisibleFields(fields: string[] | null): void {
+    this._visibleFieldsAllowList = fields ? new Set(fields) : null;
+    if (this.isConnected) this._render();
+  }
+
+  /**
+   * Hide the inline title + subtitle so a wrapper element can render its
+   * own header.
+   */
+  setHeaderSuppressed(suppressed: boolean): void {
+    this._headerSuppressed = suppressed;
+    if (this.isConnected) this._render();
+  }
+
+  /** Programmatically open or close a section. */
+  setSectionOpen(section: string, open: boolean): void {
+    this._sectionOpen.set(section, open);
+    if (this.isConnected) this._render();
+  }
+
+  /** Read-only view of section open state — used by the wrapper test reader. */
+  getSectionState(): Record<string, boolean> {
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of this._sectionOpen) out[k] = v;
+    return out;
   }
 
   /**
@@ -116,6 +176,66 @@ export class PageEditorPropertyPanel extends AtlasElement {
     }
   }
 
+  // ---- section / extension helpers ----
+
+  private _seedSectionState(schema: JsonSchema | null): void {
+    if (!schema) return;
+    const order = readSectionOrder(schema);
+    const used = new Set<string>();
+    // Walk explicit order first.
+    for (const desc of order) {
+      used.add(desc.id);
+      if (!this._sectionOpen.has(desc.id)) this._sectionOpen.set(desc.id, desc.defaultOpen);
+    }
+    // Discover any other sections referenced by properties — defaults closed.
+    const props = schema.properties ?? {};
+    for (const propSchema of Object.values(props)) {
+      const sid = (propSchema as JsonSchema)['x-atlas-section'] as string | undefined;
+      const id = sid && !used.has(sid) ? sid : sid;
+      if (id && !this._sectionOpen.has(id)) this._sectionOpen.set(id, false);
+    }
+    // Ensure the default bucket exists (open by default).
+    if (!this._sectionOpen.has(DEFAULT_SECTION_ID)) {
+      this._sectionOpen.set(DEFAULT_SECTION_ID, true);
+    }
+  }
+
+  private _resolveSections(schema: JsonSchema): SectionDescriptor[] {
+    const order = readSectionOrder(schema);
+    const props = schema.properties ?? {};
+    const referenced = new Set<string>();
+    let hasDefault = false;
+    for (const propSchema of Object.values(props)) {
+      const sid = (propSchema as JsonSchema)['x-atlas-section'] as string | undefined;
+      if (sid) referenced.add(sid);
+      else hasDefault = true;
+    }
+    const declared = new Set(order.map((d) => d.id));
+    const out: SectionDescriptor[] = [];
+    if (hasDefault) {
+      out.push({ id: DEFAULT_SECTION_ID, label: DEFAULT_SECTION_LABEL, defaultOpen: true });
+    }
+    for (const desc of order) out.push(desc);
+    // Append any referenced-but-not-declared sections (alphabetical).
+    const extras = [...referenced].filter((id) => !declared.has(id)).sort();
+    for (const id of extras) {
+      out.push({ id, label: prettyLabel(id), defaultOpen: false });
+    }
+    return out;
+  }
+
+  private _isFieldVisible(propSchema: JsonSchema): boolean {
+    const when = propSchema['x-atlas-when'] as WhenClause | undefined;
+    if (!when || typeof when !== 'object' || typeof when.field !== 'string') return true;
+    const dependencyValue = this._config?.[when.field];
+    if (Array.isArray(when.equals)) {
+      return when.equals.some((v) => v === dependencyValue);
+    }
+    return when.equals === dependencyValue;
+  }
+
+  // ---- rendering ----
+
   private _render(): void {
     this.textContent = '';
     if (!this._instanceId || !this._schema) {
@@ -128,23 +248,45 @@ export class PageEditorPropertyPanel extends AtlasElement {
     const stack = document.createElement('atlas-stack');
     stack.setAttribute('gap', 'sm');
 
-    const heading = document.createElement('atlas-heading');
-    heading.setAttribute('level', '4');
-    heading.setAttribute('name', 'inspector-title');
-    heading.textContent = this._schema.title ?? this._widgetId ?? 'Properties';
-    stack.appendChild(heading);
+    if (!this._headerSuppressed) {
+      const heading = document.createElement('atlas-heading');
+      heading.setAttribute('level', '4');
+      heading.setAttribute('name', 'inspector-title');
+      heading.textContent = this._schema.title ?? this._widgetId ?? 'Properties';
+      stack.appendChild(heading);
 
-    const sub = makeText(
-      `${this._widgetId ?? ''} · ${this._instanceId}`,
-      { variant: 'small' },
-    );
-    sub.setAttribute('name', 'inspector-subtitle');
-    stack.appendChild(sub);
+      const sub = makeText(
+        `${this._widgetId ?? ''} · ${this._instanceId}`,
+        { variant: 'small' },
+      );
+      sub.setAttribute('name', 'inspector-subtitle');
+      stack.appendChild(sub);
+    }
 
     const props = this._schema.properties ?? {};
+    const sections = this._resolveSections(this._schema);
+
+    // Bucket fields by section, preserving the schema's property iteration
+    // order within each bucket.
+    const buckets = new Map<string, Array<[string, JsonSchema]>>();
+    for (const desc of sections) buckets.set(desc.id, []);
     for (const [key, propSchema] of Object.entries(props)) {
-      const field = this._renderField(key, propSchema);
-      if (field) stack.appendChild(field);
+      if (this._visibleFieldsAllowList && !this._visibleFieldsAllowList.has(key)) continue;
+      const sid =
+        ((propSchema as JsonSchema)['x-atlas-section'] as string | undefined) ?? DEFAULT_SECTION_ID;
+      if (!buckets.has(sid)) {
+        // Section referenced but not in `sections` — append on the fly.
+        buckets.set(sid, []);
+        sections.push({ id: sid, label: prettyLabel(sid), defaultOpen: false });
+      }
+      buckets.get(sid)!.push([key, propSchema as JsonSchema]);
+    }
+
+    for (const desc of sections) {
+      const bucket = buckets.get(desc.id) ?? [];
+      if (bucket.length === 0) continue;
+      const sectionEl = this._renderSection(desc, bucket);
+      if (sectionEl) stack.appendChild(sectionEl);
     }
 
     if (this._error) {
@@ -156,11 +298,81 @@ export class PageEditorPropertyPanel extends AtlasElement {
     this.appendChild(stack);
   }
 
+  private _renderSection(
+    desc: SectionDescriptor,
+    fields: Array<[string, JsonSchema]>,
+  ): HTMLElement | null {
+    const open = this._sectionOpen.get(desc.id) ?? desc.defaultOpen;
+
+    const section = document.createElement('atlas-stack');
+    section.setAttribute('gap', 'xs');
+    section.setAttribute('name', `settings-group-${desc.id}`);
+    section.setAttribute('data-group', desc.id);
+    section.setAttribute('data-open', open ? 'true' : 'false');
+
+    const toggle = document.createElement('atlas-button');
+    toggle.setAttribute('name', `settings-group-toggle-${desc.id}`);
+    toggle.setAttribute('data-group', desc.id);
+    toggle.setAttribute('variant', 'ghost');
+    toggle.setAttribute('size', 'sm');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.textContent = `${open ? '▾' : '▸'} ${desc.label}`;
+    toggle.addEventListener('click', () => {
+      const next = !(this._sectionOpen.get(desc.id) ?? desc.defaultOpen);
+      this._sectionOpen.set(desc.id, next);
+      try {
+        this.onSectionToggle?.(desc.id, next);
+      } catch {
+        /* ignore — UI must keep working */
+      }
+      this._render();
+    });
+    section.appendChild(toggle);
+
+    if (open) {
+      const body = document.createElement('atlas-stack');
+      body.setAttribute('gap', 'sm');
+      body.setAttribute('data-group-body', desc.id);
+      let appended = 0;
+      for (const [key, propSchema] of fields) {
+        if (!this._isFieldVisible(propSchema)) continue;
+        const field = this._renderField(key, propSchema);
+        if (field) {
+          body.appendChild(field);
+          appended++;
+        }
+      }
+      // Skip rendering the body when every field is hidden by `x-atlas-when`.
+      if (appended > 0) section.appendChild(body);
+    }
+
+    return section;
+  }
+
   private _renderField(key: string, schema: JsonSchema): HTMLElement | null {
+    const control = schema['x-atlas-control'] as string | undefined;
     const type = schema.type;
     const enumValues = Array.isArray(schema.enum) ? (schema.enum as unknown[]) : null;
     const current = this._config?.[key];
 
+    // Honor explicit `x-atlas-control` overrides first.
+    if (control === 'textarea' && type === 'string') {
+      return this._renderTextareaField(key, schema, current);
+    }
+    if (control === 'color' && type === 'string') {
+      return this._renderColorField(key, schema, current);
+    }
+    if (control === 'csv' && type === 'string') {
+      return this._renderCsvStringField(key, schema, current);
+    }
+    if (control === 'select' && enumValues && type === 'string') {
+      return this._renderEnumField(key, schema, enumValues as string[], current);
+    }
+    if (control === 'chips' && enumValues && type === 'string') {
+      return this._renderEnumField(key, schema, enumValues as string[], current);
+    }
+
+    // Fall back to the JSON-type heuristic.
     if (enumValues && type === 'string') {
       return this._renderEnumField(key, schema, enumValues as string[], current);
     }
@@ -191,20 +403,125 @@ export class PageEditorPropertyPanel extends AtlasElement {
     input.setAttribute('type', 'text');
     const value = current ?? schema.default ?? '';
     input.setAttribute('value', String(value));
-    // atlas-input reads value from its shadow <input>, so we also set
-    // it imperatively once connected.
     queueMicrotask(() => {
       const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
       if (inner && inner.value !== String(value)) inner.value = String(value);
     });
-    // Live property preview: update the selected block per keystroke.
-    // Phase 2a moved per-keystroke semantics onto `input`; `change`
-    // now fires only on blur/commit.
     input.addEventListener('input', (e: Event) => {
       const detail = (e as CustomEvent<{ value?: string }>).detail;
       this._update(key, detail?.value ?? '');
     });
     wrap.appendChild(input);
+    return wrap;
+  }
+
+  private _renderTextareaField(
+    key: string,
+    schema: JsonSchema,
+    current: unknown,
+  ): HTMLElement {
+    const wrap = document.createElement('atlas-box');
+    wrap.setAttribute('name', `field-${key}`);
+    wrap.setAttribute('data-control', 'textarea');
+    const stack = document.createElement('atlas-stack');
+    stack.setAttribute('gap', 'xs');
+
+    const label = makeText(labelFor(key, schema), { variant: 'small' });
+    stack.appendChild(label);
+
+    const ta = document.createElement('textarea');
+    ta.setAttribute('name', `textarea-${key}`);
+    ta.rows = 4;
+    ta.style.cssText =
+      'width:100%;font-family:var(--atlas-font-body);font-size:var(--atlas-font-size-sm);padding:var(--atlas-space-sm);border:1px solid var(--atlas-color-border);border-radius:var(--atlas-radius-md);background:var(--atlas-color-bg);color:var(--atlas-color-text);min-height:88px;';
+    const value = current ?? schema.default ?? '';
+    ta.value = String(value);
+    ta.addEventListener('input', () => {
+      this._update(key, ta.value);
+    });
+    stack.appendChild(ta);
+    wrap.appendChild(stack);
+    return wrap;
+  }
+
+  private _renderColorField(key: string, schema: JsonSchema, current: unknown): HTMLElement {
+    const wrap = document.createElement('atlas-box');
+    wrap.setAttribute('name', `field-${key}`);
+    wrap.setAttribute('data-control', 'color');
+    const input = document.createElement('atlas-input');
+    input.setAttribute('label', labelFor(key, schema));
+    input.setAttribute('type', 'color');
+    const value = current ?? schema.default ?? '';
+    input.setAttribute('value', String(value));
+    queueMicrotask(() => {
+      const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
+      if (inner && inner.value !== String(value) && String(value) !== '') {
+        inner.value = String(value);
+      }
+    });
+    input.addEventListener('input', (e: Event) => {
+      const detail = (e as CustomEvent<{ value?: string }>).detail;
+      this._update(key, detail?.value ?? '');
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  /**
+   * `x-atlas-control: 'csv'` for a string-typed field. The model value is a
+   * comma-separated string (per the extension doc); we render an input plus
+   * a chip-style preview so the user sees how their input parses.
+   */
+  private _renderCsvStringField(
+    key: string,
+    schema: JsonSchema,
+    current: unknown,
+  ): HTMLElement {
+    const wrap = document.createElement('atlas-box');
+    wrap.setAttribute('name', `field-${key}`);
+    wrap.setAttribute('data-control', 'csv');
+    const stack = document.createElement('atlas-stack');
+    stack.setAttribute('gap', 'xs');
+
+    const input = document.createElement('atlas-input');
+    input.setAttribute('label', labelFor(key, schema));
+    input.setAttribute('type', 'text');
+    const value = String(current ?? schema.default ?? '');
+    input.setAttribute('value', value);
+    queueMicrotask(() => {
+      const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
+      if (inner && inner.value !== value) inner.value = value;
+    });
+
+    const chips = document.createElement('atlas-stack');
+    chips.setAttribute('direction', 'row');
+    chips.setAttribute('gap', 'xs');
+    chips.setAttribute('wrap', '');
+    chips.setAttribute('data-csv-chips', '');
+    const renderChips = (raw: string): void => {
+      chips.textContent = '';
+      const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const chip = document.createElement('atlas-text');
+        chip.setAttribute('variant', 'small');
+        chip.style.cssText =
+          'padding:0 var(--atlas-space-xs);border:1px solid var(--atlas-color-border);border-radius:var(--atlas-radius-sm);background:var(--atlas-color-surface);';
+        chip.textContent = part;
+        chips.appendChild(chip);
+      }
+    };
+    renderChips(value);
+
+    input.addEventListener('input', (e: Event) => {
+      const detail = (e as CustomEvent<{ value?: string }>).detail;
+      const raw = detail?.value ?? '';
+      renderChips(raw);
+      this._update(key, raw);
+    });
+
+    stack.appendChild(input);
+    stack.appendChild(chips);
+    wrap.appendChild(stack);
     return wrap;
   }
 
@@ -220,9 +537,6 @@ export class PageEditorPropertyPanel extends AtlasElement {
       const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
       if (inner && inner.value !== String(value)) inner.value = String(value);
     });
-    // Live numeric preview: parse + update on every keystroke. Invalid
-    // intermediate values (empty, partial like "-" or "1.") drop through
-    // without clobbering the last valid state.
     input.addEventListener('input', (e: Event) => {
       const detail = (e as CustomEvent<{ value?: string }>).detail;
       const raw = detail?.value ?? '';
@@ -299,7 +613,6 @@ export class PageEditorPropertyPanel extends AtlasElement {
   }
 
   private _renderArrayField(key: string, schema: JsonSchema, current: unknown): HTMLElement {
-    // Determine if items are primitives or objects.
     const items = schema.items;
     const arr = Array.isArray(current) ? (current as unknown[]) : [];
     const isPrimitive =
@@ -318,8 +631,6 @@ export class PageEditorPropertyPanel extends AtlasElement {
         const inner = input.shadowRoot?.querySelector('input') as HTMLInputElement | null;
         if (inner && inner.value !== text) inner.value = text;
       });
-      // Live comma-separated list preview: re-parse per keystroke so the
-      // preview tracks typing (same rationale as the scalar fields).
       input.addEventListener('input', (e: Event) => {
         const detail = (e as CustomEvent<{ value?: string }>).detail;
         const raw = String(detail?.value ?? '').trim();
@@ -334,7 +645,6 @@ export class PageEditorPropertyPanel extends AtlasElement {
       return wrap;
     }
 
-    // Fallback: JSON textarea.
     return this._renderObjectField(key, schema, arr);
   }
 
@@ -347,8 +657,6 @@ export class PageEditorPropertyPanel extends AtlasElement {
     const label = makeText(`${labelFor(key, schema)} (JSON)`, { variant: 'small' });
     stack.appendChild(label);
 
-    // No atlas-textarea yet — use a plain textarea wrapped in an atlas-box.
-    // Tracked as a follow-up; functional for now.
     const ta = document.createElement('textarea');
     ta.setAttribute('name', `json-${key}`);
     ta.rows = 4;
@@ -392,10 +700,32 @@ export class PageEditorPropertyPanel extends AtlasElement {
         this.setError(err instanceof Error ? err.message : String(err));
       }
     }, 150);
-    // Re-render immediately to reflect toggle/enum active state, but
-    // debounce the actual commit upstream.
+    // Re-render immediately so toggles, enum highlights, and `x-atlas-when`
+    // dependent fields reflect the new state.
     this._render();
   }
+}
+
+function readSectionOrder(schema: JsonSchema): SectionDescriptor[] {
+  const raw = schema['x-atlas-section-order'];
+  if (!Array.isArray(raw)) return [];
+  const out: SectionDescriptor[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as { id?: unknown; label?: unknown; defaultOpen?: unknown };
+    if (typeof e.id !== 'string' || e.id.length === 0) continue;
+    out.push({
+      id: e.id,
+      label: typeof e.label === 'string' ? e.label : prettyLabel(e.id),
+      defaultOpen: e.defaultOpen === true,
+    });
+  }
+  return out;
+}
+
+function prettyLabel(id: string): string {
+  if (!id) return id;
+  return id.charAt(0).toUpperCase() + id.slice(1).replace(/[-_]+/g, ' ');
 }
 
 function labelFor(key: string, schema: JsonSchema): string {

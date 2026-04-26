@@ -6,20 +6,48 @@
   "type": "object",
   "required": ["level", "text"],
   "additionalProperties": false,
-  "properties": {
-    "level": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 6,
-      "default": 1,
-      "description": "Semantic heading level (1 through 6)."
+  "x-atlas-section-order": [
+    { "id": "content", "label": "Content", "defaultOpen": true },
+    { "id": "appearance", "label": "Appearance", "defaultOpen": true }
+  ],
+  "x-atlas-presets": [
+    {
+      "id": "h1-page-title",
+      "label": "H1 page title",
+      "description": "Top-level page heading. Use once per page.",
+      "config": { "level": 1 }
     },
+    {
+      "id": "h2-section",
+      "label": "H2 section",
+      "description": "Major section heading inside a page.",
+      "config": { "level": 2 }
+    },
+    {
+      "id": "h3-subsection",
+      "label": "H3 subsection",
+      "description": "Subsection heading nested under an H2.",
+      "config": { "level": 3 }
+    }
+  ],
+  "properties": {
     "text": {
       "type": "string",
+      "title": "Text",
       "minLength": 0,
       "maxLength": 200,
       "default": "",
-      "description": "Heading content."
+      "description": "Heading content rendered inside <atlas-heading>.",
+      "x-atlas-section": "content"
+    },
+    "level": {
+      "type": "integer",
+      "title": "Level",
+      "minimum": 1,
+      "maximum": 6,
+      "default": 2,
+      "description": "Semantic heading level (1 through 6). Drives both the rendered tag and visual size.",
+      "x-atlas-section": "appearance"
     }
   }
 }

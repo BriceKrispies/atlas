@@ -24,8 +24,28 @@
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
+import { registerTestState } from '@atlas/test-state';
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
 import './property-panel.ts';
+// `<atlas-dialog>` is registered as a side effect of `@atlas/design`'s
+// barrel, which the authoring app loads at boot via `src/main.ts`.
+import {
+  loadPanelSizes,
+  savePanelSize,
+  type PageEditorLeftPanelElement,
+  type PageEditorRightPanelElement,
+  type PageEditorBottomPanelElement,
+  type PanelResizeEventDetail,
+  type PanelTabEventDetail,
+  type PanelToggleEventDetail,
+} from './panels/index.ts';
+import './panels/left-panel.ts';
+import './panels/right-panel.ts';
+import './panels/bottom-panel.ts';
+// Burst-C content elements that slot into the panels and the canvas-stage:
+import './left-panel/index.ts';
+import './right-panel/index.ts';
+import './preview/index.ts';
 import { editorWidgetSchemas } from './editor-widgets/index.ts';
 import { moduleDefaultTemplateRegistry } from '@atlas/page-templates';
 import type {
@@ -38,9 +58,12 @@ import type { WrappedPageStore } from './history.ts';
 import type { PageEditorPropertyPanel } from './property-panel.ts';
 import {
   PageEditorController,
-  type DrawerState,
+  PANEL_SIZE_BOUNDS,
   type EditorMode,
+  type LeftPanelTab,
   type PageEditorStateSnapshot,
+  type PanelId,
+  type PanelsState,
 } from './state.ts';
 
 type OnLogFn = (kind: string, payload: unknown) => void;
@@ -77,12 +100,16 @@ interface TemplateRegistry {
 
 const styles = `
   :host {
+    --atlas-pe-left-w: 280px;
+    --atlas-pe-right-w: 320px;
+    --atlas-pe-bottom-h: 200px;
     display: grid;
-    grid-template-columns: 56px 1fr auto;
-    grid-template-rows: 48px 1fr;
+    grid-template-columns: var(--atlas-pe-left-w) minmax(0, 1fr) var(--atlas-pe-right-w);
+    grid-template-rows: 48px minmax(0, 1fr) var(--atlas-pe-bottom-h);
     grid-template-areas:
-      "topbar  topbar  topbar"
-      "nav     canvas  drawer";
+      "topbar topbar topbar"
+      "left   canvas right"
+      "bottom bottom bottom";
     width: 100%;
     height: min(720px, 80vh);
     min-height: 480px;
@@ -94,15 +121,28 @@ const styles = `
     overflow: hidden;
   }
 
-  :host([data-mode="preview"]) {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      "topbar"
-      "canvas";
+  /* Closed-panel collapses its grid track to zero so the canvas reclaims space. */
+  :host([data-left-open="false"]) {
+    grid-template-columns: 0 minmax(0, 1fr) var(--atlas-pe-right-w);
   }
-  :host([data-mode="preview"]) atlas-box[data-role="nav"],
-  :host([data-mode="preview"]) atlas-box[data-role="drawer"] {
+  :host([data-right-open="false"]) {
+    grid-template-columns: var(--atlas-pe-left-w) minmax(0, 1fr) 0;
+  }
+  :host([data-left-open="false"][data-right-open="false"]) {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+  :host([data-bottom-open="false"]) {
+    grid-template-rows: 48px minmax(0, 1fr) 0;
+  }
+
+  /* Preview mode hides every panel and the topbar's editor-only controls. */
+  :host([data-mode="preview"]) {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+    grid-template-rows: 48px minmax(0, 1fr) 0;
+  }
+  :host([data-mode="preview"]) page-editor-left-panel,
+  :host([data-mode="preview"]) page-editor-right-panel,
+  :host([data-mode="preview"]) page-editor-bottom-panel {
     display: none;
   }
 
@@ -120,19 +160,114 @@ const styles = `
     flex: 1;
   }
 
-  atlas-box[data-role="nav"] {
-    grid-area: nav;
+  /* Panel hosts. */
+  page-editor-left-panel {
+    grid-area: left;
+  }
+  page-editor-right-panel {
+    grid-area: right;
+  }
+  page-editor-bottom-panel {
+    grid-area: bottom;
+  }
+  page-editor-left-panel,
+  page-editor-right-panel,
+  page-editor-bottom-panel {
+    position: relative;
+    display: grid;
+    grid-template-rows: 36px minmax(0, 1fr);
+    background: var(--atlas-color-surface);
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+  }
+  page-editor-left-panel { border-right: 1px solid var(--atlas-color-border); }
+  page-editor-right-panel { border-left: 1px solid var(--atlas-color-border); }
+  page-editor-bottom-panel { border-top: 1px solid var(--atlas-color-border); }
+
+  page-editor-left-panel[data-open="false"],
+  page-editor-right-panel[data-open="false"],
+  page-editor-bottom-panel[data-open="false"] {
+    display: none;
+  }
+
+  .atlas-page-editor-panel__header {
+    display: flex;
+    align-items: center;
+    gap: var(--atlas-space-xs);
+    padding: 0 var(--atlas-space-xs) 0 var(--atlas-space-sm);
+    background: var(--atlas-color-surface);
+    border-bottom: 1px solid var(--atlas-color-border);
+    height: 36px;
+    box-sizing: border-box;
+  }
+  .atlas-page-editor-panel__title {
+    font-weight: 600;
+    font-size: 0.85em;
+    color: var(--atlas-color-text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .atlas-page-editor-panel__tabs {
+    display: flex;
+    gap: var(--atlas-space-xs);
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    overflow: hidden;
+  }
+  /* Keep the collapse button compact and right-aligned in the panel header so
+     it doesn't crowd the tab strip or visually float over the canvas. */
+  .atlas-page-editor-panel__header > atlas-button[name="collapse"] {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding-inline: var(--atlas-space-xs);
+    margin-inline-start: auto;
+    opacity: 0.7;
+  }
+  .atlas-page-editor-panel__header > atlas-button[name="collapse"]:hover {
+    opacity: 1;
+  }
+  .atlas-page-editor-panel__body {
+    overflow: auto;
+    padding: var(--atlas-space-md);
+  }
+
+  /* Resize handles. */
+  .atlas-page-editor-panel__resize {
+    position: absolute;
+    background: transparent;
+    z-index: 1;
+  }
+  page-editor-left-panel .atlas-page-editor-panel__resize {
+    top: 0; bottom: 0; right: 0; width: 4px; cursor: col-resize;
+  }
+  page-editor-right-panel .atlas-page-editor-panel__resize {
+    top: 0; bottom: 0; left: 0; width: 4px; cursor: col-resize;
+  }
+  page-editor-bottom-panel .atlas-page-editor-panel__resize {
+    left: 0; right: 0; top: 0; height: 4px; cursor: row-resize;
+  }
+  .atlas-page-editor-panel__resize:hover {
+    background: var(--atlas-color-primary);
+  }
+
+  /* Floating "open" buttons that appear on the canvas edge when a panel is closed. */
+  atlas-box[data-role="canvas-edge"] {
+    position: absolute;
+    z-index: 2;
     display: flex;
     flex-direction: column;
-    gap: var(--atlas-space-sm);
-    padding: var(--atlas-space-sm) var(--atlas-space-xs);
-    background: var(--atlas-color-surface);
-    border-right: 1px solid var(--atlas-color-border);
-    align-items: center;
+    gap: var(--atlas-space-xs);
+    padding: var(--atlas-space-xs);
   }
+  atlas-box[data-role="canvas-edge"][data-edge="left"]   { left: 0;   top: var(--atlas-space-sm); }
+  atlas-box[data-role="canvas-edge"][data-edge="right"]  { right: 0;  top: var(--atlas-space-sm); }
+  atlas-box[data-role="canvas-edge"][data-edge="bottom"] { right: 0;  bottom: 0; }
 
   atlas-box[data-role="canvas"] {
     grid-area: canvas;
+    position: relative;
     overflow: auto;
     padding: var(--atlas-space-md);
     min-width: 0;
@@ -141,17 +276,13 @@ const styles = `
   :host([data-mode="preview"]) atlas-box[data-role="canvas"] {
     padding: 0;
   }
-
-  atlas-box[data-role="drawer"] {
-    grid-area: drawer;
-    width: 320px;
-    overflow: auto;
-    padding: var(--atlas-space-md);
-    border-left: 1px solid var(--atlas-color-border);
-    background: var(--atlas-color-surface);
-  }
-  atlas-box[data-role="drawer"][data-drawer-kind="closed"] {
-    display: none;
+  /* The stage is the actual mount point for <content-page>. The shell's
+     canvas-edge open buttons are absolutely-positioned siblings, so the
+     stage must fill the canvas so the content sits beneath them. */
+  atlas-box[data-role="canvas-stage"] {
+    display: block;
+    width: 100%;
+    min-height: 100%;
   }
 
   /* Multi-select visual outline (dashed) so it co-exists with edit-mount's
@@ -196,6 +327,36 @@ const styles = `
   }
 
   atlas-button[disabled] { opacity: 0.5; pointer-events: none; }
+
+  /* Mobile-first override (≤768px): panels become floating overlays so the
+     canvas always gets full width. C16.5 — no horizontal document scroll
+     at 320px. */
+  @media (max-width: 768px) {
+    :host,
+    :host([data-left-open="false"]),
+    :host([data-right-open="false"]),
+    :host([data-bottom-open="false"]) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    page-editor-left-panel,
+    page-editor-right-panel,
+    page-editor-bottom-panel {
+      position: absolute;
+      top: 48px;
+      bottom: 0;
+      width: min(80vw, var(--atlas-pe-left-w));
+      max-width: 80vw;
+      box-shadow: 0 0 24px rgba(0,0,0,0.18);
+      z-index: 3;
+    }
+    page-editor-left-panel  { left: 0; right: auto; }
+    page-editor-right-panel { right: 0; left: auto; width: min(80vw, var(--atlas-pe-right-w)); }
+    page-editor-bottom-panel {
+      left: 0; right: 0; top: auto;
+      width: 100%; max-width: 100%;
+      height: var(--atlas-pe-bottom-h);
+    }
+  }
 `;
 
 const MODE_OPTIONS: Array<{ value: EditorMode; label: string; testValue: string }> = [
@@ -220,11 +381,23 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   private _controller: PageEditorController | null = null;
   private _canvasPage: ContentPageElement | null = null;
   private _canvasHost: HTMLElement | null = null;
-  private _drawerEl: HTMLElement | null = null;
+  private _canvasStage: HTMLElement | null = null;
+  private _leftPanel: PageEditorLeftPanelElement | null = null;
+  private _rightPanel: PageEditorRightPanelElement | null = null;
+  private _bottomPanel: PageEditorBottomPanelElement | null = null;
+  /** Panel-body slot containers, keyed by `<panel>:<tab>`. */
+  private _tabSlots: Map<string, HTMLElement> = new Map();
   private _propertyPanel: (PageEditorPropertyPanel & HTMLElement) | null = null;
+  private _propertyPanelInstanceId: string | null = null;
+  /** Pixel size at the moment a resize started, per panel. */
+  private _resizeOriginSize: Partial<Record<PanelId, number>> = {};
   private _onCanvasClick: (e: Event) => void;
   private _onKeyDown: (e: KeyboardEvent) => void;
+  private _onPanelToggle: (e: Event) => void;
+  private _onPanelTab: (e: Event) => void;
+  private _onPanelResize: (e: Event) => void;
   private _unsubscribe: (() => void) | null = null;
+  private _disposeTestState: (() => void) | null = null;
   private _lastSnapshot: PageEditorStateSnapshot | null = null;
 
   constructor() {
@@ -235,6 +408,9 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
 
     this._onCanvasClick = (e: Event) => this._handleCanvasClick(e);
     this._onKeyDown = (e: KeyboardEvent) => this._handleKeyDown(e);
+    this._onPanelToggle = (e: Event) => this._handlePanelToggle(e as CustomEvent<PanelToggleEventDetail>);
+    this._onPanelTab = (e: Event) => this._handlePanelTab(e as CustomEvent<PanelTabEventDetail>);
+    this._onPanelResize = (e: Event) => this._handlePanelResize(e as CustomEvent<PanelResizeEventDetail>);
   }
 
   override connectedCallback(): void {
@@ -247,14 +423,27 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     super.disconnectedCallback?.();
     this._canvasHost?.removeEventListener('click', this._onCanvasClick, true);
     document.removeEventListener('keydown', this._onKeyDown);
+    const root = this.shadowRoot;
+    if (root) {
+      root.removeEventListener('atlas-panel-toggle', this._onPanelToggle);
+      root.removeEventListener('atlas-panel-tab', this._onPanelTab);
+      root.removeEventListener('atlas-panel-resize', this._onPanelResize);
+    }
     this._unsubscribe?.();
     this._unsubscribe = null;
+    this._disposeTestState?.();
+    this._disposeTestState = null;
     this._controller?.dispose();
     this._controller = null;
     this._canvasPage = null;
     this._canvasHost = null;
-    this._drawerEl = null;
+    this._canvasStage = null;
+    this._leftPanel = null;
+    this._rightPanel = null;
+    this._bottomPanel = null;
+    this._tabSlots.clear();
     this._propertyPanel = null;
+    this._propertyPanelInstanceId = null;
     this._lastSnapshot = null;
   }
 
@@ -283,8 +472,20 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       pageStore: this.pageStore,
       initialDoc,
       initialMode: 'content',
+      initialPanelSizes: loadPanelSizes(),
     });
     this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
+
+    // Expose the shell controller's snapshot to Playwright via
+    // `window.__atlasTest.getEditorState('<pageId>:shell')` and
+    // `getLastCommit('editor:<pageId>:shell')`. Keyed distinctly from the
+    // inner content-page editor (which already owns `editor:<pageId>`) so
+    // shell-level intents (mode, drawer, undo/redo, panel state) are
+    // observable without colliding with document-level intents.
+    const controller = this._controller;
+    this._disposeTestState = registerTestState(controller.surfaceId, () =>
+      controller.getSnapshot(),
+    );
 
     this._renderShell();
     await this._mountCanvas();
@@ -308,11 +509,21 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
         <atlas-button name="preview-toggle" variant="ghost" size="sm" aria-label="Preview">Preview</atlas-button>
         <atlas-button name="exit-preview" variant="ghost" size="sm" aria-label="Exit preview">Exit preview</atlas-button>
       </atlas-box>
-      <atlas-box data-role="nav" name="nav">
-        <atlas-button name="nav-templates" variant="ghost" size="sm" aria-label="Templates">T</atlas-button>
+      <page-editor-left-panel name="left-panel"></page-editor-left-panel>
+      <atlas-box data-role="canvas" name="canvas" tabindex="-1">
+        <atlas-box data-role="canvas-stage"></atlas-box>
+        <atlas-box data-role="canvas-edge" data-edge="left">
+          <atlas-button name="open-left" variant="ghost" size="sm" aria-label="Open left panel">▶</atlas-button>
+        </atlas-box>
+        <atlas-box data-role="canvas-edge" data-edge="right">
+          <atlas-button name="open-right" variant="ghost" size="sm" aria-label="Open right panel">◀</atlas-button>
+        </atlas-box>
+        <atlas-box data-role="canvas-edge" data-edge="bottom">
+          <atlas-button name="open-bottom" variant="ghost" size="sm" aria-label="Open bottom panel">▲</atlas-button>
+        </atlas-box>
       </atlas-box>
-      <atlas-box data-role="canvas" name="canvas" tabindex="-1"></atlas-box>
-      <atlas-box data-role="drawer" name="drawer" data-drawer-kind="closed"></atlas-box>
+      <page-editor-right-panel name="right-panel"></page-editor-right-panel>
+      <page-editor-bottom-panel name="bottom-panel"></page-editor-bottom-panel>
     `;
 
     const segmented = root.querySelector('atlas-segmented-control[name="mode"]') as
@@ -332,28 +543,91 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     const saveBtn = root.querySelector('atlas-button[name="save"]');
     const previewBtn = root.querySelector('atlas-button[name="preview-toggle"]');
     const exitPreviewBtn = root.querySelector('atlas-button[name="exit-preview"]');
-    const navTemplatesBtn = root.querySelector('atlas-button[name="nav-templates"]');
+    const openLeftBtn = root.querySelector('atlas-button[name="open-left"]');
+    const openRightBtn = root.querySelector('atlas-button[name="open-right"]');
+    const openBottomBtn = root.querySelector('atlas-button[name="open-bottom"]');
 
     undoBtn?.addEventListener('click', () => void this._undo());
     redoBtn?.addEventListener('click', () => void this._redo());
     saveBtn?.addEventListener('click', () => void this._controller?.save());
     previewBtn?.addEventListener('click', () => this._controller?.setMode('preview'));
     exitPreviewBtn?.addEventListener('click', () => this._controller?.setMode('content'));
-    navTemplatesBtn?.addEventListener('click', () => {
-      this._controller?.setMode('structure');
-    });
+    openLeftBtn?.addEventListener('click', () => this._controller?.togglePanel('left', true));
+    openRightBtn?.addEventListener('click', () => this._controller?.togglePanel('right', true));
+    openBottomBtn?.addEventListener('click', () => this._controller?.togglePanel('bottom', true));
 
     document.addEventListener('keydown', this._onKeyDown);
 
     this._canvasHost = root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
+    this._canvasStage = this._canvasHost?.querySelector(
+      'atlas-box[data-role="canvas-stage"]',
+    ) as HTMLElement | null;
     this._canvasHost?.addEventListener('click', this._onCanvasClick, true);
 
-    this._drawerEl = root.querySelector('atlas-box[data-role="drawer"]') as HTMLElement | null;
+    this._leftPanel = root.querySelector('page-editor-left-panel') as PageEditorLeftPanelElement | null;
+    this._rightPanel = root.querySelector('page-editor-right-panel') as PageEditorRightPanelElement | null;
+    this._bottomPanel = root.querySelector('page-editor-bottom-panel') as PageEditorBottomPanelElement | null;
+
+    // Configure tab labels on each panel. The left-panel vocabulary depends
+    // on mode (palette+outline in content, templates in structure); seed the
+    // initial set here and let `_onSnapshot` swap on mode changes.
+    this._leftPanel?.setTabs([
+      { id: 'palette', label: 'Palette' },
+      { id: 'outline', label: 'Outline' },
+    ]);
+    this._rightPanel?.setTabs([{ id: 'settings', label: 'Inspector' }]);
+    this._bottomPanel?.setTabs([{ id: 'issues', label: 'Issues' }]);
+
+    // Build the per-tab slot containers inside each panel's body.
+    this._buildTabSlots();
+
+    // Listen once at the shadow root for all panel events.
+    root.addEventListener('atlas-panel-toggle', this._onPanelToggle);
+    root.addEventListener('atlas-panel-tab', this._onPanelTab);
+    root.addEventListener('atlas-panel-resize', this._onPanelResize);
+  }
+
+  /**
+   * Build empty `[data-tab=…]` slot containers inside each panel's body
+   * so snapshot updates can target them by `${panelId}:${tab}`. Content
+   * (palette chips, property panel, templates select) is rendered into
+   * the appropriate slot by `_renderTabContent`.
+   */
+  private _buildTabSlots(): void {
+    this._tabSlots.clear();
+    const wireSlots = (
+      panel: HTMLElement | null,
+      panelId: PanelId,
+      tabs: ReadonlyArray<string>,
+    ): void => {
+      if (!panel) return;
+      const body = panel.querySelector('[data-role="panel-body"]') as HTMLElement | null;
+      if (!body) return;
+      body.textContent = '';
+      for (const tab of tabs) {
+        const slot = document.createElement('div');
+        slot.setAttribute('data-tab', tab);
+        body.appendChild(slot);
+        this._tabSlots.set(`${panelId}:${tab}`, slot);
+      }
+    };
+    wireSlots(this._leftPanel, 'left', ['palette', 'templates', 'outline']);
+    wireSlots(this._rightPanel, 'right', ['settings']);
+    wireSlots(this._bottomPanel, 'bottom', ['issues', 'history', 'preview-device']);
   }
 
   private async _mountCanvas(): Promise<void> {
-    if (!this._canvasHost || !this._controller) return;
-    this._canvasHost.textContent = '';
+    if (!this._canvasStage || !this._controller) return;
+    // Only wipe the dedicated stage — the canvas-edge "open panel" buttons
+    // are siblings inside the canvas and must survive a remount.
+    this._canvasStage.textContent = '';
+
+    const mode = this._controller.getSnapshot().mode;
+    if (mode === 'preview') {
+      this._mountPreview();
+      return;
+    }
+
     const page = document.createElement('content-page') as ContentPageElement;
     page.pageId = this.pageId;
     page.pageStore = this._controller.wrappedStore;
@@ -363,15 +637,47 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     page.tenantId = this.tenantId;
     page.correlationId = this.correlationId;
     page.capabilities = this.capabilities ?? {};
-    page.edit = this._controller.getSnapshot().mode !== 'preview';
+    page.edit = true;
     page.onMediatorTrace = (evt) => this.onLog?.('mediator', evt);
     page.onCapabilityTrace = (evt) => this.onLog?.('capability', evt);
-    this._canvasHost.appendChild(page);
+    this._canvasStage.appendChild(page);
     this._canvasPage = page;
     // The content-page mounts asynchronously; poll a few microtasks for its
     // editor handle to appear, then hand it to the controller.
     await this._waitForEditor();
     this._controller.setEditor(this._canvasPage?.editor ?? null);
+  }
+
+  /**
+   * Mount the dedicated preview surface (Burst C-3) into the canvas-stage.
+   * Preview owns its own internal `<content-page edit=false>` and applies
+   * device frame chrome around it.
+   */
+  private _mountPreview(): void {
+    if (!this._canvasStage || !this._controller) return;
+    const preview = document.createElement('page-editor-preview') as HTMLElement & {
+      controller: PageEditorController | null;
+      pageId: string;
+      templateRegistry?: unknown;
+      layoutRegistry?: unknown;
+      principal?: unknown;
+      tenantId?: string;
+      correlationId?: string;
+      capabilities?: Record<string, (a: unknown) => Promise<unknown>>;
+    };
+    preview.pageId = this.pageId;
+    if (this.templateRegistry) preview.templateRegistry = this.templateRegistry;
+    if (this.layoutRegistry) preview.layoutRegistry = this.layoutRegistry;
+    preview.principal = this.principal;
+    preview.tenantId = this.tenantId;
+    preview.correlationId = this.correlationId;
+    preview.capabilities = this.capabilities ?? {};
+    preview.controller = this._controller;
+    this._canvasStage.appendChild(preview);
+    // Editing handle goes away in preview; surface tests assert against
+    // the preview surface's own test-state key.
+    this._canvasPage = null;
+    this._controller.setEditor(null);
   }
 
   private async _waitForEditor(): Promise<void> {
@@ -399,6 +705,10 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       if (exit) exit.style.display = snap.mode === 'preview' ? '' : 'none';
       if (previewBtn) previewBtn.style.display = snap.mode === 'preview' ? 'none' : '';
       void this._reflectModeOnCanvas(snap.mode);
+      // Mode change can flip which left-panel tab is meaningful (palette vs
+      // templates); reflect this on the panel host so its (future) tab strip
+      // shows the right active state.
+      this._leftPanel?.setTabs(leftPanelTabsForMode(snap.mode));
     }
 
     if (!prev || prev.status !== snap.status) {
@@ -434,14 +744,65 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       this._reflectMultiSelect(snap.selectedWidgetInstanceIds);
     }
 
-    if (!prev || prev.mode !== snap.mode || drawerChanged(prev.drawer, snap.drawer)) {
-      this._renderDrawer(snap);
+    if (!prev || panelsChanged(prev.panels, snap.panels)) {
+      this._reflectPanels(snap.panels);
+    }
+    this._renderTabContent(snap, prev);
+
+    if (!prev || panelsChanged(prev.panels, snap.panels) || prev.mode !== snap.mode) {
+      this._reflectPanelEdgeButtons(snap);
     }
   }
 
+  /** Drive `data-*` attributes + CSS variables for size + open state. */
+  private _reflectPanels(panels: PanelsState): void {
+    this.setAttribute('data-left-open', String(panels.left.open));
+    this.setAttribute('data-right-open', String(panels.right.open));
+    this.setAttribute('data-bottom-open', String(panels.bottom.open));
+    this.style.setProperty('--atlas-pe-left-w', `${panels.left.size}px`);
+    this.style.setProperty('--atlas-pe-right-w', `${panels.right.size}px`);
+    this.style.setProperty('--atlas-pe-bottom-h', `${panels.bottom.size}px`);
+    this._leftPanel?.setOpen(panels.left.open);
+    this._leftPanel?.setActiveTab(panels.left.tab);
+    this._rightPanel?.setOpen(panels.right.open);
+    this._rightPanel?.setActiveTab(panels.right.tab);
+    this._bottomPanel?.setOpen(panels.bottom.open);
+    this._bottomPanel?.setActiveTab(panels.bottom.tab);
+  }
+
+  /** Show the floating canvas-edge "open" button for any closed panel. */
+  private _reflectPanelEdgeButtons(snap: PageEditorStateSnapshot): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const setVisible = (edge: 'left' | 'right' | 'bottom', visible: boolean): void => {
+      const box = root.querySelector(
+        `atlas-box[data-role="canvas-edge"][data-edge="${edge}"]`,
+      ) as HTMLElement | null;
+      if (!box) return;
+      // Hide the open-buttons entirely in preview mode, otherwise show
+      // exactly when the matching panel is closed.
+      const show = snap.mode !== 'preview' && visible;
+      box.style.display = show ? '' : 'none';
+    };
+    setVisible('left', !snap.panels.left.open);
+    setVisible('right', !snap.panels.right.open);
+    setVisible('bottom', !snap.panels.bottom.open);
+  }
+
   private async _reflectModeOnCanvas(mode: EditorMode): Promise<void> {
+    // Crossing the preview boundary swaps the canvas-stage between
+    // `<content-page>` (editing) and `<page-editor-preview>` (read-only +
+    // device frame). Other mode changes just toggle `edit` on the live
+    // content-page.
+    const isPreview = mode === 'preview';
+    const stageHasPreview = !!this._canvasStage?.querySelector('page-editor-preview');
+    const stageHasContent = !!this._canvasPage;
+    if (isPreview !== stageHasPreview || (!isPreview && !stageHasContent)) {
+      await this._mountCanvas();
+      return;
+    }
     if (!this._canvasPage) return;
-    const wantsEdit = mode !== 'preview';
+    const wantsEdit = !isPreview;
     if (this._canvasPage.edit === wantsEdit) return;
     this._canvasPage.edit = wantsEdit;
     try {
@@ -465,34 +826,76 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     }
   }
 
-  private _renderDrawer(snap: PageEditorStateSnapshot): void {
-    const drawer = this._drawerEl;
-    if (!drawer) return;
-    drawer.setAttribute('data-drawer-kind', snap.drawer.kind);
-    drawer.textContent = '';
+  /**
+   * Populate the panel slot containers based on the current snapshot.
+   *
+   * Stage-2 keeps the three content blocks (palette / settings / templates)
+   * intact but re-routes them: palette → left panel `palette` tab, templates →
+   * left panel `templates` tab, settings → right panel `settings` tab. The
+   * bottom panel ships an empty placeholder until S5/S6.
+   *
+   * `name` attributes on the wrapping atlas-stack elements are preserved
+   * (`add-widget-tab-content`, `settings-tab-content`, `templates-tab-content`)
+   * so test ids remain stable through the rename from `*-drawer-content`.
+   */
+  private _renderTabContent(
+    snap: PageEditorStateSnapshot,
+    prev: PageEditorStateSnapshot | null,
+  ): void {
+    if (snap.mode === 'preview') return;
 
-    if (snap.mode === 'preview' || snap.drawer.kind === 'closed') {
-      this._propertyPanel = null;
-      return;
+    // ---- left panel: palette + outline (Burst C-1) ----
+    const paletteSlot = this._tabSlots.get('left:palette');
+    if (paletteSlot && paletteSlot.childElementCount === 0 && this._controller) {
+      const palette = document.createElement('page-editor-palette') as HTMLElement & {
+        controller: PageEditorController | null;
+      };
+      palette.controller = this._controller;
+      paletteSlot.appendChild(palette);
+    }
+    const outlineSlot = this._tabSlots.get('left:outline');
+    if (outlineSlot && outlineSlot.childElementCount === 0 && this._controller) {
+      const outline = document.createElement('page-editor-outline') as HTMLElement & {
+        controller: PageEditorController | null;
+      };
+      outline.controller = this._controller;
+      outlineSlot.appendChild(outline);
     }
 
-    if (snap.mode === 'structure') {
-      drawer.appendChild(this._buildTemplateDrawer(snap));
-      return;
+    // ---- left panel: templates tab (still rendered inline; the templates
+    // select is small and template-driven, no benefit to extracting). ----
+    const templatesSlot = this._tabSlots.get('left:templates');
+    if (
+      templatesSlot &&
+      (templatesSlot.childElementCount === 0 || prev?.layoutTemplateId !== snap.layoutTemplateId)
+    ) {
+      templatesSlot.textContent = '';
+      templatesSlot.appendChild(this._buildTemplatesContent(snap));
     }
 
-    // content mode
-    if (snap.drawer.kind === 'palette') {
-      drawer.appendChild(this._buildAddWidgetDrawer(snap));
-    } else if (snap.drawer.kind === 'settings') {
-      drawer.appendChild(this._buildSettingsDrawer(snap.drawer.widgetInstanceId));
+    // ---- right panel: inspector (Burst C-2) ----
+    // The inspector subscribes to the controller and handles single/multi/
+    // empty modes itself. Mount once; never tear down on snapshot ticks.
+    const settingsSlot = this._tabSlots.get('right:settings');
+    if (settingsSlot && settingsSlot.childElementCount === 0 && this._controller) {
+      const inspector = document.createElement('page-editor-inspector') as HTMLElement & {
+        controller: PageEditorController | null;
+      };
+      inspector.controller = this._controller;
+      settingsSlot.appendChild(inspector);
+    }
+
+    // ---- bottom panel: placeholder for S5/S6 ----
+    const issuesSlot = this._tabSlots.get('bottom:issues');
+    if (issuesSlot && issuesSlot.childElementCount === 0) {
+      issuesSlot.appendChild(this._buildBottomPlaceholderContent());
     }
   }
 
-  private _buildTemplateDrawer(snap: PageEditorStateSnapshot): HTMLElement {
+  private _buildTemplatesContent(snap: PageEditorStateSnapshot): HTMLElement {
     const wrap = document.createElement('atlas-stack');
     wrap.setAttribute('gap', 'sm');
-    wrap.setAttribute('name', 'template-drawer-content');
+    wrap.setAttribute('name', 'templates-tab-content');
 
     const heading = document.createElement('atlas-heading');
     heading.setAttribute('level', '4');
@@ -501,7 +904,8 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
 
     const sub = document.createElement('atlas-text');
     sub.setAttribute('variant', 'muted');
-    sub.textContent = 'Select a template for this page. Widgets in regions that no longer exist will be removed.';
+    sub.textContent =
+      'Select a template for this page. Widgets in regions that no longer exist will be removed.';
     wrap.appendChild(sub);
 
     const select = document.createElement('atlas-select') as HTMLElement & {
@@ -527,10 +931,10 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     return wrap;
   }
 
-  private _buildAddWidgetDrawer(snap: PageEditorStateSnapshot): HTMLElement {
+  private _buildPaletteContent(snap: PageEditorStateSnapshot): HTMLElement {
     const wrap = document.createElement('atlas-stack');
     wrap.setAttribute('gap', 'sm');
-    wrap.setAttribute('name', 'add-widget-drawer-content');
+    wrap.setAttribute('name', 'add-widget-tab-content');
 
     const heading = document.createElement('atlas-heading');
     heading.setAttribute('level', '4');
@@ -570,10 +974,10 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     return wrap;
   }
 
-  private _buildSettingsDrawer(instanceId: string): HTMLElement {
+  private _buildSettingsContent(instanceId: string): HTMLElement {
     const wrap = document.createElement('atlas-stack');
     wrap.setAttribute('gap', 'sm');
-    wrap.setAttribute('name', 'settings-drawer-content');
+    wrap.setAttribute('name', 'settings-tab-content');
 
     const panel = document.createElement('page-editor-property-panel') as
       PageEditorPropertyPanel & HTMLElement;
@@ -584,6 +988,60 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
 
     queueMicrotask(() => this._populatePanel(instanceId));
     return wrap;
+  }
+
+  private _buildSettingsEmptyContent(): HTMLElement {
+    const wrap = document.createElement('atlas-stack');
+    wrap.setAttribute('gap', 'sm');
+    wrap.setAttribute('name', 'settings-empty-content');
+    const text = document.createElement('atlas-text');
+    text.setAttribute('variant', 'muted');
+    text.textContent = 'Select a widget on the canvas to edit its properties.';
+    wrap.appendChild(text);
+    return wrap;
+  }
+
+  private _buildBottomPlaceholderContent(): HTMLElement {
+    const wrap = document.createElement('atlas-stack');
+    wrap.setAttribute('gap', 'sm');
+    wrap.setAttribute('name', 'issues-tab-content');
+    const text = document.createElement('atlas-text');
+    text.setAttribute('variant', 'muted');
+    text.textContent = 'Page issues and validation messages will appear here.';
+    wrap.appendChild(text);
+    return wrap;
+  }
+
+  // ---- panel event handlers (S2) ---------------------------------
+
+  private _handlePanelToggle(ev: CustomEvent<PanelToggleEventDetail>): void {
+    const detail = ev.detail;
+    if (!detail || !this._controller) return;
+    this._controller.togglePanel(detail.panel, detail.open);
+  }
+
+  private _handlePanelTab(ev: CustomEvent<PanelTabEventDetail>): void {
+    const detail = ev.detail;
+    if (!detail || !this._controller) return;
+    this._controller.setPanelTab(detail.panel, detail.tab as LeftPanelTab);
+  }
+
+  private _handlePanelResize(ev: CustomEvent<PanelResizeEventDetail>): void {
+    const detail = ev.detail;
+    if (!detail || !this._controller) return;
+    const snap = this._controller.getSnapshot();
+    if (detail.phase === 'start') {
+      this._resizeOriginSize[detail.panel] = snap.panels[detail.panel].size;
+      return;
+    }
+    const origin = this._resizeOriginSize[detail.panel] ?? snap.panels[detail.panel].size;
+    const next = origin + detail.dx;
+    this._controller.resizePanel(detail.panel, next);
+    if (detail.phase === 'end') {
+      const updated = this._controller.getSnapshot().panels[detail.panel].size;
+      savePanelSize(detail.panel, updated);
+      delete this._resizeOriginSize[detail.panel];
+    }
   }
 
   private _populatePanel(instanceId: string): void {
@@ -655,9 +1113,10 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       }
     }
     if (dropped.length > 0) {
-      const ok = window.confirm(
-        `Switching to "${nextManifest.displayName ?? nextTemplateId}" will remove ${dropped.length} widget(s) from regions that don't exist in the new template. Continue?`,
-      );
+      const ok = await confirmTemplateSwitch({
+        displayName: nextManifest.displayName ?? nextTemplateId,
+        dropCount: dropped.length,
+      });
       if (!ok) {
         this.onLog?.('template-switch-cancelled', { nextTemplateId, dropped: dropped.length });
         return;
@@ -749,12 +1208,82 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   }
 }
 
-function drawerChanged(a: DrawerState, b: DrawerState): boolean {
-  if (a.kind !== b.kind) return true;
-  if (a.kind === 'settings' && b.kind === 'settings') {
-    return a.widgetInstanceId !== b.widgetInstanceId;
-  }
-  return false;
+/**
+ * Replaces the previous `window.confirm()` call in `_switchTemplate` (C13.7).
+ * Builds a transient `<atlas-dialog>`, attaches it to `document.body`,
+ * resolves with `true` on Confirm and `false` on Cancel / Esc / backdrop.
+ */
+async function confirmTemplateSwitch(args: {
+  displayName: string;
+  dropCount: number;
+}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = document.createElement('atlas-dialog') as HTMLElement & {
+      open: () => void;
+      close: (returnValue?: string) => void;
+    };
+    dialog.setAttribute('heading', 'Switch template?');
+    dialog.setAttribute('size', 'sm');
+
+    const body = document.createElement('atlas-text');
+    body.textContent =
+      `Switching to "${args.displayName}" will remove ${args.dropCount} widget(s) ` +
+      `from regions that don't exist in the new template. Continue?`;
+    dialog.appendChild(body);
+
+    const actions = document.createElement('atlas-box');
+    actions.setAttribute('slot', 'actions');
+
+    const cancelBtn = document.createElement('atlas-button');
+    cancelBtn.setAttribute('name', 'template-switch-cancel');
+    cancelBtn.setAttribute('variant', 'ghost');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => dialog.close('cancel'));
+
+    const confirmBtn = document.createElement('atlas-button');
+    confirmBtn.setAttribute('name', 'template-switch-confirm');
+    confirmBtn.setAttribute('variant', 'primary');
+    confirmBtn.textContent = 'Switch template';
+    confirmBtn.addEventListener('click', () => dialog.close('confirm'));
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    dialog.appendChild(actions);
+
+    let settled = false;
+    dialog.addEventListener('close', (ev) => {
+      if (settled) return;
+      settled = true;
+      const returnValue = (ev as CustomEvent<{ returnValue: string }>).detail?.returnValue;
+      dialog.remove();
+      resolve(returnValue === 'confirm');
+    });
+
+    document.body.appendChild(dialog);
+    dialog.open();
+  });
+}
+
+function panelsChanged(a: PanelsState, b: PanelsState): boolean {
+  return (
+    a.left.open !== b.left.open ||
+    a.left.tab !== b.left.tab ||
+    a.left.size !== b.left.size ||
+    a.right.open !== b.right.open ||
+    a.right.tab !== b.right.tab ||
+    a.right.size !== b.right.size ||
+    a.bottom.open !== b.bottom.open ||
+    a.bottom.tab !== b.bottom.tab ||
+    a.bottom.size !== b.bottom.size
+  );
+}
+
+function leftPanelTabsForMode(mode: EditorMode): Array<{ id: string; label: string }> {
+  if (mode === 'structure') return [{ id: 'templates', label: 'Templates' }];
+  return [
+    { id: 'palette', label: 'Palette' },
+    { id: 'outline', label: 'Outline' },
+  ];
 }
 
 function toggleDisabled(el: HTMLElement, disabled: boolean): void {

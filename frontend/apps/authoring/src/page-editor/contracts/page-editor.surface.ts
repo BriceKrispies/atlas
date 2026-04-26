@@ -11,51 +11,23 @@
  * right drawer whose contents swap by drawer state.
  */
 
-export interface SurfaceAuth {
-  required: boolean;
-  roles: readonly string[];
-  permissions: readonly string[];
-}
+import type {
+  SurfaceAuth,
+  SurfaceStateSpec,
+  SurfaceElementSpec,
+  SurfaceTelemetryEventSpec,
+  SurfaceAcceptanceScenario,
+  SurfaceContract,
+} from './_contract-types.ts';
 
-export interface SurfaceStateSpec {
-  description: string;
-  testId: string;
-  applies: boolean;
-  rationale?: string;
-}
-
-export interface SurfaceElementSpec {
-  name: string;
-  type: string;
-  testId: string;
-  parameterized?: boolean;
-  purpose?: string;
-}
-
-export interface SurfaceTelemetryEventSpec {
-  eventName: string;
-  trigger: string;
-  properties: readonly string[];
-}
-
-export interface SurfaceAcceptanceScenario {
-  name: string;
-  given: string;
-  when: string;
-  then: string;
-}
-
-export interface SurfaceContract {
-  surfaceId: string;
-  kind: 'page' | 'widget' | 'dialog';
-  route: string;
-  purpose: string;
-  auth: SurfaceAuth;
-  states: Record<string, SurfaceStateSpec>;
-  elements: readonly SurfaceElementSpec[];
-  telemetryEvents: readonly SurfaceTelemetryEventSpec[];
-  acceptanceScenarios: readonly SurfaceAcceptanceScenario[];
-}
+export type {
+  SurfaceAuth,
+  SurfaceStateSpec,
+  SurfaceElementSpec,
+  SurfaceTelemetryEventSpec,
+  SurfaceAcceptanceScenario,
+  SurfaceContract,
+};
 
 export const contract: SurfaceContract = {
   surfaceId: 'authoring.page-editor',
@@ -120,7 +92,13 @@ export const contract: SurfaceContract = {
     },
   ],
 
-  telemetryEvents: [],
+  telemetryEvents: [
+    {
+      eventName: 'authoring.page-editor.seed-changed',
+      trigger: 'User picks a different seed page from the picker',
+      properties: ['fromPageId', 'toPageId', 'correlationId'],
+    },
+  ],
 
   acceptanceScenarios: [
     {
@@ -211,7 +189,7 @@ export const shellContract: SurfaceContract = {
       name: 'template-select',
       type: 'atlas-select',
       testId: 'authoring.page-editor.shell.template-select',
-      purpose: 'Pick the layout/template (rendered in the structure-mode drawer)',
+      purpose: 'Pick the layout/template (rendered in the left-panel templates tab)',
     },
     {
       name: 'widget-instance',
@@ -221,28 +199,70 @@ export const shellContract: SurfaceContract = {
       purpose: 'A rendered widget instance on the canvas; combine with data-instance-id to disambiguate',
     },
     {
-      name: 'drawer',
-      type: 'atlas-box',
-      testId: 'authoring.page-editor.shell.drawer',
-      purpose: 'Right-hand drawer that hosts palette / settings / template content',
+      name: 'left-panel',
+      type: 'page-editor-left-panel',
+      testId: 'authoring.page-editor.shell.left-panel',
+      purpose: 'Left panel host (palette / templates / outline tabs). Surface: authoring.page-editor.shell.left-panel.',
     },
     {
-      name: 'add-widget-drawer-content',
-      type: 'atlas-stack',
-      testId: 'authoring.page-editor.shell.add-widget-drawer-content',
-      purpose: 'Drawer content shown when the palette is active',
+      name: 'right-panel',
+      type: 'page-editor-right-panel',
+      testId: 'authoring.page-editor.shell.right-panel',
+      purpose: 'Right panel host (inspector). Surface: authoring.page-editor.shell.right-panel.',
     },
     {
-      name: 'settings-drawer-content',
-      type: 'atlas-stack',
-      testId: 'authoring.page-editor.shell.settings-drawer-content',
-      purpose: 'Drawer content shown when widget settings are active',
+      name: 'bottom-panel',
+      type: 'page-editor-bottom-panel',
+      testId: 'authoring.page-editor.shell.bottom-panel',
+      purpose: 'Bottom panel host (issues / history / preview-device tabs). Surface: authoring.page-editor.shell.bottom-panel.',
     },
     {
-      name: 'template-drawer-content',
+      name: 'add-widget-tab-content',
       type: 'atlas-stack',
-      testId: 'authoring.page-editor.shell.template-drawer-content',
-      purpose: 'Drawer content shown in structure mode',
+      testId: 'authoring.page-editor.shell.add-widget-tab-content',
+      purpose: 'Left-panel palette tab content',
+    },
+    {
+      name: 'settings-tab-content',
+      type: 'atlas-stack',
+      testId: 'authoring.page-editor.shell.settings-tab-content',
+      purpose: 'Right-panel settings tab content (a property-panel form for the inspected widget)',
+    },
+    {
+      name: 'settings-empty-content',
+      type: 'atlas-stack',
+      testId: 'authoring.page-editor.shell.settings-empty-content',
+      purpose: 'Right-panel settings tab content when no widget is inspected',
+    },
+    {
+      name: 'templates-tab-content',
+      type: 'atlas-stack',
+      testId: 'authoring.page-editor.shell.templates-tab-content',
+      purpose: 'Left-panel templates tab content (in structure mode)',
+    },
+    {
+      name: 'issues-tab-content',
+      type: 'atlas-stack',
+      testId: 'authoring.page-editor.shell.issues-tab-content',
+      purpose: 'Bottom-panel issues tab placeholder (S5/S6 fills with real content)',
+    },
+    {
+      name: 'open-left',
+      type: 'atlas-button',
+      testId: 'authoring.page-editor.shell.open-left',
+      purpose: 'Floating canvas-edge button that re-opens the left panel when collapsed',
+    },
+    {
+      name: 'open-right',
+      type: 'atlas-button',
+      testId: 'authoring.page-editor.shell.open-right',
+      purpose: 'Floating canvas-edge button that re-opens the right panel when collapsed',
+    },
+    {
+      name: 'open-bottom',
+      type: 'atlas-button',
+      testId: 'authoring.page-editor.shell.open-bottom',
+      purpose: 'Floating canvas-edge button that re-opens the bottom panel when collapsed',
     },
     {
       name: 'canvas',
@@ -289,7 +309,95 @@ export const shellContract: SurfaceContract = {
     },
   ],
 
-  telemetryEvents: [],
+  /**
+   * Every shell-level intent is recorded as a commit on the
+   * `editor:<pageId>:shell` test-state surface; the names below are the
+   * canonical telemetry event names that mirror those intents 1:1. The
+   * runtime emission is scheduled to land alongside the shared `@atlas/telemetry`
+   * package; until then the contract names are authoritative for tests.
+   */
+  telemetryEvents: [
+    {
+      eventName: 'authoring.page-editor.shell.mode-changed',
+      trigger: 'Mode tab clicked or `controller.setMode(mode)` invoked',
+      properties: ['mode', 'previousMode', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.widget-selected',
+      trigger: 'Canvas widget cell clicked (with optional shift/meta modifier)',
+      properties: ['instanceId', 'additive', 'selectionSize', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.palette-opened',
+      trigger: 'Drawer transitions into palette (selection cleared in content mode)',
+      properties: ['correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.settings-opened',
+      trigger: 'Drawer transitions into settings for a single selected widget',
+      properties: ['instanceId', 'widgetId', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.drawer-closed',
+      trigger: 'Drawer is explicitly closed',
+      properties: ['correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.widget-added',
+      trigger: 'Palette chip click or `controller.addWidget(args)` succeeds',
+      properties: ['widgetId', 'region', 'instanceId', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.widget-removed',
+      trigger: 'Single-widget remove succeeds',
+      properties: ['instanceId', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.selection-removed',
+      trigger: 'Multi-select Delete/Backspace removes 1+ widget(s)',
+      properties: ['attempted', 'removed', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.widget-config-updated',
+      trigger: 'Property panel commits a config change',
+      properties: ['instanceId', 'fieldsChanged', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.template-changed',
+      trigger: 'Template-select drawer commits a new template',
+      properties: ['from', 'to', 'widgetsRemoved', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.undone',
+      trigger: 'Undo button or Cmd/Ctrl+Z',
+      properties: ['correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.redone',
+      trigger: 'Redo button or Cmd/Ctrl+Shift+Z / Cmd+Y',
+      properties: ['correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.saved',
+      trigger: 'Save button (in-memory pulse; networked store hooks here)',
+      properties: ['correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.panel-toggled',
+      trigger: 'Panel collapse button or canvas-edge open button',
+      properties: ['panel', 'open', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.panel-resized',
+      trigger: 'User drags a panel resize handle to a new size',
+      properties: ['panel', 'size', 'correlationId'],
+    },
+    {
+      eventName: 'authoring.page-editor.shell.panel-tab-changed',
+      trigger: 'User clicks a tab in a multi-tab panel',
+      properties: ['panel', 'tab', 'correlationId'],
+    },
+  ],
 
   acceptanceScenarios: [
     {

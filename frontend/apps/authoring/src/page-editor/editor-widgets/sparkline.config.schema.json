@@ -2,31 +2,60 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/sparkline/config.v1.json",
   "title": "SparklineWidgetConfig",
-  "description": "Config for sandbox.sparkline.",
+  "description": "Config for sandbox.sparkline — a compact inline line chart driven by a comma-separated numeric series.",
   "type": "object",
   "required": ["values"],
   "additionalProperties": false,
+  "x-atlas-section-order": [
+    { "id": "data", "label": "Data", "defaultOpen": true },
+    { "id": "appearance", "label": "Appearance", "defaultOpen": true },
+    { "id": "advanced", "label": "Advanced", "defaultOpen": false }
+  ],
+  "x-atlas-presets": [
+    {
+      "id": "default",
+      "label": "Default sparkline",
+      "description": "Themed accent color, no end-point marker.",
+      "config": { "color": "", "showLastPoint": false }
+    },
+    {
+      "id": "with-end-marker",
+      "label": "With end-point marker",
+      "description": "Highlight the most recent value with a dot.",
+      "config": { "showLastPoint": true }
+    }
+  ],
   "properties": {
     "values": {
       "type": "string",
+      "title": "Values",
       "default": "",
-      "description": "Comma-separated numeric series."
+      "description": "Comma-separated numeric series. Whitespace around commas is tolerated.",
+      "x-atlas-section": "data",
+      "x-atlas-control": "csv"
     },
     "color": {
       "type": "string",
+      "title": "Line color",
       "default": "",
-      "description": "CSS color; blank uses --atlas-chart-color-1."
-    },
-    "label": {
-      "type": "string",
-      "maxLength": 120,
-      "default": "",
-      "description": "Accessible label."
+      "description": "CSS color value for the line. Blank uses the design-system default (--atlas-chart-color-1).",
+      "x-atlas-section": "appearance",
+      "x-atlas-control": "color"
     },
     "showLastPoint": {
       "type": "boolean",
+      "title": "Mark last point",
       "default": false,
-      "description": "Draw a marker at the last point."
+      "description": "Draw a circular marker at the most recent point so the series end stands out.",
+      "x-atlas-section": "appearance"
+    },
+    "label": {
+      "type": "string",
+      "title": "Accessible label",
+      "maxLength": 120,
+      "default": "",
+      "description": "Screen-reader label describing what the sparkline represents (e.g. \"Signups (last 11 days)\").",
+      "x-atlas-section": "advanced"
     }
   }
 }

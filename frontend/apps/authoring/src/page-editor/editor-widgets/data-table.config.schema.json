@@ -2,74 +2,138 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/data-table/config.v1.json",
   "title": "DataTableWidgetConfig",
-  "description": "Config for sandbox.data-table.",
+  "description": "Config for sandbox.data-table — a paginated, sortable table driven by inline rows or a streamed projection.",
   "type": "object",
   "required": ["columns"],
   "additionalProperties": false,
+  "x-atlas-section-order": [
+    { "id": "content", "label": "Content", "defaultOpen": true },
+    { "id": "data", "label": "Data", "defaultOpen": true },
+    { "id": "appearance", "label": "Appearance", "defaultOpen": false },
+    { "id": "behavior", "label": "Behavior", "defaultOpen": false },
+    { "id": "advanced", "label": "Advanced", "defaultOpen": false }
+  ],
+  "x-atlas-presets": [
+    {
+      "id": "compact-readonly",
+      "label": "Compact read-only",
+      "description": "Dense rows, no selection, paginated 25 at a time.",
+      "config": { "density": "compact", "selection": "none", "pageSize": 25 }
+    },
+    {
+      "id": "comfortable-multiselect",
+      "label": "Comfortable multi-select",
+      "description": "Roomy rows with multi-row selection enabled.",
+      "config": { "density": "comfortable", "selection": "multi", "pageSize": 10 }
+    },
+    {
+      "id": "infinite-feed",
+      "label": "No pagination",
+      "description": "Disable pagination — render every row at once.",
+      "config": { "pageSize": 0 }
+    }
+  ],
   "properties": {
     "label": {
       "type": "string",
+      "title": "Caption",
       "maxLength": 120,
       "default": "",
-      "description": "Accessible label / caption for the table."
-    },
-    "pageSize": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 1000,
-      "default": 10,
-      "description": "Rows per page; 0 disables pagination."
-    },
-    "density": {
-      "type": "string",
-      "enum": ["compact", "cozy", "comfortable"],
-      "default": "cozy"
-    },
-    "selection": {
-      "type": "string",
-      "enum": ["none", "single", "multi"],
-      "default": "none"
-    },
-    "rowKey": {
-      "type": "string",
-      "default": "id",
-      "description": "Field name used as the stable row key."
-    },
-    "resourceType": {
-      "type": "string",
-      "default": "",
-      "description": "Projection resource type for SSE streaming. Blank disables."
+      "description": "Accessible label / caption for the table.",
+      "x-atlas-section": "content"
     },
     "emptyHeading": {
       "type": "string",
+      "title": "Empty-state heading",
       "default": "No data",
-      "maxLength": 80
+      "maxLength": 80,
+      "description": "Heading shown when the table has zero rows.",
+      "x-atlas-section": "content"
     },
     "emptyBody": {
       "type": "string",
+      "title": "Empty-state body",
       "default": "",
-      "maxLength": 240
+      "maxLength": 240,
+      "description": "Supporting copy shown beneath the empty-state heading.",
+      "x-atlas-section": "content",
+      "x-atlas-control": "textarea"
     },
     "columns": {
       "type": "array",
-      "description": "Column configurations. Each item must have a key and label; sortable is optional.",
+      "title": "Columns",
+      "description": "Column configurations. Each item must have a key (matches the row field) and a label (header text). sortable enables the per-column sort affordance.",
       "items": {
         "type": "object",
         "required": ["key", "label"],
         "additionalProperties": true,
         "properties": {
-          "key": { "type": "string", "minLength": 1 },
-          "label": { "type": "string", "minLength": 1 },
-          "sortable": { "type": "boolean" }
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Field name on each row that supplies this column's value."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Header text rendered above the column."
+          },
+          "sortable": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allow the column header to toggle sort order."
+          }
         }
       },
-      "default": []
+      "default": [],
+      "x-atlas-section": "data"
     },
     "data": {
       "type": "array",
-      "description": "Inline rows. Each row is an object keyed by column keys.",
+      "title": "Inline rows",
+      "description": "Inline rows. Each row is an object keyed by column keys. Used when no resourceType is bound.",
       "items": { "type": "object" },
-      "default": []
+      "default": [],
+      "x-atlas-section": "data"
+    },
+    "resourceType": {
+      "type": "string",
+      "title": "Resource type",
+      "default": "",
+      "description": "Projection resource type for SSE streaming. Blank disables — falls back to inline rows.",
+      "x-atlas-section": "data"
+    },
+    "density": {
+      "type": "string",
+      "title": "Row density",
+      "enum": ["compact", "cozy", "comfortable"],
+      "default": "cozy",
+      "description": "Vertical padding applied to each row.",
+      "x-atlas-section": "appearance"
+    },
+    "pageSize": {
+      "type": "integer",
+      "title": "Page size",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 10,
+      "description": "Rows per page. 0 disables pagination — every row renders at once.",
+      "x-atlas-section": "behavior"
+    },
+    "selection": {
+      "type": "string",
+      "title": "Selection mode",
+      "enum": ["none", "single", "multi"],
+      "default": "none",
+      "description": "Controls whether rows can be selected via checkbox / row click.",
+      "x-atlas-section": "behavior"
+    },
+    "rowKey": {
+      "type": "string",
+      "title": "Row key field",
+      "default": "id",
+      "description": "Field on each row used as the stable identity key (drives selection persistence and DOM diffing).",
+      "x-atlas-section": "advanced"
     }
   }
 }

@@ -2,45 +2,90 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/kpi-tile/config.v1.json",
   "title": "KpiTileWidgetConfig",
-  "description": "Config for sandbox.kpi-tile.",
+  "description": "Config for sandbox.kpi-tile — a big-number summary tile with optional trend badge and inline sparkline.",
   "type": "object",
   "required": ["value"],
   "additionalProperties": false,
+  "x-atlas-section-order": [
+    { "id": "content", "label": "Content", "defaultOpen": true },
+    { "id": "trend", "label": "Trend", "defaultOpen": true },
+    { "id": "data", "label": "Data", "defaultOpen": false }
+  ],
+  "x-atlas-presets": [
+    {
+      "id": "trend-up-green",
+      "label": "Trend up",
+      "description": "Headline metric trending up. Green arrow + supporting label.",
+      "config": { "trend": "up", "trendLabel": "+0.0% vs. last period" }
+    },
+    {
+      "id": "trend-down-red",
+      "label": "Trend down",
+      "description": "Headline metric trending down. Red arrow + supporting label.",
+      "config": { "trend": "down", "trendLabel": "-0.0% vs. last period" }
+    },
+    {
+      "id": "trend-neutral",
+      "label": "Neutral",
+      "description": "Headline metric with no movement.",
+      "config": { "trend": "flat", "trendLabel": "no change vs. last period" }
+    },
+    {
+      "id": "no-trend",
+      "label": "No trend badge",
+      "description": "Plain headline number with no trend annotation.",
+      "config": { "trend": "", "trendLabel": "" }
+    }
+  ],
   "properties": {
     "label": {
       "type": "string",
+      "title": "Label",
       "maxLength": 120,
       "default": "",
-      "description": "Caption rendered above the value."
+      "description": "Caption rendered above the value (e.g. \"Active tenants\").",
+      "x-atlas-section": "content"
     },
     "value": {
       "type": "string",
+      "title": "Value",
       "maxLength": 40,
       "default": "0",
-      "description": "Headline figure — numbers are accepted as strings (no formatting)."
+      "description": "Headline figure. Numbers are accepted as strings — format them yourself before assigning.",
+      "x-atlas-section": "content"
     },
     "unit": {
       "type": "string",
+      "title": "Unit",
       "maxLength": 20,
       "default": "",
-      "description": "Optional unit appended to the value (e.g. %, req/s)."
+      "description": "Optional unit appended to the value (e.g. %, req/s, MB).",
+      "x-atlas-section": "content"
     },
     "trend": {
       "type": "string",
-      "enum": ["up", "down", "flat", ""],
+      "title": "Trend direction",
+      "enum": ["", "up", "down", "flat"],
       "default": "",
-      "description": "Colorizes the trend badge; blank hides it."
+      "description": "Trend arrow + color. Blank hides the trend badge entirely.",
+      "x-atlas-section": "trend"
     },
     "trendLabel": {
       "type": "string",
+      "title": "Trend label",
       "maxLength": 60,
       "default": "",
-      "description": "Display text for the trend, e.g. \"+5.2% vs. last week\"."
+      "description": "Display text for the trend badge, e.g. \"+5.2% vs. last week\". Only meaningful when a trend direction is set.",
+      "x-atlas-section": "trend",
+      "x-atlas-when": { "field": "trend", "equals": ["up", "down", "flat"] }
     },
     "sparklineValues": {
       "type": "string",
+      "title": "Sparkline values",
       "default": "",
-      "description": "Comma-separated numeric series rendered below the value."
+      "description": "Comma-separated numeric series rendered as an inline sparkline beneath the value. Leave blank for no sparkline.",
+      "x-atlas-section": "data",
+      "x-atlas-control": "csv"
     }
   }
 }
