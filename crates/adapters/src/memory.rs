@@ -298,8 +298,12 @@ impl Default for InMemorySearchEngine {
 impl SearchEngine for InMemorySearchEngine {
     async fn index(&self, document: &SearchDocument) -> PortResult<()> {
         let mut docs = self.documents.write().unwrap();
-        // Remove existing document with same ID
-        docs.retain(|d| d.document_id != document.document_id);
+        // Remove any existing doc with the same (tenant_id, document_type, document_id)
+        docs.retain(|d| {
+            !(d.tenant_id == document.tenant_id
+                && d.document_type == document.document_type
+                && d.document_id == document.document_id)
+        });
         docs.push(document.clone());
         Ok(())
     }
@@ -311,7 +315,8 @@ impl SearchEngine for InMemorySearchEngine {
         principal_id: &str,
     ) -> PortResult<Vec<SearchDocument>> {
         let docs = self.documents.read().unwrap();
-        Ok(docs
+        let q = query.to_lowercase();
+        let mut hits: Vec<(SearchDocument, f64)> = docs
             .iter()
             .filter(|d| {
                 // Invariant I7: Tenant isolation
@@ -326,13 +331,74 @@ impl SearchEngine for InMemorySearchEngine {
                     }
                 }
 
-                // Simple query matching (just check if query appears in fields)
+                if query.is_empty() {
+                    return false;
+                }
+
                 d.fields
                     .values()
-                    .any(|v| v.to_string().to_lowercase().contains(&query.to_lowercase()))
+                    .any(|v| v.to_string().to_lowercase().contains(&q))
             })
-            .cloned()
-            .collect())
+            .map(|d| {
+                // Trivial substring score: title weighted, then summary, then body.
+                let title_hit = d
+                    .fields
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false);
+                let summary_hit = d
+                    .fields
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false);
+                let body_hit = d
+                    .fields
+                    .get("body_text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false);
+                let score = if title_hit {
+                    1.0
+                } else if summary_hit {
+                    0.5
+                } else if body_hit {
+                    0.25
+                } else {
+                    0.1
+                };
+                let mut clone = d.clone();
+                clone
+                    .fields
+                    .insert("_score".to_string(), serde_json::json!(score));
+                (clone, score)
+            })
+            .collect();
+        hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(hits.into_iter().map(|(d, _)| d).collect())
+    }
+}
+
+#[async_trait]
+impl atlas_platform_runtime::ports::SearchProjectionTarget for InMemorySearchEngine {
+    async fn delete_by_document(
+        &self,
+        tenant_id: &str,
+        document_type: &str,
+        document_id: &str,
+    ) -> PortResult<()> {
+        let mut docs = self.documents.write().unwrap();
+        docs.retain(|d| {
+            !(d.tenant_id == tenant_id
+                && d.document_type == document_type
+                && d.document_id == document_id)
+        });
+        Ok(())
+    }
+
+    async fn index(&self, document: &SearchDocument) -> PortResult<()> {
+        <Self as SearchEngine>::index(self, document).await
     }
 }
 
@@ -492,8 +558,8 @@ mod tests {
             permission_attributes: None,
         };
 
-        engine.index(&doc1).await.unwrap();
-        engine.index(&doc2).await.unwrap();
+        SearchEngine::index(&engine, &doc1).await.unwrap();
+        SearchEngine::index(&engine, &doc2).await.unwrap();
 
         // Search in tenant-001 should only return doc1
         let results = engine

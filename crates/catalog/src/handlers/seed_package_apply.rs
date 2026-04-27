@@ -71,6 +71,7 @@ pub async fn handle_seed_package_apply(
     for fid in &family_ids {
         tags.push(format!("Family:{}", fid));
     }
+    tags.push("SearchIndex:catalog".to_string());
 
     let envelope = EventEnvelope {
         event_id: event_id.clone(),

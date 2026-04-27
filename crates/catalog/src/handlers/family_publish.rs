@@ -93,6 +93,7 @@ pub async fn handle_family_publish(
         cache_invalidation_tags: Some(vec![
             format!("Tenant:{}", cmd.tenant_id),
             format!("Family:{}", family_id),
+            "SearchIndex:catalog".to_string(),
         ]),
         payload: json!({
             "familyKey": cmd.family_key,
@@ -146,6 +147,7 @@ pub async fn handle_family_publish(
             cache_invalidation_tags: Some(vec![
                 format!("Tenant:{}", cmd.tenant_id),
                 format!("Family:{}", family_id),
+                "SearchIndex:catalog".to_string(),
             ]),
             payload: json!({
                 "familyKey": cmd.family_key,

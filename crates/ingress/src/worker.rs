@@ -6,7 +6,9 @@
 
 use crate::events::ServerEvent;
 use crate::render_tree_store::RenderTreeStore;
-use atlas_platform_runtime::ports::{Cache, EventStore, ProjectionStore, TenantDbProvider};
+use atlas_platform_runtime::ports::{
+    Cache, EventStore, ProjectionStore, SearchProjectionTarget, TenantDbProvider,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -23,6 +25,7 @@ pub async fn run_event_loop(
     projection_store: Arc<dyn ProjectionStore>,
     render_tree_store: Arc<RenderTreeStore>,
     tenant_db_provider: Arc<dyn TenantDbProvider>,
+    search_target: Arc<dyn SearchProjectionTarget>,
     event_sender: broadcast::Sender<ServerEvent>,
 ) {
     let cursor = AtomicUsize::new(0);
@@ -184,6 +187,20 @@ pub async fn run_event_loop(
                         } else {
                             crate::metrics::PROJECTIONS_BUILT_TOTAL
                                 .with_label_values(&["CatalogVariantMatrix"])
+                                .inc();
+                        }
+                        if let Err(e) =
+                            atlas_platform_catalog::projections::rebuild_search_documents(
+                                &pool,
+                                &search_target,
+                                &event.tenant_id,
+                            )
+                            .await
+                        {
+                            error!("Worker: search_documents projection failed: {}", e);
+                        } else {
+                            crate::metrics::PROJECTIONS_BUILT_TOTAL
+                                .with_label_values(&["CatalogSearchDocuments"])
                                 .inc();
                         }
                     }

@@ -69,11 +69,12 @@ use events::ServerEvent;
 use schema::SchemaValidationResult;
 use atlas_core::types::EventEnvelope;
 use atlas_platform_adapters::{
-    InMemoryCache, InMemoryEventStore, InMemoryProjectionStore, InMemoryTenantDbProvider,
-    PostgresTenantDbProvider,
+    InMemoryCache, InMemoryEventStore, InMemoryProjectionStore, InMemorySearchEngine,
+    InMemoryTenantDbProvider, PostgresSearchEngine, PostgresTenantDbProvider,
 };
 use atlas_platform_runtime::ports::{
-    Cache, EventStore, ProjectionStore, SetOptions, TenantDbProvider,
+    Cache, EventStore, ProjectionStore, SearchEngine, SearchProjectionTarget, SetOptions,
+    TenantDbProvider,
 };
 use axum::{
     body::Body,
@@ -104,6 +105,9 @@ struct AppState {
     auth_config: Arc<AuthConfig>,
     #[allow(dead_code)]
     tenant_db_provider: Arc<dyn TenantDbProvider>,
+    search_engine: Arc<dyn SearchEngine>,
+    #[allow(dead_code)]
+    search_target: Arc<dyn SearchProjectionTarget>,
     event_sender: broadcast::Sender<ServerEvent>,
 }
 
@@ -188,6 +192,23 @@ async fn main() {
         }
     };
 
+    // Search engine: Postgres-backed when a control plane pool is available,
+    // in-memory otherwise. Both implement `SearchEngine` (read path) and
+    // `SearchProjectionTarget` (projection rebuild path). The same Arc is
+    // re-cast to each interface for the worker and the query handler.
+    let (search_engine, search_target): (
+        Arc<dyn SearchEngine>,
+        Arc<dyn SearchProjectionTarget>,
+    ) = if control_plane_pool.is_some() {
+        let engine = Arc::new(PostgresSearchEngine::new(tenant_db_provider.clone()));
+        info!("✓ PostgresSearchEngine ready");
+        (engine.clone(), engine)
+    } else {
+        let engine = Arc::new(InMemorySearchEngine::new());
+        info!("Using InMemorySearchEngine");
+        (engine.clone(), engine)
+    };
+
     // Broadcast channel for server-push (SSE + WebSocket)
     let (event_sender, _) = broadcast::channel::<ServerEvent>(256);
 
@@ -198,6 +219,7 @@ async fn main() {
         projection_store.clone(),
         render_tree_store.clone(),
         tenant_db_provider.clone(),
+        search_target.clone(),
         event_sender.clone(),
     ));
 
@@ -209,6 +231,8 @@ async fn main() {
         runtime_config,
         auth_config: auth_config.clone(),
         tenant_db_provider,
+        search_engine,
+        search_target,
         event_sender,
     });
 
@@ -238,6 +262,7 @@ async fn main() {
             "/api/v1/catalog/families/:family_key/variants",
             get(handle_catalog_variant_table),
         )
+        .route("/api/v1/catalog/search", get(handle_catalog_search))
         .route("/api/v1/events", get(sse::handle_sse))
         .route("/ws/messaging", get(ws::handle_ws));
 
@@ -252,6 +277,10 @@ async fn main() {
             "/debug/clear-render-tree-cache/:page_id",
             post(debug_clear_render_tree_cache),
         );
+        // Test-only: index a search document directly (used by the
+        // catalog_search permission-filter acceptance test).
+        authenticated_routes = authenticated_routes
+            .route("/debug/search/index", post(debug_search_index));
     }
 
     let authenticated_routes = authenticated_routes.layer(authn_layer);
@@ -1009,6 +1038,70 @@ async fn handle_catalog_variant_table(
             })),
         )
             .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "STORAGE_FAILED", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_catalog_search(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let parsed = match atlas_platform_catalog::queries::SearchQueryParams::from_raw(
+        params.get("q").map(|s| s.as_str()),
+        params.get("type").map(|s| s.as_str()),
+        params.get("pageSize").map(|s| s.as_str()),
+        params.get("cursor").map(|s| s.as_str()),
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": { "code": "INVALID_QUERY", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    match atlas_platform_catalog::queries::handle_search(
+        state.search_engine.clone(),
+        &principal.tenant_id,
+        &principal.id,
+        &parsed,
+    )
+    .await
+    {
+        Ok(body) => (StatusCode::OK, Json(body)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "STORAGE_FAILED", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /debug/search/index — test-only direct index path for permission-filter tests.
+///
+/// Body: a `SearchDocument` JSON. Tenant ID is forced to the principal's tenant
+/// to keep tenant isolation (Invariant I7) intact even from this debug surface.
+async fn debug_search_index(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Json(mut doc): Json<atlas_core::types::SearchDocument>,
+) -> impl IntoResponse {
+    doc.tenant_id = principal.tenant_id.clone();
+    match state.search_target.index(&doc).await {
+        Ok(_) => (StatusCode::ACCEPTED, Json(serde_json::json!({ "indexed": true }))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({

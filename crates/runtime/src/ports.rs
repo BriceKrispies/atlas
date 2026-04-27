@@ -93,6 +93,24 @@ pub trait SearchEngine: Send + Sync {
     ) -> PortResult<Vec<SearchDocument>>;
 }
 
+/// Projection-side capability for rebuilding search documents.
+///
+/// Sibling to `SearchEngine` — adds the `delete_by_document` capability
+/// the projection builder needs to scrub stale rows before re-indexing
+/// a family. Kept separate so the read-side `SearchEngine` trait stays
+/// minimal (the query handler never needs to delete).
+#[async_trait]
+pub trait SearchProjectionTarget: Send + Sync {
+    async fn delete_by_document(
+        &self,
+        tenant_id: &str,
+        document_type: &str,
+        document_id: &str,
+    ) -> PortResult<()>;
+
+    async fn index(&self, document: &SearchDocument) -> PortResult<()>;
+}
+
 /// Analytics store port (Invariant I11)
 #[async_trait]
 pub trait AnalyticsStore: Send + Sync {

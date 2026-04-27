@@ -51,6 +51,10 @@ path = "suites/tenant_db_isolation_test.rs"
 name = "catalog_badge_family"
 path = "suites/catalog_badge_family_test.rs"
 
+[[test]]
+name = "catalog_search"
+path = "suites/catalog_search_test.rs"
+
 [dependencies]
 # HTTP client
 reqwest = { version = "0.11", features = ["json"] }

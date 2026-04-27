@@ -20,7 +20,9 @@ use async_trait::async_trait;
 #[cfg(feature = "postgres")]
 use atlas_core::types::{PermissionAttributes, SearchDocument};
 #[cfg(feature = "postgres")]
-use atlas_platform_runtime::ports::{PortError, PortResult, SearchEngine, TenantDbProvider};
+use atlas_platform_runtime::ports::{
+    PortError, PortResult, SearchEngine, SearchProjectionTarget, TenantDbProvider,
+};
 #[cfg(feature = "postgres")]
 use serde_json::{json, Map, Value};
 #[cfg(feature = "postgres")]
@@ -288,6 +290,24 @@ impl SearchEngine for PostgresSearchEngine {
 }
 
 #[cfg(feature = "postgres")]
+#[async_trait]
+impl SearchProjectionTarget for PostgresSearchEngine {
+    async fn delete_by_document(
+        &self,
+        tenant_id: &str,
+        document_type: &str,
+        document_id: &str,
+    ) -> PortResult<()> {
+        // Forward to the inherent method.
+        PostgresSearchEngine::delete_by_document(self, tenant_id, document_type, document_id).await
+    }
+
+    async fn index(&self, document: &SearchDocument) -> PortResult<()> {
+        <Self as SearchEngine>::index(self, document).await
+    }
+}
+
+#[cfg(feature = "postgres")]
 fn value_as_str_owned(v: &Value) -> Option<String> {
     match v {
         Value::String(s) => Some(s.clone()),
@@ -453,9 +473,9 @@ mod tests {
             Some("/recognition/badges/service-anniversary"),
         );
 
-        engine.index(&family).await.unwrap();
-        engine.index(&v1).await.unwrap();
-        engine.index(&v5).await.unwrap();
+        SearchEngine::index(&engine, &family).await.unwrap();
+        SearchEngine::index(&engine, &v1).await.unwrap();
+        SearchEngine::index(&engine, &v5).await.unwrap();
 
         // "anniversary" hits the family title (weight A) hardest.
         let res = engine
@@ -501,8 +521,8 @@ mod tests {
             None,
             None,
         );
-        engine.index(&a).await.unwrap();
-        engine.index(&b).await.unwrap();
+        SearchEngine::index(&engine, &a).await.unwrap();
+        SearchEngine::index(&engine, &b).await.unwrap();
 
         let res_a = engine
             .search("anniversary", "tenant_a_iso", "u_anyone")
@@ -547,8 +567,8 @@ mod tests {
             None,
             None,
         );
-        engine.index(&restricted).await.unwrap();
-        engine.index(&public).await.unwrap();
+        SearchEngine::index(&engine, &restricted).await.unwrap();
+        SearchEngine::index(&engine, &public).await.unwrap();
 
         let bob = engine.search("anniversary", tenant, "u_bob").await.unwrap();
         let bob_ids: Vec<_> = bob.iter().map(|d| d.document_id.as_str()).collect();
@@ -583,11 +603,11 @@ mod tests {
             None,
             None,
         );
-        engine.index(&d).await.unwrap();
+        SearchEngine::index(&engine, &d).await.unwrap();
 
         d.fields
             .insert("title".to_string(), Value::String("Updated Title".into()));
-        engine.index(&d).await.unwrap();
+        SearchEngine::index(&engine, &d).await.unwrap();
 
         // Exactly one row, with the updated title.
         let row = sqlx::query(
@@ -623,7 +643,7 @@ mod tests {
             None,
             None,
         );
-        engine.index(&d).await.unwrap();
+        SearchEngine::index(&engine, &d).await.unwrap();
 
         let before = engine
             .search("anniversary", tenant, "u_anyone")
@@ -657,7 +677,7 @@ mod tests {
         let tenant = "t_empty";
 
         let d = doc(tenant, "family", "any", "Anniversary", None, None, None);
-        engine.index(&d).await.unwrap();
+        SearchEngine::index(&engine, &d).await.unwrap();
 
         let res = engine.search("", tenant, "u_anyone").await.unwrap();
         assert!(res.is_empty(), "empty tsquery matches nothing");
