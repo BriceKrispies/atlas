@@ -1,5 +1,5 @@
 use anyhow::Result;
-use atlas_cli::commands::{Command, DevCommand, GenCommand, ModuleCommand, RunAllCommand, RunCommand, ScaffoldCommand, ValidateCommand};
+use atlas_cli::commands::{Command, DevCommand, GenCommand, ItestCommand, ModuleCommand, RunAllCommand, RunCommand, ScaffoldCommand, ValidateCommand};
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -31,6 +31,9 @@ enum Commands {
     #[command(about = "Manage local dev environment")]
     Dev(DevCommand),
 
+    #[command(about = "Hybrid integration-test stack (infra in podman, apps as host processes)")]
+    Itest(ItestCommand),
+
     #[command(about = "Manage modules as crates")]
     Module(ModuleCommand),
 }
@@ -45,6 +48,7 @@ fn main() -> Result<()> {
         Commands::Run(cmd) => cmd.execute(),
         Commands::RunAll(cmd) => cmd.execute(),
         Commands::Dev(cmd) => cmd.execute(),
+        Commands::Itest(cmd) => cmd.execute(),
         Commands::Module(cmd) => cmd.execute(),
     }
 }
