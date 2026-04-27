@@ -77,13 +77,14 @@ use atlas_platform_runtime::ports::{
 };
 use axum::{
     body::Body,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post},
     Extension, Json, Router,
 };
+use std::collections::HashMap;
 use bootstrap::RuntimeConfig;
 use render_tree_store::RenderTreeStore;
 use std::sync::Arc;
@@ -196,6 +197,7 @@ async fn main() {
         cache.clone(),
         projection_store.clone(),
         render_tree_store.clone(),
+        tenant_db_provider.clone(),
         event_sender.clone(),
     ));
 
@@ -224,6 +226,18 @@ async fn main() {
         .route("/api/v1/intents", post(handle_intent))
         .route("/api/v1/pages/:page_id", get(handle_query_page))
         .route("/api/v1/pages/:page_id/render", get(handle_render_tree))
+        .route(
+            "/api/v1/catalog/taxonomies/:tree_key/nodes",
+            get(handle_catalog_taxonomy_nodes),
+        )
+        .route(
+            "/api/v1/catalog/families/:family_key",
+            get(handle_catalog_family_detail),
+        )
+        .route(
+            "/api/v1/catalog/families/:family_key/variants",
+            get(handle_catalog_variant_table),
+        )
         .route("/api/v1/events", get(sse::handle_sse))
         .route("/ws/messaging", get(ws::handle_ws));
 
@@ -527,7 +541,7 @@ async fn handle_intent(
 
     // Invariant I2: Authorization before execution
     // Build authorization context from extracted action/resource
-    let authz_ctx = AuthorizationContext::new(authz_request, principal.tenant_id.clone());
+    let authz_ctx = AuthorizationContext::new(authz_request.clone(), principal.tenant_id.clone());
 
     let decision = authorize(
         &principal,
@@ -564,18 +578,99 @@ async fn handle_intent(
         ]);
     }
 
-    // Append to event store (returns event_id - either new or existing for idempotent replay)
-    let stored_event_id = match state.event_store.append(&envelope).await {
-        Ok(event_id) => event_id,
-        Err(e) => {
-            metrics::HTTP_REQUESTS_TOTAL
-                .with_label_values(&[route, method, "500"])
-                .inc();
-            metrics::HTTP_REQUEST_DURATION_SECONDS
-                .with_label_values(&[route, method])
-                .observe(start.elapsed().as_secs_f64());
-            return Err(AppError::storage_failed(&e.to_string())
-                .with_correlation_id(&correlation_id));
+    // Catalog action dispatch: catalog handlers do their own event append with
+    // domain-specific cache tags, after writing to the tenant DB.
+    let stored_event_id = match authz_request.action_id.as_str() {
+        "Catalog.SeedPackage.Apply" => {
+            let cmd = atlas_platform_catalog::handlers::SeedPackageApplyCommand {
+                tenant_id: envelope.tenant_id.clone(),
+                correlation_id: envelope.correlation_id.clone(),
+                principal_id: envelope.principal_id.clone(),
+                seed_package_key: envelope
+                    .payload
+                    .get("seedPackageKey")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                seed_package_version: envelope
+                    .payload
+                    .get("seedPackageVersion")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                payload: envelope.payload.clone(),
+            };
+            match atlas_platform_catalog::handlers::handle_seed_package_apply(
+                cmd,
+                state.event_store.clone(),
+                state.tenant_db_provider.clone(),
+            )
+            .await
+            {
+                Ok(res) => res.event_id,
+                Err(e) => {
+                    metrics::HTTP_REQUESTS_TOTAL
+                        .with_label_values(&[route, method, "500"])
+                        .inc();
+                    metrics::HTTP_REQUEST_DURATION_SECONDS
+                        .with_label_values(&[route, method])
+                        .observe(start.elapsed().as_secs_f64());
+                    return Err(AppError::storage_failed(&e.to_string())
+                        .with_correlation_id(&correlation_id));
+                }
+            }
+        }
+        "Catalog.Family.Publish" => {
+            let cmd = atlas_platform_catalog::handlers::FamilyPublishCommand {
+                tenant_id: envelope.tenant_id.clone(),
+                correlation_id: envelope.correlation_id.clone(),
+                principal_id: envelope.principal_id.clone(),
+                family_key: envelope
+                    .payload
+                    .get("familyKey")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                family_revision_number: envelope
+                    .payload
+                    .get("familyRevisionNumber")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(1) as i32,
+            };
+            match atlas_platform_catalog::handlers::handle_family_publish(
+                cmd,
+                state.event_store.clone(),
+                state.tenant_db_provider.clone(),
+            )
+            .await
+            {
+                Ok(res) => res.event_id,
+                Err(e) => {
+                    metrics::HTTP_REQUESTS_TOTAL
+                        .with_label_values(&[route, method, "500"])
+                        .inc();
+                    metrics::HTTP_REQUEST_DURATION_SECONDS
+                        .with_label_values(&[route, method])
+                        .observe(start.elapsed().as_secs_f64());
+                    return Err(AppError::storage_failed(&e.to_string())
+                        .with_correlation_id(&correlation_id));
+                }
+            }
+        }
+        _ => {
+            match state.event_store.append(&envelope).await {
+                Ok(event_id) => event_id,
+                Err(e) => {
+                    metrics::HTTP_REQUESTS_TOTAL
+                        .with_label_values(&[route, method, "500"])
+                        .inc();
+                    metrics::HTTP_REQUEST_DURATION_SECONDS
+                        .with_label_values(&[route, method])
+                        .observe(start.elapsed().as_secs_f64());
+                    return Err(AppError::storage_failed(&e.to_string())
+                        .with_correlation_id(&correlation_id));
+                }
+            }
         }
     };
 
@@ -802,6 +897,126 @@ async fn serve_viewer(Path(_page_id): Path<String>) -> impl IntoResponse {
         [("content-type", "text/html; charset=utf-8")],
         include_str!("../static/viewer.html"),
     )
+}
+
+async fn handle_catalog_taxonomy_nodes(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(tree_key): Path<String>,
+) -> impl IntoResponse {
+    let tenant_id = &principal.tenant_id;
+    let pool = match state.tenant_db_provider.get_pool(tenant_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": { "code": "TENANT_DB_UNAVAILABLE", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    match atlas_platform_catalog::queries::query_taxonomy_nodes(&pool, tenant_id, &tree_key).await {
+        Ok(Some(payload)) => (StatusCode::OK, Json(payload)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "NOT_FOUND", "message": format!("taxonomy tree '{}' not found", tree_key) }
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "STORAGE_FAILED", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_catalog_family_detail(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(family_key): Path<String>,
+) -> impl IntoResponse {
+    let tenant_id = &principal.tenant_id;
+    let pool = match state.tenant_db_provider.get_pool(tenant_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": { "code": "TENANT_DB_UNAVAILABLE", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    match atlas_platform_catalog::queries::query_family_detail(&pool, tenant_id, &family_key).await {
+        Ok(Some(payload)) => (StatusCode::OK, Json(payload)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "NOT_FOUND", "message": format!("family '{}' not found", family_key) }
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "STORAGE_FAILED", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_catalog_variant_table(
+    State(state): State<Arc<AppState>>,
+    Extension(principal): Extension<Principal>,
+    Path(family_key): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let tenant_id = &principal.tenant_id;
+    let pool = match state.tenant_db_provider.get_pool(tenant_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": { "code": "TENANT_DB_UNAVAILABLE", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    let filters = atlas_platform_catalog::queries::parse_filter_query(&params);
+    let sort = params.get("sort").cloned();
+    let page_size = params.get("pageSize").and_then(|v| v.parse().ok());
+    let q = atlas_platform_catalog::queries::VariantTableQuery {
+        filters,
+        sort,
+        page_size,
+    };
+    match atlas_platform_catalog::queries::query_variant_table(&pool, tenant_id, &family_key, &q).await {
+        Ok(Some(payload)) => (StatusCode::OK, Json(payload)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "NOT_FOUND", "message": format!("family '{}' not found", family_key) }
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "STORAGE_FAILED", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
 }
 
 /// POST /debug/clear-render-tree-cache/:page_id — test-only hook to simulate restart.

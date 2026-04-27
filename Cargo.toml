@@ -11,6 +11,7 @@ members = [
     "crates/spec_validate",
     "crates/control_plane_db",
     "crates/tenant_db",
+    "crates/catalog",
     "crates/atlas-compiler",
     "crates/atlasctl",
     "crates/atlas_config",
@@ -35,6 +36,8 @@ atlas-config = { path = "crates/atlas_config" }
 atlas-diagnostics = { path = "crates/diagnostics" }
 atlas-platform-runtime = { path = "crates/runtime" }
 atlas-platform-adapters = { path = "crates/adapters" }
+atlas-platform-tenant-db = { path = "crates/tenant_db" }
+atlas-platform-catalog = { path = "crates/catalog" }
 atlas-compiler = { path = "crates/atlas-compiler" }
 atlas-wasm-runtime = { path = "crates/wasm_runtime" }
 

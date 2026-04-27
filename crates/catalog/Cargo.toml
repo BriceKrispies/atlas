@@ -1,0 +1,22 @@
+[package]
+name = "atlas-platform-catalog"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+atlas-core.workspace = true
+atlas-platform-runtime = { workspace = true, features = ["postgres"] }
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true }
+tokio.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+anyhow = "1.0"
+
+[dev-dependencies]

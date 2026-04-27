@@ -25,6 +25,7 @@ atlas-core.workspace = true
 atlas-platform-runtime.workspace = true
 atlas-wasm-runtime.workspace = true
 atlas-platform-adapters = { workspace = true, features = ["postgres"] }
+atlas-platform-catalog.workspace = true
 axum.workspace = true
 tokio.workspace = true
 tracing.workspace = true

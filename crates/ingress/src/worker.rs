@@ -6,7 +6,7 @@
 
 use crate::events::ServerEvent;
 use crate::render_tree_store::RenderTreeStore;
-use atlas_platform_runtime::ports::{Cache, EventStore, ProjectionStore};
+use atlas_platform_runtime::ports::{Cache, EventStore, ProjectionStore, TenantDbProvider};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -22,6 +22,7 @@ pub async fn run_event_loop(
     cache: Arc<dyn Cache>,
     projection_store: Arc<dyn ProjectionStore>,
     render_tree_store: Arc<RenderTreeStore>,
+    tenant_db_provider: Arc<dyn TenantDbProvider>,
     event_sender: broadcast::Sender<ServerEvent>,
 ) {
     let cursor = AtomicUsize::new(0);
@@ -140,6 +141,57 @@ pub async fn run_event_loop(
                             page_id = %page_id,
                             error = %e,
                             "Worker: failed to persist render tree to Postgres (in-memory copy is fine)"
+                        );
+                    }
+                }
+            }
+
+            // Catalog projections: rebuild on any structured-catalog event
+            if event.event_type.starts_with("StructuredCatalog.") {
+                match tenant_db_provider.get_pool(&event.tenant_id).await {
+                    Ok(pool) => {
+                        if let Err(e) = atlas_platform_catalog::projections::rebuild_taxonomy_navigation(
+                            &pool,
+                            &event.tenant_id,
+                        )
+                        .await
+                        {
+                            error!("Worker: taxonomy_navigation projection failed: {}", e);
+                        } else {
+                            crate::metrics::PROJECTIONS_BUILT_TOTAL
+                                .with_label_values(&["CatalogTaxonomyNavigation"])
+                                .inc();
+                        }
+                        if let Err(e) = atlas_platform_catalog::projections::rebuild_family_detail(
+                            &pool,
+                            &event.tenant_id,
+                        )
+                        .await
+                        {
+                            error!("Worker: family_detail projection failed: {}", e);
+                        } else {
+                            crate::metrics::PROJECTIONS_BUILT_TOTAL
+                                .with_label_values(&["CatalogFamilyDetail"])
+                                .inc();
+                        }
+                        if let Err(e) = atlas_platform_catalog::projections::rebuild_variant_matrix(
+                            &pool,
+                            &event.tenant_id,
+                        )
+                        .await
+                        {
+                            error!("Worker: variant_matrix projection failed: {}", e);
+                        } else {
+                            crate::metrics::PROJECTIONS_BUILT_TOTAL
+                                .with_label_values(&["CatalogVariantMatrix"])
+                                .inc();
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            tenant_id = %event.tenant_id,
+                            error = %e,
+                            "Worker: tenant DB unavailable, cannot rebuild catalog projections"
                         );
                     }
                 }
