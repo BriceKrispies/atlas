@@ -12,10 +12,32 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/infra/compose/docker-compose.itest.yml"
 BAKE_FILE="$PROJECT_ROOT/infra/compose/docker-bake.itest.hcl"
 
-# Use docker by default, override with CONTAINER_RUNTIME env var
-CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+# Use podman by default, override with CONTAINER_RUNTIME=docker if you must
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-podman}"
 COMPOSE_CMD="$CONTAINER_RUNTIME compose"
 BUILDX_CMD="$CONTAINER_RUNTIME buildx"
+
+# When running under podman, `podman compose` delegates to an external
+# provider (docker-compose or podman-compose). Auto-detect podman-compose
+# from common install locations if the env var isn't already set, so
+# `make itest` works out of the box on a machine with `pip install --user
+# podman-compose`. Override by exporting PODMAN_COMPOSE_PROVIDER yourself.
+if [[ "$CONTAINER_RUNTIME" == "podman" && -z "${PODMAN_COMPOSE_PROVIDER:-}" ]]; then
+    for candidate in \
+        "${APPDATA:-}/Python/Python310/Scripts/podman-compose.exe" \
+        "${APPDATA:-}/Python/Python311/Scripts/podman-compose.exe" \
+        "${APPDATA:-}/Python/Python312/Scripts/podman-compose.exe" \
+        "${HOME:-}/.local/bin/podman-compose" \
+        "/usr/local/bin/podman-compose"; do
+        if [[ -n "$candidate" && -x "$candidate" ]] || [[ -n "$candidate" && -f "$candidate" ]]; then
+            export PODMAN_COMPOSE_PROVIDER="$candidate"
+            break
+        fi
+    done
+    if [[ -z "${PODMAN_COMPOSE_PROVIDER:-}" ]] && command -v podman-compose &>/dev/null; then
+        export PODMAN_COMPOSE_PROVIDER="$(command -v podman-compose)"
+    fi
+fi
 
 # Support for compose profiles (e.g., obs for observability stack)
 # Can be set via ITEST_PROFILE env var or second argument
@@ -41,7 +63,10 @@ NC='\033[0m' # No Color
 export ATLAS_ENV="dev"
 
 # Database Configuration
-export POSTGRES_PORT="5432"
+# Host port 15432 (not 5432) so the itest stack doesn't collide with a
+# native Postgres install on developer machines. Internal container port
+# stays 5432 (see compose mapping ${POSTGRES_PORT}:5432).
+export POSTGRES_PORT="${POSTGRES_PORT:-15432}"
 export POSTGRES_USER="atlas_platform"
 export POSTGRES_PASSWORD="itest_password_change_me"
 export POSTGRES_DB="control_plane"
@@ -145,17 +170,31 @@ itest_up() {
     check_port_available 3000 || log_warn "Ingress port 3000 may conflict"
     check_port_available 8080 || log_warn "Dozzle port 8080 may conflict"
 
-    # Build images using buildx bake for parallel builds and better caching
-    log_info "Building application images (parallel via buildx bake)..."
+    # Build images. Docker Buildx supports `bake` for parallel builds, but
+    # podman doesn't have an equivalent — fall back to sequential `build`
+    # calls when running under podman. Image tags here must match what the
+    # compose file references.
+    log_info "Building application images..."
     echo "═══════════════════════════════════════════════════════════"
 
-    # Change to project root for correct build context
     pushd "$PROJECT_ROOT" > /dev/null
 
-    # Use buildx bake for faster parallel builds with progress output
-    # --progress=plain shows full build output including cargo progress
-    # BUILDX_BAKE_ENTITLEMENTS_FS=0 disables filesystem permission prompts on Windows
-    BUILDX_BAKE_ENTITLEMENTS_FS=0 $BUILDX_CMD bake -f "$BAKE_FILE" --progress=plain --load
+    if [[ "$CONTAINER_RUNTIME" == "docker" ]]; then
+        BUILDX_BAKE_ENTITLEMENTS_FS=0 $BUILDX_CMD bake -f "$BAKE_FILE" --progress=plain --load
+    else
+        # Podman: build each image in turn. Tags + dockerfiles must stay
+        # in sync with infra/compose/docker-bake.itest.hcl.
+        $CONTAINER_RUNTIME build \
+            -f apps/control-plane/Dockerfile \
+            -t atlas-platform-control-plane:itest .
+        $CONTAINER_RUNTIME build \
+            -f infra/docker/Dockerfile.ingress \
+            --build-arg CARGO_FEATURES=test-auth \
+            -t atlas-platform-ingress:itest .
+        $CONTAINER_RUNTIME build \
+            -f infra/docker/Dockerfile.workers \
+            -t atlas-platform-workers:itest .
+    fi
 
     popd > /dev/null
 

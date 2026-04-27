@@ -1,0 +1,40 @@
+# Don't ship local build artifacts into the build context.
+target/
+**/target/
+node_modules/
+**/node_modules/
+
+# Frontend build outputs
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+
+# Test runner artifacts
+test-results/
+playwright-report/
+
+# Editor / OS
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Claude scratch
+.claude/
+**/.claude/
+
+# Docs / specs aren't needed in container builds (the Dockerfiles only
+# COPY Cargo.toml/Cargo.lock/crates/apps/tools/tests anyway, but this
+# narrows the buildah context tarball a lot).
+specs/
+docs/
+
+# Compose / infra is not part of the build context for application
+# images (compose mounts these at runtime, not build time).
+infra/compose/config/
