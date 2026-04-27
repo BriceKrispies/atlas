@@ -10,6 +10,7 @@ members = [
     "crates/workers",
     "crates/spec_validate",
     "crates/control_plane_db",
+    "crates/tenant_db",
     "crates/atlas-compiler",
     "crates/atlasctl",
     "crates/atlas_config",

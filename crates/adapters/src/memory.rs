@@ -6,6 +6,34 @@ use atlas_platform_runtime::ports::*;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+/// No-op tenant DB provider for in-memory / non-Postgres builds.
+///
+/// Always returns `PortError::Misconfigured` for any `get_pool` call. This
+/// exists so that ingress's in-memory bootstrap path can still construct an
+/// `AppState` without a live Postgres pool — any code that genuinely needs
+/// per-tenant DB access will fail loudly instead of silently no-op'ing.
+#[cfg(feature = "postgres")]
+#[derive(Clone, Default)]
+pub struct InMemoryTenantDbProvider;
+
+#[cfg(feature = "postgres")]
+impl InMemoryTenantDbProvider {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[async_trait]
+impl TenantDbProvider for InMemoryTenantDbProvider {
+    async fn get_pool(&self, tenant_id: &str) -> PortResult<sqlx::PgPool> {
+        Err(PortError::Misconfigured(format!(
+            "tenant_db_not_configured: in-memory build cannot resolve a per-tenant pool for {}",
+            tenant_id
+        )))
+    }
+}
+
 /// In-memory event store (append-only, idempotent)
 #[derive(Clone)]
 pub struct InMemoryEventStore {

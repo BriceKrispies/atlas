@@ -68,8 +68,13 @@ use errors::AppError;
 use events::ServerEvent;
 use schema::SchemaValidationResult;
 use atlas_core::types::EventEnvelope;
-use atlas_platform_adapters::{InMemoryCache, InMemoryEventStore, InMemoryProjectionStore};
-use atlas_platform_runtime::ports::{Cache, EventStore, ProjectionStore, SetOptions};
+use atlas_platform_adapters::{
+    InMemoryCache, InMemoryEventStore, InMemoryProjectionStore, InMemoryTenantDbProvider,
+    PostgresTenantDbProvider,
+};
+use atlas_platform_runtime::ports::{
+    Cache, EventStore, ProjectionStore, SetOptions, TenantDbProvider,
+};
 use axum::{
     body::Body,
     extract::{Path, Request, State},
@@ -96,6 +101,8 @@ struct AppState {
     runtime_config: Arc<RuntimeConfig>,
     #[allow(dead_code)]
     auth_config: Arc<AuthConfig>,
+    #[allow(dead_code)]
+    tenant_db_provider: Arc<dyn TenantDbProvider>,
     event_sender: broadcast::Sender<ServerEvent>,
 }
 
@@ -126,36 +133,58 @@ async fn main() {
     let auth_config = Arc::new(runtime_config.auth_config.clone());
     let tenant_id_for_middleware = runtime_config.tenant_id.clone();
 
-    // Create Postgres-backed render tree store (for persistence across restarts).
-    // Uses the same CONTROL_PLANE_DB_URL as the control plane registry.
-    let render_tree_store = {
+    // Build a shared control-plane Postgres pool (used by both the render tree
+    // store and the per-tenant DB provider). Falls back to None when
+    // CONTROL_PLANE_DB_URL is not set or the connection fails — both downstream
+    // consumers handle that gracefully.
+    let control_plane_pool = {
         use atlas_config::get_env_optional;
         use sqlx::postgres::PgPoolOptions;
 
-        let pool = if let Some(db_url) = get_env_optional("CONTROL_PLANE_DB_URL") {
+        if let Some(db_url) = get_env_optional("CONTROL_PLANE_DB_URL") {
             match PgPoolOptions::new()
-                .max_connections(3)
+                .max_connections(5)
                 .connect(&db_url)
                 .await
             {
                 Ok(pool) => {
-                    info!("✓ Render tree Postgres persistence enabled");
+                    info!("✓ Control plane Postgres pool ready");
                     Some(pool)
                 }
                 Err(e) => {
                     warn!(
-                        "Render tree Postgres persistence unavailable (in-memory only): {}",
+                        "Control plane Postgres pool unavailable (in-memory fallbacks): {}",
                         e
                     );
                     None
                 }
             }
         } else {
-            info!("CONTROL_PLANE_DB_URL not set — render trees will be in-memory only");
+            info!(
+                "CONTROL_PLANE_DB_URL not set — render trees in-memory only, \
+                 tenant_db_provider will reject all calls"
+            );
             None
-        };
+        }
+    };
 
-        Arc::new(RenderTreeStore::new(pool))
+    // Render tree store: persists projection trees to Postgres for durability
+    // across restarts. Falls back to in-memory only when no pool is available.
+    let render_tree_store = Arc::new(RenderTreeStore::new(control_plane_pool.clone()));
+
+    // Per-tenant DB provider. With a control-plane pool we use the real Postgres
+    // implementation; without one (in-memory bootstrap path) we install the
+    // no-op variant that returns Misconfigured for any request — this keeps
+    // AppState constructible while ensuring real per-tenant access fails loud.
+    let tenant_db_provider: Arc<dyn TenantDbProvider> = match &control_plane_pool {
+        Some(pool) => {
+            info!("✓ PostgresTenantDbProvider ready");
+            Arc::new(PostgresTenantDbProvider::new(pool.clone()))
+        }
+        None => {
+            warn!("Using InMemoryTenantDbProvider — per-tenant DB access will error");
+            Arc::new(InMemoryTenantDbProvider::new())
+        }
     };
 
     // Broadcast channel for server-push (SSE + WebSocket)
@@ -177,6 +206,7 @@ async fn main() {
         render_tree_store,
         runtime_config,
         auth_config: auth_config.clone(),
+        tenant_db_provider,
         event_sender,
     });
 

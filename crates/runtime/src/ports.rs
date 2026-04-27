@@ -15,6 +15,10 @@ pub enum PortError {
     CacheError(String),
     #[error("Internal error: {0}")]
     Internal(String),
+    #[error("Unavailable: {0}")]
+    Unavailable(String),
+    #[error("Misconfigured: {0}")]
+    Misconfigured(String),
 }
 
 pub type PortResult<T> = Result<T, PortError>;
@@ -167,4 +171,29 @@ pub struct EnabledModuleInfo {
     pub module_id: String,
     pub enabled_version: String,
     pub config_json: Option<serde_json::Value>,
+}
+
+/// Per-tenant database provider port.
+///
+/// Resolves a tenant ID to a Postgres connection pool for that tenant's
+/// dedicated database. Implementations are expected to cache pools across
+/// calls (per-tenant pool reuse) since pool construction is expensive.
+///
+/// Each tenant has its own physical database — see migration
+/// `20250101000003_add_tenant_db_info.sql` for the per-tenant connection
+/// columns on `control_plane.tenants`.
+///
+/// Only available with the `postgres` feature; the in-memory / non-postgres
+/// build path uses an `InMemoryTenantDbProvider` (in adapters) that returns
+/// `PortError::Misconfigured` for any call.
+#[cfg(feature = "postgres")]
+#[async_trait]
+pub trait TenantDbProvider: Send + Sync {
+    /// Get (or create + cache) a pool for the given tenant's database.
+    ///
+    /// Errors:
+    /// - `PortError::NotFound`: tenant_id does not exist in the registry
+    /// - `PortError::Misconfigured`: tenant row is missing connection columns
+    /// - `PortError::Unavailable`: failed to connect to the tenant database
+    async fn get_pool(&self, tenant_id: &str) -> PortResult<sqlx::PgPool>;
 }

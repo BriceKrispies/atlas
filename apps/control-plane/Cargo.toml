@@ -17,6 +17,7 @@ atlas-config.workspace = true
 atlas-core.workspace = true
 atlas-diagnostics.workspace = true
 atlas-platform-control-plane-db = { path = "../../crates/control_plane_db" }
+atlas-platform-tenant-db = { path = "../../crates/tenant_db" }
 axum.workspace = true
 tokio.workspace = true
 tower.workspace = true

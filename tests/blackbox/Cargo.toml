@@ -43,6 +43,10 @@ path = "suites/render_tree_test.rs"
 name = "persistence"
 path = "suites/persistence_test.rs"
 
+[[test]]
+name = "tenant_db_isolation"
+path = "suites/tenant_db_isolation_test.rs"
+
 [dependencies]
 # HTTP client
 reqwest = { version = "0.11", features = ["json"] }
@@ -68,3 +72,6 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 
 # Testing utilities
 assert_matches = "1.5"
+
+# Direct Postgres access for tenant DB isolation tests
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres"] }

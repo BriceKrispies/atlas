@@ -1,3 +1,4 @@
+use anyhow::Context;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -307,17 +308,44 @@ async fn drop_database(
     Ok(())
 }
 
+/// Bring the freshly-created tenant database up to the current schema by
+/// running every migration under `crates/tenant_db/migrations/`.
+///
+/// Connects directly to the per-tenant DB (we have its credentials in scope
+/// since we just created the row) and delegates the actual migration loop
+/// to `atlas_platform_tenant_db::run_tenant_migrations`. Idempotent.
 async fn run_tenant_migrations(
-    _host: &str,
-    _port: i32,
-    _user: &str,
-    _password: &str,
-    _db_name: &str,
+    host: &str,
+    port: i32,
+    user: &str,
+    password: &str,
+    db_name: &str,
 ) -> anyhow::Result<()> {
-    tracing::info!("Tenant migrations placeholder - implement as needed");
+    let conn_str = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        user, password, host, port, db_name
+    );
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&conn_str)
+        .await
+        .with_context(|| format!("Failed to connect to tenant DB {}", db_name))?;
+
+    atlas_platform_tenant_db::run_tenant_migrations(&pool)
+        .await
+        .with_context(|| format!("Failed to run tenant migrations against {}", db_name))?;
+
+    pool.close().await;
     Ok(())
 }
 
+/// Seed the tenant database with default rows.
+///
+/// Currently a no-op: seeding is deferred to Chunk C, which lands the
+/// catalog schema and its associated default rows. Kept as a function so
+/// the call site in `create_tenant_internal` doesn't need to change when
+/// real seeding arrives.
 async fn seed_tenant_database(
     _host: &str,
     _port: i32,
@@ -325,6 +353,6 @@ async fn seed_tenant_database(
     _password: &str,
     _db_name: &str,
 ) -> anyhow::Result<()> {
-    tracing::info!("Tenant seeding placeholder - implement as needed");
+    tracing::info!("Tenant seeding is a no-op in Chunk A; real seeding lands in Chunk C");
     Ok(())
 }

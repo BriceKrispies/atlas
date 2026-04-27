@@ -1,5 +1,5 @@
 -- Persistent storage for render trees produced by WASM plugins.
--- Survives process restarts; the in-memory projection store is the fast path.
+-- Survives process restarts. The in-memory projection store is the fast path.
 
 CREATE TABLE IF NOT EXISTS control_plane.page_render_trees (
     tenant_id          TEXT        NOT NULL,
