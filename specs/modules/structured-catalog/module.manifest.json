@@ -20,46 +20,31 @@
     }
   ],
   "resources": [
+    { "resourceType": "SeedPackage",  "ownership": "module" },
+    { "resourceType": "Family",       "ownership": "module" },
+    { "resourceType": "Variant",      "ownership": "module" },
+    { "resourceType": "TaxonomyNode", "ownership": "module" }
+  ],
+  "events": [
     {
-      "resourceType": "SeedPackage",
-      "ownership": "module"
+      "eventType": "StructuredCatalog.SeedPackageApplied",
+      "category": "DOMAIN",
+      "schemaId": "catalog.seed_package_applied.v1",
+      "compatibility": "BACKWARD"
     },
     {
-      "resourceType": "Family",
-      "ownership": "module"
+      "eventType": "StructuredCatalog.FamilyPublished",
+      "category": "DOMAIN",
+      "schemaId": "catalog.family_published.v1",
+      "compatibility": "BACKWARD"
     },
     {
-      "resourceType": "Variant",
-      "ownership": "module"
-    },
-    {
-      "resourceType": "TaxonomyNode",
-      "ownership": "module"
+      "eventType": "StructuredCatalog.VariantUpserted",
+      "category": "DOMAIN",
+      "schemaId": "catalog.variant_upserted.v1",
+      "compatibility": "BACKWARD"
     }
   ],
-  "events": {
-    "publishes": [
-      {
-        "eventType": "StructuredCatalog.SeedPackageApplied",
-        "category": "DOMAIN",
-        "schemaId": "catalog.seed_package_applied.v1",
-        "compatibility": "BACKWARD"
-      },
-      {
-        "eventType": "StructuredCatalog.FamilyPublished",
-        "category": "DOMAIN",
-        "schemaId": "catalog.family_published.v1",
-        "compatibility": "BACKWARD"
-      },
-      {
-        "eventType": "StructuredCatalog.VariantUpserted",
-        "category": "DOMAIN",
-        "schemaId": "catalog.variant_upserted.v1",
-        "compatibility": "BACKWARD"
-      }
-    ],
-    "consumes": []
-  },
   "projections": [
     {
       "projectionName": "CatalogTaxonomyNavigation",
@@ -97,11 +82,21 @@
   "migrations": [
     {
       "migrationId": "20260426000001_catalog_core",
+      "description": "Catalog core tables (taxonomies, families, attributes, variants, policies, projections)",
       "appliesTo": "TENANT_DB",
       "engine": "sqlx",
       "path": "crates/tenant_db/migrations/20260426000001_catalog_core.sql"
+    },
+    {
+      "migrationId": "20260427000001_catalog_search_documents",
+      "description": "Catalog full-text search documents projection table (tsvector + GIN)",
+      "appliesTo": "TENANT_DB",
+      "engine": "sqlx",
+      "path": "crates/tenant_db/migrations/20260427000001_catalog_search_documents.sql"
     }
   ],
+  "uiRoutes": [],
+  "jobs": [],
   "cacheArtifacts": [
     {
       "artifactId": "CatalogTaxonomyNavigation",

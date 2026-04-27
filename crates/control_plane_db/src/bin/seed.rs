@@ -28,77 +28,93 @@ async fn main() -> Result<()> {
     .await
     .context("Failed to insert tenant")?;
 
-    // Load sample module manifest from fixtures
-    tracing::info!("Loading sample module manifest...");
+    // Load module manifests. The seed registers both:
+    // 1. content-pages from specs/fixtures (the canonical test fixture).
+    // 2. structured-catalog from specs/modules (the real Chunk B manifest)
+    //    if the file exists — without this, ingress's
+    //    bootstrap_with_postgres path can't see catalog actions because
+    //    they only live in the in-memory bootstrap fallback.
     let fixtures_dir = std::env::var("ATLAS_FIXTURES_DIR")
         .unwrap_or_else(|_| "../../specs/fixtures".to_string());
-    let manifest_path = format!("{}/module_manifest__valid__content_pages.json", fixtures_dir);
-    let manifest_content =
-        fs::read_to_string(manifest_path).context("Failed to read sample module manifest")?;
-    let mut manifest: serde_json::Value = serde_json::from_str(&manifest_content)?;
+    let modules_dir = std::env::var("ATLAS_MODULES_DIR")
+        .unwrap_or_else(|_| "../../specs/modules".to_string());
 
-    // Strip documentation fields
-    if let Some(obj) = manifest.as_object_mut() {
-        obj.retain(|k, _| !k.starts_with('$'));
+    let manifest_paths: Vec<(String, String)> = {
+        let mut paths = vec![(
+            "content-pages".to_string(),
+            format!("{}/module_manifest__valid__content_pages.json", fixtures_dir),
+        )];
+        let catalog_path = format!("{}/structured-catalog/module.manifest.json", modules_dir);
+        if std::path::Path::new(&catalog_path).exists() {
+            paths.push(("structured-catalog".to_string(), catalog_path));
+        }
+        paths
+    };
+
+    for (label, manifest_path) in manifest_paths {
+        tracing::info!("Loading module manifest: {}", label);
+        let manifest_content = fs::read_to_string(&manifest_path)
+            .with_context(|| format!("Failed to read manifest at {manifest_path}"))?;
+        let mut manifest: serde_json::Value = serde_json::from_str(&manifest_content)?;
+
+        if let Some(obj) = manifest.as_object_mut() {
+            obj.retain(|k, _| !k.starts_with('$'));
+        }
+
+        let module_id = manifest["moduleId"]
+            .as_str()
+            .with_context(|| format!("Missing moduleId in manifest {label}"))?;
+        let version = manifest["version"]
+            .as_str()
+            .with_context(|| format!("Missing version in manifest {label}"))?;
+        let display_name = manifest["displayName"]
+            .as_str()
+            .with_context(|| format!("Missing displayName in manifest {label}"))?;
+
+        let schema_hash = format!("{:x}", md5::compute(manifest_content.as_bytes()));
+
+        tracing::info!("Inserting module: {}", module_id);
+        sqlx::query(
+            "INSERT INTO control_plane.modules (module_id, display_name, latest_version)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (module_id) DO UPDATE SET
+                latest_version = EXCLUDED.latest_version",
+        )
+        .bind(module_id)
+        .bind(display_name)
+        .bind(version)
+        .execute(&pool)
+        .await
+        .context("Failed to insert module")?;
+
+        tracing::info!("Inserting module version: {} v{}", module_id, version);
+        sqlx::query(
+            "INSERT INTO control_plane.module_versions (module_id, version, manifest_json, schema_hash)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (module_id, version) DO NOTHING",
+        )
+        .bind(module_id)
+        .bind(version)
+        .bind(&manifest)
+        .bind(&schema_hash)
+        .execute(&pool)
+        .await
+        .context("Failed to insert module version")?;
+
+        tracing::info!("Enabling module for tenant: {}", module_id);
+        sqlx::query(
+            "INSERT INTO control_plane.tenant_modules (tenant_id, module_id, enabled_version)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (tenant_id, module_id) DO UPDATE SET
+                enabled_version = EXCLUDED.enabled_version",
+        )
+        .bind("tenant-itest-001")
+        .bind(module_id)
+        .bind(version)
+        .execute(&pool)
+        .await
+        .context("Failed to enable module for tenant")?;
     }
-
-    let module_id = manifest["moduleId"]
-        .as_str()
-        .context("Missing moduleId in manifest")?;
-    let version = manifest["version"]
-        .as_str()
-        .context("Missing version in manifest")?;
-    let display_name = manifest["displayName"]
-        .as_str()
-        .context("Missing displayName in manifest")?;
-
-    // Calculate schema hash (simple JSON hash for now)
-    let schema_hash = format!("{:x}", md5::compute(manifest_content.as_bytes()));
-
-    // Insert module
-    tracing::info!("Inserting module: {}", module_id);
-    sqlx::query(
-        "INSERT INTO control_plane.modules (module_id, display_name, latest_version)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (module_id) DO UPDATE SET
-            latest_version = EXCLUDED.latest_version",
-    )
-    .bind(module_id)
-    .bind(display_name)
-    .bind(version)
-    .execute(&pool)
-    .await
-    .context("Failed to insert module")?;
-
-    // Insert module version
-    tracing::info!("Inserting module version: {} v{}", module_id, version);
-    sqlx::query(
-        "INSERT INTO control_plane.module_versions (module_id, version, manifest_json, schema_hash)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (module_id, version) DO NOTHING",
-    )
-    .bind(module_id)
-    .bind(version)
-    .bind(&manifest)
-    .bind(&schema_hash)
-    .execute(&pool)
-    .await
-    .context("Failed to insert module version")?;
-
-    // Enable module for tenant
-    tracing::info!("Enabling module for tenant...");
-    sqlx::query(
-        "INSERT INTO control_plane.tenant_modules (tenant_id, module_id, enabled_version)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (tenant_id, module_id) DO UPDATE SET
-            enabled_version = EXCLUDED.enabled_version",
-    )
-    .bind("tenant-itest-001")
-    .bind(module_id)
-    .bind(version)
-    .execute(&pool)
-    .await
-    .context("Failed to enable module for tenant")?;
 
     // Insert sample schemas from specs directory
     tracing::info!("Inserting schema registry entries...");

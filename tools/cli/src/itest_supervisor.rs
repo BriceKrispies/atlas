@@ -277,6 +277,8 @@ impl ItestSupervisor {
     pub fn seed_control_plane(&self) -> Result<()> {
         println!("{} Seeding control plane...", "→".cyan());
         let fixtures_dir = self.project_root.join("specs/fixtures");
+        let modules_dir = self.project_root.join("specs/modules");
+        let schemas_dir = self.project_root.join("specs/schemas/contracts");
         let status = Command::new("cargo")
             .args([
                 "run",
@@ -288,6 +290,8 @@ impl ItestSupervisor {
             ])
             .env("CONTROL_PLANE_DB_URL", self.env.control_plane_db_url())
             .env("ATLAS_FIXTURES_DIR", fixtures_dir)
+            .env("ATLAS_MODULES_DIR", modules_dir)
+            .env("ATLAS_SCHEMAS_DIR", schemas_dir)
             .current_dir(&self.project_root)
             .status()?;
         if !status.success() {
@@ -354,6 +358,34 @@ impl ItestSupervisor {
             .join(format!("{bin_name}{suffix}"))
     }
 
+    fn service_port(&self, service: &str) -> Option<&str> {
+        match service {
+            "control-plane" => Some(self.env.control_plane_port),
+            "ingress" => Some(self.env.ingress_port),
+            "workers" => Some(self.env.workers_metrics_port),
+            _ => None,
+        }
+    }
+
+    /// Returns true if some other process is already listening on the
+    /// service's expected port (i.e. our spawn would silently bind-fail).
+    fn port_taken_by_other(&self, service: &str) -> bool {
+        let Some(port) = self.service_port(service) else {
+            return false;
+        };
+        let url = match service {
+            "ingress" => format!("http://localhost:{}/", port),
+            "control-plane" => format!("http://localhost:{}/healthz", port),
+            "workers" => format!("http://localhost:{}/metrics", port),
+            _ => return false,
+        };
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_millis(500))
+            .build()
+            .unwrap();
+        client.get(&url).send().is_ok()
+    }
+
     /// Spawn one of the Atlas Rust services as a detached host process.
     /// Returns immediately after spawning. The child's stdout/stderr are
     /// redirected to `.itest/<service>.log`. The binary must already be
@@ -366,6 +398,17 @@ impl ItestSupervisor {
         if self.is_service_running(service) {
             println!("{} {} already running, skipping", "→".yellow(), service);
             return Ok(());
+        }
+
+        if self.port_taken_by_other(service) {
+            anyhow::bail!(
+                "Port for {} is already in use by another process. \
+                 Run `atlas itest down` (or kill the stale {}.exe / {}) \
+                 before spawning a fresh stack.",
+                service,
+                service,
+                service
+            );
         }
 
         let bin = self.binary_path(service);
@@ -593,7 +636,17 @@ impl ItestSupervisor {
         println!("{} Running blackbox tests...", "→".cyan());
         let env = &self.env;
         let status = Command::new("cargo")
-            .args(["test", "--release", "--", "--test-threads=4"])
+            .args([
+                "test",
+                "--release",
+                "--no-fail-fast",
+                "--",
+                "--test-threads=4",
+            ])
+            // ATLAS_ENV=dev unlocks the test harness's "use sensible
+            // defaults" mode — without this the harness panics requiring
+            // every URL/env var explicitly.
+            .env("ATLAS_ENV", "dev")
             .env("INGRESS_BASE_URL", format!("http://localhost:{}", env.ingress_port))
             .env(
                 "CONTROL_PLANE_BASE_URL",
@@ -602,6 +655,14 @@ impl ItestSupervisor {
             .env(
                 "KEYCLOAK_BASE_URL",
                 format!("http://localhost:{}", env.keycloak_port),
+            )
+            // Prometheus isn't part of hybrid infra; observability tests
+            // pull metrics from ingress's /metrics directly. Set a value
+            // so the strict-mode check passes; the URL only gets hit by
+            // tests that actually need a Prometheus instance.
+            .env(
+                "PROMETHEUS_BASE_URL",
+                "http://localhost:9090",
             )
             .env("TEST_TENANT_ID", env.tenant_id)
             .env("CONTROL_PLANE_DB_URL", env.control_plane_db_url())
