@@ -98,10 +98,7 @@ impl PostgresTenantDbProvider {
         }
     }
 
-    async fn lookup_connection_info(
-        &self,
-        tenant_id: &str,
-    ) -> PortResult<TenantConnectionInfo> {
+    async fn lookup_connection_info(&self, tenant_id: &str) -> PortResult<TenantConnectionInfo> {
         let row: Option<(
             Option<String>,
             Option<i32>,
@@ -125,8 +122,8 @@ impl PostgresTenantDbProvider {
             ))
         })?;
 
-        let (host, port, name, user, password) = row
-            .ok_or_else(|| PortError::NotFound(format!("tenant {}", tenant_id)))?;
+        let (host, port, name, user, password) =
+            row.ok_or_else(|| PortError::NotFound(format!("tenant {}", tenant_id)))?;
 
         let host = host.ok_or_else(|| {
             PortError::Misconfigured(format!("tenant {} missing db_host", tenant_id))
