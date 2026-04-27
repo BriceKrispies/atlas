@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catalog.variant_upserted.v1",
+  "title": "CatalogVariantUpsertedEventPayload",
+  "description": "Payload for StructuredCatalog.VariantUpserted domain events",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "familyKey",
+    "familyId",
+    "variantKey",
+    "variantId",
+    "revisionNumber",
+    "attributeValuesCount",
+    "upsertedAt"
+  ],
+  "properties": {
+    "familyKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "familyId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "variantKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variantId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "revisionNumber": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "attributeValuesCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "upsertedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

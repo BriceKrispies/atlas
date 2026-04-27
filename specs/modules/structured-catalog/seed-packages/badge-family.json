@@ -1,0 +1,187 @@
+{
+  "packageKey": "badge-family-starter",
+  "version": "1.0.0",
+  "targetModule": "structured-catalog",
+  "payload": {
+    "taxonomyTrees": [
+      {
+        "key": "recognition",
+        "name": "Recognition Catalog",
+        "purpose": "catalog",
+        "nodes": [
+          {
+            "key": "recognition-root",
+            "path": "/recognition",
+            "name": "Recognition",
+            "parent": null
+          },
+          {
+            "key": "badges",
+            "path": "/recognition/badges",
+            "name": "Badges",
+            "parent": "recognition-root"
+          },
+          {
+            "key": "service-anniversary",
+            "path": "/recognition/badges/service-anniversary",
+            "name": "Service Anniversary",
+            "parent": "badges"
+          }
+        ]
+      }
+    ],
+    "unitDimensions": [
+      { "key": "duration", "baseUnit": "year" },
+      { "key": "points", "baseUnit": "point" }
+    ],
+    "units": [
+      {
+        "key": "year",
+        "dimension": "duration",
+        "name": "Year",
+        "symbol": "yr",
+        "toBaseMultiplier": 1
+      },
+      {
+        "key": "point",
+        "dimension": "points",
+        "name": "Point",
+        "symbol": "pt",
+        "toBaseMultiplier": 1
+      }
+    ],
+    "attributeDefinitions": [
+      {
+        "key": "years_of_service",
+        "dataType": "number",
+        "unitDimension": "duration",
+        "filterableDefault": true,
+        "sortableDefault": true
+      },
+      {
+        "key": "point_award",
+        "dataType": "measurement",
+        "unitDimension": "points",
+        "filterableDefault": true,
+        "sortableDefault": true
+      },
+      {
+        "key": "badge_tier",
+        "dataType": "enum",
+        "filterableDefault": true,
+        "options": [
+          { "key": "bronze", "label": "Bronze" },
+          { "key": "silver", "label": "Silver" },
+          { "key": "gold", "label": "Gold" },
+          { "key": "platinum", "label": "Platinum" }
+        ]
+      }
+    ],
+    "families": [
+      {
+        "key": "service_anniversary_badge",
+        "type": "badge",
+        "name": "Service Anniversary Badge",
+        "defaultTaxonomyNode": "service-anniversary",
+        "canonicalSlug": "service-anniversary-badge",
+        "attributes": [
+          {
+            "attributeKey": "years_of_service",
+            "role": "spec",
+            "required": true,
+            "filterable": true,
+            "sortable": true,
+            "displayOrder": 1
+          },
+          {
+            "attributeKey": "point_award",
+            "role": "spec",
+            "required": true,
+            "filterable": true,
+            "sortable": true,
+            "displayOrder": 2
+          },
+          {
+            "attributeKey": "badge_tier",
+            "role": "variant_axis",
+            "required": true,
+            "isVariantAxis": true,
+            "filterable": true,
+            "displayOrder": 3
+          }
+        ],
+        "filterPolicies": [
+          {
+            "attributeKey": "badge_tier",
+            "filterType": "checkbox",
+            "operatorSet": "equals",
+            "displayOrder": 1
+          },
+          {
+            "attributeKey": "years_of_service",
+            "filterType": "numeric_range",
+            "operatorSet": "gte_lte",
+            "displayOrder": 2
+          }
+        ],
+        "sortPolicies": [
+          {
+            "sortKey": "years_asc",
+            "attributeKey": "years_of_service",
+            "direction": "asc",
+            "isDefault": true
+          }
+        ],
+        "displayPolicies": [
+          {
+            "surface": "variant_table",
+            "attributeKey": "years_of_service",
+            "role": "column",
+            "order": 1
+          },
+          {
+            "surface": "variant_table",
+            "attributeKey": "badge_tier",
+            "role": "column",
+            "order": 2
+          },
+          {
+            "surface": "variant_table",
+            "attributeKey": "point_award",
+            "role": "column",
+            "order": 3
+          }
+        ],
+        "variants": [
+          {
+            "key": "1-year",
+            "name": "1 Year Badge",
+            "values": {
+              "years_of_service": 1,
+              "point_award": 10,
+              "badge_tier": "bronze"
+            }
+          },
+          {
+            "key": "5-year",
+            "name": "5 Year Badge",
+            "values": {
+              "years_of_service": 5,
+              "point_award": 50,
+              "badge_tier": "silver"
+            }
+          },
+          {
+            "key": "10-year",
+            "name": "10 Year Badge",
+            "values": {
+              "years_of_service": 10,
+              "point_award": 150,
+              "badge_tier": "gold"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

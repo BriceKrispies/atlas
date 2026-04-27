@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catalog.seed_package_applied.v1",
+  "title": "CatalogSeedPackageAppliedEventPayload",
+  "description": "Payload for StructuredCatalog.SeedPackageApplied domain events",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seedPackageKey", "seedPackageVersion", "appliedAt", "summary"],
+  "properties": {
+    "seedPackageKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seedPackageVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "appliedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taxonomyTreeCount",
+        "taxonomyNodeCount",
+        "familyCount",
+        "variantCount",
+        "attributeDefinitionCount",
+        "assetCount"
+      ],
+      "properties": {
+        "taxonomyTreeCount": { "type": "integer", "minimum": 0 },
+        "taxonomyNodeCount": { "type": "integer", "minimum": 0 },
+        "familyCount": { "type": "integer", "minimum": 0 },
+        "variantCount": { "type": "integer", "minimum": 0 },
+        "attributeDefinitionCount": { "type": "integer", "minimum": 0 },
+        "assetCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

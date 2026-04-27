@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catalog.family.publish.v1",
+  "title": "CatalogFamilyPublishPayload",
+  "description": "Payload schema for Catalog.Family.Publish intents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionId", "resourceType", "familyKey", "familyRevisionNumber"],
+  "properties": {
+    "actionId": {
+      "type": "string",
+      "const": "Catalog.Family.Publish"
+    },
+    "resourceType": {
+      "type": "string",
+      "const": "Family"
+    },
+    "resourceId": { "type": ["string", "null"] },
+    "familyKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "familyRevisionNumber": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

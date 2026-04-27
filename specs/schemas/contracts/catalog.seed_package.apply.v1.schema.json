@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catalog.seed_package.apply.v1",
+  "title": "CatalogSeedPackageApplyPayload",
+  "description": "Payload schema for Catalog.SeedPackage.Apply intents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionId", "resourceType", "seedPackageKey", "seedPackageVersion", "payload"],
+  "properties": {
+    "actionId": {
+      "type": "string",
+      "const": "Catalog.SeedPackage.Apply"
+    },
+    "resourceType": {
+      "type": "string",
+      "const": "SeedPackage"
+    },
+    "resourceId": { "type": ["string", "null"] },
+    "seedPackageKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seedPackageVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

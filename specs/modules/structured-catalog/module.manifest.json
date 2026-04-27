@@ -1,0 +1,128 @@
+{
+  "manifestVersion": 2,
+  "moduleId": "structured-catalog",
+  "displayName": "Structured Catalog",
+  "version": "0.1.0",
+  "moduleType": ["api", "projection"],
+  "capabilities": ["catalog-management"],
+  "actions": [
+    {
+      "actionId": "Catalog.SeedPackage.Apply",
+      "resourceType": "SeedPackage",
+      "verb": "apply",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "Catalog.Family.Publish",
+      "resourceType": "Family",
+      "verb": "publish",
+      "auditLevel": "INFO"
+    }
+  ],
+  "resources": [
+    {
+      "resourceType": "SeedPackage",
+      "ownership": "module"
+    },
+    {
+      "resourceType": "Family",
+      "ownership": "module"
+    },
+    {
+      "resourceType": "Variant",
+      "ownership": "module"
+    },
+    {
+      "resourceType": "TaxonomyNode",
+      "ownership": "module"
+    }
+  ],
+  "events": {
+    "publishes": [
+      {
+        "eventType": "StructuredCatalog.SeedPackageApplied",
+        "category": "DOMAIN",
+        "schemaId": "catalog.seed_package_applied.v1",
+        "compatibility": "BACKWARD"
+      },
+      {
+        "eventType": "StructuredCatalog.FamilyPublished",
+        "category": "DOMAIN",
+        "schemaId": "catalog.family_published.v1",
+        "compatibility": "BACKWARD"
+      },
+      {
+        "eventType": "StructuredCatalog.VariantUpserted",
+        "category": "DOMAIN",
+        "schemaId": "catalog.variant_upserted.v1",
+        "compatibility": "BACKWARD"
+      }
+    ],
+    "consumes": []
+  },
+  "projections": [
+    {
+      "projectionName": "CatalogTaxonomyNavigation",
+      "inputEvents": [
+        "StructuredCatalog.SeedPackageApplied",
+        "StructuredCatalog.FamilyPublished"
+      ],
+      "outputModel": "catalog_taxonomy_navigation_json",
+      "rebuildable": true,
+      "storeHint": "TENANT_DB"
+    },
+    {
+      "projectionName": "CatalogFamilyDetail",
+      "inputEvents": [
+        "StructuredCatalog.SeedPackageApplied",
+        "StructuredCatalog.FamilyPublished",
+        "StructuredCatalog.VariantUpserted"
+      ],
+      "outputModel": "catalog_family_detail_json",
+      "rebuildable": true,
+      "storeHint": "TENANT_DB"
+    },
+    {
+      "projectionName": "CatalogVariantMatrix",
+      "inputEvents": [
+        "StructuredCatalog.SeedPackageApplied",
+        "StructuredCatalog.FamilyPublished",
+        "StructuredCatalog.VariantUpserted"
+      ],
+      "outputModel": "catalog_variant_matrix_json",
+      "rebuildable": true,
+      "storeHint": "TENANT_DB"
+    }
+  ],
+  "migrations": [
+    {
+      "migrationId": "20260426000001_catalog_core",
+      "appliesTo": "TENANT_DB",
+      "engine": "sqlx",
+      "path": "crates/tenant_db/migrations/20260426000001_catalog_core.sql"
+    }
+  ],
+  "cacheArtifacts": [
+    {
+      "artifactId": "CatalogTaxonomyNavigation",
+      "varyBy": ["TENANT"],
+      "ttlSeconds": 300,
+      "tags": ["Tenant:{tenantId}", "TaxonomyTree:{taxonomyTreeKey}"],
+      "privacy": "TENANT"
+    },
+    {
+      "artifactId": "CatalogFamilyDetail",
+      "varyBy": ["TENANT"],
+      "ttlSeconds": 300,
+      "tags": ["Tenant:{tenantId}", "Family:{familyId}"],
+      "privacy": "TENANT"
+    },
+    {
+      "artifactId": "CatalogVariantMatrix",
+      "varyBy": ["TENANT"],
+      "ttlSeconds": 300,
+      "tags": ["Tenant:{tenantId}", "Family:{familyId}"],
+      "privacy": "TENANT"
+    }
+  ]
+}

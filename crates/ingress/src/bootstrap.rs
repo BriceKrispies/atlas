@@ -391,6 +391,20 @@ fn bootstrap_in_memory() -> Result<RuntimeConfig> {
         verb: "create".to_string(),
     });
 
+    action_registry.register(ActionMetadata {
+        module_id: "structured-catalog".to_string(),
+        action_id: "Catalog.SeedPackage.Apply".to_string(),
+        resource_type: "SeedPackage".to_string(),
+        verb: "apply".to_string(),
+    });
+
+    action_registry.register(ActionMetadata {
+        module_id: "structured-catalog".to_string(),
+        action_id: "Catalog.Family.Publish".to_string(),
+        resource_type: "Family".to_string(),
+        verb: "publish".to_string(),
+    });
+
     // Create minimal policy engine with allow-all policy
     let policy_engine = PolicyEngine::new();
     let policies = vec![Policy {

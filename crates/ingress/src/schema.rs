@@ -177,6 +177,145 @@ pub fn create_default_schema_registry() -> Arc<SchemaRegistry> {
         info!("Registered default schema: ui.contentpages.page.create.v1 v1");
     }
 
+    // StructuredCatalog command payload: Catalog.SeedPackage.Apply
+    let catalog_seed_package_apply_schema = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "actionId": { "type": "string", "const": "Catalog.SeedPackage.Apply" },
+            "resourceType": { "type": "string", "const": "SeedPackage" },
+            "resourceId": { "type": ["string", "null"] },
+            "seedPackageKey": { "type": "string", "minLength": 1 },
+            "seedPackageVersion": { "type": "string", "minLength": 1 },
+            "payload": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["actionId", "resourceType", "seedPackageKey", "seedPackageVersion", "payload"]
+    });
+    if let Err(e) = registry.register(
+        "catalog.seed_package.apply.v1",
+        1,
+        &catalog_seed_package_apply_schema,
+    ) {
+        tracing::error!("Failed to register default schema: {}", e);
+    } else {
+        info!("Registered default schema: catalog.seed_package.apply.v1 v1");
+    }
+
+    // StructuredCatalog command payload: Catalog.Family.Publish
+    let catalog_family_publish_schema = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "actionId": { "type": "string", "const": "Catalog.Family.Publish" },
+            "resourceType": { "type": "string", "const": "Family" },
+            "resourceId": { "type": ["string", "null"] },
+            "familyKey": { "type": "string", "minLength": 1 },
+            "familyRevisionNumber": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["actionId", "resourceType", "familyKey", "familyRevisionNumber"]
+    });
+    if let Err(e) = registry.register(
+        "catalog.family.publish.v1",
+        1,
+        &catalog_family_publish_schema,
+    ) {
+        tracing::error!("Failed to register default schema: {}", e);
+    } else {
+        info!("Registered default schema: catalog.family.publish.v1 v1");
+    }
+
+    // StructuredCatalog event payload: SeedPackageApplied
+    let catalog_seed_package_applied_schema = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "seedPackageKey": { "type": "string", "minLength": 1 },
+            "seedPackageVersion": { "type": "string", "minLength": 1 },
+            "appliedAt": { "type": "string", "format": "date-time" },
+            "summary": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "taxonomyTreeCount": { "type": "integer", "minimum": 0 },
+                    "taxonomyNodeCount": { "type": "integer", "minimum": 0 },
+                    "familyCount": { "type": "integer", "minimum": 0 },
+                    "variantCount": { "type": "integer", "minimum": 0 },
+                    "attributeDefinitionCount": { "type": "integer", "minimum": 0 },
+                    "assetCount": { "type": "integer", "minimum": 0 }
+                },
+                "required": [
+                    "taxonomyTreeCount", "taxonomyNodeCount", "familyCount",
+                    "variantCount", "attributeDefinitionCount", "assetCount"
+                ]
+            }
+        },
+        "required": ["seedPackageKey", "seedPackageVersion", "appliedAt", "summary"]
+    });
+    if let Err(e) = registry.register(
+        "catalog.seed_package_applied.v1",
+        1,
+        &catalog_seed_package_applied_schema,
+    ) {
+        tracing::error!("Failed to register default schema: {}", e);
+    } else {
+        info!("Registered default schema: catalog.seed_package_applied.v1 v1");
+    }
+
+    // StructuredCatalog event payload: FamilyPublished
+    let catalog_family_published_schema = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "familyKey": { "type": "string", "minLength": 1 },
+            "familyId": { "type": "string", "format": "uuid" },
+            "revisionNumber": { "type": "integer", "minimum": 1 },
+            "publishedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["familyKey", "familyId", "revisionNumber", "publishedAt"]
+    });
+    if let Err(e) = registry.register(
+        "catalog.family_published.v1",
+        1,
+        &catalog_family_published_schema,
+    ) {
+        tracing::error!("Failed to register default schema: {}", e);
+    } else {
+        info!("Registered default schema: catalog.family_published.v1 v1");
+    }
+
+    // StructuredCatalog event payload: VariantUpserted
+    let catalog_variant_upserted_schema = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "familyKey": { "type": "string", "minLength": 1 },
+            "familyId": { "type": "string", "format": "uuid" },
+            "variantKey": { "type": "string", "minLength": 1 },
+            "variantId": { "type": "string", "format": "uuid" },
+            "revisionNumber": { "type": "integer", "minimum": 1 },
+            "attributeValuesCount": { "type": "integer", "minimum": 0 },
+            "upsertedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+            "familyKey", "familyId", "variantKey", "variantId",
+            "revisionNumber", "attributeValuesCount", "upsertedAt"
+        ]
+    });
+    if let Err(e) = registry.register(
+        "catalog.variant_upserted.v1",
+        1,
+        &catalog_variant_upserted_schema,
+    ) {
+        tracing::error!("Failed to register default schema: {}", e);
+    } else {
+        info!("Registered default schema: catalog.variant_upserted.v1 v1");
+    }
+
     Arc::new(registry)
 }
 
