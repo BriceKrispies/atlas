@@ -37,7 +37,9 @@
       "@atlas/ingress": ["./packages/ingress/src/index.ts"],
       "@atlas/ingress/*": ["./packages/ingress/src/*"],
       "@atlas/modules-catalog": ["./packages/modules-catalog/src/index.ts"],
-      "@atlas/modules-catalog/*": ["./packages/modules-catalog/src/*"]
+      "@atlas/modules-catalog/*": ["./packages/modules-catalog/src/*"],
+      "@atlas/server": ["./apps/server/src/main.ts"],
+      "@atlas/server/*": ["./apps/server/src/*"]
     }
   },
   "include": [

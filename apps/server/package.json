@@ -1,0 +1,30 @@
+{
+  "name": "@atlas/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atlas/adapters-node": "workspace:*",
+    "@atlas/ingress": "workspace:*",
+    "@atlas/modules-catalog": "workspace:*",
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*",
+    "@atlas/schemas": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
+  }
+}
