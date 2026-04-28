@@ -73,6 +73,14 @@ const g = globalThis as unknown as GlobalLike & InstallFlag;
 if (!g[INSTALLED_KEY]) {
   g[INSTALLED_KEY] = true;
 
+  // Install fake-indexeddb for IDB-backed tests (catalog parity, contract
+  // tests against IDB adapters). Skipped silently if the dep isn't present.
+  try {
+    await import('fake-indexeddb/auto');
+  } catch {
+    // not installed — non-IDB tests don't need it
+  }
+
   // Try to load linkedom. Swallow the resolution failure so packages that
   // don't declare it (e.g. eslint-plugin-atlas-widgets) can still run
   // their pure unit tests through this shared setup file.

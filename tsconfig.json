@@ -21,7 +21,21 @@
       "@atlas/test-state/*": ["./packages/test-state/src/*"],
       "@atlas/eslint-plugin-widgets": ["./packages/eslint-plugin-atlas-widgets/src/index.ts"],
       "@atlas/bundle-standard": ["./bundles/standard/src/index.ts"],
-      "@atlas/bundle-standard/*": ["./bundles/standard/src/*"]
+      "@atlas/bundle-standard/*": ["./bundles/standard/src/*"],
+      "@atlas/platform-core": ["./packages/platform-core/src/index.ts"],
+      "@atlas/platform-core/*": ["./packages/platform-core/src/*"],
+      "@atlas/schemas": ["./packages/schemas/src/index.ts"],
+      "@atlas/schemas/*": ["./packages/schemas/src/*"],
+      "@atlas/ports": ["./packages/ports/src/index.ts"],
+      "@atlas/ports/*": ["./packages/ports/src/*"],
+      "@atlas/contract-tests": ["./packages/contract-tests/src/index.ts"],
+      "@atlas/contract-tests/*": ["./packages/contract-tests/src/*"],
+      "@atlas/adapters-idb": ["./packages/adapters-idb/src/index.ts"],
+      "@atlas/adapters-idb/*": ["./packages/adapters-idb/src/*"],
+      "@atlas/ingress": ["./packages/ingress/src/index.ts"],
+      "@atlas/ingress/*": ["./packages/ingress/src/*"],
+      "@atlas/modules-catalog": ["./packages/modules-catalog/src/index.ts"],
+      "@atlas/modules-catalog/*": ["./packages/modules-catalog/src/*"]
     }
   },
   "include": [

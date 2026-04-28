@@ -3,7 +3,12 @@
     "allow": [
       "Bash(pnpm -r list --depth -1)",
       "Bash(pnpm --filter @atlas/sim test)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(pnpm --filter @atlas/schemas sync-schemas)",
+      "Bash(git stash *)",
+      "Bash(pnpm exec *)"
     ]
   }
 }

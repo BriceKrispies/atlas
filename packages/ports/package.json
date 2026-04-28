@@ -1,0 +1,14 @@
+{
+  "name": "@atlas/ports",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlas/platform-core": "workspace:*",
+    "ajv": "^8.17.0"
+  }
+}

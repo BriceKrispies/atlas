@@ -1,0 +1,17 @@
+{
+  "name": "@atlas/adapters-idb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*",
+    "@atlas/schemas": "workspace:*",
+    "ajv": "^8.17.0",
+    "idb": "^8.0.0"
+  }
+}
