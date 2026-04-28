@@ -1,34 +1,12 @@
-import { describe, test, expect, beforeEach } from 'vitest';
-import { createSimIngress, type SimIngress } from './lib/sim-factory.ts';
+import { describe, test, expect } from 'vitest';
+import { createSimIngress, makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { newEventId, type VariantRow } from '@atlas/modules-catalog';
 import type { SearchDocument } from '@atlas/platform-core';
 
-let dbCounter = 0;
-
-function uniqueTenantId(prefix: string): string {
-  dbCounter++;
-  return `${prefix}-${dbCounter}-${Date.now().toString(36)}`;
-}
-
-async function makeIngress(prefix: string): Promise<{
-  ingress: SimIngress;
-  tenantId: string;
-  principalId: string;
-}> {
-  const tenantId = uniqueTenantId(prefix);
-  const principalId = `user:test-user:${tenantId}`;
-  const ingress = await createSimIngress({ tenantId, principalId });
-  return { ingress, tenantId, principalId };
-}
-
-beforeEach(() => {
-  // each test minted a unique tenant id, so dbs do not collide
-});
-
-describe('catalog_badge_family parity', () => {
+describe('[sim] catalog_badge_family parity', () => {
   test('test_seed_package_apply_is_idempotent', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-idem');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-idem');
     const seed = loadBadgeFamilySeed();
     const idem = `itest-seed-${tenantId}`;
     const intent = buildSeedIntent(tenantId, principalId, idem, seed);
@@ -40,7 +18,7 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_taxonomy_navigation_lists_family', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-tax');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-tax');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-tax-${tenantId}`, seed),
@@ -56,7 +34,7 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_family_detail_returns_attributes_and_policies', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-det');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-det');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-det-${tenantId}`, seed),
@@ -78,7 +56,7 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_variant_table_returns_normalized_rows', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-vt');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-vt');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-vt-${tenantId}`, seed),
@@ -97,7 +75,7 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_variant_table_filter_narrows', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-flt');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-flt');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-flt-${tenantId}`, seed),
@@ -113,8 +91,8 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_tenant_isolation', async () => {
-    const a = await makeIngress('cat-iso-a');
-    const b = await makeIngress('cat-iso-b');
+    const a = await makeSimIngress('cat-iso-a');
+    const b = await makeSimIngress('cat-iso-b');
     const seed = loadBadgeFamilySeed();
     await a.ingress.submitIntent(
       buildSeedIntent(a.tenantId, a.principalId, `itest-iso-${a.tenantId}`, seed),
@@ -128,7 +106,7 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_projection_rebuild_is_deterministic', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-rb');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-rb');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-rb-${tenantId}`, seed),
@@ -138,7 +116,6 @@ describe('catalog_badge_family parity', () => {
     expect(before).not.toBeNull();
     const beforeRows = canonicalizeVariantRows(before!.rows);
 
-    // Bump version → fresh seed-applied event with new idempotency key, projections rebuild.
     const bumped = { ...seed, version: `rebuild-${tenantId}` };
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-rb2-${tenantId}`, bumped),
@@ -152,18 +129,16 @@ describe('catalog_badge_family parity', () => {
   });
 
   test('test_seed_event_has_cache_invalidation_tags', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cat-tag');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cat-tag');
     const seed = loadBadgeFamilySeed();
     const idem = `itest-tag-${tenantId}`;
     const intent = buildSeedIntent(tenantId, principalId, idem, seed);
     const r1 = await ingress.submitIntent(intent);
 
-    // The taxonomy nav must be available — proves event tags didn't crash dispatch.
     const tax = await ingress.getTaxonomyNodes('recognition');
     expect(tax).not.toBeNull();
 
-    // Dive into the event store — the appended envelope must carry the right tags.
-    const stored = await readEventTags(ingress, r1.eventId);
+    const stored = await ingress.readEventTags(r1.eventId);
     expect(stored).not.toBeNull();
     expect(stored!).toContain(`Tenant:${tenantId}`);
     expect(stored!).toContain('TaxonomyTree:recognition');
@@ -172,9 +147,9 @@ describe('catalog_badge_family parity', () => {
   });
 });
 
-describe('catalog_search parity', () => {
+describe('[sim] catalog_search parity', () => {
   test('test_search_returns_family_for_anniversary', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-fam');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-fam');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-fam-${tenantId}`, seed),
@@ -190,7 +165,7 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_returns_variants', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-var');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-var');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-var-${tenantId}`, seed),
@@ -203,8 +178,8 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_tenant_isolation', async () => {
-    const a = await makeIngress('cs-iso-a');
-    const b = await makeIngress('cs-iso-b');
+    const a = await makeSimIngress('cs-iso-a');
+    const b = await makeSimIngress('cs-iso-b');
     const seed = loadBadgeFamilySeed();
     await a.ingress.submitIntent(
       buildSeedIntent(a.tenantId, a.principalId, `itest-cs-iso-${a.tenantId}`, seed),
@@ -218,7 +193,7 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_type_filter_narrows', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-typ');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-typ');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-typ-${tenantId}`, seed),
@@ -231,7 +206,7 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_ranking_descending_score', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-rnk');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-rnk');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-rnk-${tenantId}`, seed),
@@ -250,13 +225,12 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_permission_filter_excludes_disallowed', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-perm');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-perm');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-perm-${tenantId}`, seed),
     );
 
-    // Index a restricted doc directly via the search engine port (debug path equivalent).
     const restricted: SearchDocument = {
       documentId: 'alice_only_anniversary',
       documentType: 'family',
@@ -269,14 +243,13 @@ describe('catalog_search parity', () => {
       },
       permissionAttributes: { allowedPrincipals: ['u_alice'] },
     };
-    await indexDirect(ingress, restricted);
+    await ingress.indexSearchDocument(restricted);
 
     const body = await ingress.searchCatalog({ q: 'anniversary' });
     expect(
       body.results.some((r) => r.documentId === 'alice_only_anniversary'),
     ).toBe(false);
 
-    // Alice can see her doc — open a new ingress with her principal on the same tenant.
     const aliceIngress = await createSimIngress({
       tenantId,
       principalId: 'u_alice',
@@ -290,7 +263,7 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_rebuild_is_deterministic', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-rb');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-rb');
     const seed = loadBadgeFamilySeed();
     await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-rb-${tenantId}`, seed),
@@ -300,8 +273,7 @@ describe('catalog_search parity', () => {
     expect(before.results.length).toBeGreaterThan(0);
     const beforeCount = before.results.length;
 
-    // Truncate search documents directly via internal db, mimicking the SQL DELETE in the Rust test.
-    await truncateSearch(ingress, tenantId);
+    await ingress.truncateSearch();
     const mid = await ingress.searchCatalog({ q: 'anniversary' });
     expect(mid.results.length).toBe(0);
 
@@ -315,13 +287,13 @@ describe('catalog_search parity', () => {
   });
 
   test('test_search_index_cache_invalidation_tag_present', async () => {
-    const { ingress, tenantId, principalId } = await makeIngress('cs-cache');
+    const { ingress, tenantId, principalId } = await makeSimIngress('cs-cache');
     const seed = loadBadgeFamilySeed();
     const r = await ingress.submitIntent(
       buildSeedIntent(tenantId, principalId, `itest-cs-cache-${tenantId}`, seed),
     );
 
-    const tags = await readEventTags(ingress, r.eventId);
+    const tags = await ingress.readEventTags(r.eventId);
     expect(tags).not.toBeNull();
     expect(tags!).toContain('SearchIndex:catalog');
 
@@ -344,30 +316,4 @@ function canonicalizeVariantRows(
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-async function readEventTags(
-  ingress: SimIngress,
-  eventId: string,
-): Promise<string[] | null> {
-  const ev = await ingress.__db.get('events', eventId);
-  return ev?.cacheInvalidationTags ?? null;
-}
-
-async function truncateSearch(ingress: SimIngress, tenantId: string): Promise<void> {
-  const tx = ingress.__db.transaction('search_documents', 'readwrite');
-  const idx = tx.objectStore('search_documents').index('by_tenant_type');
-  let cursor = await idx.openCursor(IDBKeyRange.bound([tenantId, ''], [tenantId, '￿']));
-  while (cursor) {
-    await cursor.delete();
-    cursor = await cursor.continue();
-  }
-  await tx.done;
-}
-
-async function indexDirect(
-  ingress: SimIngress,
-  doc: SearchDocument,
-): Promise<void> {
-  await ingress.__search.index(doc);
-}
-
-void newEventId; // keep symbol used so tree-shaking doesn't drop helper
+void newEventId;

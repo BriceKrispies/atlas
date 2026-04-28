@@ -21,35 +21,30 @@ import {
   getVariantTable,
   searchCatalog,
   type CatalogQueryDeps,
-  type TaxonomyNavigationResponse,
-  type FamilyDetailResponse,
-  type VariantTableParams,
-  type VariantTableResponse,
-  type SearchParams,
-  type SearchResponse,
 } from '@atlas/modules-catalog';
-import type { IntentEnvelope, IntentResponse } from '@atlas/platform-core';
+import {
+  IngressError,
+  type IntentEnvelope,
+  type IntentResponse,
+  type SearchDocument,
+} from '@atlas/platform-core';
+import {
+  IngressFailureError,
+  type BrowserIngress,
+  type FactoryOptions,
+  type HealthResponse,
+  type IngressFailure,
+} from './factory.ts';
 
-export interface CreateSimIngressOptions {
-  tenantId: string;
-  principalId: string;
+interface SimContext {
+  db: IdbDb;
+  state: IngressState;
+  queryDeps: CatalogQueryDeps;
+  search: IdbSearchEngine;
+  registry: InMemoryControlPlaneRegistry;
 }
 
-export interface SimIngress {
-  submitIntent(envelope: IntentEnvelope): Promise<IntentResponse>;
-  getTaxonomyNodes(treeKey: string): Promise<TaxonomyNavigationResponse | null>;
-  getFamilyDetail(familyKey: string): Promise<FamilyDetailResponse | null>;
-  getVariantTable(
-    familyKey: string,
-    params?: VariantTableParams,
-  ): Promise<VariantTableResponse | null>;
-  searchCatalog(params: SearchParams): Promise<SearchResponse>;
-  close(): Promise<void>;
-  __db: IdbDb;
-  __search: IdbSearchEngine;
-}
-
-export async function createSimIngress(opts: CreateSimIngressOptions): Promise<SimIngress> {
+async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   const db = await openAtlasIdb(opts.tenantId);
 
   const eventStore = new IdbEventStore(db);
@@ -83,26 +78,138 @@ export async function createSimIngress(opts: CreateSimIngressOptions): Promise<S
     search,
   };
 
-  return {
-    __db: db,
-    __search: search,
-    async submitIntent(envelope) {
-      return submitIntent(state, envelope);
+  return { db, state, queryDeps, search, registry };
+}
+
+function failureFromIngressError(e: IngressError): IngressFailure {
+  const failure: IngressFailure = {
+    code: e.code,
+    status: e.status,
+    message: e.message,
+  };
+  if (e.correlationId) failure.correlationId = e.correlationId;
+  return failure;
+}
+
+export async function createSimIngress(opts: FactoryOptions): Promise<BrowserIngress> {
+  const ctx = await buildContext(opts);
+
+  const ingress: BrowserIngress = {
+    mode: 'sim',
+    tenantId: opts.tenantId,
+    principalId: opts.principalId,
+
+    async submitIntent(envelope: IntentEnvelope): Promise<IntentResponse> {
+      try {
+        return await submitIntent(ctx.state, envelope);
+      } catch (e) {
+        if (e instanceof IngressError) {
+          throw new IngressFailureError(failureFromIngressError(e));
+        }
+        throw e;
+      }
     },
-    async getTaxonomyNodes(treeKey) {
-      return getTaxonomyNodes(queryDeps, treeKey);
+
+    async submitIntentRaw(envelope) {
+      try {
+        const response = await submitIntent(ctx.state, envelope);
+        return { ok: true, response };
+      } catch (e) {
+        if (e instanceof IngressError) {
+          return { ok: false, failure: failureFromIngressError(e) };
+        }
+        if (e instanceof Error) {
+          return {
+            ok: false,
+            failure: { code: 'TRANSACTION_FAILED', status: 500, message: e.message },
+          };
+        }
+        return {
+          ok: false,
+          failure: { code: 'TRANSACTION_FAILED', status: 500, message: String(e) },
+        };
+      }
     },
-    async getFamilyDetail(familyKey) {
-      return getFamilyDetail(queryDeps, familyKey);
+
+    getTaxonomyNodes(treeKey) {
+      return getTaxonomyNodes(ctx.queryDeps, treeKey);
     },
-    async getVariantTable(familyKey, params) {
-      return getVariantTable(queryDeps, familyKey, params ?? {});
+    getFamilyDetail(familyKey) {
+      return getFamilyDetail(ctx.queryDeps, familyKey);
     },
-    async searchCatalog(params) {
-      return searchCatalog(queryDeps, params);
+    getVariantTable(familyKey, params) {
+      return getVariantTable(ctx.queryDeps, familyKey, params ?? {});
     },
+    searchCatalog(params) {
+      return searchCatalog(ctx.queryDeps, params);
+    },
+
+    async readEventTags(eventId) {
+      const ev = await ctx.db.get('events', eventId);
+      return ev?.cacheInvalidationTags ?? null;
+    },
+
+    async truncateSearch() {
+      const tx = ctx.db.transaction('search_documents', 'readwrite');
+      const idx = tx.objectStore('search_documents').index('by_tenant_type');
+      let cursor = await idx.openCursor(
+        IDBKeyRange.bound([opts.tenantId, ''], [opts.tenantId, '￿']),
+      );
+      while (cursor) {
+        await cursor.delete();
+        cursor = await cursor.continue();
+      }
+      await tx.done;
+    },
+
+    async indexSearchDocument(doc: SearchDocument): Promise<void> {
+      await ctx.search.index(doc);
+    },
+
+    async health(): Promise<{ status: number; body: HealthResponse }> {
+      return { status: 200, body: { status: 'ok' } };
+    },
+
+    async ready(): Promise<{ status: number; body: HealthResponse }> {
+      const ok = ctx.registry.hasAction('Catalog.SeedPackage.Apply');
+      const body: HealthResponse = ok
+        ? { status: 'ok', checks: { registry: 'ok' } }
+        : { status: 'unavailable', checks: { registry: 'no actions loaded' } };
+      return { status: ok ? 200 : 503, body };
+    },
+
+    async whoami() {
+      // Sim has no HTTP / no JWT verification path; nothing to probe. Tests
+      // that exercise auth headers must run only in node mode.
+      return null;
+    },
+
     async close() {
-      db.close();
+      ctx.db.close();
     },
   };
+
+  return ingress;
+}
+
+let dbCounter = 0;
+
+export function uniqueTenantId(prefix: string): string {
+  dbCounter++;
+  return `${prefix}-${dbCounter}-${Date.now().toString(36)}`;
+}
+
+/**
+ * Convenience wrapper that mints a unique tenant id + principal and returns
+ * the resulting ingress alongside the ids. Mirrors the catalog-sim helper.
+ */
+export async function makeSimIngress(prefix: string): Promise<{
+  ingress: BrowserIngress;
+  tenantId: string;
+  principalId: string;
+}> {
+  const tenantId = uniqueTenantId(prefix);
+  const principalId = `user:test-user:${tenantId}`;
+  const ingress = await createSimIngress({ tenantId, principalId });
+  return { ingress, tenantId, principalId };
 }
