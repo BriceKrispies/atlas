@@ -146,7 +146,7 @@ export class PostgresSearchEngine implements SearchEngine {
     return this.searchPaginated(query, tenantId, principalId, DEFAULT_LIMIT, 0);
   }
 
-  async searchPaginated(
+  private async searchPaginated(
     query: string,
     tenantId: string,
     principalId: string,

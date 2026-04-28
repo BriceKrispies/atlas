@@ -1,13 +1,9 @@
 /**
  * PostgresProjectionStore — Postgres-backed `ProjectionStore` adapter.
  *
- * Schema (created by `ensureProjectionStoreSchema`):
- *
- *   CREATE TABLE projections (
- *     projection_key text PRIMARY KEY,
- *     value          jsonb NOT NULL,
- *     updated_at     timestamptz NOT NULL DEFAULT now()
- *   );
+ * Schema is installed by the bundled migration
+ * `migrations/tenant/20260428000003_projections.sql` (run via the
+ * adapters-node migration runner).
  *
  * `value` is `jsonb` — the contract requires "values can be primitives";
  * `jsonb` accepts numbers, strings, booleans, arrays, objects, and SQL
@@ -17,16 +13,6 @@
 
 import type { ProjectionStore } from '@atlas/ports';
 import type postgres from 'postgres';
-
-export async function ensureProjectionStoreSchema(sql: postgres.Sql): Promise<void> {
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS projections (
-      projection_key text PRIMARY KEY,
-      value          jsonb,
-      updated_at     timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-}
 
 export class PostgresProjectionStore implements ProjectionStore {
   constructor(private readonly sql: postgres.Sql) {}

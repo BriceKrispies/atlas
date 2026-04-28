@@ -1,16 +1,9 @@
 /**
  * PostgresCatalogStateStore — Postgres-backed `CatalogStateStore`.
  *
- * Schema (created by `ensureCatalogStateSchema`):
- *
- *   CREATE TABLE catalog_state (
- *     tenant_id             text PRIMARY KEY,
- *     seed_package_key      text NOT NULL,
- *     seed_package_version  text NOT NULL,
- *     payload               jsonb NOT NULL,
- *     published_revisions   jsonb NOT NULL DEFAULT '{}',
- *     updated_at            timestamptz NOT NULL DEFAULT now()
- *   );
+ * Schema is installed by the bundled migration
+ * `migrations/tenant/20260428000004_catalog_state.sql` (run via the
+ * adapters-node migration runner).
  *
  * One row per tenant (the IDB shape is also keyed on `tenantId`). `put`
  * is INSERT ... ON CONFLICT (tenant_id) DO UPDATE.
@@ -18,19 +11,6 @@
 
 import type { CatalogStateRecord, CatalogStateStore } from '@atlas/ports';
 import type postgres from 'postgres';
-
-export async function ensureCatalogStateSchema(sql: postgres.Sql): Promise<void> {
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS catalog_state (
-      tenant_id            text PRIMARY KEY,
-      seed_package_key     text NOT NULL,
-      seed_package_version text NOT NULL,
-      payload              jsonb NOT NULL,
-      published_revisions  jsonb NOT NULL DEFAULT '{}'::jsonb,
-      updated_at           timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-}
 
 interface CatalogStateRow {
   tenant_id: string;

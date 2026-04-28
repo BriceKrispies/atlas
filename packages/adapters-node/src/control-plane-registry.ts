@@ -19,21 +19,16 @@ import { moduleManifest, getSchemaValidator } from '@atlas/schemas';
 import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { ActionEntry, ControlPlaneRegistry } from '@atlas/ports';
 import type postgres from 'postgres';
-
-const ACTION_SCHEMA_BY_ID: Record<string, { schemaId: string; schemaVersion: number }> = {
-  'Catalog.SeedPackage.Apply': {
-    schemaId: 'catalog.seed_package.apply.v1',
-    schemaVersion: 1,
-  },
-  'Catalog.Family.Publish': {
-    schemaId: 'catalog.family.publish.v1',
-    schemaVersion: 1,
-  },
-};
+import { actionIdToSchemaId } from './action-schema-id.ts';
 
 /**
  * Construct from the bundled manifest. Matches `InMemoryControlPlaneRegistry`
  * in `@atlas/adapters-idb` exactly — same source data, same shape.
+ *
+ * Schema id is derived from `actionId` via `actionIdToSchemaId` (no
+ * static map): `Catalog.SeedPackage.Apply` -> `catalog.seed_package.apply.v1`.
+ * Adding a new action only requires the manifest entry plus the
+ * generated schema; no code edit here.
  */
 export class PostgresControlPlaneRegistry implements ControlPlaneRegistry {
   private readonly actions: Map<string, ActionEntry>;
@@ -48,13 +43,16 @@ export class PostgresControlPlaneRegistry implements ControlPlaneRegistry {
       actions?: Array<{ actionId: string; resourceType: string }>;
     };
     for (const a of manifest.actions ?? []) {
-      const mapping = ACTION_SCHEMA_BY_ID[a.actionId];
-      if (!mapping) continue;
+      const { schemaId, schemaVersion } = actionIdToSchemaId(a.actionId);
+      // Skip silently if no validator is registered for the derived
+      // schemaId — keeps parity with the IDB adapter which also tolerates
+      // manifest entries that have no bundled schema.
+      if (getSchemaValidator(schemaId, schemaVersion) == null) continue;
       this.actions.set(a.actionId, {
         actionId: a.actionId,
         resourceType: a.resourceType,
-        schemaId: mapping.schemaId,
-        schemaVersion: mapping.schemaVersion,
+        schemaId,
+        schemaVersion,
       });
     }
   }

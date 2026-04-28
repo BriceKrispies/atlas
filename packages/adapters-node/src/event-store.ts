@@ -1,25 +1,9 @@
 /**
  * PostgresEventStore — Postgres-backed `EventStore` adapter.
  *
- * Schema (created lazily by `ensureSchema`, also installable via the
- * adapters-node migration runner once a dedicated migration ships):
- *
- *   CREATE TABLE events (
- *     event_id                 text PRIMARY KEY,
- *     event_type               text NOT NULL,
- *     schema_id                text NOT NULL,
- *     schema_version           integer NOT NULL,
- *     tenant_id                text NOT NULL,
- *     idempotency_key          text NOT NULL,
- *     occurred_at              timestamptz NOT NULL,
- *     correlation_id           text NOT NULL,
- *     causation_id             text,
- *     principal_id             text,
- *     user_id                  text,
- *     payload                  jsonb NOT NULL,
- *     cache_invalidation_tags  text[],
- *     UNIQUE (tenant_id, idempotency_key)
- *   );
+ * Schema is installed by the bundled migration
+ * `migrations/tenant/20260428000001_events.sql` (run via the adapters-node
+ * migration runner). This adapter no longer creates tables on the fly.
  *
  * Idempotency is **tenant-scoped** — `(tenant_id, idempotency_key)` is the
  * unique key. Replay across tenants therefore stores both events. Replay
@@ -29,7 +13,7 @@
  * with `event_id` as a deterministic tiebreaker.
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import { IngressError, type EventEnvelope } from '@atlas/platform-core';
 import type { EventStore } from '@atlas/ports';
 import type postgres from 'postgres';
 
@@ -69,30 +53,6 @@ function rowToEnvelope(row: EventRow): EventEnvelope {
     cacheInvalidationTags: row.cache_invalidation_tags,
     payload: row.payload,
   };
-}
-
-export async function ensureEventStoreSchema(sql: postgres.Sql): Promise<void> {
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS events (
-      event_id                text PRIMARY KEY,
-      event_type              text NOT NULL,
-      schema_id               text NOT NULL,
-      schema_version          integer NOT NULL,
-      tenant_id               text NOT NULL,
-      idempotency_key         text NOT NULL,
-      occurred_at             timestamptz NOT NULL,
-      correlation_id          text NOT NULL,
-      causation_id            text,
-      principal_id            text,
-      user_id                 text,
-      payload                 jsonb NOT NULL,
-      cache_invalidation_tags text[]
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS uniq_events_tenant_idempotency
-      ON events (tenant_id, idempotency_key);
-    CREATE INDEX IF NOT EXISTS idx_events_tenant_occurred
-      ON events (tenant_id, occurred_at, event_id);
-  `);
 }
 
 export class PostgresEventStore implements EventStore {
@@ -136,8 +96,17 @@ export class PostgresEventStore implements EventStore {
       LIMIT 1
     `;
     if (existing.length === 0) {
-      throw new Error(
-        `EventStore.append: race — INSERT was a no-op but no existing row found for (${envelope.tenantId}, ${envelope.idempotencyKey})`,
+      // Rare race: INSERT was a no-op (someone else won the conflict) but
+      // the follow-up SELECT also returned nothing. Surface as the
+      // canonical `STORAGE_FAILED` so the boundary middleware in
+      // `apps/server` maps it to a 500 with a stable error code.
+      // `correlationId` is the empty string — the middleware substitutes
+      // its own correlation id when the adapter doesn't have one.
+      throw new IngressError(
+        'STORAGE_FAILED',
+        `EventStore.append: storage race — insert was a no-op but no existing row found for (${envelope.tenantId}, ${envelope.idempotencyKey})`,
+        500,
+        '',
       );
     }
     return existing[0]!.event_id;

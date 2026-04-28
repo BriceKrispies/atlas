@@ -2,16 +2,24 @@ import { moduleManifest, getSchemaValidator } from '@atlas/schemas';
 import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { ActionEntry, ControlPlaneRegistry } from '@atlas/ports';
 
-const ACTION_SCHEMA_BY_ID: Record<string, { schemaId: string; schemaVersion: number }> = {
-  'Catalog.SeedPackage.Apply': {
-    schemaId: 'catalog.seed_package.apply.v1',
-    schemaVersion: 1,
-  },
-  'Catalog.Family.Publish': {
-    schemaId: 'catalog.family.publish.v1',
-    schemaVersion: 1,
-  },
-};
+/**
+ * Convention-based mapping from a manifest `actionId` to its payload-schema
+ * id. PascalCase segments become lower_snake_case, joined by `.`, suffix
+ * `.v1`. Mirrors `@atlas/adapters-node/src/action-schema-id.ts`; both
+ * adapters share the same `@atlas/schemas` source of truth.
+ *
+ *   `Catalog.SeedPackage.Apply` -> `catalog.seed_package.apply.v1`
+ */
+const PASCAL_BOUNDARY = /(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g;
+
+function toSnake(segment: string): string {
+  return segment.replace(PASCAL_BOUNDARY, '_').toLowerCase();
+}
+
+function actionIdToSchemaId(actionId: string): { schemaId: string; schemaVersion: number } {
+  const segments = actionId.split('.').map(toSnake).filter((s) => s.length > 0);
+  return { schemaId: `${segments.join('.')}.v1`, schemaVersion: 1 };
+}
 
 export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
   private actions: Map<string, ActionEntry>;
@@ -20,13 +28,13 @@ export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
     this.actions = new Map();
     const manifest = moduleManifest() as { actions?: Array<{ actionId: string; resourceType: string }> };
     for (const a of manifest.actions ?? []) {
-      const mapping = ACTION_SCHEMA_BY_ID[a.actionId];
-      if (!mapping) continue;
+      const { schemaId, schemaVersion } = actionIdToSchemaId(a.actionId);
+      if (getSchemaValidator(schemaId, schemaVersion) == null) continue;
       this.actions.set(a.actionId, {
         actionId: a.actionId,
         resourceType: a.resourceType,
-        schemaId: mapping.schemaId,
-        schemaVersion: mapping.schemaVersion,
+        schemaId,
+        schemaVersion,
       });
     }
   }

@@ -54,6 +54,10 @@ interface PostgresTenantDbProviderOptions {
 class TenantPoolCache {
   private readonly pools = new Map<string, postgres.Sql>();
   private readonly order: string[] = [];
+  // Pending close promises from eviction / race-loser cleanup. Tracked so
+  // `closeAll` can await them — otherwise unit-test teardown can race with
+  // half-closed sockets.
+  private readonly pendingCloses = new Set<Promise<void>>();
   constructor(private readonly cap: number) {}
 
   get(tenantId: string): postgres.Sql | undefined {
@@ -72,12 +76,22 @@ class TenantPoolCache {
       if (oldest === undefined) break;
       const evicted = this.pools.get(oldest);
       this.pools.delete(oldest);
-      // Best-effort cleanup; postgres.js' `end()` is async + returns a
-      // promise we don't need to await before returning the new pool.
-      if (evicted) void evicted.end({ timeout: 1 });
+      if (evicted) this.trackClose(evicted);
     }
     this.pools.set(tenantId, pool);
     this.order.push(tenantId);
+  }
+
+  /**
+   * Track a fire-and-forget pool close so `closeAll` can wait for it.
+   * Used by eviction and the race-loser path.
+   */
+  trackClose(pool: postgres.Sql): void {
+    const p = pool.end({ timeout: 1 }).catch(() => {
+      /* swallow — close is best-effort */
+    });
+    this.pendingCloses.add(p);
+    void p.finally(() => this.pendingCloses.delete(p));
   }
 
   has(tenantId: string): boolean {
@@ -93,7 +107,8 @@ class TenantPoolCache {
     const tasks = [...this.pools.values()].map((p) => p.end({ timeout: 1 }));
     this.pools.clear();
     this.order.length = 0;
-    await Promise.allSettled(tasks);
+    const pending = [...this.pendingCloses];
+    await Promise.allSettled([...tasks, ...pending]);
   }
 }
 
@@ -103,6 +118,10 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
   private readonly resolveOverride?: (
     tenantId: string,
   ) => Promise<TenantConnectionInfo | null>;
+  // Dedup concurrent first-time `getPool` calls per tenant so we don't
+  // spin up N pools and discard N-1 (TOCTOU race in the previous
+  // implementation).
+  private readonly inFlight = new Map<string, Promise<postgres.Sql>>();
 
   constructor(
     private readonly controlPlane: postgres.Sql,
@@ -120,17 +139,30 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     const cached = this.cache.get(tenantId);
     if (cached) return cached;
 
+    const pending = this.inFlight.get(tenantId);
+    if (pending) return pending;
+
+    const promise = this.openPool(tenantId).finally(() => {
+      this.inFlight.delete(tenantId);
+    });
+    this.inFlight.set(tenantId, promise);
+    return promise;
+  }
+
+  private async openPool(tenantId: string): Promise<postgres.Sql> {
     const info = await this.lookupConnectionInfo(tenantId);
     if (!info) {
       throw new Error(`tenant ${tenantId}: not found in control_plane.tenants`);
     }
     const pool = postgres(connectionString(info), { max: this.poolMax });
 
-    // Re-check after the network round-trip — a concurrent caller may have
-    // installed a pool already. Theirs wins; ours is closed.
+    // Defensive re-check: even with `inFlight`, another path could have
+    // populated the cache (e.g. if `getPool` was called from inside a
+    // resolveOverride). Last-write-wins; the loser's pool is tracked for
+    // shutdown.
     const raced = this.cache.get(tenantId);
     if (raced) {
-      void pool.end({ timeout: 1 });
+      this.cache.trackClose(pool);
       return raced;
     }
     this.cache.insert(tenantId, pool);

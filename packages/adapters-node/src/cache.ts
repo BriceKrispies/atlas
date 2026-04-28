@@ -1,16 +1,9 @@
 /**
  * PostgresCache — Postgres-backed `Cache` adapter.
  *
- * Schema (created by `ensureCacheSchema`):
- *
- *   CREATE TABLE cache_entries (
- *     cache_key   text PRIMARY KEY,
- *     value       jsonb,
- *     tags        text[] NOT NULL DEFAULT '{}',
- *     expires_at  timestamptz,
- *     set_at      timestamptz NOT NULL DEFAULT now()
- *   );
- *   CREATE INDEX cache_entries_tags_idx ON cache_entries USING gin (tags);
+ * Schema is installed by the bundled migration
+ * `migrations/tenant/20260428000002_cache_entries.sql` (run via the
+ * adapters-node migration runner).
  *
  * Behaviour:
  * - `set` upserts on `cache_key`. `ttlSeconds=0` stores `expires_at = NULL`
@@ -29,20 +22,6 @@
 import type { CacheSetOptions } from '@atlas/platform-core';
 import type { Cache } from '@atlas/ports';
 import type postgres from 'postgres';
-
-export async function ensureCacheSchema(sql: postgres.Sql): Promise<void> {
-  await sql.unsafe(`
-    CREATE TABLE IF NOT EXISTS cache_entries (
-      cache_key   text PRIMARY KEY,
-      value       jsonb,
-      tags        text[] NOT NULL DEFAULT '{}',
-      expires_at  timestamptz,
-      set_at      timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS cache_entries_tags_idx
-      ON cache_entries USING gin (tags);
-  `);
-}
 
 export class PostgresCache implements Cache {
   constructor(private readonly sql: postgres.Sql) {}

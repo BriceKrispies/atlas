@@ -48,6 +48,16 @@ export async function runMigrations(
   sql: postgres.Sql,
   kind: MigrationKind,
 ): Promise<MigrationRunResult> {
+  // Runtime narrowing: TS erases the union at runtime and `kind` flows
+  // into `sql.unsafe(...)` via `migrationsTableFor`. Refuse anything that
+  // isn't one of the two known string literals — keeps a future caller
+  // from accidentally turning this into a SQL-injection sink.
+  if (kind !== 'control-plane' && kind !== 'tenant') {
+    throw new TypeError(
+      `runMigrations: kind must be 'control-plane' | 'tenant', got ${String(kind)}`,
+    );
+  }
+
   // 1. Ensure schema + bookkeeping table exist.
   if (kind === 'control-plane') {
     await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS control_plane`);
