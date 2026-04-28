@@ -25,10 +25,9 @@ export class IdbEventStore implements EventStore {
   }
 
   async readEvents(tenantId: string): Promise<EventEnvelope[]> {
-    const all =
-      tenantId === '*'
-        ? await this.db.getAll('events')
-        : await this.db.getAllFromIndex('events', 'by_tenant', tenantId);
+    // Tenant scoping is mandatory (Invariant I7). The port signature is
+    // `tenantId: string`; there is no cross-tenant escape hatch.
+    const all = await this.db.getAllFromIndex('events', 'by_tenant', tenantId);
     // Contract: events ordered ascending by occurredAt. ISO-8601 strings
     // sort lexicographically the same as chronologically.
     return all.sort((a, b) => {

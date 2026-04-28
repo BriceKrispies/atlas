@@ -26,11 +26,9 @@ function makeDoc(opts: MakeDocOptions = {}): SearchDocument {
     tenantId: opts.tenantId ?? 'tenant-a',
     fields,
     permissionAttributes:
-      opts.allowedPrincipals === undefined
+      opts.allowedPrincipals == null
         ? null
-        : opts.allowedPrincipals === null
-          ? null
-          : { allowedPrincipals: opts.allowedPrincipals },
+        : { allowedPrincipals: opts.allowedPrincipals },
   };
   return doc;
 }
@@ -175,9 +173,14 @@ export function searchEngineContract(makeEngine: () => Promise<SearchEngine>): v
       expect(r[0]!.fields['title']).toBe('anniversary reissue');
     });
 
-    test('empty query returns no results', async () => {
-      // Both adapters: IDB returns []; Postgres uses plainto_tsquery('') which
-      // produces an empty tsquery and matches nothing.
+    test('[error-shape] empty query returns [] (no error, no implicit "match-all")', async () => {
+      // Contract: an empty query string deterministically returns no rows.
+      // - IDB adapter: short-circuits on empty `query.trim()`.
+      // - Postgres adapter: plainto_tsquery('') produces an empty tsquery
+      //   which matches nothing.
+      // The important non-behaviour to lock in: empty query is NOT treated
+      // as "match every row in tenant" — that would be a tenant-wide scan
+      // hidden behind a forgiving API.
       await engine.index(
         makeDoc({
           documentId: 'doc-x',

@@ -236,6 +236,27 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(results[0]).toBe(stored[0]!.eventId);
     });
 
+    test('[error-shape] append with a missing required field on the envelope throws', async () => {
+      // The `eventId` is the keyPath of the IDB store and the PK of the
+      // Postgres `events` table — neither adapter can persist a row without
+      // it. Contract: append rejects (rather than silently writing a
+      // half-shaped row).
+      const broken = makeEvent({ eventId: 'evt-broken' }) as unknown as Record<
+        string,
+        unknown
+      >;
+      delete broken['eventId'];
+      await expect(store.append(broken as unknown as EventEnvelope)).rejects.toThrow();
+    });
+
+    test('[error-shape] getEvent on an empty eventId returns null (not an error)', async () => {
+      // Neither adapter pre-validates the input string; a row with key '' has
+      // not been written, so `get('')` falls through to "missing key", which
+      // the contract pins to `null`.
+      const v = await store.getEvent('');
+      expect(v).toBeNull();
+    });
+
     test('[concurrency] interleaved appends across tenants do not cross-contaminate', async () => {
       const ops: Promise<string>[] = [];
       for (let i = 0; i < 10; i++) {

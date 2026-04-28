@@ -69,10 +69,10 @@ export function projectionStoreContract(makeStore: () => Promise<ProjectionStore
       expect(await store.get('num')).toBe(42);
       expect(await store.get('str')).toBe('hello');
       expect(await store.get('bool')).toBe(true);
-      // Null stored as a value vs. not-stored: contract says get returns null for missing.
-      // Storing null is allowed; get may return null in either case. We just assert no throw.
-      const n = await store.get('nullish');
-      expect(n === null || n === undefined).toBe(true);
+      // Contract: `get` returns `null` whether the key is missing OR the
+      // stored value is null. We pin to `null` (never `undefined`) so the
+      // IDB and Postgres adapters cannot diverge on this edge case.
+      expect(await store.get('nullish')).toBeNull();
     });
 
     test('values can be deeply nested objects and arrays', async () => {
@@ -92,6 +92,15 @@ export function projectionStoreContract(makeStore: () => Promise<ProjectionStore
       await store.set('LOWER', 'upper');
       expect(await store.get('Lower')).toBe('lower');
       expect(await store.get('LOWER')).toBe('upper');
+    });
+
+    test('[error-shape] get with an empty key returns null (not an error)', async () => {
+      // The port's contract is "missing key returns null". An empty string
+      // is "missing" until something has been stored under it. Both adapters
+      // accept '' as a valid (if unusual) key — we lock that in so neither
+      // side pre-validates and diverges.
+      const v = await store.get('');
+      expect(v).toBeNull();
     });
 
     test('[concurrency] concurrent set + get on independent keys is consistent', async () => {

@@ -139,21 +139,47 @@ export function cacheContract(makeCache: () => Promise<Cache>): void {
       }
     });
 
-    test('[concurrency] concurrent invalidateByTags counts add up to the total set, no double-counting', async () => {
-      // Set 6 entries: 3 tagged 'red', 3 tagged 'blue'. Two concurrent tag-invalidations.
-      for (let i = 0; i < 3; i++) {
-        await cache.set(`r-${i}`, i, { ttlSeconds: 0, tags: ['red'] });
-        await cache.set(`b-${i}`, i, { ttlSeconds: 0, tags: ['blue'] });
+    test('[error-shape] invalidateByTags([]) is a no-op that returns 0 (does not error)', async () => {
+      // The empty-tag invalidation has no defined target rows. Contract pins
+      // it to "no error, return 0, mutate nothing" so callers can pass tag
+      // arrays from event envelopes without pre-checking emptiness.
+      await cache.set('keep-me', 1, { ttlSeconds: 0, tags: ['anything'] });
+      await expect(cache.invalidateByTags([])).resolves.toBe(0);
+      expect(await cache.get('keep-me')).toBe(1);
+    });
+
+    test('[concurrency] two invalidateByTags calls racing over overlapping rows do not double-count', async () => {
+      // Build cache state with overlapping tags. 12 entries:
+      //   k-a-0..3   tagged ['tagA']
+      //   k-b-0..3   tagged ['tagB']
+      //   k-ab-0..3  tagged ['tagA', 'tagB']  (the racing rows)
+      // Both racers ask for tagA AND tagB. Either:
+      //   - one racer gets all 12 and the other gets 0, or
+      //   - they split the rows across them.
+      // What MUST hold: red + blue == 12, and every row is gone.
+      // A non-atomic implementation that double-deletes / double-counts
+      // would produce red + blue > 12; a torn one would leave rows.
+      const setOps: Promise<void>[] = [];
+      for (let i = 0; i < 4; i++) {
+        setOps.push(
+          cache.set(`k-a-${i}`, i, { ttlSeconds: 0, tags: ['tagA'] }),
+          cache.set(`k-b-${i}`, i, { ttlSeconds: 0, tags: ['tagB'] }),
+          cache.set(`k-ab-${i}`, i, { ttlSeconds: 0, tags: ['tagA', 'tagB'] }),
+        );
       }
+      await Promise.all(setOps);
+
       const [red, blue] = await Promise.all([
-        cache.invalidateByTags(['red']),
-        cache.invalidateByTags(['blue']),
+        cache.invalidateByTags(['tagA', 'tagB']),
+        cache.invalidateByTags(['tagA', 'tagB']),
       ]);
-      expect(red + blue).toBe(6);
-      // Nothing left.
-      for (let i = 0; i < 3; i++) {
-        expect(await cache.get(`r-${i}`)).toBeNull();
-        expect(await cache.get(`b-${i}`)).toBeNull();
+
+      expect(red + blue).toBe(12);
+
+      for (let i = 0; i < 4; i++) {
+        expect(await cache.get(`k-a-${i}`)).toBeNull();
+        expect(await cache.get(`k-b-${i}`)).toBeNull();
+        expect(await cache.get(`k-ab-${i}`)).toBeNull();
       }
     });
   });

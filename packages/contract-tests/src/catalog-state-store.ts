@@ -68,6 +68,20 @@ export function catalogStateStoreContract(
       expect(got!.payload).toEqual(payload);
     });
 
+    test('[error-shape] put with an empty tenantId is accepted at the port layer (callers must enforce non-empty)', async () => {
+      // The port itself does not validate tenantId — it's a flat KV. Tenant
+      // non-emptiness is enforced upstream by the ingress submit pipeline
+      // (Invariant I7); pushing it down to every adapter would duplicate
+      // that check and create divergence risk between IDB and Postgres.
+      // Contract: empty tenantId is a normal write. We pin both adapters
+      // to the same forgiving behaviour so the parity tests stay aligned.
+      const r = rec({ tenantId: '', seedPackageVersion: 'v-empty' });
+      await expect(store.put(r)).resolves.toBeUndefined();
+      const got = await store.get('');
+      expect(got).not.toBeNull();
+      expect(got!.seedPackageVersion).toBe('v-empty');
+    });
+
     test('[concurrency] concurrent puts under different tenants do not interfere', async () => {
       const puts: Promise<void>[] = [];
       for (let i = 0; i < 10; i++) {
@@ -81,6 +95,35 @@ export function catalogStateStoreContract(
         expect(got).not.toBeNull();
         expect(got!.seedPackageVersion).toBe(`v${i}`);
       }
+    });
+
+    test('[concurrency] concurrent overwrites of the same tenant land one of the racing values intact', async () => {
+      // Fire 10 concurrent puts at the SAME tenant key with distinct,
+      // internally-correlated payloads. Last-writer-wins is fine, but the
+      // final stored record MUST be one of the 10 attempted records in full
+      // — no torn writes, no half-merged blob.
+      const tenantId = 'tenant-overwrite-race';
+      const candidates = Array.from({ length: 10 }, (_, i) =>
+        rec({
+          tenantId,
+          seedPackageVersion: `v${i}`,
+          publishedRevisions: { 'fam-x': i },
+          payload: { kind: 'badge_family', marker: i },
+        }),
+      );
+      await Promise.all(candidates.map((c) => store.put(c)));
+
+      const got = await store.get(tenantId);
+      expect(got).not.toBeNull();
+
+      // The final record must match exactly one of the candidates — version,
+      // payload, and publishedRevisions all from the same source.
+      const winner = candidates.find(
+        (c) => c.seedPackageVersion === got!.seedPackageVersion,
+      );
+      expect(winner).toBeDefined();
+      expect(got!.payload).toEqual(winner!.payload);
+      expect(got!.publishedRevisions).toEqual(winner!.publishedRevisions);
     });
   });
 }

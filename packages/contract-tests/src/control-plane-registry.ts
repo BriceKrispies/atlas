@@ -35,25 +35,32 @@ export function controlPlaneRegistryContract(
       expect(registry.getAction('Nope.None')).toBeNull();
     });
 
-    test('getSchemaValidator returns a working validator for a known schema', () => {
+    test('getSchemaValidator returns a working validator that accepts conforming payloads and rejects empty objects', () => {
+      // Schema `catalog.seed_package.apply.v1` (see
+      // `packages/schemas/src/generated/...`) requires:
+      //   actionId, resourceType, seedPackageKey, seedPackageVersion, payload
+      // and uses additionalProperties: false. The validator must accept a
+      // structurally valid payload and reject one missing the required fields.
       const validate = registry.getSchemaValidator('catalog.seed_package.apply.v1', 1);
       expect(validate).not.toBeNull();
-      // The validator must accept a structurally valid payload.
-      const candidate = {
+
+      const valid = {
         actionId: 'Catalog.SeedPackage.Apply',
         resourceType: 'SeedPackage',
-        moduleId: 'badges',
         seedPackageKey: 'badge-family',
-        version: '1.0.0',
-        package: { kind: 'badge_family' },
+        seedPackageVersion: '1.0.0',
+        payload: { kind: 'badge_family' },
       };
-      const ok = validate!(candidate);
-      // Validator returns boolean; we only assert call-shape, since the
-      // Rust counterpart equally accepts arbitrary `package` content.
-      expect(typeof ok).toBe('boolean');
+      expect(validate!(valid)).toBe(true);
+
+      // Empty object lacks all required fields.
+      expect(validate!({})).toBe(false);
     });
 
-    test('getSchemaValidator returns null for an unknown schema id', () => {
+    test('[error-shape] getSchemaValidator returns null for an unknown schema id (does not throw)', () => {
+      // Contract: unknown schemaId is NOT an exception. Callers (the ingress
+      // submitIntent pipeline) check the null and return a typed
+      // SCHEMA_NOT_FOUND error themselves; the registry stays a pure lookup.
       const validate = registry.getSchemaValidator('does.not.exist.v1', 1);
       expect(validate).toBeNull();
     });
