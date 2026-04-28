@@ -1,10 +1,6 @@
 import type { SearchEngine } from '@atlas/ports';
-import type {
-  SearchParams,
-  SearchResponse,
-  SearchResult,
-  SearchDocument,
-} from '@atlas/platform-core';
+import type { SearchDocument } from '@atlas/platform-core';
+import type { SearchParams, SearchResponse, SearchResult } from '../responses.ts';
 
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;

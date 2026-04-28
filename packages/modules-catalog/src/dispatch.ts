@@ -5,12 +5,10 @@ import type {
   SearchEngine,
   Cache,
 } from '@atlas/ports';
-import {
-  rebuildTaxonomyNavigation,
-  rebuildFamilyDetail,
-  rebuildVariantMatrix,
-  rebuildSearchDocuments,
-} from '@atlas/modules-catalog';
+import { rebuildTaxonomyNavigation } from './projections/taxonomy-navigation.ts';
+import { rebuildFamilyDetail } from './projections/family-detail.ts';
+import { rebuildVariantMatrix } from './projections/variant-matrix.ts';
+import { rebuildSearchDocuments } from './projections/search-documents.ts';
 
 const CATALOG_EVENT_TYPES = new Set([
   'StructuredCatalog.SeedPackageApplied',
@@ -18,14 +16,17 @@ const CATALOG_EVENT_TYPES = new Set([
   'StructuredCatalog.VariantUpserted',
 ]);
 
-export interface ProjectionContext {
+export interface CatalogDispatchContext {
   catalogState: CatalogStateStore;
   projections: ProjectionStore;
   search: SearchEngine;
   cache: Cache;
 }
 
-export async function dispatchEvent(envelope: EventEnvelope, ctx: ProjectionContext): Promise<void> {
+export async function dispatchCatalogEvent(
+  envelope: EventEnvelope,
+  ctx: CatalogDispatchContext,
+): Promise<void> {
   if (CATALOG_EVENT_TYPES.has(envelope.eventType)) {
     await rebuildTaxonomyNavigation(envelope.tenantId, ctx.catalogState, ctx.projections);
     await rebuildFamilyDetail(envelope.tenantId, ctx.catalogState, ctx.projections);

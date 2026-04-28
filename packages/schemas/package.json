@@ -9,7 +9,8 @@
     "./loader": "./src/loader.ts"
   },
   "scripts": {
-    "sync-schemas": "tsx scripts/sync-schemas.ts"
+    "sync-schemas": "tsx scripts/sync-schemas.ts",
+    "prepare": "tsx scripts/sync-schemas.ts"
   },
   "dependencies": {
     "ajv": "^8.17.0",

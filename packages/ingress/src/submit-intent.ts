@@ -7,14 +7,15 @@ import type {
   SearchEngine,
   ControlPlaneRegistry,
   CatalogStateStore,
+  HandlerRegistry,
+  IntentHandlerContext,
 } from '@atlas/ports';
-import {
-  handleSeedPackageApply,
-  handleFamilyPublish,
-  newEventId,
-  type SeedPayload,
-} from '@atlas/modules-catalog';
-import { dispatchEvent, type ProjectionContext } from './worker/projection-loop.ts';
+
+// Hook invoked for every event produced by submitIntent (handler-emitted or
+// the generic fall-through). The wiring layer plugs in module-specific
+// projection rebuilds + cache invalidation here so this package depends on
+// no domain modules.
+export type EventDispatcher = (envelope: EventEnvelope) => Promise<void>;
 
 export interface IngressState {
   tenantId: string;
@@ -25,10 +26,16 @@ export interface IngressState {
   search: SearchEngine;
   registry: ControlPlaneRegistry;
   catalogState: CatalogStateStore;
+  handlers: HandlerRegistry;
+  dispatch: EventDispatcher;
 }
 
 function err(code: string, message: string, status: number, correlationId: string): never {
   throw new IngressError(code, message, status, correlationId);
+}
+
+function newId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export async function submitIntent(
@@ -79,76 +86,49 @@ export async function submitIntent(
   // 6. Authz (stub: allow-all)
 
   // 7. Handler dispatch
-  const ctx: ProjectionContext = {
-    catalogState: state.catalogState,
-    projections: state.projections,
-    search: state.search,
-    cache: state.cache,
-  };
-
-  let storedEvent: EventEnvelope;
-  if (actionId === 'Catalog.SeedPackage.Apply') {
-    const result = await handleSeedPackageApply(
-      {
-        tenantId: state.tenantId,
-        correlationId,
-        principalId: state.principalId,
-        seedPackageKey: envelope.payload['seedPackageKey'] as string,
-        seedPackageVersion: envelope.payload['seedPackageVersion'] as string,
-        payload: envelope.payload['payload'] as SeedPayload,
-      },
-      state.catalogState,
-      state.eventStore,
-    );
-    storedEvent = result.envelope;
-  } else if (actionId === 'Catalog.Family.Publish') {
-    const result = await handleFamilyPublish(
-      {
-        tenantId: state.tenantId,
-        correlationId,
-        principalId: state.principalId,
-        familyKey: envelope.payload['familyKey'] as string,
-        familyRevisionNumber: envelope.payload['familyRevisionNumber'] as number,
-      },
-      state.catalogState,
-      state.eventStore,
-    );
-    // Dispatch family event then variant events.
-    await dispatchEvent(result.familyEnvelope, ctx);
-    for (const v of result.variantEnvelopes) {
-      await dispatchEvent(v, ctx);
+  const handler = state.handlers.get(actionId);
+  if (handler) {
+    const handlerCtx: IntentHandlerContext = {
+      tenantId: state.tenantId,
+      principalId: state.principalId,
+      correlationId,
+      eventStore: state.eventStore,
+      catalogState: state.catalogState,
+    };
+    const { primary, follow } = await handler.handle(handlerCtx, envelope);
+    await state.dispatch(primary);
+    for (const ev of follow) {
+      await state.dispatch(ev);
     }
     return {
-      eventId: result.familyEnvelope.eventId,
+      eventId: primary.eventId,
       tenantId: state.tenantId,
       principalId: state.principalId,
     };
-  } else {
-    // Generic fall-through: just append envelope to event store.
-    const generic: EventEnvelope = {
-      eventId: envelope.eventId ?? newEventId(),
-      eventType: envelope.eventType,
-      schemaId: envelope.schemaId,
-      schemaVersion: envelope.schemaVersion,
-      occurredAt: envelope.occurredAt ?? new Date().toISOString(),
-      tenantId: envelope.tenantId,
-      correlationId,
-      idempotencyKey: envelope.idempotencyKey,
-      causationId: envelope.causationId ?? null,
-      principalId: state.principalId,
-      userId: state.principalId,
-      cacheInvalidationTags: null,
-      payload: envelope.payload,
-    };
-    const stored = await state.eventStore.append(generic);
-    generic.eventId = stored;
-    storedEvent = generic;
   }
 
-  await dispatchEvent(storedEvent, ctx);
+  // Generic fall-through: append envelope to event store, dispatch, return.
+  const generic: EventEnvelope = {
+    eventId: envelope.eventId ?? newId('evt'),
+    eventType: envelope.eventType,
+    schemaId: envelope.schemaId,
+    schemaVersion: envelope.schemaVersion,
+    occurredAt: envelope.occurredAt ?? new Date().toISOString(),
+    tenantId: envelope.tenantId,
+    correlationId,
+    idempotencyKey: envelope.idempotencyKey,
+    causationId: envelope.causationId ?? null,
+    principalId: state.principalId,
+    userId: state.principalId,
+    cacheInvalidationTags: null,
+    payload: envelope.payload,
+  };
+  const stored = await state.eventStore.append(generic);
+  generic.eventId = stored;
+  await state.dispatch(generic);
 
   return {
-    eventId: storedEvent.eventId,
+    eventId: generic.eventId,
     tenantId: state.tenantId,
     principalId: state.principalId,
   };

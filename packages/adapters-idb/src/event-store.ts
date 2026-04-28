@@ -8,8 +8,8 @@ export class IdbEventStore implements EventStore {
   async append(envelope: EventEnvelope): Promise<string> {
     const tx = this.db.transaction('events', 'readwrite');
     const store = tx.objectStore('events');
-    const idx = store.index('by_idempotency_key');
-    const existing = await idx.get(envelope.idempotencyKey);
+    const idx = store.index('by_tenant_idempotency_key');
+    const existing = await idx.get([envelope.tenantId, envelope.idempotencyKey]);
     if (existing) {
       await tx.done;
       return existing.eventId;
@@ -25,9 +25,16 @@ export class IdbEventStore implements EventStore {
   }
 
   async readEvents(tenantId: string): Promise<EventEnvelope[]> {
-    if (tenantId === '*') {
-      return this.db.getAll('events');
-    }
-    return this.db.getAllFromIndex('events', 'by_tenant', tenantId);
+    const all =
+      tenantId === '*'
+        ? await this.db.getAll('events')
+        : await this.db.getAllFromIndex('events', 'by_tenant', tenantId);
+    // Contract: events ordered ascending by occurredAt. ISO-8601 strings
+    // sort lexicographically the same as chronologically.
+    return all.sort((a, b) => {
+      if (a.occurredAt < b.occurredAt) return -1;
+      if (a.occurredAt > b.occurredAt) return 1;
+      return 0;
+    });
   }
 }

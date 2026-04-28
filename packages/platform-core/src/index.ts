@@ -6,14 +6,6 @@ export type {
   Principal,
   SearchDocument,
   CacheSetOptions,
-  VariantTableParams,
-  FilterValue,
-  SearchParams,
-  SearchResult,
-  SearchResponse,
-  TaxonomyNavigationResponse,
-  FamilyDetailResponse,
-  VariantTableResponse,
 } from './types.ts';
 
 export { IngressError } from './errors.ts';

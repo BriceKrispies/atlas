@@ -15,6 +15,18 @@ export type {
   SeedUnitDimension,
 } from './seed-types.ts';
 
+export type {
+  VariantRow,
+  VariantTableParams,
+  VariantTableResponse,
+  FilterValue,
+  SearchParams,
+  SearchResponse,
+  SearchResult,
+  TaxonomyNavigationResponse,
+  FamilyDetailResponse,
+} from './responses.ts';
+
 export {
   handleSeedPackageApply,
   type SeedPackageApplyCommand,
@@ -26,6 +38,10 @@ export {
   type FamilyPublishCommand,
   type FamilyPublishResult,
 } from './handlers/family-publish.ts';
+export {
+  catalogHandlerRegistry,
+  catalogHandlerEntries,
+} from './handlers/registry.ts';
 
 export {
   rebuildTaxonomyNavigation,
@@ -48,3 +64,15 @@ export {
   parseFilterQuery,
 } from './queries/variant-table.ts';
 export { handleSearch, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './queries/search.ts';
+
+export {
+  dispatchCatalogEvent,
+  type CatalogDispatchContext,
+} from './dispatch.ts';
+export {
+  getTaxonomyNodes,
+  getFamilyDetail,
+  getVariantTable,
+  searchCatalog,
+  type CatalogQueryDeps,
+} from './query-router.ts';

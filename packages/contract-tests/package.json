@@ -11,6 +11,9 @@
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*"
   },
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  },
   "peerDependencies": {
     "vitest": "^4.1.5"
   }

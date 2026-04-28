@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@atlas/platform-core": "workspace:*",
-    "@atlas/ports": "workspace:*",
-    "@atlas/modules-catalog": "workspace:*"
+    "@atlas/ports": "workspace:*"
   }
 }

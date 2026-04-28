@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { createSimIngress, type SimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
-import { newEventId } from '@atlas/modules-catalog';
+import { newEventId, type VariantRow } from '@atlas/modules-catalog';
 import type { SearchDocument } from '@atlas/platform-core';
 
 let dbCounter = 0;
@@ -89,13 +89,9 @@ describe('catalog_badge_family parity', () => {
     const rows = body!.rows;
     expect(rows.length).toBe(3);
 
-    const fiveYear = rows.find(
-      (r) => (r as { variantKey?: string }).variantKey === '5-year',
-    );
+    const fiveYear = rows.find((r) => r.variantKey === '5-year');
     expect(fiveYear).toBeDefined();
-    const yos = (fiveYear as { values: Record<string, { normalized: unknown }> }).values[
-      'years_of_service'
-    ]?.normalized;
+    const yos = fiveYear!.values['years_of_service']?.normalized;
     expect(yos).toBe(5);
     await ingress.close();
   });
@@ -112,7 +108,7 @@ describe('catalog_badge_family parity', () => {
     });
     expect(body).not.toBeNull();
     expect(body!.rows.length).toBe(1);
-    expect((body!.rows[0] as { variantKey?: string }).variantKey).toBe('10-year');
+    expect(body!.rows[0]!.variantKey).toBe('10-year');
     await ingress.close();
   });
 
@@ -338,12 +334,12 @@ describe('catalog_search parity', () => {
 // helpers ---------------------------------------------------------------
 
 function canonicalizeVariantRows(
-  rows: Array<Record<string, unknown>>,
+  rows: ReadonlyArray<VariantRow>,
 ): Array<{ key: string; values: Record<string, unknown> }> {
   return rows
     .map((r) => ({
-      key: String((r as { variantKey?: unknown }).variantKey ?? ''),
-      values: { ...((r as { values?: Record<string, unknown> }).values ?? {}) },
+      key: r.variantKey,
+      values: { ...r.values },
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }

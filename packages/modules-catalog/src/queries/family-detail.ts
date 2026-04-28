@@ -1,5 +1,5 @@
 import type { ProjectionStore } from '@atlas/ports';
-import type { FamilyDetailResponse } from '@atlas/platform-core';
+import type { FamilyDetailResponse } from '../responses.ts';
 import { projectionKey } from '../projections/family-detail.ts';
 
 export async function queryFamilyDetail(

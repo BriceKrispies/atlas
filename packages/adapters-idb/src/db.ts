@@ -38,7 +38,7 @@ export interface AtlasIdbSchema extends DBSchema {
     indexes: {
       by_tenant: string;
       by_type: string;
-      by_idempotency_key: string;
+      by_tenant_idempotency_key: [string, string];
       by_occurred_at: string;
     };
   };
@@ -72,27 +72,49 @@ export type IdbDb = IDBPDatabase<AtlasIdbSchema>;
 
 export async function openAtlasIdb(tenantId: string): Promise<IdbDb> {
   const name = `atlas-sim-${tenantId}`;
-  return openDB<AtlasIdbSchema>(name, 1, {
-    upgrade(db) {
-      const events = db.createObjectStore('events', { keyPath: 'eventId' });
-      events.createIndex('by_tenant', 'tenantId');
-      events.createIndex('by_type', 'eventType');
-      events.createIndex('by_idempotency_key', 'idempotencyKey', { unique: true });
-      events.createIndex('by_occurred_at', 'occurredAt');
+  return openDB<AtlasIdbSchema>(name, 2, {
+    upgrade(db, oldVersion, _newVersion, tx) {
+      if (oldVersion < 1) {
+        const events = db.createObjectStore('events', { keyPath: 'eventId' });
+        events.createIndex('by_tenant', 'tenantId');
+        events.createIndex('by_type', 'eventType');
+        events.createIndex(
+          'by_tenant_idempotency_key',
+          ['tenantId', 'idempotencyKey'],
+          { unique: true },
+        );
+        events.createIndex('by_occurred_at', 'occurredAt');
 
-      const cache = db.createObjectStore('cache', { keyPath: 'cacheKey' });
-      cache.createIndex('by_tag', 'tags', { multiEntry: true });
-      cache.createIndex('by_expires_at', 'expiresAt');
+        const cache = db.createObjectStore('cache', { keyPath: 'cacheKey' });
+        cache.createIndex('by_tag', 'tags', { multiEntry: true });
+        cache.createIndex('by_expires_at', 'expiresAt');
 
-      db.createObjectStore('projections', { keyPath: 'projectionKey' });
+        db.createObjectStore('projections', { keyPath: 'projectionKey' });
 
-      const search = db.createObjectStore('search_documents', { keyPath: 'searchDocumentId' });
-      search.createIndex('by_tenant_type_doc', ['tenantId', 'documentType', 'documentId'], {
-        unique: true,
-      });
-      search.createIndex('by_tenant_type', ['tenantId', 'documentType']);
+        const search = db.createObjectStore('search_documents', { keyPath: 'searchDocumentId' });
+        search.createIndex('by_tenant_type_doc', ['tenantId', 'documentType', 'documentId'], {
+          unique: true,
+        });
+        search.createIndex('by_tenant_type', ['tenantId', 'documentType']);
 
-      db.createObjectStore('catalog_state', { keyPath: 'tenantId' });
+        db.createObjectStore('catalog_state', { keyPath: 'tenantId' });
+      }
+      if (oldVersion < 2) {
+        // v2: tenant-scope idempotency keys. Replace any prior global unique
+        // index on `idempotencyKey` with a composite `(tenantId, idempotencyKey)`.
+        const events = tx.objectStore('events');
+        const existing: string[] = Array.from(events.indexNames);
+        if (existing.includes('by_idempotency_key')) {
+          events.deleteIndex('by_idempotency_key');
+        }
+        if (!existing.includes('by_tenant_idempotency_key')) {
+          events.createIndex(
+            'by_tenant_idempotency_key',
+            ['tenantId', 'idempotencyKey'],
+            { unique: true },
+          );
+        }
+      }
     },
   });
 }

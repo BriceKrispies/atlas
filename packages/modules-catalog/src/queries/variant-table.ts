@@ -1,14 +1,11 @@
 import type { ProjectionStore } from '@atlas/ports';
-import type { VariantTableParams, VariantTableResponse, FilterValue } from '@atlas/platform-core';
+import type {
+  VariantRow,
+  VariantTableParams,
+  VariantTableResponse,
+  FilterValue,
+} from '../responses.ts';
 import { projectionKey } from '../projections/variant-matrix.ts';
-
-interface VariantRow {
-  variantId: string;
-  variantKey: string;
-  name: string;
-  revision: number;
-  values: Record<string, { raw: unknown; normalized: unknown; display: string | null }>;
-}
 
 function variantMatches(row: VariantRow, filters: Record<string, FilterValue>): boolean {
   for (const [attr, fv] of Object.entries(filters)) {
@@ -55,7 +52,7 @@ export async function queryVariantTable(
     | null;
   if (!stored) return null;
 
-  const allRows = (stored.rows as unknown as VariantRow[]) ?? [];
+  const allRows = stored.rows ?? [];
   const filters = params.filters ?? {};
   let filtered = allRows.filter((r) => variantMatches(r, filters));
 
@@ -73,7 +70,7 @@ export async function queryVariantTable(
 
   return {
     ...stored,
-    rows: filtered as unknown as Array<Record<string, unknown>>,
+    rows: filtered,
     rowCount: filtered.length,
   };
 }

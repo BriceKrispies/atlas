@@ -1,5 +1,5 @@
 import type { ProjectionStore } from '@atlas/ports';
-import type { TaxonomyNavigationResponse } from '@atlas/platform-core';
+import type { TaxonomyNavigationResponse } from '../responses.ts';
 import { projectionKey } from '../projections/taxonomy-navigation.ts';
 
 export async function queryTaxonomyNodes(

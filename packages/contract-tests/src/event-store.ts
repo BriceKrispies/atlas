@@ -93,11 +93,7 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(r2).toBe('evt-first');
     });
 
-    test('idempotency key is global (not tenant-scoped) — replay across tenants returns the original eventId', async () => {
-      // Both the Rust in-memory adapter and the IDB adapter treat
-      // idempotencyKey as a single global key space (no (tenantId, key)
-      // composite). Domain code namespaces idempotency keys by tenant
-      // upstream, so this is an explicit contract not a leak.
+    test('idempotency key is tenant-scoped — same key in different tenants produces two distinct events', async () => {
       const a = makeEvent({
         eventId: 'evt-a',
         tenantId: 'tenant-a',
@@ -111,9 +107,32 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       const ra = await store.append(a);
       const rb = await store.append(b);
       expect(ra).toBe('evt-a');
-      // Second append replays the original event because the idempotency
-      // key already exists, regardless of tenant.
-      expect(rb).toBe('evt-a');
+      expect(rb).toBe('evt-b');
+
+      const aEvents = await store.readEvents('tenant-a');
+      const bEvents = await store.readEvents('tenant-b');
+      expect(aEvents.map((e) => e.eventId)).toEqual(['evt-a']);
+      expect(bEvents.map((e) => e.eventId)).toEqual(['evt-b']);
+    });
+
+    test('idempotency key replay within the same tenant returns the original eventId', async () => {
+      const a = makeEvent({
+        eventId: 'evt-orig-tenant',
+        tenantId: 'tenant-same',
+        idempotencyKey: 'idem-same-tenant',
+      });
+      const b = makeEvent({
+        eventId: 'evt-replay-tenant',
+        tenantId: 'tenant-same',
+        idempotencyKey: 'idem-same-tenant',
+      });
+      const ra = await store.append(a);
+      const rb = await store.append(b);
+      expect(ra).toBe('evt-orig-tenant');
+      expect(rb).toBe('evt-orig-tenant');
+
+      const events = await store.readEvents('tenant-same');
+      expect(events.length).toBe(1);
     });
 
     test('readEvents is tenant-scoped — never returns events from another tenant', async () => {
@@ -133,9 +152,11 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(list).toEqual([]);
     });
 
-    test('readEvents returns events ordered ascending by occurredAt', async () => {
+    test('readEvents returns events strictly ascending by occurredAt (regardless of insertion order)', async () => {
       const t = (offset: number): string =>
         new Date(Date.UTC(2026, 0, 1, 0, 0, offset)).toISOString();
+      // Insert out of order: late, early, mid. The contract is the adapter
+      // sorts the result by occurredAt ASC.
       await store.append(
         makeEvent({ eventId: 'evt-late', tenantId: 'tenant-ord', occurredAt: t(30) }),
       );
@@ -147,10 +168,13 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       );
 
       const events = await store.readEvents('tenant-ord');
-      const ids = [...events]
-        .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
-        .map((e) => e.eventId);
-      expect(ids).toEqual(['evt-early', 'evt-mid', 'evt-late']);
+      expect(events.map((e) => e.eventId)).toEqual(['evt-early', 'evt-mid', 'evt-late']);
+
+      for (let i = 1; i < events.length; i++) {
+        const prev = events[i - 1]!;
+        const curr = events[i]!;
+        expect(prev.occurredAt <= curr.occurredAt).toBe(true);
+      }
     });
 
     test('getEvent returns null for an unknown eventId', async () => {
