@@ -93,9 +93,13 @@ export async function ensureTenantMigrated(
   return sql;
 }
 
+/**
+ * Tear down per-tenant pools first (they reference `controlPlaneSql` for
+ * tenant-DB lookups via `lookupConnectionInfo`), then end the control-plane
+ * pool. Closing them in parallel can race a tenant pool that is still
+ * resolving its connection info — see audit F1.
+ */
 export async function shutdown(state: AppState): Promise<void> {
-  await Promise.allSettled([
-    state.tenantDb.close(),
-    state.controlPlaneSql.end({ timeout: 5 }),
-  ]);
+  await state.tenantDb.close();
+  await state.controlPlaneSql.end({ timeout: 5 });
 }

@@ -118,7 +118,19 @@ export function catalogRoutes(state: AppState): Hono<{ Variables: ServerVariable
   app.get('/api/v1/catalog/search', async (c: AppCtx) => {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
-    const q = c.req.query('q') ?? '';
+    // Validate `q` at the route boundary so we don't depend on the inner
+    // query handler's `code: 'BAD_REQUEST'` decoration to surface a 400 —
+    // a refactor of the handler would otherwise silently degrade to 500.
+    const q = c.req.query('q')?.trim() ?? '';
+    if (q.length === 0) {
+      return errorResponse(
+        c,
+        'INVALID_QUERY',
+        'Query parameter "q" must be non-empty',
+        400,
+        correlationId,
+      );
+    }
     const docType = c.req.query('type');
     const pageSizeRaw = c.req.query('pageSize');
     const cursorRaw = c.req.query('cursor');
@@ -136,17 +148,23 @@ export function catalogRoutes(state: AppState): Hono<{ Variables: ServerVariable
       const result = await searchCatalog(bundle.catalogDeps, params);
       return c.json(result);
     } catch (e) {
-      // The search query handler throws an Error decorated with a `code`
-      // string ('BAD_REQUEST') for empty `q`. Translate to INVALID_QUERY/400
-      // to match the Rust ingress handler shape.
+      // Defence-in-depth: the inner query handler still throws an Error
+      // decorated with `code: 'BAD_REQUEST'` if its own internal validators
+      // ever escalate. Keep the translation as a fallback so the shape
+      // matches the Rust ingress handler.
       if (
         typeof e === 'object' &&
         e !== null &&
         'code' in e &&
         (e as { code: unknown }).code === 'BAD_REQUEST'
       ) {
-        const message = e instanceof Error ? e.message : String(e);
-        return errorResponse(c, 'INVALID_QUERY', message, 400, correlationId);
+        return errorResponse(
+          c,
+          'INVALID_QUERY',
+          'Query parameter "q" must be non-empty',
+          400,
+          correlationId,
+        );
       }
       return mapError(c, e, correlationId);
     }

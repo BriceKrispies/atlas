@@ -64,6 +64,13 @@ export function errorResponse(
 /**
  * Convert an unknown thrown value into a structured response. Routes wrap
  * their bodies with `try { ... } catch (e) { return mapError(c, e, ...) }`.
+ *
+ * Unknown thrown values are normalised to `TRANSACTION_FAILED` / 500 with a
+ * fixed safe message (mirrors `AppError::storage_failed` in
+ * `crates/ingress/src/errors.rs`). Per INV-ERR-03 we MUST NOT forward raw
+ * `e.message` to the client — internal paths / SQL fragments / panics could
+ * leak. The raw error is logged server-side under the supportId for
+ * operator correlation.
  */
 export function mapError(
   c: Context,
@@ -73,10 +80,17 @@ export function mapError(
   if (e instanceof IngressError) {
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
   }
-  const message = e instanceof Error ? e.message : String(e);
-  // Boundary-normalise unknown errors to TRANSACTION_FAILED / 500 — mirrors
-  // the Rust `AppError::storage_failed` constructor in
-  // `crates/ingress/src/errors.rs`, which emits the `TRANSACTION_FAILED`
-  // taxonomy code for unhandled persistence/internal paths.
-  return errorResponse(c, 'TRANSACTION_FAILED', message, 500, correlationId);
+  const envelope = errorEnvelope(
+    'TRANSACTION_FAILED',
+    'Internal storage failure',
+    correlationId,
+  );
+  // Log the raw error server-side so operators can join request → root cause
+  // via the supportId without exposing internal text to the client.
+  console.error('[ingress] unmapped error', {
+    correlationId,
+    supportId: envelope.error.supportId,
+    error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+  });
+  return c.json(envelope, 500 as ContentfulStatusCode);
 }

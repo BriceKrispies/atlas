@@ -68,7 +68,19 @@ async function main(): Promise<void> {
 
   const stop = async (signal: string): Promise<void> => {
     console.log(`[server] received ${signal}, shutting down`);
-    server.close();
+    // 1. Stop accepting new connections, drain in-flight requests. Awaiting
+    //    `server.close` is required — fire-and-forget would let the pool
+    //    teardown below race a request that is mid-`postgres.Sql` query.
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+    } catch (e) {
+      console.error(`[server] error while closing http server: ${(e as Error).message}`);
+    }
+    // 2. Tear down tenant pools, then the control-plane pool. See
+    //    `bootstrap.shutdown` — order matters because tenant-DB lookups
+    //    reference the control-plane Sql.
     await shutdown(state);
     process.exit(0);
   };

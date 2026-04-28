@@ -15,6 +15,13 @@ import { handleSearch } from './queries/search.ts';
 export interface CatalogQueryDeps {
   tenantId: string;
   principalId: string;
+  /**
+   * Per-request correlation id (Invariant I5). Optional so existing
+   * fixtures that construct deps once continue to compile; route handlers
+   * should populate it so any downstream cache writes / log lines carry
+   * the request-scoped id.
+   */
+  correlationId?: string;
   projections: ProjectionStore;
   search: SearchEngine;
 }

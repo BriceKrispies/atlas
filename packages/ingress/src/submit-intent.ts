@@ -20,6 +20,14 @@ export type EventDispatcher = (envelope: EventEnvelope) => Promise<void>;
 export interface IngressState {
   tenantId: string;
   principalId: string;
+  /**
+   * Per-request correlation id. Optional because long-lived test fixtures
+   * construct `IngressState` once and rely on the envelope-stamped id.
+   * When present, callers should prefer it over envelope defaults so cache
+   * writes / log lines / error envelopes carry the request-scoped id.
+   * Invariant I5 — correlationId propagates through the entire request flow.
+   */
+  correlationId?: string;
   eventStore: EventStore;
   cache: Cache;
   projections: ProjectionStore;

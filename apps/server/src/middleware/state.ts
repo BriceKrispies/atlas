@@ -56,6 +56,7 @@ export async function buildRequestBundle(
   const ingress: IngressState = {
     tenantId: principal.tenantId,
     principalId: principal.principalId,
+    correlationId,
     eventStore,
     cache,
     projections,
@@ -66,17 +67,19 @@ export async function buildRequestBundle(
     dispatch,
   };
 
+  // Thread the per-request correlation id into the catalog query deps so
+  // any downstream cache writes / log lines / error envelopes can carry it
+  // (Invariant I5). The catalog query handlers currently only read
+  // projections; propagation here is logging-only today, but reserves the
+  // slot for future cache-write / telemetry call sites without another
+  // signature change.
   const catalogDeps: CatalogQueryDeps = {
     tenantId: principal.tenantId,
     principalId: principal.principalId,
+    correlationId,
     projections,
     search,
   };
-
-  // correlationId is threaded into events via the IntentEnvelope (it
-  // overrides anything stale on the envelope). Capture here for completeness
-  // even though IngressState doesn't expose it directly.
-  void correlationId;
 
   return { ingress, catalogDeps };
 }
