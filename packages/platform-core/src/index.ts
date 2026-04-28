@@ -9,4 +9,4 @@ export type {
 } from './types.ts';
 
 export { IngressError } from './errors.ts';
-export type { ErrorBody } from './errors.ts';
+export type { ErrorBody, IngressErrorCode } from './errors.ts';

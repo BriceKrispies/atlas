@@ -74,7 +74,9 @@ export function mapError(
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
   }
   const message = e instanceof Error ? e.message : String(e);
-  // Boundary-normalise unknown errors to STORAGE_FAILED / 500 — mirrors the
-  // Rust `AppError::storage_failed` behaviour for unhandled storage paths.
-  return errorResponse(c, 'STORAGE_FAILED', message, 500, correlationId);
+  // Boundary-normalise unknown errors to TRANSACTION_FAILED / 500 — mirrors
+  // the Rust `AppError::storage_failed` constructor in
+  // `crates/ingress/src/errors.rs`, which emits the `TRANSACTION_FAILED`
+  // taxonomy code for unhandled persistence/internal paths.
+  return errorResponse(c, 'TRANSACTION_FAILED', message, 500, correlationId);
 }

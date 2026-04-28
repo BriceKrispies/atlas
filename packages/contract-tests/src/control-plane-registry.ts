@@ -60,7 +60,7 @@ export function controlPlaneRegistryContract(
     test('[error-shape] getSchemaValidator returns null for an unknown schema id (does not throw)', () => {
       // Contract: unknown schemaId is NOT an exception. Callers (the ingress
       // submitIntent pipeline) check the null and return a typed
-      // SCHEMA_NOT_FOUND error themselves; the registry stays a pure lookup.
+      // UNKNOWN_SCHEMA error themselves; the registry stays a pure lookup.
       const validate = registry.getSchemaValidator('does.not.exist.v1', 1);
       expect(validate).toBeNull();
     });

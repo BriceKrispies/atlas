@@ -45,8 +45,9 @@ export async function submitIntent(
   const correlationId = envelope.correlationId || 'unknown';
 
   // 1. Authn — preconfigured principal; reject if envelope tries to claim a different one.
+  // Rust counterpart: AppError::unauthorized() in crates/ingress/src/errors.rs (FORBIDDEN/403).
   if (envelope.principalId && envelope.principalId !== state.principalId) {
-    err('UNAUTHORIZED', 'principal mismatch', 401, correlationId);
+    err('UNAUTHORIZED', 'principal mismatch', 403, correlationId);
   }
 
   // 2. Tenant scope
@@ -58,7 +59,7 @@ export async function submitIntent(
   const validator = state.registry.getSchemaValidator(envelope.schemaId, envelope.schemaVersion);
   if (!validator) {
     err(
-      'SCHEMA_NOT_FOUND',
+      'UNKNOWN_SCHEMA',
       `schema not found: ${envelope.schemaId} v${envelope.schemaVersion}`,
       400,
       correlationId,
@@ -73,7 +74,7 @@ export async function submitIntent(
 
   // 4. Idempotency key non-empty
   if (!envelope.idempotencyKey || envelope.idempotencyKey.length === 0) {
-    err('IDEMPOTENCY_KEY_REQUIRED', 'idempotencyKey is required', 400, correlationId);
+    err('INVALID_IDEMPOTENCY_KEY', 'idempotencyKey is required', 400, correlationId);
   }
 
   // 5. Action lookup

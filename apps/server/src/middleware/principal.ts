@@ -62,11 +62,14 @@ export function principalMiddleware(state: AppState) {
       if (debugHeader) {
         const debug = parseDebugPrincipal(debugHeader, state.config.tenantId);
         if (!debug) {
+          // Rust counterpart: AuthnError::malformed → 400 BAD_REQUEST. Code is
+          // PRINCIPAL_INVALID because the spec-taxonomy AUTHN bucket has no
+          // dedicated "malformed test-auth header" entry; collapsing here.
           return errorResponse(
             c,
-            'UNAUTHORIZED',
+            'PRINCIPAL_INVALID',
             'Invalid X-Debug-Principal header',
-            401,
+            400,
             correlationId,
           );
         }
@@ -77,11 +80,16 @@ export function principalMiddleware(state: AppState) {
     }
 
     // 2. JWT path.
+    // Rust counterpart: authn_middleware in crates/ingress/src/authn.rs returns
+    // 401 with a non-structured `{error: "unauthorized"}` body for every authn
+    // failure (missing creds, malformed JWT, signature/audience/expiry, missing
+    // sub claim). We collapse all of those into PRINCIPAL_INVALID/401 to keep
+    // a structured envelope while staying behaviourally aligned with Rust.
     const authHeader = c.req.header('Authorization') ?? c.req.header('authorization');
     if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
       return errorResponse(
         c,
-        'UNAUTHENTICATED',
+        'PRINCIPAL_INVALID',
         'Missing or malformed Authorization header',
         401,
         correlationId,
@@ -91,7 +99,7 @@ export function principalMiddleware(state: AppState) {
     if (!token) {
       return errorResponse(
         c,
-        'UNAUTHENTICATED',
+        'PRINCIPAL_INVALID',
         'Empty bearer token',
         401,
         correlationId,
@@ -100,7 +108,7 @@ export function principalMiddleware(state: AppState) {
     if (!state.jwks) {
       return errorResponse(
         c,
-        'UNAUTHENTICATED',
+        'PRINCIPAL_INVALID',
         'Server has no JWKS configured',
         401,
         correlationId,
@@ -117,7 +125,7 @@ export function principalMiddleware(state: AppState) {
     } catch (e) {
       return errorResponse(
         c,
-        'UNAUTHENTICATED',
+        'PRINCIPAL_INVALID',
         `JWT verification failed: ${(e as Error).message}`,
         401,
         correlationId,
@@ -128,7 +136,7 @@ export function principalMiddleware(state: AppState) {
     if (!sub) {
       return errorResponse(
         c,
-        'UNAUTHENTICATED',
+        'PRINCIPAL_INVALID',
         'Token missing sub claim',
         401,
         correlationId,
