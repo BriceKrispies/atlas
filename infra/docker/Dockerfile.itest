@@ -58,11 +58,18 @@ COPY crates/control_plane_db/migrations/ /app/migrations/
 COPY specs/fixtures/ /app/specs/fixtures/
 COPY specs/schemas/ /app/specs/schemas/
 
-# Copy frontend source
-COPY frontend/ /app/frontend/
+# Copy TypeScript workspace (apps + packages + bundles + tests + workspace config)
+COPY apps/ /app/apps/
+COPY packages/ /app/packages/
+COPY bundles/ /app/bundles/
+COPY tests/integration/ /app/tests/integration/
+COPY test-setup/ /app/test-setup/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmrc.json /app/
+COPY tsconfig.json tsconfig.base.json vitest.config.ts /app/
+COPY playwright.config.ts playwright.itest.config.ts global.d.ts /app/
 
-# Install frontend dependencies
-WORKDIR /app/frontend
+# Install workspace dependencies
+WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate && \
     pnpm install --frozen-lockfile && \
     npx playwright install --with-deps chromium

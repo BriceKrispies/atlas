@@ -17,9 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +28,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -51,18 +48,17 @@ jobs:
         run: pnpm --filter @atlas/authoring build
 
       - name: Assemble site
-        working-directory: ${{ github.workspace }}
         run: |
-          mkdir -p dist/admin dist/sandbox dist/authoring
-          cp frontend/deploy/index.html dist/index.html
-          cp frontend/deploy/index.html dist/404.html
-          cp -r frontend/dist/admin/. dist/admin/
-          cp -r frontend/dist/sandbox/. dist/sandbox/
-          cp -r frontend/dist/authoring/. dist/authoring/
+          mkdir -p site/admin site/sandbox site/authoring
+          cp deploy/index.html site/index.html
+          cp deploy/index.html site/404.html
+          cp -r dist/admin/. site/admin/
+          cp -r dist/sandbox/. site/sandbox/
+          cp -r dist/authoring/. site/authoring/
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./site
 
   deploy:
     needs: build

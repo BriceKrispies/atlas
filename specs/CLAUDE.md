@@ -55,9 +55,9 @@ Conceptual schemas per module — technology-agnostic, no DDL. One file per modu
 
 JSON schema contracts: `schemas/contracts/*.schema.json`
 
-### Frontend (`frontend/`)
+### Frontend specs (`specs/frontend/`)
 
-See `frontend/CLAUDE.md` for the full frontend routing, or jump directly:
+See `WEB.md` (at the repo root) for the TypeScript stack routing, or jump directly into the spec docs below:
 
 | Topic | File |
 |-------|------|

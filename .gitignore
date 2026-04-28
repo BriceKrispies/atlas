@@ -4,6 +4,7 @@
 Cargo.lock
 
 # IDE
+.claude/
 .vscode/
 .idea/
 *.swp
@@ -28,3 +29,13 @@ test-results.xml
 tests/blackbox/target/
 test-results/
 playwright-report/
+
+# Node / pnpm / TS workspace
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+.pnpm-store/
+
+# Itest local state
+.itest/

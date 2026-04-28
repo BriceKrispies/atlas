@@ -16,8 +16,8 @@ Multi-tenant CMS + workflow platform. Rust backend (hexagonal architecture, CQRS
 | DB migrate | `make db-migrate` |
 | DB seed | `make db-seed` |
 | DB reset | `make db-reset` |
-| Frontend dev | `cd frontend && pnpm dev` |
-| Frontend E2E | `cd frontend && pnpm test:e2e` |
+| Frontend dev | `pnpm dev` (admin) / `pnpm sandbox` / `pnpm authoring` |
+| Frontend E2E | `pnpm test:e2e` |
 | Integration tests | `make itest` (starts full stack + runs tests) |
 | Integration tests only | `make itest-test` (stack must be running) |
 
@@ -27,7 +27,7 @@ Multi-tenant CMS + workflow platform. Rust backend (hexagonal architecture, CQRS
 |-----------------------|-----------|
 | Backend Rust crate work | `crates/CLAUDE.md` |
 | Ingress HTTP layer (endpoints, auth, middleware) | `crates/ingress/CLAUDE.md` |
-| Frontend / web components / UI surfaces | `frontend/CLAUDE.md` |
+| Frontend / web components / UI surfaces | `WEB.md` |
 | Reading or writing specifications | `specs/CLAUDE.md` |
 | Integration / black-box tests | `tests/blackbox/CLAUDE.md` |
 | Infrastructure / containers / compose | `infra/CLAUDE.md` |
