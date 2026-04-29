@@ -15,6 +15,7 @@
     "authorId": { "type": "string" },
     "templateId": { "type": "string" },
     "templateVersion": { "type": "string" },
+    "pluginRef": { "type": "string", "minLength": 1, "maxLength": 64 },
     "status": {
       "type": "string",
       "enum": ["draft", "published", "archived"]

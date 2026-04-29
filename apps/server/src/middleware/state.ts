@@ -104,7 +104,8 @@ export async function buildRequestBundle(
   //
   // Chain order:
   //   1. catalog projection rebuilds
-  //   2. content-pages projection rebuilds
+  //   2. content-pages projection rebuilds (with optional WASM host
+  //      threaded through for `pluginRef`-driven render trees, Chunk 10)
   //   3. cross-cutting cache-tag invalidation (was hidden inside
   //      dispatchCatalogEvent pre-Chunk 8 — now its own dispatcher so
   //      adding modules cannot accidentally bypass it)
@@ -115,7 +116,12 @@ export async function buildRequestBundle(
   // edit further down.
   const dispatch: EventDispatcher = composeDispatchers(
     catalogDispatcher({ catalogState, projections, search, cache }),
-    contentPagesDispatcher({ projections, renderTreeStore, cache }),
+    contentPagesDispatcher({
+      projections,
+      renderTreeStore,
+      cache,
+      ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
+    }),
     cacheTagDispatcher(cache),
     policyBundle ? policyCacheDispatcher(policyBundle) : null,
   );

@@ -13,6 +13,7 @@ import type {
   EventDispatcher,
   ProjectionStore,
   RenderTreeStore,
+  WasmHost,
 } from '@atlas/ports';
 import type { PageDocument } from './types.ts';
 import {
@@ -38,6 +39,12 @@ export interface ContentPagesDispatchContext {
    * so existing call sites compile.
    */
   cache?: Cache;
+  /**
+   * Optional WASM host for `pluginRef`-routed render trees. When
+   * unset, plugin pages render the default tree. Threaded by the
+   * wiring layer (server / sim factory).
+   */
+  wasmHost?: WasmHost;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -65,6 +72,7 @@ export async function dispatchContentPagesEvent(
     await rebuildRenderTree(envelope.tenantId, doc.pageId, doc, {
       projections: ctx.projections,
       renderTreeStore: ctx.renderTreeStore,
+      ...(ctx.wasmHost !== undefined ? { wasmHost: ctx.wasmHost } : {}),
     });
   } else if (envelope.eventType === 'ContentPages.PageDeleted') {
     const pageId = typeof payload['pageId'] === 'string' ? (payload['pageId'] as string) : '';

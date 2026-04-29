@@ -15,6 +15,7 @@ export interface PageCreateCommand {
   authorId?: string | null;
   templateId?: string;
   templateVersion?: string;
+  pluginRef?: string;
 }
 
 export interface PageCreateResult {
@@ -52,6 +53,7 @@ export async function handlePageCreate(
     ...(cmd.templateVersion !== undefined
       ? { templateVersion: cmd.templateVersion }
       : {}),
+    ...(cmd.pluginRef !== undefined ? { pluginRef: cmd.pluginRef } : {}),
   };
 
   const envelope: EventEnvelope = {

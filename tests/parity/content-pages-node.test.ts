@@ -1,12 +1,17 @@
 /**
  * Node-mode parity for content-pages.
  *
- * Mirrors the sim suite, sans the `clearRenderTreeFastPath` / read-event-tags
- * scenarios which depend on sim-only escape hatches. Skipped silently
- * when `NODE_PARITY_BASE_URL` is unset.
+ * Mirrors the sim suite. As of Chunk 10 the persistence-parity scenario
+ * (`test_render_tree_survives_fast_path_clear`) is paired — the
+ * `/debug/render-tree/clear` endpoint flips the fast path without
+ * needing a process restart. Skipped silently when
+ * `NODE_PARITY_BASE_URL` is unset, OR when the env gate
+ * (`DEBUG_AUTH_ENDPOINT_ENABLED=true`) is off (the helper raises
+ * `UnsupportedInMode` and the assertion gracefully passes the skip).
  */
 
 import { describe, test, expect } from 'vitest';
+import { UnsupportedInMode } from './lib/factory.ts';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
 import { newEventId } from '@atlas/modules-catalog';
@@ -169,6 +174,42 @@ d('[node] content-pages parity', () => {
     expect(await ingress.getContentPage('gone')).toBeNull();
     expect(await ingress.getContentPageRenderTree('gone')).toBeNull();
     expect(await ingress.listContentPages()).toEqual([]);
+    await ingress.close();
+  });
+
+  test('test_render_tree_survives_fast_path_clear', async () => {
+    // Mirrors `persistence_test.rs::test_render_tree_persists_across_cache_clear`
+    // and the sim-mode counterpart. Requires the
+    // `/debug/render-tree/clear` endpoint shipped in Chunk 10; when the
+    // env gate is off the helper raises `UnsupportedInMode` and the
+    // assertion passes the skip cleanly.
+    const { ingress, tenantId, principalId } =
+      await makeServerIngress('cp-pers');
+    await ingress.submitIntent(
+      buildPageCreateIntent({
+        tenantId,
+        principalId,
+        pageId: 'persist',
+        title: 'Persist',
+        slug: 'persist',
+      }),
+    );
+    const before = await ingress.getContentPageRenderTree('persist');
+    expect(before).not.toBeNull();
+
+    try {
+      await ingress.clearRenderTreeFastPath('persist');
+    } catch (e) {
+      if (e instanceof UnsupportedInMode) {
+        // Gate is off — graceful skip, mirrors the other gated scenarios.
+        await ingress.close();
+        return;
+      }
+      throw e;
+    }
+
+    const after = await ingress.getContentPageRenderTree('persist');
+    expect(after).toEqual(before);
     await ingress.close();
   });
 

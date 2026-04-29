@@ -11,6 +11,11 @@ import {
 } from '@atlas/adapters-idb';
 import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
 import {
+  BrowserWasmHost,
+  InMemoryPluginLoader,
+} from '@atlas/wasm-host';
+import type { WasmHost } from '@atlas/ports';
+import {
   submitIntent,
   type IngressState,
   type EventDispatcher,
@@ -57,6 +62,8 @@ interface SimContext {
   projections: IdbProjectionStore;
   search: IdbSearchEngine;
   registry: InMemoryControlPlaneRegistry;
+  wasmHost: WasmHost;
+  pluginLoader: InMemoryPluginLoader;
 }
 
 async function buildContext(opts: FactoryOptions): Promise<SimContext> {
@@ -75,14 +82,26 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   );
   const policyEngine = new StubPolicyEngine();
 
+  // Per-sim WASM host. Plugin bytes are seeded by tests via the
+  // `pluginLoader` reference below — leaving it empty by default so
+  // pages without `pluginRef` keep using the default render tree.
+  const pluginLoader = new InMemoryPluginLoader();
+  const wasmHost: WasmHost = new BrowserWasmHost({ loader: pluginLoader });
+
   // Chunk 8 — dispatcher registry. Sim mirrors the apps/server chain
   // structure (minus the policy-bundle dispatcher — sim runs the stub
   // engine which has no cache to flush). Cross-cutting cache-tag
   // invalidation is now its own dispatcher rather than piggy-backing
-  // on the catalog one.
+  // on the catalog one. The WASM host (Chunk 10) threads through the
+  // content-pages dispatcher for `pluginRef`-driven render trees.
   const dispatch: EventDispatcher = composeDispatchers(
     catalogDispatcher({ catalogState, projections, search, cache }),
-    contentPagesDispatcher({ projections, renderTreeStore, cache }),
+    contentPagesDispatcher({
+      projections,
+      renderTreeStore,
+      cache,
+      wasmHost,
+    }),
     cacheTagDispatcher(cache),
   );
 
@@ -123,6 +142,8 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
     projections,
     search,
     registry,
+    wasmHost,
+    pluginLoader,
   };
 }
 
@@ -242,6 +263,10 @@ export async function createSimIngress(opts: FactoryOptions): Promise<BrowserIng
       // Sim has no HTTP / no JWT verification path; nothing to probe. Tests
       // that exercise auth headers must run only in node mode.
       return null;
+    },
+
+    async registerWasmPlugin(pluginRef: string, bytes: Uint8Array): Promise<void> {
+      ctx.pluginLoader.set(pluginRef, bytes);
     },
 
     async close() {

@@ -21,3 +21,8 @@ export type {
 } from './policy-engine.ts';
 export { composeDispatchers, cacheTagDispatcher } from './dispatcher.ts';
 export type { EventDispatcher } from './dispatcher.ts';
+export type {
+  WasmHost,
+  WasmInvocation,
+  WasmPluginLoader,
+} from './wasm-host.ts';

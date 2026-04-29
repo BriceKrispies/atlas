@@ -6,3 +6,11 @@ export { controlPlaneRegistryContract } from './control-plane-registry.ts';
 export { catalogStateStoreContract } from './catalog-state-store.ts';
 export { policyEngineContract } from './policy-engine.ts';
 export { renderTreeStoreContract } from './render-tree-store.ts';
+export {
+  wasmHostContract,
+  noopRenderWasm,
+  withImportsWasm,
+  noMemoryExportWasm,
+  type WasmHostFactory,
+  type WasmHostFactoryArg,
+} from './wasm-host.ts';

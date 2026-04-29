@@ -48,6 +48,8 @@
       "@atlas/metrics/*": ["./packages/metrics/src/*"],
       "@atlas/modules-content-pages": ["./packages/modules-content-pages/src/index.ts"],
       "@atlas/modules-content-pages/*": ["./packages/modules-content-pages/src/*"],
+      "@atlas/wasm-host": ["./packages/wasm-host/src/index.ts"],
+      "@atlas/wasm-host/*": ["./packages/wasm-host/src/*"],
       "@atlas/server": ["./apps/server/src/main.ts"],
       "@atlas/server/*": ["./apps/server/src/*"]
     }

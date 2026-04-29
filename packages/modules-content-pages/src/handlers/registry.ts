@@ -84,6 +84,9 @@ export function contentPagesHandlerEntries(
                 templateVersion: readOptionalString(payload, 'templateVersion') as string,
               }
             : {}),
+          ...(readOptionalString(payload, 'pluginRef') !== undefined
+            ? { pluginRef: readOptionalString(payload, 'pluginRef') as string }
+            : {}),
         },
         ctx.eventStore,
       );

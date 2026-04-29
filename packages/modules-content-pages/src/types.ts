@@ -22,6 +22,13 @@ export interface PageDocument {
   authorId?: string | null;
   templateId?: string;
   templateVersion?: string;
+  /**
+   * Optional WASM plugin to render this page. When set, the dispatcher
+   * routes the build through the configured `WasmHost`; when unset, the
+   * default render tree is produced. Mirrors `pageDocument.pluginRef`
+   * in the Rust worker (`crates/ingress/src/worker.rs`).
+   */
+  pluginRef?: string;
   createdAt: string;
   updatedAt: string;
 }

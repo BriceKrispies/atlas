@@ -57,19 +57,24 @@ TS-backed deployment.
   `content-pages-sim.test.ts::test_render_tree_is_default_shape` and
   the matching `content-pages-node.test.ts` pair.
 - `persistence_test.rs` (1 scenario) — covered by
-  `content-pages-sim.test.ts::test_render_tree_survives_fast_path_clear`.
-  Sim-only today — node mode needs a `/debug/render-tree/clear` endpoint
-  to flip the in-memory projection without a process restart. Follow-up.
+  `content-pages-sim.test.ts::test_render_tree_survives_fast_path_clear`
+  AND `content-pages-node.test.ts::test_render_tree_survives_fast_path_clear`.
+  Paired in Chunk 10 via `POST /debug/render-tree/clear?pageId=...`,
+  gated by `DEBUG_AUTH_ENDPOINT_ENABLED=true`. Cross-language WASM
+  plugin parity (`tests/parity/wasm-plugin-node.test.ts`) shipped at
+  the same time, exercising the demo-transform plugin against the
+  Node + browser hosts.
 
 ## Counts
 
 - Total Rust scenarios across the 12 suites: **58**.
-- Ported in Chunks 5 + 7 + 7.1 + 7.2 + 9: **58** scenarios.
+- Ported in Chunks 5 + 7 + 7.1 + 7.2 + 9 + 10: **58** scenarios. All
+  paired sim/node where applicable.
   - 47 Chunk-5 originals as paired sim/node.
   - 4 Chunk-5 sim-only scenarios that flipped to paired in 7.2.
   - 5 observability scenarios + 1 authz-metrics paired in 7.1.
-  - 1 render-tree paired in 7; 1 persistence sim-only with a documented
-    node-mode follow-up.
+  - 1 render-tree paired in 7; 1 persistence paired in 10
+    (`/debug/render-tree/clear`).
   - 3 Keycloak smoke + token-extraction paired in **Chunk 9**.
 - Deferred: **0**.
 

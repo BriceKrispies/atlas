@@ -1,0 +1,21 @@
+{
+  "name": "@atlas/wasm-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node-host.ts",
+    "./browser": "./src/browser-host.ts",
+    "./loader": "./src/plugin-loader.ts"
+  },
+  "dependencies": {
+    "@atlas/ports": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/contract-tests": "workspace:*",
+    "@types/node": "^22.19.17",
+    "vitest": "^4.1.5"
+  }
+}

@@ -109,6 +109,15 @@ export interface BrowserIngress {
     body: unknown;
   } | null>;
 
+  /**
+   * Sim-only: register a WASM plugin's bytes against the in-memory
+   * plugin loader so a `pluginRef`-bearing PageDocument can be
+   * rendered through the sim host. Node mode raises
+   * `UnsupportedInMode` — server-side plugins are loaded by
+   * `FilesystemPluginLoader` from `WASM_PLUGIN_DIR`, not via HTTP.
+   */
+  registerWasmPlugin(pluginRef: string, bytes: Uint8Array): Promise<void>;
+
   close(): Promise<void>;
 }
 

@@ -24,6 +24,11 @@ import {
 } from '@atlas/adapters-node';
 import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
 import {
+  NodeWasmHost,
+  FilesystemPluginLoader,
+} from '@atlas/wasm-host';
+import type { WasmHost } from '@atlas/ports';
+import {
   CedarPolicyEngine,
   PostgresBundleLoader,
   generateCedarSchema,
@@ -55,6 +60,16 @@ export interface AppState {
    * v1 (Chunk 6a) only the `stub` engine is wired; `cedar` lands in 6b.
    */
   readonly policyEngine: PolicyEngine;
+  /**
+   * Process-wide WASM plugin host. Stateless across invocations
+   * (each `invoke` builds a fresh `WebAssembly.Instance`), so a
+   * single instance is shared across all requests. Loader resolves
+   * `pluginRef` against `WASM_PLUGIN_DIR`. Wired into the
+   * content-pages dispatcher; the render-tree projection consults
+   * `pageDocument.pluginRef` and falls back to the default tree
+   * when no plugin is named.
+   */
+  readonly wasmHost: WasmHost;
 }
 
 export async function bootstrap(config: AppConfig): Promise<AppState> {
@@ -107,6 +122,14 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
       assertNever(config.policyEngine);
   }
 
+  // Build the WASM host once at boot — fresh `Store`/`Instance` per
+  // `invoke` is the security model, but the loader caches `.wasm`
+  // bytes per process so we don't re-read disk on every request.
+  // `WASM_PLUGIN_DIR` env var honored, default `./plugins`.
+  const wasmHost: WasmHost = new NodeWasmHost({
+    loader: new FilesystemPluginLoader(),
+  });
+
   return {
     config,
     controlPlaneSql,
@@ -115,6 +138,7 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     jwks,
     migratedTenants: new Set<string>(),
     policyEngine,
+    wasmHost,
   };
 }
 

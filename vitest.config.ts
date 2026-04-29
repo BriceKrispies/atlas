@@ -30,6 +30,7 @@ export default defineConfig({
         './packages/modules-content-pages/src/index.ts',
       ),
       '@atlas/metrics': r('./packages/metrics/src/index.ts'),
+      '@atlas/wasm-host': r('./packages/wasm-host/src/index.ts'),
     },
   },
   test: {
