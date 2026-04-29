@@ -130,9 +130,17 @@ export function generateCedarSchema(manifests: ModuleManifest[]): CedarSchemaJso
 
   for (const manifest of manifests) {
     for (const r of manifest.resources ?? []) {
+      // Empty resource type would emit `entityTypes['']`, which Cedar
+      // rejects. Manifest validation upstream should catch this; the
+      // skip here is defensive so a malformed manifest doesn't poison
+      // the schema with an unparseable entry.
+      if (r.resourceType.trim().length === 0) continue;
       entityTypes[r.resourceType] = resourceEntityType();
     }
     for (const a of manifest.actions ?? []) {
+      // Same defensive skip for action declarations.
+      if (a.actionId.trim().length === 0) continue;
+      if (a.resourceType.trim().length === 0) continue;
       referencedResources.add(a.resourceType);
       actions[a.actionId] = {
         appliesTo: {

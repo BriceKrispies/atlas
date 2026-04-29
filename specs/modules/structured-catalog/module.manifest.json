@@ -17,6 +17,24 @@
       "resourceType": "Family",
       "verb": "publish",
       "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Catalog.Family.Read",
+      "resourceType": "Family",
+      "verb": "read",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Catalog.Family.Archive",
+      "resourceType": "Family",
+      "verb": "archive",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "Catalog.Family.Delete",
+      "resourceType": "Family",
+      "verb": "delete",
+      "auditLevel": "SENSITIVE"
     }
   ],
   "resources": [

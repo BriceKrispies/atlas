@@ -65,16 +65,6 @@ export interface IngressState {
   ) => Promise<void> | void;
 }
 
-const PERMIT_EMIT_ENV = 'AUDIT_EMIT_PERMITS';
-
-function shouldEmitAudit(decision: PolicyDecision): boolean {
-  if (decision.effect === 'deny') return true;
-  // Permit emission is a future-config opt-in. Reading the env at call
-  // time keeps tests independent (set/restore in beforeEach) — caching
-  // would force resetModules.
-  return process.env[PERMIT_EMIT_ENV] === 'true';
-}
-
 function err(code: string, message: string, status: number, correlationId: string): never {
   throw new IngressError(code, message, status, correlationId);
 }
@@ -172,14 +162,18 @@ export async function submitIntent(
   };
   const decision = await state.policyEngine.evaluate(evaluationRequest);
 
-  // Audit emit (Chunk 6c — `StructuredAuthz.PolicyEvaluated`). Deny by
-  // default; permits opt in via `AUDIT_EMIT_PERMITS=true`. Wired via the
-  // optional `auditPolicyEvaluated` hook on IngressState so this package
-  // doesn't depend on the cedar adapter (Chunk 1 port-boundary rule).
-  // Errors from the audit hook MUST NOT block the deny throw — Invariant
-  // I2 says no side effects on a denied request, but recording the
-  // denial *is* the intended audit side effect, so the throw still wins.
-  if (state.auditPolicyEvaluated && shouldEmitAudit(decision)) {
+  // Audit emit (Chunk 6c — `StructuredAuthz.PolicyEvaluated`). Wired
+  // via the optional `auditPolicyEvaluated` hook on IngressState so
+  // this package doesn't depend on the cedar adapter (Chunk 1
+  // port-boundary rule). The hook itself owns the emit decision
+  // (deny-by-default, permits opt-in via `AUDIT_EMIT_PERMITS=true`)
+  // so the env-var read lives in one place — see
+  // `apps/server/src/middleware/state.ts`.
+  //
+  // Errors from the hook MUST NOT block the deny throw — Invariant I2
+  // says no side effects on a denied request, but recording the denial
+  // *is* the intended audit side effect, so the throw still wins.
+  if (state.auditPolicyEvaluated) {
     try {
       await state.auditPolicyEvaluated(evaluationRequest, decision, {
         correlationId,

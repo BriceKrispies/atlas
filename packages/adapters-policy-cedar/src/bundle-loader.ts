@@ -48,12 +48,12 @@ export interface ParsedBundle {
   /**
    * Optional bundle-scoped schema override. Per-deployment schema (from
    * `schema-generator.ts`) is the default; this slot lets a future
-   * Chunk 6c+1 attach a tenant-authored schema without breaking the
-   * wrapper format. Today this is always `undefined` — the field is
-   * declared so callers reading `ParsedBundle.schema` typecheck once
-   * the activation flow learns to populate it.
+   * activation flow attach a tenant-authored schema without breaking
+   * the wrapper format. Today this is always `undefined`. Type matches
+   * `CedarSchema = string | CedarSchemaJson` so a JSON schema object
+   * can be attached without a widening cast.
    */
-  schema?: string;
+  schema?: string | Record<string, unknown>;
 }
 
 export interface PolicyBundleLoader {

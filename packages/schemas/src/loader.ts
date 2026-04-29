@@ -7,6 +7,7 @@ import familyPublish from './generated/catalog.family.publish.v1.schema.json' wi
 import seedApplied from './generated/catalog.seed_package_applied.v1.schema.json' with { type: 'json' };
 import familyPublished from './generated/catalog.family_published.v1.schema.json' with { type: 'json' };
 import variantUpserted from './generated/catalog.variant_upserted.v1.schema.json' with { type: 'json' };
+import policyEvaluated from './generated/platform.policy_evaluated.v1.schema.json' with { type: 'json' };
 import moduleManifestRaw from './generated/module.manifest.json' with { type: 'json' };
 import badgeFamilySeedRaw from './generated/badge-family.json' with { type: 'json' };
 
@@ -16,6 +17,7 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   seedApplied as AnySchemaObject,
   familyPublished as AnySchemaObject,
   variantUpserted as AnySchemaObject,
+  policyEvaluated as AnySchemaObject,
 ];
 
 let cachedAjv: Ajv2020 | null = null;

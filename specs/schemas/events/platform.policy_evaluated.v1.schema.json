@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform.policy_evaluated.v1",
+  "title": "PolicyEvaluatedEventPayload",
+  "description": "Payload for StructuredAuthz.PolicyEvaluated audit events. Emitted on every authorization decision the runtime records — deny by default, permit when AUDIT_EMIT_PERMITS=true. Counterpart of crates/runtime/src/audit.rs in the Rust runtime.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "decision", "matchedPolicies", "reasons", "resource", "principalId"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Action being evaluated (e.g. Catalog.Family.Publish)."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["permit", "deny"],
+      "description": "Cedar's deny-overrides semantics already collapsed."
+    },
+    "matchedPolicies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Policy ids that contributed to the decision (Cedar diagnostics.reason)."
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable reasons surfaced by the engine. Audit-only — never user-facing."
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "id": { "type": "string" }
+      }
+    },
+    "principalId": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

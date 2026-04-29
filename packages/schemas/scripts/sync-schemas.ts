@@ -22,12 +22,15 @@ mkdirSync(outDir, { recursive: true });
 
 const copied: string[] = [];
 
-const isCatalog = (n: string): boolean =>
-  n.startsWith('catalog.') && n.endsWith('.schema.json');
+// Copy module-domain schemas (`catalog.*`) and platform-emitted ones
+// (`platform.*` — e.g. StructuredAuthz.PolicyEvaluated audit events).
+const isPicked = (n: string): boolean =>
+  (n.startsWith('catalog.') || n.startsWith('platform.')) &&
+  n.endsWith('.schema.json');
 
 for (const dir of [contracts, events]) {
   for (const f of readdirSync(dir)) {
-    if (isCatalog(f)) {
+    if (isPicked(f)) {
       copyFileSync(join(dir, f), join(outDir, f));
       copied.push(f);
     }

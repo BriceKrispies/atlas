@@ -99,12 +99,15 @@ export function policyEvaluatedEvent(
     causationId: opts.causationId ?? null,
     principalId: request.principal.id,
     userId: request.principal.id,
-    // Audit events are tagged by tenant + principal so cache invalidation
-    // (e.g. an admin "events for principal X" view) can purge cleanly.
-    cacheInvalidationTags: [
-      `Tenant:${request.principal.tenantId}`,
-      `Principal:${request.principal.id}`,
-    ],
+    // Audit events do NOT invalidate any cache. They're append-only
+    // history; nothing reads-through to a tenant-scoped key from them.
+    // A previous version included `Tenant:${tenantId}` here; that tag
+    // would force the Cedar bundle cache to refresh on every deny once
+    // `wirePolicyCacheInvalidation` is hooked into the dispatcher,
+    // causing a thrash under sustained denial load (a misconfigured
+    // client retrying). Future "events for principal X" admin views
+    // should derive their own cache key, not piggy-back on this field.
+    cacheInvalidationTags: null,
     payload,
   };
 }

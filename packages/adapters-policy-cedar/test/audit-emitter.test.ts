@@ -53,10 +53,10 @@ describe('policyEvaluatedEvent', () => {
     expect(env.causationId).toBe('parent-evt-0');
     expect(env.principalId).toBe('alice');
     expect(env.userId).toBe('alice');
-    expect(env.cacheInvalidationTags).toEqual([
-      'Tenant:tenant-a',
-      'Principal:alice',
-    ]);
+    // Audit events are append-only — they don't invalidate any cache.
+    // Including a Tenant: tag here would thrash the Cedar bundle cache
+    // once wirePolicyCacheInvalidation is hooked into the dispatcher.
+    expect(env.cacheInvalidationTags).toBeNull();
     const payload = env.payload as Record<string, unknown>;
     expect(payload['decision']).toBe('deny');
     expect(payload['action']).toBe('Catalog.Family.Publish');

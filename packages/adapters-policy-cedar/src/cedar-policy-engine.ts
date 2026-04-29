@@ -336,11 +336,15 @@ export class CedarPolicyEngine implements PolicyEngine {
       policies: { staticPolicies },
       entities: refs.entities,
       // Schema is optional — when present, cedar-wasm validates the
-      // policies and the request shape on every call. Cost is small
-      // (sub-millisecond for typical bundles) and the diagnostics are
-      // worth it. Schema is `undefined` when the engine was constructed
-      // without one (sim mode / pre-Chunk-6c boot).
-      ...(this.schema !== undefined ? { schema: this.schema } : {}),
+      // policies AND the request shape on every call. `validateRequest`
+      // gates the request-shape check explicitly: without it, a request
+      // whose principal/resource type contradicts the schema would
+      // evaluate normally (probably yielding a default-deny but skipping
+      // the typed-error path). Schema is `undefined` when the engine
+      // was constructed without one (sim mode / pre-Chunk-6c boot).
+      ...(this.schema !== undefined
+        ? { schema: this.schema, validateRequest: true }
+        : {}),
     };
 
     let answer: CedarResponse;

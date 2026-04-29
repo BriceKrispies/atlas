@@ -15,6 +15,10 @@ import {
   PostgresCatalogStateStore,
 } from '@atlas/adapters-node';
 import {
+  policyEvaluatedEvent,
+  shouldEmitPolicyEvaluated,
+} from '@atlas/adapters-policy-cedar';
+import {
   catalogHandlerRegistry,
   dispatchCatalogEvent,
   type CatalogQueryDeps,
@@ -25,6 +29,10 @@ import type {
 } from '@atlas/ingress';
 import type { Principal } from '@atlas/platform-core';
 import { ensureTenantMigrated, type AppState } from '../bootstrap.ts';
+
+function newAuditId(): string {
+  return `audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export interface RequestBundle {
   ingress: IngressState;
@@ -66,6 +74,29 @@ export async function buildRequestBundle(
     handlers,
     dispatch,
     policyEngine: state.policyEngine,
+    // `StructuredAuthz.PolicyEvaluated` audit emit (Chunk 6c). Persists
+    // the envelope to the event store, then dispatches it through the
+    // existing pipeline. Persistence is critical: the catalog dispatcher
+    // is a no-op for non-catalog event types, so a dispatch-only path
+    // would silently drop the audit on the floor. Errors here are
+    // swallowed by submitIntent so a flaky audit pipeline never turns a
+    // clean deny into a 500.
+    //
+    // The wiring layer (this hook) owns the emit decision — submitIntent
+    // calls the hook unconditionally; the hook itself decides whether
+    // to emit by consulting `shouldEmitPolicyEvaluated`. This keeps
+    // `AUDIT_EMIT_PERMITS` reads in one place.
+    auditPolicyEvaluated: async (request, decision, ctx) => {
+      if (!shouldEmitPolicyEvaluated(decision, process.env)) return;
+      const envelope = policyEvaluatedEvent(request, decision, {
+        correlationId: ctx.correlationId,
+        idempotencyKey: ctx.idempotencyKey,
+        eventId: newAuditId(),
+      });
+      const stored = await eventStore.append(envelope);
+      envelope.eventId = stored;
+      await dispatch(envelope);
+    },
   };
 
   // Thread the per-request correlation id into the catalog query deps so
