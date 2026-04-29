@@ -21,11 +21,20 @@ debug surface they require.
 | Rust suite | Scenarios | Why deferred |
 |--|--|--|
 | `render_tree_test.rs` | 1 | Render-tree is content-pages module territory. The TS port hasn't started — see Chunk 7. |
-| `observability_test.rs` | 5 | `apps/server` has not yet shipped `/metrics` (Prometheus text format). Port these once Chunk 6+ adds the metrics surface. |
 | `persistence_test.rs` | 1 | Tests "render tree survives cache clear" — depends on render-tree (Chunk 7+). |
 | `authentication_test.rs::test_valid_keycloak_token_*` | 2 | Requires a live Keycloak realm with the `atlas-s2s` client. The current parity stack assumes test-auth via `X-Debug-Principal`; standing up Keycloak in the parity loop is a follow-up once `apps/server` integration with `atlas itest` lands. |
 | `authentication_test.rs::test_keycloak_is_reachable` | 1 | Same as above — Keycloak smoke test. |
-| `authorization_test.rs::test_policy_evaluation_metrics_recorded` | 1 | Depends on `/metrics` (see observability above). |
+
+### Unblocked by Chunk 7.1
+
+`/metrics` (Prometheus text format) shipped in Chunk 7.1 with the
+`@atlas/metrics` package. The 5 observability scenarios + the
+`authorization_test::test_policy_evaluation_metrics_recorded`
+scenario now have a node-mode counterpart in
+`tests/parity/observability-node.test.ts`. Note: the Atlas TS metric
+names are namespace-prefixed (`atlas_*`); the Rust counterparts are
+not. Dashboards must use the prefix-aware names when querying the
+TS-backed deployment.
 
 ## Counts
 

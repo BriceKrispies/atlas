@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { loadConfig } from './config.ts';
 import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
 import { healthRoutes } from './routes/health.ts';
+import { metricsRoutes } from './routes/metrics.ts';
 import { intentRoutes } from './routes/intents.ts';
 import { catalogRoutes } from './routes/catalog.ts';
 import { authzRoutes } from './routes/authz.ts';
@@ -28,6 +29,10 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
 
   // Public routes — no authn.
   app.route('/', healthRoutes(state));
+  // /metrics is also public — Prometheus scrapes from inside the cluster
+  // network. If exposing the endpoint outside that perimeter, gate it with
+  // authn here. Mirrors the Rust ingress's unauthenticated metrics route.
+  app.route('/', metricsRoutes());
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();

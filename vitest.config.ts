@@ -25,6 +25,7 @@ export default defineConfig({
       '@atlas/adapters-policy-cedar': r('./packages/adapters-policy-cedar/src/index.ts'),
       '@atlas/ingress': r('./packages/ingress/src/index.ts'),
       '@atlas/modules-catalog': r('./packages/modules-catalog/src/index.ts'),
+      '@atlas/metrics': r('./packages/metrics/src/index.ts'),
     },
   },
   test: {

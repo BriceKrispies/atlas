@@ -1,5 +1,6 @@
 import type { EventEnvelope, IntentEnvelope, IntentResponse } from '@atlas/platform-core';
 import { IngressError } from '@atlas/platform-core';
+import { intentsSubmittedTotal, policyEvaluationsTotal } from '@atlas/metrics';
 import type {
   EventStore,
   Cache,
@@ -79,6 +80,38 @@ export async function submitIntent(
 ): Promise<IntentResponse> {
   const correlationId = envelope.correlationId || 'unknown';
 
+  // Counter wiring (Chunk 7.1). One increment per finished intent,
+  // labelled by action + decision. `action` defaults to 'unknown' when
+  // we throw before action lookup (schema/idempotency/principal/tenant
+  // failures). `decision` is `permit` on success, `deny` on the
+  // policy-engine deny path, `error` for everything else. The label
+  // set is closed-form so cardinality stays bounded — adding a new
+  // decision value here means updating dashboards too.
+  let observedAction = 'unknown';
+  let observedDecision: 'permit' | 'deny' | 'error' = 'error';
+  try {
+    const result = await submitIntentInner(state, envelope, correlationId, (action, decision) => {
+      observedAction = action;
+      observedDecision = decision;
+    });
+    return result;
+  } finally {
+    try {
+      intentsSubmittedTotal().inc({ action: observedAction, decision: observedDecision });
+    } catch {
+      // Metrics MUST NOT fail the request. A typo'd label or a
+      // registration race would normally throw — swallow so the
+      // request shape stays unchanged.
+    }
+  }
+}
+
+async function submitIntentInner(
+  state: IngressState,
+  envelope: IntentEnvelope,
+  correlationId: string,
+  observe: (action: string, decision: 'permit' | 'deny' | 'error') => void,
+): Promise<IntentResponse> {
   // 1. Authn — preconfigured principal; reject if envelope tries to claim a different one.
   // Rust counterpart: AppError::unauthorized() in crates/ingress/src/errors.rs (FORBIDDEN/403).
   if (envelope.principalId && envelope.principalId !== state.principalId) {
@@ -118,6 +151,10 @@ export async function submitIntent(
   if (!action) {
     err('UNKNOWN_ACTION', `unknown action: ${actionId}`, 400, correlationId);
   }
+  // Action is known and structurally valid — record it for the metrics
+  // counter even if a later step throws (so `error` rows still attribute
+  // to the right action).
+  observe(actionId, 'error');
 
   // 6. Authz (Invariant I2: must run before handler dispatch / any side
   // effects). The PolicyEngine seam returns permit/deny; deny-overrides
@@ -161,6 +198,16 @@ export async function submitIntent(
     context: { correlationId },
   };
   const decision = await state.policyEngine.evaluate(evaluationRequest);
+  // Bump the policy-evaluation counter regardless of audit emission.
+  // Mirrors the Rust `policy_evaluations_total` metric exactly — same
+  // label set + decision vocabulary so cross-runtime dashboards stay
+  // portable. Wrapped in try/catch so a bad label can never block
+  // the request (cardinality protection lives in the metric layer).
+  try {
+    policyEvaluationsTotal().inc({ decision: decision.effect });
+  } catch {
+    // Swallow — see comment above.
+  }
 
   // Audit emit (Chunk 6c — `StructuredAuthz.PolicyEvaluated`). Wired
   // via the optional `auditPolicyEvaluated` hook on IngressState so
@@ -187,6 +234,9 @@ export async function submitIntent(
   }
 
   if (decision.effect === 'deny') {
+    // Record the deny BEFORE throwing so the outer finally observes
+    // `decision=deny` rather than the default `error`.
+    observe(actionId, 'deny');
     // Deliberately opaque user-facing message — matches Rust ingress
     // (`crates/ingress/src/errors.rs` `unauthorized()`) and prevents
     // leaking policy ids, matched-rule reasons, or Cedar AST fragments
@@ -216,6 +266,7 @@ export async function submitIntent(
     for (const ev of follow) {
       await state.dispatch(ev);
     }
+    observe(actionId, 'permit');
     return {
       eventId: primary.eventId,
       tenantId: state.tenantId,
@@ -243,6 +294,7 @@ export async function submitIntent(
   generic.eventId = stored;
   await state.dispatch(generic);
 
+  observe(actionId, 'permit');
   return {
     eventId: generic.eventId,
     tenantId: state.tenantId,

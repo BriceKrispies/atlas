@@ -44,6 +44,8 @@
       "@atlas/modules-catalog/*": ["./packages/modules-catalog/src/*"],
       "@atlas/modules-authz": ["./packages/modules-authz/src/index.ts"],
       "@atlas/modules-authz/*": ["./packages/modules-authz/src/*"],
+      "@atlas/metrics": ["./packages/metrics/src/index.ts"],
+      "@atlas/metrics/*": ["./packages/metrics/src/*"],
       "@atlas/server": ["./apps/server/src/main.ts"],
       "@atlas/server/*": ["./apps/server/src/*"]
     }
