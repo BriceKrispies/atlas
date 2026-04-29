@@ -11,6 +11,10 @@ import policyEvaluated from './generated/platform.policy_evaluated.v1.schema.jso
 import authzPolicyCreate from './generated/authz.policy.create.v1.schema.json' with { type: 'json' };
 import authzPolicyActivate from './generated/authz.policy.activate.v1.schema.json' with { type: 'json' };
 import authzPolicyArchive from './generated/authz.policy.archive.v1.schema.json' with { type: 'json' };
+import contentPagesPageCreate from './generated/content_pages.page.create.v1.schema.json' with { type: 'json' };
+import contentPagesPageUpdate from './generated/content_pages.page.update.v1.schema.json' with { type: 'json' };
+import contentPagesPageDelete from './generated/content_pages.page.delete.v1.schema.json' with { type: 'json' };
+import contentPagesPageRead from './generated/content_pages.page.read.v1.schema.json' with { type: 'json' };
 import moduleManifestRaw from './generated/module.manifest.json' with { type: 'json' };
 import badgeFamilySeedRaw from './generated/badge-family.json' with { type: 'json' };
 
@@ -24,6 +28,10 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   authzPolicyCreate as AnySchemaObject,
   authzPolicyActivate as AnySchemaObject,
   authzPolicyArchive as AnySchemaObject,
+  contentPagesPageCreate as AnySchemaObject,
+  contentPagesPageUpdate as AnySchemaObject,
+  contentPagesPageDelete as AnySchemaObject,
+  contentPagesPageRead as AnySchemaObject,
 ];
 
 let cachedAjv: Ajv2020 | null = null;

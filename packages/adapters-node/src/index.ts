@@ -4,6 +4,7 @@ export { PostgresProjectionStore } from './projection-store.ts';
 export { PostgresSearchEngine } from './search-engine.ts';
 export { PostgresControlPlaneRegistry } from './control-plane-registry.ts';
 export { PostgresCatalogStateStore } from './catalog-state-store.ts';
+export { PostgresRenderTreeStore } from './postgres-render-tree-store.ts';
 export {
   PostgresTenantDbProvider,
   type TenantDbProvider,

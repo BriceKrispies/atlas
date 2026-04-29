@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content_pages.page.create.v1",
+  "title": "ContentPagesPageCreatePayload",
+  "description": "Payload schema for ContentPages.Page.Create intents. Mirrors page_create_intent_payload.v1 but is keyed under the actionIdToSchemaId convention so the runtime registry can resolve it.",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "ContentPages.Page.Create" },
+    "resourceType": { "type": "string", "const": "Page" },
+    "resourceId": { "type": ["string", "null"] },
+    "pageId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "slug": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "content": { "type": "string" },
+    "authorId": { "type": "string" },
+    "templateId": { "type": "string" },
+    "templateVersion": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published", "archived"]
+    }
+  },
+  "required": ["actionId", "resourceType", "pageId", "title", "slug"]
+}

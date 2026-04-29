@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content_pages.page.update.v1",
+  "title": "ContentPagesPageUpdatePayload",
+  "description": "Payload schema for ContentPages.Page.Update intents.",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "ContentPages.Page.Update" },
+    "resourceType": { "type": "string", "const": "Page" },
+    "resourceId": { "type": ["string", "null"] },
+    "pageId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "slug": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "content": { "type": "string" },
+    "templateId": { "type": "string" },
+    "templateVersion": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published", "archived"]
+    }
+  },
+  "required": ["actionId", "resourceType", "pageId"]
+}

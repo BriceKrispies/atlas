@@ -24,6 +24,11 @@ import type {
   SearchParams,
   SearchResponse,
 } from '@atlas/modules-catalog';
+import type {
+  PageDocument,
+  PageSummary,
+  RenderTree,
+} from '@atlas/modules-content-pages';
 
 export interface IngressFailure {
   code: string;
@@ -70,6 +75,18 @@ export interface BrowserIngress {
     params?: VariantTableParams,
   ): Promise<VariantTableResponse | null>;
   searchCatalog(params: SearchParams): Promise<SearchResponse>;
+
+  /** Content-pages reads. Both modes implement these. */
+  listContentPages(): Promise<readonly PageSummary[]>;
+  getContentPage(pageId: string): Promise<PageDocument | null>;
+  getContentPageRenderTree(pageId: string): Promise<RenderTree | null>;
+
+  /**
+   * Sim-only: clear the in-memory render-tree projection for a page.
+   * Used by the `persistence_test`-equivalent scenario to prove the
+   * durable RenderTreeStore fallback works.
+   */
+  clearRenderTreeFastPath(pageId: string): Promise<void>;
 
   /** Sim-only: read the cacheInvalidationTags off the stored event envelope. */
   readEventTags(eventId: string): Promise<string[] | null>;

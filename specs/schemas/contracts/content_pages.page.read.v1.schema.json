@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content_pages.page.read.v1",
+  "title": "ContentPagesPageReadPayload",
+  "description": "Payload schema for ContentPages.Page.Read intents (currently unused — reads go through GET endpoints, but the schema is registered so the action can be exercised through the intent pipeline if needed).",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "ContentPages.Page.Read" },
+    "resourceType": { "type": "string", "const": "Page" },
+    "resourceId": { "type": ["string", "null"] },
+    "pageId": { "type": "string", "minLength": 1, "maxLength": 64 }
+  },
+  "required": ["actionId", "resourceType", "pageId"]
+}

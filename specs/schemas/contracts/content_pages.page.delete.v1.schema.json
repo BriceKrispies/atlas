@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content_pages.page.delete.v1",
+  "title": "ContentPagesPageDeletePayload",
+  "description": "Payload schema for ContentPages.Page.Delete intents.",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "ContentPages.Page.Delete" },
+    "resourceType": { "type": "string", "const": "Page" },
+    "resourceId": { "type": ["string", "null"] },
+    "pageId": { "type": "string", "minLength": 1, "maxLength": 64 }
+  },
+  "required": ["actionId", "resourceType", "pageId"]
+}

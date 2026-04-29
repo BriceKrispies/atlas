@@ -31,6 +31,15 @@ export interface CatalogStateRow {
   publishedRevisions: Record<string, number>;
 }
 
+export interface RenderTreeRow {
+  /** Composite key `${tenantId} ${pageId}` — IDB stores need a single string keyPath. */
+  renderTreeKey: string;
+  tenantId: string;
+  pageId: string;
+  tree: unknown;
+  updatedAt: number;
+}
+
 export interface AtlasIdbSchema extends DBSchema {
   events: {
     key: string;
@@ -66,13 +75,20 @@ export interface AtlasIdbSchema extends DBSchema {
     key: string;
     value: CatalogStateRow;
   };
+  page_render_trees: {
+    key: string;
+    value: RenderTreeRow;
+    indexes: {
+      by_tenant_page: [string, string];
+    };
+  };
 }
 
 export type IdbDb = IDBPDatabase<AtlasIdbSchema>;
 
 export async function openAtlasIdb(tenantId: string): Promise<IdbDb> {
   const name = `atlas-sim-${tenantId}`;
-  return openDB<AtlasIdbSchema>(name, 2, {
+  return openDB<AtlasIdbSchema>(name, 3, {
     upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         const events = db.createObjectStore('events', { keyPath: 'eventId' });
@@ -114,6 +130,18 @@ export async function openAtlasIdb(tenantId: string): Promise<IdbDb> {
             { unique: true },
           );
         }
+      }
+      if (oldVersion < 3) {
+        // v3: render-tree projection store (Chunk 7). Mirrors the Rust
+        // `control_plane.page_render_trees` table; keyed by `(tenantId,
+        // pageId)`. Used by `IdbRenderTreeStore` in sim mode so the
+        // render-tree contract test can run without Postgres.
+        const renderTrees = db.createObjectStore('page_render_trees', {
+          keyPath: 'renderTreeKey',
+        });
+        renderTrees.createIndex('by_tenant_page', ['tenantId', 'pageId'], {
+          unique: true,
+        });
       }
     },
   });

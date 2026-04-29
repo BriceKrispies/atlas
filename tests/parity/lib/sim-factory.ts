@@ -6,6 +6,7 @@ import {
   IdbSearchEngine,
   InMemoryControlPlaneRegistry,
   IdbCatalogStateStore,
+  IdbRenderTreeStore,
   type IdbDb,
 } from '@atlas/adapters-idb';
 import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
@@ -24,6 +25,16 @@ import {
   type CatalogQueryDeps,
 } from '@atlas/modules-catalog';
 import {
+  contentPagesHandlerRegistry,
+  dispatchContentPagesEvent,
+  listPages as listContentPagesQuery,
+  getPage as getContentPageQuery,
+  getRenderTree as getContentPageRenderTreeQuery,
+  renderTreeKey as contentRenderTreeKey,
+  type ContentPagesQueryDeps,
+} from '@atlas/modules-content-pages';
+import { composeRegistries } from '@atlas/modules-authz';
+import {
   IngressError,
   type IntentEnvelope,
   type IntentResponse,
@@ -41,6 +52,8 @@ interface SimContext {
   db: IdbDb;
   state: IngressState;
   queryDeps: CatalogQueryDeps;
+  contentPagesDeps: ContentPagesQueryDeps;
+  projections: IdbProjectionStore;
   search: IdbSearchEngine;
   registry: InMemoryControlPlaneRegistry;
 }
@@ -54,11 +67,26 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   const search = new IdbSearchEngine(db);
   const registry = new InMemoryControlPlaneRegistry();
   const catalogState = new IdbCatalogStateStore(db);
-  const handlers = catalogHandlerRegistry();
+  const renderTreeStore = new IdbRenderTreeStore(db);
+  const handlers = composeRegistries(
+    catalogHandlerRegistry(),
+    contentPagesHandlerRegistry(projections),
+  );
   const policyEngine = new StubPolicyEngine();
 
-  const dispatch: EventDispatcher = (envelope) =>
-    dispatchCatalogEvent(envelope, { catalogState, projections, search, cache });
+  const dispatch: EventDispatcher = async (envelope) => {
+    await dispatchCatalogEvent(envelope, {
+      catalogState,
+      projections,
+      search,
+      cache,
+    });
+    await dispatchContentPagesEvent(envelope, {
+      projections,
+      renderTreeStore,
+      cache,
+    });
+  };
 
   const state: IngressState = {
     tenantId: opts.tenantId,
@@ -81,7 +109,23 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
     search,
   };
 
-  return { db, state, queryDeps, search, registry };
+  const contentPagesDeps: ContentPagesQueryDeps = {
+    tenantId: opts.tenantId,
+    principalId: opts.principalId,
+    correlationId: 'sim-corr',
+    projections,
+    renderTreeStore,
+  };
+
+  return {
+    db,
+    state,
+    queryDeps,
+    contentPagesDeps,
+    projections,
+    search,
+    registry,
+  };
 }
 
 function failureFromIngressError(e: IngressError): IngressFailure {
@@ -145,6 +189,21 @@ export async function createSimIngress(opts: FactoryOptions): Promise<BrowserIng
     },
     searchCatalog(params) {
       return searchCatalog(ctx.queryDeps, params);
+    },
+
+    listContentPages() {
+      return listContentPagesQuery(ctx.contentPagesDeps);
+    },
+    getContentPage(pageId) {
+      return getContentPageQuery(ctx.contentPagesDeps, pageId);
+    },
+    getContentPageRenderTree(pageId) {
+      return getContentPageRenderTreeQuery(ctx.contentPagesDeps, pageId);
+    },
+    async clearRenderTreeFastPath(pageId: string): Promise<void> {
+      await ctx.projections.delete(
+        contentRenderTreeKey(opts.tenantId, pageId),
+      );
     },
 
     async readEventTags(eventId) {

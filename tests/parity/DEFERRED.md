@@ -1,7 +1,7 @@
 # Deferred parity scenarios
 
-These Rust black-box scenarios are not yet ported in Chunk 5. Each line
-documents what would need to land first.
+These Rust black-box scenarios are not yet ported. Each line documents
+what would need to land first.
 
 ## Sim-only
 
@@ -27,8 +27,6 @@ mounted and the node-mode helpers (`readEventTags`, `truncateSearch`,
 
 | Rust suite | Scenarios | Why deferred |
 |--|--|--|
-| `render_tree_test.rs` | 1 | Render-tree is content-pages module territory. The TS port hasn't started — see Chunk 7. |
-| `persistence_test.rs` | 1 | Tests "render tree survives cache clear" — depends on render-tree (Chunk 7+). |
 | `authentication_test.rs::test_valid_keycloak_token_*` | 2 | Requires a live Keycloak realm with the `atlas-s2s` client. The current parity stack assumes test-auth via `X-Debug-Principal`; standing up Keycloak in the parity loop is a follow-up once `apps/server` integration with `atlas itest` lands. |
 | `authentication_test.rs::test_keycloak_is_reachable` | 1 | Same as above — Keycloak smoke test. |
 
@@ -43,16 +41,27 @@ names are namespace-prefixed (`atlas_*`); the Rust counterparts are
 not. Dashboards must use the prefix-aware names when querying the
 TS-backed deployment.
 
+### Unblocked by Chunk 7
+
+- `render_tree_test.rs` (1 scenario) — covered by
+  `content-pages-sim.test.ts::test_render_tree_is_default_shape` and
+  the matching `content-pages-node.test.ts` pair.
+- `persistence_test.rs` (1 scenario) — covered by
+  `content-pages-sim.test.ts::test_render_tree_survives_fast_path_clear`.
+  Sim-only today — node mode needs a `/debug/render-tree/clear` endpoint
+  to flip the in-memory projection without a process restart. Follow-up.
+
 ## Counts
 
 - Total Rust scenarios across the 12 suites: **58**.
-- Ported in Chunks 5 + 7.2: **51** scenarios as paired sim/node tests
-  (47 Chunk-5 originals + the 4 ex-sim-only scenarios that flipped to
-  paired in Chunk 7.2).
-- Deferred: **8** (render-tree 1, observability 5, persistence 1, Keycloak smoke 1).
-  Authorization metrics overlaps with observability so it counts once.
+- Ported in Chunks 5 + 7 + 7.1 + 7.2: **57** scenarios.
+  - 47 Chunk-5 originals as paired sim/node.
+  - 4 Chunk-5 sim-only scenarios that flipped to paired in 7.2.
+  - 5 observability scenarios + 1 authz-metrics paired in 7.1.
+  - 1 render-tree paired in 7; 1 persistence sim-only with a documented
+    node-mode follow-up.
+- Deferred: **3** Keycloak-related scenarios (depend on a live Keycloak
+  realm in the parity loop).
 
-The only remaining surface debt for parity completion is the Prometheus
-`/metrics` endpoint (unblocks the observability suite + authorization
-metrics), and the render-tree projection (unblocks render-tree +
-persistence).
+The remaining gap is the Keycloak integration story; everything else on
+the request path now has parity coverage in both sim and node modes.

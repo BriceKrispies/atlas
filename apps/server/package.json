@@ -18,6 +18,7 @@
     "@atlas/metrics": "workspace:*",
     "@atlas/modules-authz": "workspace:*",
     "@atlas/modules-catalog": "workspace:*",
+    "@atlas/modules-content-pages": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",
     "@atlas/schemas": "workspace:*",

@@ -27,3 +27,19 @@ export {
   archivePolicy,
 } from './authz.ts';
 export type { PolicyStatus, PolicySummary, PolicyDetail } from './authz.ts';
+
+export {
+  listPages,
+  getPage,
+  getRenderTree,
+  createPage,
+  updatePage,
+  deletePage,
+  type PageStatus,
+  type PageSummary,
+  type PageDocument,
+  type RenderNode,
+  type RenderTree,
+  type CreatePageInput,
+  type UpdatePageInput,
+} from './content-pages.ts';

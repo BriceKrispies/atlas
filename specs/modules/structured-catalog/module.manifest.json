@@ -65,6 +65,30 @@
       "resourceType": "Policy",
       "verb": "archive",
       "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "ContentPages.Page.Create",
+      "resourceType": "Page",
+      "verb": "create",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "ContentPages.Page.Update",
+      "resourceType": "Page",
+      "verb": "update",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "ContentPages.Page.Delete",
+      "resourceType": "Page",
+      "verb": "delete",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "ContentPages.Page.Read",
+      "resourceType": "Page",
+      "verb": "read",
+      "auditLevel": "INFO"
     }
   ],
   "resources": [
@@ -72,7 +96,8 @@
     { "resourceType": "Family",       "ownership": "module" },
     { "resourceType": "Variant",      "ownership": "module" },
     { "resourceType": "TaxonomyNode", "ownership": "module" },
-    { "resourceType": "Policy",       "ownership": "module" }
+    { "resourceType": "Policy",       "ownership": "module" },
+    { "resourceType": "Page",         "ownership": "module" }
   ],
   "events": [
     {

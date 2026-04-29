@@ -13,6 +13,7 @@ import {
   PostgresProjectionStore,
   PostgresSearchEngine,
   PostgresCatalogStateStore,
+  PostgresRenderTreeStore,
 } from '@atlas/adapters-node';
 import {
   policyEvaluatedEvent,
@@ -28,6 +29,11 @@ import {
   authzHandlerRegistry,
   composeRegistries,
 } from '@atlas/modules-authz';
+import {
+  contentPagesHandlerRegistry,
+  dispatchContentPagesEvent,
+  type ContentPagesQueryDeps,
+} from '@atlas/modules-content-pages';
 import { wirePolicyCacheInvalidation } from '@atlas/adapters-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapters-policy-cedar';
 import type {
@@ -56,6 +62,7 @@ function isBundleCache(engine: PolicyEngine): engine is PolicyEngine & CedarBund
 export interface RequestBundle {
   ingress: IngressState;
   catalogDeps: CatalogQueryDeps;
+  contentPagesDeps: ContentPagesQueryDeps;
 }
 
 export async function buildRequestBundle(
@@ -70,10 +77,12 @@ export async function buildRequestBundle(
   const projections = new PostgresProjectionStore(sql);
   const search = new PostgresSearchEngine(sql);
   const catalogState = new PostgresCatalogStateStore(sql);
+  const renderTreeStore = new PostgresRenderTreeStore(sql);
   const policyStore = new PostgresPolicyStore(state.controlPlaneSql);
   const handlers = composeRegistries(
     catalogHandlerRegistry(),
     authzHandlerRegistry(policyStore),
+    contentPagesHandlerRegistry(projections),
   );
 
   // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
@@ -91,6 +100,11 @@ export async function buildRequestBundle(
       catalogState,
       projections,
       search,
+      cache,
+    });
+    await dispatchContentPagesEvent(envelope, {
+      projections,
+      renderTreeStore,
       cache,
     });
     // Apply policy-bundle cache invalidation AFTER the catalog dispatcher
@@ -152,5 +166,13 @@ export async function buildRequestBundle(
     search,
   };
 
-  return { ingress, catalogDeps };
+  const contentPagesDeps: ContentPagesQueryDeps = {
+    tenantId: principal.tenantId,
+    principalId: principal.principalId,
+    correlationId,
+    projections,
+    renderTreeStore,
+  };
+
+  return { ingress, catalogDeps, contentPagesDeps };
 }

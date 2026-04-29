@@ -36,6 +36,11 @@ import type {
   SearchParams,
   SearchResponse,
 } from '@atlas/modules-catalog';
+import type {
+  PageDocument,
+  PageSummary,
+  RenderTree,
+} from '@atlas/modules-content-pages';
 
 export interface ServerFactoryOptions extends FactoryOptions {
   baseUrl: string;
@@ -218,6 +223,34 @@ export async function createServerIngress(
         throw new IngressFailureError(r.failure);
       }
       return r.value.cacheInvalidationTags ?? null;
+    },
+
+    async listContentPages(): Promise<readonly PageSummary[]> {
+      const r = await get<readonly PageSummary[]>('/api/v1/pages');
+      if (r.ok) return r.value;
+      throw new IngressFailureError(r.failure);
+    },
+
+    async getContentPage(pageId: string): Promise<PageDocument | null> {
+      const r = await get<PageDocument>(
+        `/api/v1/pages/${encodeURIComponent(pageId)}`,
+      );
+      if (r.ok) return r.value;
+      if (r.failure.status === 404) return null;
+      throw new IngressFailureError(r.failure);
+    },
+
+    async getContentPageRenderTree(pageId: string): Promise<RenderTree | null> {
+      const r = await get<RenderTree>(
+        `/api/v1/pages/${encodeURIComponent(pageId)}/render-tree`,
+      );
+      if (r.ok) return r.value;
+      if (r.failure.status === 404) return null;
+      throw new IngressFailureError(r.failure);
+    },
+
+    async clearRenderTreeFastPath(_pageId: string): Promise<void> {
+      throw new UnsupportedInMode('clearRenderTreeFastPath', 'node');
     },
 
     async truncateSearch(): Promise<void> {

@@ -22,10 +22,14 @@ mkdirSync(outDir, { recursive: true });
 
 const copied: string[] = [];
 
-// Copy module-domain schemas (`catalog.*`, `authz.*`) and platform-emitted
-// ones (`platform.*` — e.g. StructuredAuthz.PolicyEvaluated audit events).
+// Copy module-domain schemas (`catalog.*`, `authz.*`, `content_pages.*`) and
+// platform-emitted ones (`platform.*` — e.g. StructuredAuthz.PolicyEvaluated
+// audit events).
 const isPicked = (n: string): boolean =>
-  (n.startsWith('catalog.') || n.startsWith('platform.') || n.startsWith('authz.')) &&
+  (n.startsWith('catalog.') ||
+    n.startsWith('platform.') ||
+    n.startsWith('authz.') ||
+    n.startsWith('content_pages.')) &&
   n.endsWith('.schema.json');
 
 for (const dir of [contracts, events]) {
