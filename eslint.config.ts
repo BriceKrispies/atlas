@@ -74,4 +74,29 @@ export default [
       ],
     },
   },
+  {
+    // Ports define the seam between domain modules and adapters; they MUST
+    // depend only on `@atlas/platform-core` and themselves. Importing a
+    // concrete adapter or a domain module from a port would create a cycle.
+    files: ['packages/ports/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2023,
+      sourceType: 'module',
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@atlas/adapters-*', '@atlas/modules-*'],
+              message:
+                'Ports must not depend on concrete adapters or domain modules — that inverts the dependency arrow.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

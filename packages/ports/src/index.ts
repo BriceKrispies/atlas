@@ -19,3 +19,5 @@ export type {
   PolicyDecision,
   PolicyEffect,
 } from './policy-engine.ts';
+export { composeDispatchers, cacheTagDispatcher } from './dispatcher.ts';
+export type { EventDispatcher } from './dispatcher.ts';

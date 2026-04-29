@@ -30,7 +30,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
-import { moduleManifest } from '@atlas/schemas';
+import { moduleManifests } from '@atlas/schemas';
 import {
   CedarPolicyEngine,
   BundledFixtureLoader,
@@ -48,11 +48,11 @@ interface FixtureResult {
 }
 
 async function main(): Promise<number> {
-  // 1. Generate the schema from the bundled module manifest. The schemas
-  //    package returns the manifest as `unknown` (raw JSON); cast to the
-  //    generator's narrow type — extra fields are ignored.
-  const manifest = moduleManifest() as ModuleManifest;
-  const schema = generateCedarSchema([manifest]);
+  // 1. Generate the schema from the bundled per-module manifests. The
+  //    schemas package returns each manifest as `unknown` (raw JSON);
+  //    cast to the generator's narrow type — extra fields are ignored.
+  const manifests = moduleManifests() as ModuleManifest[];
+  const schema = generateCedarSchema(manifests);
 
   // 2. Locate the policy fixtures directory. We resolve relative to this
   //    file so the CLI works regardless of cwd.

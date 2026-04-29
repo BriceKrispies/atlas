@@ -55,6 +55,7 @@ export {
 
 export {
   dispatchContentPagesEvent,
+  contentPagesDispatcher,
   type ContentPagesDispatchContext,
 } from './dispatch.ts';
 export {

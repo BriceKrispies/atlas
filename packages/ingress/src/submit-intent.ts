@@ -13,13 +13,16 @@ import type {
   PolicyEngine,
   PolicyDecision,
   PolicyEvaluationRequest,
+  EventDispatcher,
 } from '@atlas/ports';
 
 // Hook invoked for every event produced by submitIntent (handler-emitted or
 // the generic fall-through). The wiring layer plugs in module-specific
 // projection rebuilds + cache invalidation here so this package depends on
-// no domain modules.
-export type EventDispatcher = (envelope: EventEnvelope) => Promise<void>;
+// no domain modules. The canonical type now lives in `@atlas/ports`
+// (`EventDispatcher`); ingress re-exports it so existing imports keep
+// working.
+export type { EventDispatcher } from '@atlas/ports';
 
 export interface IngressState {
   tenantId: string;

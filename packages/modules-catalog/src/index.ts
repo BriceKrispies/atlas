@@ -67,6 +67,7 @@ export { handleSearch, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './queries/search
 
 export {
   dispatchCatalogEvent,
+  catalogDispatcher,
   type CatalogDispatchContext,
 } from './dispatch.ts';
 export {

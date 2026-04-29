@@ -21,7 +21,7 @@ import {
 } from '@atlas/adapters-policy-cedar';
 import {
   catalogHandlerRegistry,
-  dispatchCatalogEvent,
+  catalogDispatcher,
   type CatalogQueryDeps,
 } from '@atlas/modules-catalog';
 import {
@@ -31,15 +31,16 @@ import {
 } from '@atlas/modules-authz';
 import {
   contentPagesHandlerRegistry,
-  dispatchContentPagesEvent,
+  contentPagesDispatcher,
   type ContentPagesQueryDeps,
 } from '@atlas/modules-content-pages';
-import { wirePolicyCacheInvalidation } from '@atlas/adapters-policy-cedar';
+import { policyCacheDispatcher } from '@atlas/adapters-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapters-policy-cedar';
 import type {
   IngressState,
   EventDispatcher,
 } from '@atlas/ingress';
+import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import type { PolicyEngine } from '@atlas/ports';
 import type { Principal } from '@atlas/platform-core';
 import { ensureTenantMigrated, type AppState } from '../bootstrap.ts';
@@ -86,33 +87,38 @@ export async function buildRequestBundle(
   );
 
   // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
-  // emitted by activate / archive. Wiring is lazy: only wires when the
-  // configured engine exposes the bundle-cache surface (the stub engine
-  // doesn't cache anything). The narrow duck-type guard mirrors the
-  // `CedarBundleCache` interface that `wirePolicyCacheInvalidation`
-  // accepts — no `as` cast needed once the guard returns true.
-  const onPolicyCacheTags = isBundleCache(state.policyEngine)
-    ? wirePolicyCacheInvalidation(state.policyEngine)
+  // emitted by activate / archive. Wiring is lazy: only the cedar engine
+  // exposes the bundle-cache surface (the stub engine doesn't cache
+  // anything). The narrow duck-type guard mirrors the `CedarBundleCache`
+  // interface that `policyCacheDispatcher` accepts — no `as` cast needed
+  // once the guard returns true.
+  const policyBundle: CedarBundleCache | null = isBundleCache(state.policyEngine)
+    ? state.policyEngine
     : null;
 
-  const dispatch: EventDispatcher = async (envelope) => {
-    await dispatchCatalogEvent(envelope, {
-      catalogState,
-      projections,
-      search,
-      cache,
-    });
-    await dispatchContentPagesEvent(envelope, {
-      projections,
-      renderTreeStore,
-      cache,
-    });
-    // Apply policy-bundle cache invalidation AFTER the catalog dispatcher
-    // returns so the next evaluate sees the freshly-activated bundle.
-    if (onPolicyCacheTags) {
-      onPolicyCacheTags(envelope.cacheInvalidationTags);
-    }
-  };
+  // Chunk 8 — dispatcher registry. Each module exports a factory that
+  // captures its per-request adapters and returns an `EventDispatcher`.
+  // `composeDispatchers` chains them in order; `null` entries are skipped
+  // so the conditional cedar-bundle invalidation is one inline ternary
+  // rather than a wrapping if-statement.
+  //
+  // Chain order:
+  //   1. catalog projection rebuilds
+  //   2. content-pages projection rebuilds
+  //   3. cross-cutting cache-tag invalidation (was hidden inside
+  //      dispatchCatalogEvent pre-Chunk 8 — now its own dispatcher so
+  //      adding modules cannot accidentally bypass it)
+  //   4. policy-bundle cache invalidation (must run AFTER the rest so
+  //      the next evaluate sees the freshly-activated bundle)
+  //
+  // Adding module #4 is one line in this composer, not a function-body
+  // edit further down.
+  const dispatch: EventDispatcher = composeDispatchers(
+    catalogDispatcher({ catalogState, projections, search, cache }),
+    contentPagesDispatcher({ projections, renderTreeStore, cache }),
+    cacheTagDispatcher(cache),
+    policyBundle ? policyCacheDispatcher(policyBundle) : null,
+  );
 
   const ingress: IngressState = {
     tenantId: principal.tenantId,

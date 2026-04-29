@@ -54,5 +54,6 @@ export type {
 export {
   applyCacheTags,
   wirePolicyCacheInvalidation,
+  policyCacheDispatcher,
 } from './cache-invalidation.ts';
 export type { CedarBundleCache } from './cache-invalidation.ts';

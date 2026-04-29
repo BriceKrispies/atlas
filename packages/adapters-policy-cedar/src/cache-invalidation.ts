@@ -14,6 +14,8 @@
  * lands, this module sprouts a constructor that takes one.
  */
 
+import type { EventDispatcher } from '@atlas/ports';
+
 const TENANT_TAG_PREFIX = 'Tenant:';
 const POLICY_TAG_PREFIX = 'Policy:';
 
@@ -87,5 +89,24 @@ export function wirePolicyCacheInvalidation(
 ): (tags: ReadonlyArray<string> | null | undefined) => void {
   return (tags) => {
     applyCacheTags(engine, tags);
+  };
+}
+
+/**
+ * Dispatcher-factory variant for `composeDispatchers` callers (Chunk 8).
+ *
+ * Wraps `applyCacheTags` in a dispatcher-shaped closure so the policy-
+ * bundle invalidation lives in the same registration pattern as catalog,
+ * content-pages, and the cross-tenant cache-tag flush. The returned
+ * dispatcher is a no-op when `cacheInvalidationTags` is empty / absent.
+ *
+ * The composer ordering matters here: this dispatcher must run AFTER
+ * any module-level dispatchers that might re-read the bundle, so the
+ * next evaluate sees the freshly-activated rules. apps/server places
+ * it last in the chain.
+ */
+export function policyCacheDispatcher(engine: CedarBundleCache): EventDispatcher {
+  return async (envelope) => {
+    applyCacheTags(engine, envelope.cacheInvalidationTags ?? null);
   };
 }

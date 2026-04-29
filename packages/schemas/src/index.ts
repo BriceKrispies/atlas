@@ -1,1 +1,6 @@
-export { getSchemaValidator, moduleManifest, badgeFamilySeed } from './loader.ts';
+export {
+  getSchemaValidator,
+  moduleManifest,
+  moduleManifests,
+  badgeFamilySeed,
+} from './loader.ts';

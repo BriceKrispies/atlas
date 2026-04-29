@@ -17,7 +17,7 @@ import {
 } from '@atlas/ingress';
 import {
   catalogHandlerRegistry,
-  dispatchCatalogEvent,
+  catalogDispatcher,
   getTaxonomyNodes,
   getFamilyDetail,
   getVariantTable,
@@ -26,7 +26,7 @@ import {
 } from '@atlas/modules-catalog';
 import {
   contentPagesHandlerRegistry,
-  dispatchContentPagesEvent,
+  contentPagesDispatcher,
   listPages as listContentPagesQuery,
   getPage as getContentPageQuery,
   getRenderTree as getContentPageRenderTreeQuery,
@@ -34,6 +34,7 @@ import {
   type ContentPagesQueryDeps,
 } from '@atlas/modules-content-pages';
 import { composeRegistries } from '@atlas/modules-authz';
+import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import {
   IngressError,
   type IntentEnvelope,
@@ -74,19 +75,16 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   );
   const policyEngine = new StubPolicyEngine();
 
-  const dispatch: EventDispatcher = async (envelope) => {
-    await dispatchCatalogEvent(envelope, {
-      catalogState,
-      projections,
-      search,
-      cache,
-    });
-    await dispatchContentPagesEvent(envelope, {
-      projections,
-      renderTreeStore,
-      cache,
-    });
-  };
+  // Chunk 8 — dispatcher registry. Sim mirrors the apps/server chain
+  // structure (minus the policy-bundle dispatcher — sim runs the stub
+  // engine which has no cache to flush). Cross-cutting cache-tag
+  // invalidation is now its own dispatcher rather than piggy-backing
+  // on the catalog one.
+  const dispatch: EventDispatcher = composeDispatchers(
+    catalogDispatcher({ catalogState, projections, search, cache }),
+    contentPagesDispatcher({ projections, renderTreeStore, cache }),
+    cacheTagDispatcher(cache),
+  );
 
   const state: IngressState = {
     tenantId: opts.tenantId,

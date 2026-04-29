@@ -1,0 +1,49 @@
+{
+  "manifestVersion": 2,
+  "moduleId": "authz",
+  "displayName": "Authorization (Cedar policies)",
+  "version": "0.1.0",
+  "moduleType": ["api"],
+  "capabilities": ["policy-management"],
+  "actions": [
+    {
+      "actionId": "Authz.Policy.List",
+      "resourceType": "Policy",
+      "verb": "list",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Authz.Policy.Read",
+      "resourceType": "Policy",
+      "verb": "read",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Authz.Policy.Create",
+      "resourceType": "Policy",
+      "verb": "create",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "Authz.Policy.Activate",
+      "resourceType": "Policy",
+      "verb": "activate",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "Authz.Policy.Archive",
+      "resourceType": "Policy",
+      "verb": "archive",
+      "auditLevel": "SENSITIVE"
+    }
+  ],
+  "resources": [
+    { "resourceType": "Policy", "ownership": "module" }
+  ],
+  "events": [],
+  "projections": [],
+  "migrations": [],
+  "uiRoutes": [],
+  "jobs": [],
+  "cacheArtifacts": []
+}

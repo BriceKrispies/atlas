@@ -1,16 +1,19 @@
 /**
  * ContentPages event dispatcher.
  *
- * Mirrors `dispatchCatalogEvent`: the per-request wiring layer chains
- * this dispatcher after `dispatchCatalogEvent` so envelopes flow through
- * a single fan-out point. Triggers projection rebuilds for `ContentPages.*`
- * event types, then leaves cache invalidation to the caller (the catalog
- * dispatcher already invalidates by tags in the request bundle's
- * outer `dispatch` closure).
+ * Triggers projection rebuilds for `ContentPages.*` event types. Cache-tag
+ * invalidation lives in a separate cross-cutting dispatcher in the wiring
+ * layer (see `cacheTagDispatcher` consumers in apps/server) — do NOT
+ * call `cache.invalidateByTags` here.
  */
 
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { Cache, ProjectionStore, RenderTreeStore } from '@atlas/ports';
+import type {
+  Cache,
+  EventDispatcher,
+  ProjectionStore,
+  RenderTreeStore,
+} from '@atlas/ports';
 import type { PageDocument } from './types.ts';
 import {
   writePageDocument,
@@ -28,7 +31,13 @@ import {
 export interface ContentPagesDispatchContext {
   projections: ProjectionStore;
   renderTreeStore: RenderTreeStore;
-  cache: Cache;
+  /**
+   * Reserved for future use. The wiring layer's separate
+   * `cacheTagDispatcher` performs envelope-level tag flushing — this
+   * dispatcher does not consume `cache` today. Kept on the context type
+   * so existing call sites compile.
+   */
+  cache?: Cache;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -67,11 +76,14 @@ export async function dispatchContentPagesEvent(
       renderTreeStore: ctx.renderTreeStore,
     });
   }
+}
 
-  // Cache tag invalidation is the wiring layer's responsibility — the
-  // outer `dispatch` closure in `apps/server/src/middleware/state.ts`
-  // calls `cache.invalidateByTags(envelope.cacheInvalidationTags)`
-  // after both module dispatchers run. Leaving it here would
-  // double-invalidate.
-  void ctx.cache;
+/**
+ * Factory: bind a `ContentPagesDispatchContext` and return an
+ * `EventDispatcher`. Designed for `composeDispatchers`.
+ */
+export function contentPagesDispatcher(
+  ctx: ContentPagesDispatchContext,
+): EventDispatcher {
+  return (envelope) => dispatchContentPagesEvent(envelope, ctx);
 }

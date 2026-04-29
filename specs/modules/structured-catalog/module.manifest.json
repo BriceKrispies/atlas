@@ -35,69 +35,13 @@
       "resourceType": "Family",
       "verb": "delete",
       "auditLevel": "SENSITIVE"
-    },
-    {
-      "actionId": "Authz.Policy.List",
-      "resourceType": "Policy",
-      "verb": "list",
-      "auditLevel": "INFO"
-    },
-    {
-      "actionId": "Authz.Policy.Read",
-      "resourceType": "Policy",
-      "verb": "read",
-      "auditLevel": "INFO"
-    },
-    {
-      "actionId": "Authz.Policy.Create",
-      "resourceType": "Policy",
-      "verb": "create",
-      "auditLevel": "SENSITIVE"
-    },
-    {
-      "actionId": "Authz.Policy.Activate",
-      "resourceType": "Policy",
-      "verb": "activate",
-      "auditLevel": "SENSITIVE"
-    },
-    {
-      "actionId": "Authz.Policy.Archive",
-      "resourceType": "Policy",
-      "verb": "archive",
-      "auditLevel": "SENSITIVE"
-    },
-    {
-      "actionId": "ContentPages.Page.Create",
-      "resourceType": "Page",
-      "verb": "create",
-      "auditLevel": "INFO"
-    },
-    {
-      "actionId": "ContentPages.Page.Update",
-      "resourceType": "Page",
-      "verb": "update",
-      "auditLevel": "INFO"
-    },
-    {
-      "actionId": "ContentPages.Page.Delete",
-      "resourceType": "Page",
-      "verb": "delete",
-      "auditLevel": "SENSITIVE"
-    },
-    {
-      "actionId": "ContentPages.Page.Read",
-      "resourceType": "Page",
-      "verb": "read",
-      "auditLevel": "INFO"
     }
   ],
   "resources": [
     { "resourceType": "SeedPackage",  "ownership": "module" },
     { "resourceType": "Family",       "ownership": "module" },
     { "resourceType": "Variant",      "ownership": "module" },
-    { "resourceType": "TaxonomyNode", "ownership": "module" },
-    { "resourceType": "Policy",       "ownership": "module" },
-    { "resourceType": "Page",         "ownership": "module" }
+    { "resourceType": "TaxonomyNode", "ownership": "module" }
   ],
   "events": [
     {

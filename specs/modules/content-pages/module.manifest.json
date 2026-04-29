@@ -1,0 +1,43 @@
+{
+  "manifestVersion": 2,
+  "moduleId": "content-pages",
+  "displayName": "Content Pages",
+  "version": "0.1.0",
+  "moduleType": ["api", "projection"],
+  "capabilities": ["content-management"],
+  "actions": [
+    {
+      "actionId": "ContentPages.Page.Create",
+      "resourceType": "Page",
+      "verb": "create",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "ContentPages.Page.Update",
+      "resourceType": "Page",
+      "verb": "update",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "ContentPages.Page.Delete",
+      "resourceType": "Page",
+      "verb": "delete",
+      "auditLevel": "SENSITIVE"
+    },
+    {
+      "actionId": "ContentPages.Page.Read",
+      "resourceType": "Page",
+      "verb": "read",
+      "auditLevel": "INFO"
+    }
+  ],
+  "resources": [
+    { "resourceType": "Page", "ownership": "module" }
+  ],
+  "events": [],
+  "projections": [],
+  "migrations": [],
+  "uiRoutes": [],
+  "jobs": [],
+  "cacheArtifacts": []
+}
