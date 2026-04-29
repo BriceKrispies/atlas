@@ -205,11 +205,15 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
 
     // -----------------------------------------------------------------
     // Real-engine-only scenarios. The stub does not inspect action,
-    // resource, or attributes; Cedar (Chunk 6b) must. These describe.skip
-    // blocks reserve the contract shape so the Cedar suite can flip them
-    // on without restructuring.
+    // resource, or attributes; Cedar must. The Cedar adapter's real
+    // assertions live in
+    // `packages/adapters-policy-cedar/test/cedar-policy-engine.test.ts`
+    // (forbid-overrides, attribute-based permit/deny, matched-policies).
+    // We keep `describe.skip` here so the contract surface still
+    // documents the expectation without forcing every adapter to satisfy
+    // it inline.
     // -----------------------------------------------------------------
-    describe.skip('real engine semantics (Cedar in 6b)', () => {
+    describe.skip('real engine semantics (Cedar — see cedar adapter test)', () => {
       test('forbid overrides permit (Invariant I4: deny-overrides-allow)', async () => {
         // When a tenant has both a `permit` and a `forbid` rule that match
         // the same request, the decision must be `deny`.

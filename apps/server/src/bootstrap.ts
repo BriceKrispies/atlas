@@ -23,6 +23,10 @@ import {
   runMigrations,
 } from '@atlas/adapters-node';
 import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
+import {
+  CedarPolicyEngine,
+  PostgresBundleLoader,
+} from '@atlas/adapters-policy-cedar';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AppConfig } from './config.ts';
 
@@ -74,18 +78,20 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     }
   }
 
-  // Policy engine selection. Chunk 6a only wires `stub`; the `cedar` arm
-  // lands in 6b alongside `@atlas/adapters-policy-cedar` and per-tenant
-  // bundle loading. Throwing here keeps misconfiguration loud at boot.
+  // Policy engine selection. `cedar` loads per-tenant Cedar bundles from
+  // `control_plane.policies` via `PostgresBundleLoader`; tenants without
+  // an active bundle fall back to permissive (allow-all-with-tenant-scope)
+  // semantics — see `CedarPolicyEngine` file header for rationale.
   let policyEngine: PolicyEngine;
   switch (config.policyEngine) {
     case 'stub':
       policyEngine = new StubPolicyEngine();
       break;
     case 'cedar':
-      throw new Error(
-        'POLICY_ENGINE=cedar is not yet wired (lands in Chunk 6b). Use POLICY_ENGINE=stub.',
+      policyEngine = new CedarPolicyEngine(
+        new PostgresBundleLoader(controlPlaneSql),
       );
+      break;
   }
 
   return {
