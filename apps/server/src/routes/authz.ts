@@ -17,8 +17,10 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { PostgresPolicyStore } from '@atlas/modules-authz';
+import { evaluateRead } from '@atlas/ingress';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';
+import { buildRequestBundle } from '../middleware/state.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
@@ -31,21 +33,25 @@ export function authzRoutes(state: AppState): Hono<{ Variables: ServerVariables 
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
     try {
-      const decision = await state.policyEngine.evaluate({
-        principal: {
-          id: principal.principalId,
-          tenantId: principal.tenantId,
-          attributes: {},
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await evaluateRead(
+        {
+          principal: {
+            id: principal.principalId,
+            tenantId: principal.tenantId,
+            attributes: {},
+          },
+          action: 'Authz.Policy.List',
+          resource: {
+            type: 'Policy',
+            id: '',
+            tenantId: principal.tenantId,
+            attributes: {},
+          },
+          context: { correlationId },
         },
-        action: 'Authz.Policy.List',
-        resource: {
-          type: 'Policy',
-          id: '',
-          tenantId: principal.tenantId,
-          attributes: {},
-        },
-        context: { correlationId },
-      });
+        bundle.ingress,
+      );
       if (decision.effect === 'deny') {
         return errorResponse(
           c,
@@ -77,21 +83,25 @@ export function authzRoutes(state: AppState): Hono<{ Variables: ServerVariables 
       );
     }
     try {
-      const decision = await state.policyEngine.evaluate({
-        principal: {
-          id: principal.principalId,
-          tenantId: principal.tenantId,
-          attributes: {},
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await evaluateRead(
+        {
+          principal: {
+            id: principal.principalId,
+            tenantId: principal.tenantId,
+            attributes: {},
+          },
+          action: 'Authz.Policy.Read',
+          resource: {
+            type: 'Policy',
+            id: String(version),
+            tenantId: principal.tenantId,
+            attributes: {},
+          },
+          context: { correlationId },
         },
-        action: 'Authz.Policy.Read',
-        resource: {
-          type: 'Policy',
-          id: String(version),
-          tenantId: principal.tenantId,
-          attributes: {},
-        },
-        context: { correlationId },
-      });
+        bundle.ingress,
+      );
       if (decision.effect === 'deny') {
         return errorResponse(
           c,

@@ -20,6 +20,7 @@ import {
   getPage,
   getRenderTree,
 } from '@atlas/modules-content-pages';
+import { evaluateRead, type IngressState } from '@atlas/ingress';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';
 import { buildRequestBundle } from '../middleware/state.ts';
@@ -27,24 +28,35 @@ import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
 
+/**
+ * Read-side authz check that goes through the unified `evaluateRead`
+ * helper — increments `atlas_policy_evaluations_total` and emits
+ * `StructuredAuthz.PolicyEvaluated` on deny, just like the write path
+ * via `submitIntent`. The previous inline `state.policyEngine.evaluate`
+ * call bypassed both metrics + audit (architectural audit Chunk 7).
+ */
 async function checkPageRead(
-  state: AppState,
-  principalId: string,
-  tenantId: string,
+  ingress: IngressState,
   resourceId: string,
-  correlationId: string,
 ): Promise<boolean> {
-  const decision = await state.policyEngine.evaluate({
-    principal: { id: principalId, tenantId, attributes: {} },
-    action: 'ContentPages.Page.Read',
-    resource: {
-      type: 'Page',
-      id: resourceId,
-      tenantId,
-      attributes: {},
+  const decision = await evaluateRead(
+    {
+      principal: {
+        id: ingress.principalId,
+        tenantId: ingress.tenantId,
+        attributes: {},
+      },
+      action: 'ContentPages.Page.Read',
+      resource: {
+        type: 'Page',
+        id: resourceId,
+        tenantId: ingress.tenantId,
+        attributes: {},
+      },
+      context: { correlationId: ingress.correlationId ?? 'unknown' },
     },
-    context: { correlationId },
-  });
+    ingress,
+  );
   return decision.effect === 'permit';
 }
 
@@ -57,13 +69,8 @@ export function contentPagesRoutes(
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
     try {
-      const allowed = await checkPageRead(
-        state,
-        principal.principalId,
-        principal.tenantId,
-        '',
-        correlationId,
-      );
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const allowed = await checkPageRead(bundle.ingress, '');
       if (!allowed) {
         return errorResponse(
           c,
@@ -73,7 +80,6 @@ export function contentPagesRoutes(
           correlationId,
         );
       }
-      const bundle = await buildRequestBundle(state, principal, correlationId);
       const rows = await listPages(bundle.contentPagesDeps);
       return c.json(rows);
     } catch (e) {
@@ -86,13 +92,8 @@ export function contentPagesRoutes(
     const principal = c.get('principal');
     const pageId = c.req.param('pageId') ?? '';
     try {
-      const allowed = await checkPageRead(
-        state,
-        principal.principalId,
-        principal.tenantId,
-        pageId,
-        correlationId,
-      );
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const allowed = await checkPageRead(bundle.ingress, pageId);
       if (!allowed) {
         return errorResponse(
           c,
@@ -102,7 +103,6 @@ export function contentPagesRoutes(
           correlationId,
         );
       }
-      const bundle = await buildRequestBundle(state, principal, correlationId);
       const doc = await getPage(bundle.contentPagesDeps, pageId);
       if (!doc) {
         return errorResponse(
@@ -124,13 +124,8 @@ export function contentPagesRoutes(
     const principal = c.get('principal');
     const pageId = c.req.param('pageId') ?? '';
     try {
-      const allowed = await checkPageRead(
-        state,
-        principal.principalId,
-        principal.tenantId,
-        pageId,
-        correlationId,
-      );
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const allowed = await checkPageRead(bundle.ingress, pageId);
       if (!allowed) {
         return errorResponse(
           c,
@@ -140,7 +135,6 @@ export function contentPagesRoutes(
           correlationId,
         );
       }
-      const bundle = await buildRequestBundle(state, principal, correlationId);
       const tree = await getRenderTree(bundle.contentPagesDeps, pageId);
       if (!tree) {
         return errorResponse(
@@ -165,13 +159,8 @@ export function contentPagesRoutes(
     const principal = c.get('principal');
     const pageId = c.req.param('pageId') ?? '';
     try {
-      const allowed = await checkPageRead(
-        state,
-        principal.principalId,
-        principal.tenantId,
-        pageId,
-        correlationId,
-      );
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const allowed = await checkPageRead(bundle.ingress, pageId);
       if (!allowed) {
         return errorResponse(
           c,
@@ -181,7 +170,6 @@ export function contentPagesRoutes(
           correlationId,
         );
       }
-      const bundle = await buildRequestBundle(state, principal, correlationId);
       const tree = await getRenderTree(bundle.contentPagesDeps, pageId);
       if (!tree) {
         return errorResponse(
