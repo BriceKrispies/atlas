@@ -30,7 +30,8 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    # Pinned to 25.0 for reproducible itest stack — see infra/compose/keycloak/README.md.
+    image: quay.io/keycloak/keycloak:25.0
     container_name: atlas-itest-keycloak
     command: start-dev --import-realm
     environment:

@@ -7,7 +7,8 @@
  *
  * - CONTROL_PLANE_DB_URL              required to connect to control-plane
  * - OIDC_ISSUER_URL / OIDC_JWKS_URL   required when TEST_AUTH_ENABLED!=true
- * - OIDC_AUDIENCE                     defaults to "account"
+ * - OIDC_AUDIENCE                     required in strict mode (when TEST_AUTH_ENABLED!=true);
+ *                                     defaults to "account" in test-auth mode
  * - TEST_AUTH_ENABLED                 enables X-Debug-Principal pathway
  * - DEBUG_AUTH_ENDPOINT_ENABLED       gates /debug/whoami
  * - TENANT_ID                         dev fallback tenant
@@ -77,16 +78,25 @@ export function loadConfig(): AppConfig {
   const testAuthEnabled = envBool('TEST_AUTH_ENABLED');
   const debugEndpoints = envBool('DEBUG_AUTH_ENDPOINT_ENABLED');
 
-  // OIDC config: required only when test-auth is OFF, since otherwise the
-  // server has no way to verify real tokens. In test-auth mode, missing
-  // OIDC values default to empty strings; the verifier is never invoked.
+  // OIDC config. Strict mode (test-auth OFF) requires the full triplet
+  // (OIDC_ISSUER_URL, OIDC_JWKS_URL, OIDC_AUDIENCE) so JWT verification
+  // has an authoritative issuer + audience to enforce. In test-auth
+  // mode we still honour any values that are set — when both
+  // OIDC_ISSUER_URL and OIDC_JWKS_URL are present the JWT path is wired
+  // up alongside X-Debug-Principal (the `atlas itest` supervisor uses
+  // exactly this combination so the Keycloak parity tests can mint a
+  // real token while X-Debug-Principal stays available for the rest of
+  // the suite). Audience defaults to "account" only as a dev convenience
+  // in test-auth mode; production deployments must opt in explicitly.
   const issuerUrl = testAuthEnabled
     ? envOr('OIDC_ISSUER_URL', '')
     : envRequired('OIDC_ISSUER_URL');
   const jwksUrl = testAuthEnabled
     ? envOr('OIDC_JWKS_URL', '')
     : envRequired('OIDC_JWKS_URL');
-  const audience = envOr('OIDC_AUDIENCE', 'account');
+  const audience = testAuthEnabled
+    ? envOr('OIDC_AUDIENCE', 'account')
+    : envRequired('OIDC_AUDIENCE');
 
   const tenantId = envOr('TENANT_ID', 'dev-tenant');
   const controlPlaneDbUrl = envRequired('CONTROL_PLANE_DB_URL');

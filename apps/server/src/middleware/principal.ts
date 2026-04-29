@@ -115,11 +115,28 @@ export function principalMiddleware(state: AppState) {
       );
     }
 
+    // Verify the JWT against the configured JWKS. Both `iss` and `aud`
+    // are enforced (Rust ingress counterpart sets both via
+    // `Validation::set_issuer` + `set_audience` in
+    // `crates/ingress/src/authn.rs::validate_jwt_token`). When the
+    // issuer is unset (test-auth pathway with no OIDC backend) we still
+    // refuse to verify — a JWKS without an authoritative issuer would
+    // accept any token signed by any provider whose JWKS happens to be
+    // cached at our URL.
+    if (!state.config.oidc.issuerUrl) {
+      return errorResponse(
+        c,
+        'PRINCIPAL_INVALID',
+        'Server has no OIDC issuer configured',
+        401,
+        correlationId,
+      );
+    }
     let claims: Record<string, unknown>;
     try {
       const { payload } = await jwtVerify(token, state.jwks, {
         audience: state.config.oidc.audience,
-        ...(state.config.oidc.issuerUrl ? { issuer: state.config.oidc.issuerUrl } : {}),
+        issuer: state.config.oidc.issuerUrl,
       });
       claims = payload as Record<string, unknown>;
     } catch (e) {

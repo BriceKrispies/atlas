@@ -25,10 +25,20 @@ mounted and the node-mode helpers (`readEventTags`, `truncateSearch`,
 
 ## Deferred for both modes
 
-| Rust suite | Scenarios | Why deferred |
+_None._ The three Keycloak-dependent scenarios graduated to node parity
+in **Chunk 9** when `apps/server`'s JWT path landed alongside the baked
+`atlas` realm in `infra/compose/config/keycloak/atlas-realm.json`:
+
+| Rust scenario | Node-mode file | What unblocked it |
 |--|--|--|
-| `authentication_test.rs::test_valid_keycloak_token_*` | 2 | Requires a live Keycloak realm with the `atlas-s2s` client. The current parity stack assumes test-auth via `X-Debug-Principal`; standing up Keycloak in the parity loop is a follow-up once `apps/server` integration with `atlas itest` lands. |
-| `authentication_test.rs::test_keycloak_is_reachable` | 1 | Same as above — Keycloak smoke test. |
+| `authentication_test::test_keycloak_is_reachable` | `keycloak-node.test.ts` | Keycloak service in `compose.itest-infra.yml` + supervisor wait in `itest_supervisor.rs::wait_for_keycloak` |
+| `authentication_test::test_valid_keycloak_token_returns_200_with_principal` | `keycloak-node.test.ts::test_valid_keycloak_token_grants_access` | `client_credentials` mint via `atlas-s2s` + JWKS verify in `apps/server/src/middleware/principal.ts` |
+| `authentication_test::test_valid_token_extracts_correct_principal` | `keycloak-node.test.ts::test_valid_keycloak_token_principal_extraction` | `tenant_id` claim mapper baked into the realm export — extracted by `principal.ts` and surfaced via `/debug/whoami` |
+
+The new tests skip cleanly when `KEYCLOAK_BASE_URL` is unset (mirrors the
+existing `NODE_PARITY_BASE_URL` gate). `atlas itest` exports both via
+`itest_supervisor::run_blackbox_tests`; standalone `pnpm test:parity:node`
+runs assume the supervisor (or the `make itest-up` stack) is already up.
 
 ### Unblocked by Chunk 7.1
 
@@ -54,14 +64,14 @@ TS-backed deployment.
 ## Counts
 
 - Total Rust scenarios across the 12 suites: **58**.
-- Ported in Chunks 5 + 7 + 7.1 + 7.2: **57** scenarios.
+- Ported in Chunks 5 + 7 + 7.1 + 7.2 + 9: **58** scenarios.
   - 47 Chunk-5 originals as paired sim/node.
   - 4 Chunk-5 sim-only scenarios that flipped to paired in 7.2.
   - 5 observability scenarios + 1 authz-metrics paired in 7.1.
   - 1 render-tree paired in 7; 1 persistence sim-only with a documented
     node-mode follow-up.
-- Deferred: **3** Keycloak-related scenarios (depend on a live Keycloak
-  realm in the parity loop).
+  - 3 Keycloak smoke + token-extraction paired in **Chunk 9**.
+- Deferred: **0**.
 
-The remaining gap is the Keycloak integration story; everything else on
-the request path now has parity coverage in both sim and node modes.
+The Keycloak parity scenarios round out the request path; every Rust
+black-box scenario now has a node-mode counterpart.

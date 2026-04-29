@@ -7,7 +7,7 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
-  "bruteForceProtected": true,
+  "bruteForceProtected": false,
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "ssoSessionIdleTimeout": 1800,
@@ -20,18 +20,24 @@
   "accessCodeLifespanLogin": 1800,
   "actionTokenGeneratedByAdminLifespan": 43200,
   "actionTokenGeneratedByUserLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "atlas-admin", "description": "Atlas tenant administrator" },
+      { "name": "atlas-user", "description": "Atlas standard tenant user" }
+    ]
+  },
   "clients": [
     {
       "clientId": "atlas-s2s",
       "name": "Atlas Service-to-Service Client",
-      "description": "Service account client for Atlas platform services and integration tests",
+      "description": "Service account client for Atlas platform services and integration tests. Issues access tokens via client_credentials grant; service-account user carries the tenant_id claim used by ingress.",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "sQgPBnIo4TyopWfovMHhq6PaMEALlFt0",
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "publicClient": false,
       "protocol": "openid-connect",
       "fullScopeAllowed": true,
@@ -40,13 +46,45 @@
         "acr",
         "profile",
         "roles",
-        "email"
+        "email",
+        "atlas-tenant"
       ],
       "optionalClientScopes": [
         "address",
         "phone",
         "offline_access",
         "microprofile-jwt"
+      ],
+      "attributes": {
+        "access.token.lifespan": "300",
+        "client_credentials.use_refresh_token": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id-hardcoded",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tenant_id",
+            "claim.value": "tenant-itest-001",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-account",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "account",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
       ]
     },
     {
@@ -59,6 +97,56 @@
       "publicClient": false,
       "protocol": "openid-connect",
       "fullScopeAllowed": false
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "atlas-tenant",
+      "description": "Adds the Atlas tenant_id claim to tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id-from-attribute",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "test-user",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "email": "test-user@atlas.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": ["tenant-itest-001"]
+      },
+      "realmRoles": [
+        "atlas-user"
+      ]
     }
   ],
   "defaultDefaultClientScopes": [
