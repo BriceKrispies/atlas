@@ -5,16 +5,23 @@ documents what would need to land first.
 
 ## Sim-only
 
-These scenarios exist in `tests/parity/<suite>-sim.test.ts` but have no
-node-mode counterpart, because `apps/server` does not yet expose the
-debug surface they require.
+_None._ The four scenarios that previously lived here graduated to paired
+sim/node parity in **Chunk 7.2** when `apps/server` shipped the test-only
+debug surface (`/debug/events/:eventId`, `/debug/search/index`,
+`/debug/search/rebuild`, `/debug/cache/clear`). Both modes are now exercised:
 
-| Rust scenario | Sim file | Why no node counterpart |
+| Rust scenario | Node-mode file | Debug endpoint that unblocked it |
 |--|--|--|
-| `catalog_badge_family::test_seed_event_has_cache_invalidation_tags` | `catalog-sim.test.ts` | Requires reading raw `EventEnvelope.cacheInvalidationTags` off the event store. The Rust black-box also covers this only indirectly in node mode; until `apps/server` ships a `/debug/events/:eventId` endpoint, the same in node mode is impossible without a direct DB connection from tests. |
-| `catalog_search::test_search_permission_filter_excludes_disallowed` | `catalog-sim.test.ts` | Requires injecting a search document with custom `permissionAttributes`. The Rust black-box uses `POST /debug/search/index`, which `apps/server` has not yet shipped. |
-| `catalog_search::test_search_rebuild_is_deterministic` | `catalog-sim.test.ts` | Requires truncating `catalog_search_documents` mid-test. The Rust black-box uses a direct sqlx connection. The TS server has no equivalent debug endpoint. |
-| `catalog_search::test_search_index_cache_invalidation_tag_present` | `catalog-sim.test.ts` | The Rust black-box version is "indirect": apply seed, see hits, conclude tags worked. The sim version reads tags directly. The TS server cannot replay the indirect proof without rebuild access (above) so the node counterpart is blocked on the same debug surface. |
+| `catalog_badge_family::test_seed_event_has_cache_invalidation_tags` | `catalog-search-node.test.ts` | `GET /debug/events/:eventId` |
+| `catalog_search::test_search_permission_filter_excludes_disallowed` | `catalog-search-node.test.ts` | `POST /debug/search/index` |
+| `catalog_search::test_search_rebuild_is_deterministic` | `catalog-search-node.test.ts` | `POST /debug/search/rebuild` |
+| `catalog_search::test_search_index_cache_invalidation_tag_present` | `catalog-search-node.test.ts` | `GET /debug/events/:eventId` |
+
+The debug surface is gated by `DEBUG_AUTH_ENDPOINT_ENABLED=true` and
+`TEST_AUTH_ENABLED=true`, matching the Rust ingress gate (see
+`crates/ingress/src/main.rs`). When either is unset the routes aren't
+mounted and the node-mode helpers (`readEventTags`, `truncateSearch`,
+`indexSearchDocument`) raise `UnsupportedInMode` so tests skip cleanly.
 
 ## Deferred for both modes
 
@@ -39,11 +46,13 @@ TS-backed deployment.
 ## Counts
 
 - Total Rust scenarios across the 12 suites: **58**.
-- Ported in Chunk 5: **47** scenarios as paired sim/node tests, plus
-  **4 sim-only** scenarios where the node debug surface doesn't exist yet.
+- Ported in Chunks 5 + 7.2: **51** scenarios as paired sim/node tests
+  (47 Chunk-5 originals + the 4 ex-sim-only scenarios that flipped to
+  paired in Chunk 7.2).
 - Deferred: **8** (render-tree 1, observability 5, persistence 1, Keycloak smoke 1).
   Authorization metrics overlaps with observability so it counts once.
 
-When the `/metrics` endpoint and `/debug/search/index` ship in `apps/server`,
-the deferred sim/node pairs unblock without changes to test bodies — only the
-node counterpart files are added.
+The only remaining surface debt for parity completion is the Prometheus
+`/metrics` endpoint (unblocks the observability suite + authorization
+metrics), and the render-tree projection (unblocks render-tree +
+persistence).

@@ -1,9 +1,10 @@
 /**
  * Node-mode parity for the catalog suites.
  *
- * Mirrors `catalog-sim.test.ts`. Scenarios that depend on sim-only escape
- * hatches (`readEventTags`, `truncateSearch`, `indexSearchDocument`) live
- * only in the sim file — see `tests/parity/DEFERRED.md` for the rationale.
+ * Mirrors `catalog-sim.test.ts`. The four scenarios that depend on the
+ * test-only debug surface (`readEventTags`, `truncateSearch`,
+ * `indexSearchDocument`) live in `catalog-search-node.test.ts` since
+ * Chunk 7.2 — see `tests/parity/DEFERRED.md`.
  *
  * Skipped silently when `NODE_PARITY_BASE_URL` is unset.
  */
@@ -142,7 +143,8 @@ d('[node] catalog_badge_family parity', () => {
     await ingress.close();
   });
 
-  // test_seed_event_has_cache_invalidation_tags is sim-only — see DEFERRED.md.
+  // test_seed_event_has_cache_invalidation_tags lives in
+  // `catalog-search-node.test.ts` since Chunk 7.2.
 });
 
 d('[node] catalog_search parity', () => {
@@ -220,9 +222,10 @@ d('[node] catalog_search parity', () => {
     await ingress.close();
   });
 
-  // The remaining three search scenarios (permission, rebuild, cache-invalidation
-  // tag) require server-side debug endpoints (`/debug/search/index`, direct DB
-  // truncate) that the TS apps/server has not yet shipped. See DEFERRED.md.
+  // The three search scenarios that need the debug surface (permission,
+  // rebuild, cache-invalidation tag) live in `catalog-search-node.test.ts`
+  // since Chunk 7.2 shipped `/debug/search/index`, `/debug/search/rebuild`
+  // and `/debug/events/:eventId`.
 });
 
 function canonicalize(

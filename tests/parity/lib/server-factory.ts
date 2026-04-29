@@ -200,16 +200,51 @@ export async function createServerIngress(
       throw new IngressFailureError(r.failure);
     },
 
-    async readEventTags(_eventId: string): Promise<string[] | null> {
-      throw new UnsupportedInMode('readEventTags', 'node');
+    async readEventTags(eventId: string): Promise<string[] | null> {
+      // Hits the test-only `/debug/events/:eventId` endpoint shipped in
+      // Chunk 7.2. Available only when the server runs with both
+      // `TEST_AUTH_ENABLED=true` and `DEBUG_AUTH_ENDPOINT_ENABLED=true`.
+      // 404 → null (mirrors the sim adapter contract). When the gate is
+      // off the route isn't mounted; tests should be guarded by
+      // `NODE_PARITY_BASE_URL` describe-skip so they don't run there.
+      const r = await get<{ cacheInvalidationTags?: string[] | null }>(
+        `/debug/events/${encodeURIComponent(eventId)}`,
+      );
+      if (!r.ok) {
+        if (r.failure.status === 404) return null;
+        if (r.failure.status === 401) {
+          throw new UnsupportedInMode('readEventTags', 'node');
+        }
+        throw new IngressFailureError(r.failure);
+      }
+      return r.value.cacheInvalidationTags ?? null;
     },
 
     async truncateSearch(): Promise<void> {
-      throw new UnsupportedInMode('truncateSearch', 'node');
+      const res = await fetch(`${opts.baseUrl}/debug/search/rebuild`, {
+        method: 'POST',
+        headers: headers(),
+      });
+      if (res.status === 404 || res.status === 401) {
+        throw new UnsupportedInMode('truncateSearch', 'node');
+      }
+      if (!res.ok) {
+        throw new IngressFailureError(await parseErrorBody(res));
+      }
     },
 
-    async indexSearchDocument(_doc: SearchDocument): Promise<void> {
-      throw new UnsupportedInMode('indexSearchDocument', 'node');
+    async indexSearchDocument(doc: SearchDocument): Promise<void> {
+      const res = await fetch(`${opts.baseUrl}/debug/search/index`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(doc),
+      });
+      if (res.status === 404 || res.status === 401) {
+        throw new UnsupportedInMode('indexSearchDocument', 'node');
+      }
+      if (!res.ok) {
+        throw new IngressFailureError(await parseErrorBody(res));
+      }
     },
 
     async health(): Promise<{ status: number; body: HealthResponse }> {

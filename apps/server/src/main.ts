@@ -41,7 +41,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', catalogRoutes(state));
   authed.route('/', authzRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
-    authed.route('/', debugRoutes());
+    authed.route('/', debugRoutes(state));
   }
   app.route('/', authed);
 
