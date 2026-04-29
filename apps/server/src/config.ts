@@ -13,7 +13,10 @@
  * - TENANT_ID                         dev fallback tenant
  * - INGRESS_PORT or PORT              server port (default 3000)
  * - RUST_LOG                          logged on boot for parity (no-op)
+ * - POLICY_ENGINE                     `stub` | `cedar` (default `stub`)
  */
+
+export type PolicyEngineKind = 'stub' | 'cedar';
 
 export interface OidcConfig {
   issuerUrl: string;
@@ -33,6 +36,15 @@ export interface AppConfig {
   testAuth: TestAuthConfig;
   tenantId: string;
   rustLog: string;
+  /**
+   * Which `PolicyEngine` adapter to wire at boot.
+   *
+   * - `stub` (default): allow-all + tenant-scope. Preserves the
+   *   pre-Cedar behaviour the TS rewrite shipped with.
+   * - `cedar`: production. Loads per-tenant Cedar bundles from the
+   *   `control_plane.policies` table. Wired in Chunk 6b.
+   */
+  policyEngine: PolicyEngineKind;
 }
 
 function envBool(name: string): boolean {
@@ -80,6 +92,14 @@ export function loadConfig(): AppConfig {
   const controlPlaneDbUrl = envRequired('CONTROL_PLANE_DB_URL');
   const rustLog = envOr('RUST_LOG', 'info');
 
+  const policyEngineRaw = envOr('POLICY_ENGINE', 'stub');
+  if (policyEngineRaw !== 'stub' && policyEngineRaw !== 'cedar') {
+    throw new Error(
+      `invalid POLICY_ENGINE: ${policyEngineRaw} (expected 'stub' or 'cedar')`,
+    );
+  }
+  const policyEngine: PolicyEngineKind = policyEngineRaw;
+
   return {
     port: portNum,
     controlPlaneDbUrl,
@@ -87,5 +107,6 @@ export function loadConfig(): AppConfig {
     testAuth: { enabled: testAuthEnabled, debugEndpoints },
     tenantId,
     rustLog,
+    policyEngine,
   };
 }

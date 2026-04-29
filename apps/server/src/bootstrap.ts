@@ -22,6 +22,8 @@ import {
   PostgresTenantDbProvider,
   runMigrations,
 } from '@atlas/adapters-node';
+import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
+import type { PolicyEngine } from '@atlas/ports';
 import type { AppConfig } from './config.ts';
 
 export interface AppState {
@@ -41,6 +43,11 @@ export interface AppState {
    * `_migrations` bookkeeping table the runner installs.
    */
   readonly migratedTenants: Set<string>;
+  /**
+   * The authorization seam. Selected at boot via `config.policyEngine`.
+   * v1 (Chunk 6a) only the `stub` engine is wired; `cedar` lands in 6b.
+   */
+  readonly policyEngine: PolicyEngine;
 }
 
 export async function bootstrap(config: AppConfig): Promise<AppState> {
@@ -67,6 +74,20 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     }
   }
 
+  // Policy engine selection. Chunk 6a only wires `stub`; the `cedar` arm
+  // lands in 6b alongside `@atlas/adapters-policy-cedar` and per-tenant
+  // bundle loading. Throwing here keeps misconfiguration loud at boot.
+  let policyEngine: PolicyEngine;
+  switch (config.policyEngine) {
+    case 'stub':
+      policyEngine = new StubPolicyEngine();
+      break;
+    case 'cedar':
+      throw new Error(
+        'POLICY_ENGINE=cedar is not yet wired (lands in Chunk 6b). Use POLICY_ENGINE=stub.',
+      );
+  }
+
   return {
     config,
     controlPlaneSql,
@@ -74,6 +95,7 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     controlPlaneRegistry,
     jwks,
     migratedTenants: new Set<string>(),
+    policyEngine,
   };
 }
 

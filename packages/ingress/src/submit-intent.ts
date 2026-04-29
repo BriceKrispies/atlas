@@ -9,6 +9,7 @@ import type {
   CatalogStateStore,
   HandlerRegistry,
   IntentHandlerContext,
+  PolicyEngine,
 } from '@atlas/ports';
 
 // Hook invoked for every event produced by submitIntent (handler-emitted or
@@ -36,6 +37,13 @@ export interface IngressState {
   catalogState: CatalogStateStore;
   handlers: HandlerRegistry;
   dispatch: EventDispatcher;
+  /**
+   * Authorization seam (Invariant I2). Called between schema/idempotency
+   * validation and handler dispatch. The default wiring is
+   * `StubPolicyEngine` (allow-all + tenant-scope); production wires Cedar
+   * via `@atlas/adapters-policy-cedar` (Chunk 6b).
+   */
+  policyEngine: PolicyEngine;
 }
 
 function err(code: string, message: string, status: number, correlationId: string): never {
@@ -92,7 +100,37 @@ export async function submitIntent(
     err('UNKNOWN_ACTION', `unknown action: ${actionId}`, 400, correlationId);
   }
 
-  // 6. Authz (stub: allow-all)
+  // 6. Authz (Invariant I2: must run before handler dispatch / any side
+  // effects). The PolicyEngine seam returns permit/deny; deny-overrides
+  // semantics live inside the adapter (Invariant I4). Resource and
+  // principal attributes are empty in 6a — Chunk 6b populates them via the
+  // catalog handler resource-fetch step before this call.
+  const resourceType = envelope.payload.resourceType;
+  const resourceId =
+    typeof envelope.payload.resourceId === 'string' ? envelope.payload.resourceId : '';
+  const decision = await state.policyEngine.evaluate({
+    principal: {
+      id: state.principalId,
+      tenantId: state.tenantId,
+      attributes: {},
+    },
+    action: actionId,
+    resource: {
+      type: resourceType,
+      id: resourceId,
+      tenantId: state.tenantId,
+      attributes: {},
+    },
+    context: { correlationId },
+  });
+  if (decision.effect === 'deny') {
+    err(
+      'UNAUTHORIZED',
+      decision.reasons?.[0] ?? 'Policy denied',
+      403,
+      correlationId,
+    );
+  }
 
   // 7. Handler dispatch
   const handler = state.handlers.get(actionId);

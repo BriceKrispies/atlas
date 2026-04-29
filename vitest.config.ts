@@ -21,6 +21,7 @@ export default defineConfig({
       '@atlas/contract-tests': r('./packages/contract-tests/src/index.ts'),
       '@atlas/adapters-idb': r('./packages/adapters-idb/src/index.ts'),
       '@atlas/adapters-node': r('./packages/adapters-node/src/index.ts'),
+      '@atlas/adapters-policy-stub': r('./packages/adapters-policy-stub/src/index.ts'),
       '@atlas/ingress': r('./packages/ingress/src/index.ts'),
       '@atlas/modules-catalog': r('./packages/modules-catalog/src/index.ts'),
     },

@@ -34,6 +34,8 @@
       "@atlas/adapters-idb/*": ["./packages/adapters-idb/src/*"],
       "@atlas/adapters-node": ["./packages/adapters-node/src/index.ts"],
       "@atlas/adapters-node/*": ["./packages/adapters-node/src/*"],
+      "@atlas/adapters-policy-stub": ["./packages/adapters-policy-stub/src/index.ts"],
+      "@atlas/adapters-policy-stub/*": ["./packages/adapters-policy-stub/src/*"],
       "@atlas/ingress": ["./packages/ingress/src/index.ts"],
       "@atlas/ingress/*": ["./packages/ingress/src/*"],
       "@atlas/modules-catalog": ["./packages/modules-catalog/src/index.ts"],

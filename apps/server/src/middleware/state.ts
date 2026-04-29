@@ -65,6 +65,7 @@ export async function buildRequestBundle(
     catalogState,
     handlers,
     dispatch,
+    policyEngine: state.policyEngine,
   };
 
   // Thread the per-request correlation id into the catalog query deps so

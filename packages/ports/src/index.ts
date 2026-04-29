@@ -10,3 +10,11 @@ export type {
   IntentHandlerContext,
   HandlerResult,
 } from './handler-registry.ts';
+export type {
+  PolicyEngine,
+  PolicyPrincipal,
+  PolicyResource,
+  PolicyEvaluationRequest,
+  PolicyDecision,
+  PolicyEffect,
+} from './policy-engine.ts';

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@atlas/adapters-node": "workspace:*",
+    "@atlas/adapters-policy-stub": "workspace:*",
     "@atlas/ingress": "workspace:*",
     "@atlas/modules-catalog": "workspace:*",
     "@atlas/platform-core": "workspace:*",

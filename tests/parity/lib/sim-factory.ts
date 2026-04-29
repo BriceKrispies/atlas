@@ -8,6 +8,7 @@ import {
   IdbCatalogStateStore,
   type IdbDb,
 } from '@atlas/adapters-idb';
+import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
 import {
   submitIntent,
   type IngressState,
@@ -54,6 +55,7 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   const registry = new InMemoryControlPlaneRegistry();
   const catalogState = new IdbCatalogStateStore(db);
   const handlers = catalogHandlerRegistry();
+  const policyEngine = new StubPolicyEngine();
 
   const dispatch: EventDispatcher = (envelope) =>
     dispatchCatalogEvent(envelope, { catalogState, projections, search, cache });
@@ -69,6 +71,7 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
     catalogState,
     handlers,
     dispatch,
+    policyEngine,
   };
 
   const queryDeps: CatalogQueryDeps = {
