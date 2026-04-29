@@ -16,13 +16,13 @@
  * `BundledFixtureLoader` is the in-memory variant for tests / sim mode; it
  * skips the DB entirely.
  *
- * NOTE on activation atomicity: the table doesn't enforce "exactly one
- * active row per tenant" — that's the application's job. If two
- * activations race and leave two rows `status='active'`, this loader
- * picks the *highest version* deterministically rather than letting
- * Postgres pick. The plan's Open Question proposes a partial unique
- * index on `WHERE status='active'` to push the invariant down to the
- * DB; defer to Chunk 6c.
+ * NOTE on activation atomicity: a partial unique index
+ * (`WHERE status='active'`) on `(tenant_id)` enforces "exactly one
+ * active row per tenant" at the DB layer (migration
+ * `20260428000001_policies_unique_active.sql`). The
+ * `ORDER BY version DESC LIMIT 1` query stays as belt-and-braces — if a
+ * future migration relaxes the constraint, this loader still picks the
+ * highest version deterministically.
  */
 
 import type { Sql } from 'postgres';
@@ -72,12 +72,12 @@ export class PostgresBundleLoader implements PolicyBundleLoader {
   constructor(private readonly sql: Sql) {}
 
   async load(tenantId: string): Promise<ParsedBundle | null> {
-    if (!tenantId) {
+    if (tenantId.trim().length === 0) {
       throw new Error('PostgresBundleLoader: tenantId must be non-empty');
     }
-    // Highest active version wins. ORDER BY + LIMIT 1 is intentionally
-    // belt-and-braces against the (unenforced) "one active row per tenant"
-    // invariant — see file-level note about activation atomicity.
+    // Highest active version wins. ORDER BY + LIMIT 1 is belt-and-braces
+    // — the partial unique index on `WHERE status='active'` already
+    // enforces the "one active row per tenant" invariant at the DB.
     const rows = await this.sql<
       Array<{ version: number; policy_json: unknown }>
     >`
@@ -102,7 +102,7 @@ export class BundledFixtureLoader implements PolicyBundleLoader {
   constructor(private readonly bundles: Map<string, string>) {}
 
   async load(tenantId: string): Promise<ParsedBundle | null> {
-    if (!tenantId) {
+    if (tenantId.trim().length === 0) {
       throw new Error('BundledFixtureLoader: tenantId must be non-empty');
     }
     const text = this.bundles.get(tenantId);
@@ -141,8 +141,25 @@ export function parseWrapper(
       `policy bundle for tenant ${tenantId} v${version}: .policies must be a string`,
     );
   }
-  const schemaVersion =
-    typeof w.schemaVersion === 'number' ? w.schemaVersion : 1;
+  // Reject silently-coerced schemaVersion. v1 is the only value today;
+  // a missing/non-number field could mean a tenant is on an unsupported
+  // wrapper format — fail loud rather than pretend it's v1.
+  if (w.schemaVersion === undefined) {
+    throw new Error(
+      `policy bundle for tenant ${tenantId} v${version}: .schemaVersion is required`,
+    );
+  }
+  if (typeof w.schemaVersion !== 'number') {
+    throw new Error(
+      `policy bundle for tenant ${tenantId} v${version}: .schemaVersion must be a number, got ${typeof w.schemaVersion}`,
+    );
+  }
+  if (w.schemaVersion !== 1) {
+    throw new Error(
+      `policy bundle for tenant ${tenantId} v${version}: unsupported schemaVersion ${w.schemaVersion} (expected 1)`,
+    );
+  }
+  const schemaVersion = w.schemaVersion;
   return {
     tenantId,
     version,

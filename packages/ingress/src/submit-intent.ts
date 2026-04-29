@@ -105,8 +105,25 @@ export async function submitIntent(
   // semantics live inside the adapter (Invariant I4). Resource and
   // principal attributes are empty in 6a — Chunk 6b populates them via the
   // catalog handler resource-fetch step before this call.
-  const resourceType =
-    typeof envelope.payload.resourceType === 'string' ? envelope.payload.resourceType : '';
+  //
+  // `resourceType` MUST be a non-empty string. Schema validation should
+  // have already enforced this (every action schema requires it), but if
+  // a misconfigured schema lets a malformed payload through, we hard-fail
+  // here rather than send empty `resource.type=''` to Cedar — empty type
+  // silently sidesteps `resource is X` rules (matching nothing) which
+  // could let a `forbid (..., resource is Sensitive)` rule never fire.
+  if (
+    typeof envelope.payload.resourceType !== 'string' ||
+    envelope.payload.resourceType.trim().length === 0
+  ) {
+    err(
+      'SCHEMA_VALIDATION_FAILED',
+      'payload.resourceType must be a non-empty string',
+      400,
+      correlationId,
+    );
+  }
+  const resourceType = envelope.payload.resourceType;
   const resourceId =
     typeof envelope.payload.resourceId === 'string' ? envelope.payload.resourceId : '';
   const decision = await state.policyEngine.evaluate({

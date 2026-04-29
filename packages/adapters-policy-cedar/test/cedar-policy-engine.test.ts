@@ -254,16 +254,38 @@ describe('CedarPolicyEngine — real Cedar semantics', () => {
     expect(() =>
       parseWrapper('t', 1, { format: 'cedar-text', policies: 42 }),
     ).toThrow(/policies must be a string/);
+    // schemaVersion must be present, a number, and == 1 (the only
+    // value v1 supports). A future format bump lifts this gate.
+    expect(() =>
+      parseWrapper('t', 1, {
+        format: 'cedar-text',
+        policies: 'permit (principal, action, resource);',
+      }),
+    ).toThrow(/schemaVersion is required/);
+    expect(() =>
+      parseWrapper('t', 1, {
+        format: 'cedar-text',
+        policies: 'permit (principal, action, resource);',
+        schemaVersion: '1',
+      }),
+    ).toThrow(/schemaVersion must be a number/);
+    expect(() =>
+      parseWrapper('t', 1, {
+        format: 'cedar-text',
+        policies: 'permit (principal, action, resource);',
+        schemaVersion: 2,
+      }),
+    ).toThrow(/unsupported schemaVersion/);
     const ok = parseWrapper('t', 7, {
       format: 'cedar-text',
       policies: 'permit (principal, action, resource);',
-      schemaVersion: 2,
+      schemaVersion: 1,
     });
     expect(ok).toEqual({
       tenantId: 't',
       version: 7,
       cedarText: 'permit (principal, action, resource);',
-      schemaVersion: 2,
+      schemaVersion: 1,
     });
   });
 });

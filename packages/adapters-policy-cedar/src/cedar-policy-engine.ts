@@ -282,8 +282,11 @@ export class CedarPolicyEngine implements PolicyEngine {
    * `policy1`, ... ids) — matches Cedar's default and stays compatible
    * with bundles that haven't been annotated yet.
    *
-   * Result is memoised on the cached `ParsedBundle` so we only split
-   * once per (tenantId, version).
+   * Result is memoised on the cached `ParsedBundle`. Two concurrent
+   * first-evaluators on the same tenant could each build the map; the
+   * result is deterministic for a given `cedarText` so the second write
+   * overwrites the first with an equivalent value — idempotent, no
+   * lock needed.
    */
   private staticPoliciesFor(
     bundle: ParsedBundle,
@@ -312,12 +315,14 @@ export class CedarPolicyEngine implements PolicyEngine {
 }
 
 /**
- * Match Cedar's `@id("name")` annotation. The string-literal grammar
- * allows `\"` and `\\` escapes; we keep the captured form raw and let
- * Cedar/JSON parse the escapes downstream when serialising the
+ * Match Cedar's `@id("name")` annotation. The `(?!\w)` lookahead is a
+ * word-boundary guard so a future `@idempotency_key("...")` annotation
+ * doesn't accidentally match the `@id` prefix. The string-literal
+ * grammar allows `\"` and `\\` escapes; we keep the captured form raw
+ * and let Cedar/JSON parse the escapes downstream when serialising the
  * `staticPolicies` map.
  */
-const ID_ANNOTATION = /@id\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
+const ID_ANNOTATION = /@id(?!\w)\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
 
 /**
  * Split a Cedar bundle into individual policies and key them by
