@@ -1,0 +1,44 @@
+name: Cedar Check
+
+# Static-analysis CI gate for Cedar policy bundles. Runs the schema
+# generator against the bundled module manifests and validates every
+# fixture under specs/policy-fixtures/cli/. Fails the PR if any positive
+# fixture fails validation OR any `bad-*.cedar` negative fixture
+# unexpectedly validates.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/adapters-policy-cedar/**'
+      - 'packages/schemas/**'
+      - 'specs/policy-fixtures/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cedar-check.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cedar-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run cedar:check
+        run: pnpm cedar:check

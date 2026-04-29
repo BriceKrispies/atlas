@@ -20,7 +20,8 @@
     "test:integration": "playwright test --config playwright.itest.config.ts",
     "lint": "eslint .",
     "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.ts\"",
-    "test:lint-rules": "pnpm -C packages/eslint-plugin-atlas-widgets test"
+    "test:lint-rules": "pnpm -C packages/eslint-plugin-atlas-widgets test",
+    "cedar:check": "tsx packages/adapters-policy-cedar/bin/cedar-check.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

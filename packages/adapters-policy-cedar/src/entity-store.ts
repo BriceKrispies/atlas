@@ -82,8 +82,15 @@ export function buildCedarRequest(req: PolicyEvaluationRequest): CedarRequestRef
     tenantId: req.resource.tenantId,
   };
 
+  // Cedar Schema validation (Chunk 6c) requires every entity referenced by
+  // an `AuthorizationCall` to appear in the `entities` array — including
+  // the Action. We emit it with empty attrs/parents (Cedar's actions don't
+  // carry attributes in v1 of our schema). Without this, schema-aware
+  // `isAuthorized` calls would surface "action not found in entities"
+  // diagnostics even for permitted requests.
   const entities: CedarEntity[] = [
     { uid: principalUid, attrs: principalAttrs, parents: [] },
+    { uid: actionUid, attrs: {}, parents: [] },
     { uid: resourceUid, attrs: resourceAttrs, parents: [] },
   ];
 

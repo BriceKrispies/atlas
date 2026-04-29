@@ -26,7 +26,10 @@ import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
 import {
   CedarPolicyEngine,
   PostgresBundleLoader,
+  generateCedarSchema,
 } from '@atlas/adapters-policy-cedar';
+import type { ModuleManifest } from '@atlas/adapters-policy-cedar';
+import { moduleManifest } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AppConfig } from './config.ts';
 
@@ -87,11 +90,17 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     case 'stub':
       policyEngine = new StubPolicyEngine();
       break;
-    case 'cedar':
+    case 'cedar': {
+      // Per-deployment schema (Chunk 6c) — generated once at boot from the
+      // bundled module manifests. Every tenant's policies validate against
+      // the same schema; tenants only customise *policies*, not types.
+      const schema = generateCedarSchema([moduleManifest() as ModuleManifest]);
       policyEngine = new CedarPolicyEngine(
         new PostgresBundleLoader(controlPlaneSql),
+        { schema },
       );
       break;
+    }
     default:
       // Adding a new `PolicyEngineKind` without a case here is a compile
       // error rather than silent fall-through.

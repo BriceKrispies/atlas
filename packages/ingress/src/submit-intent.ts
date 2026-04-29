@@ -10,6 +10,8 @@ import type {
   HandlerRegistry,
   IntentHandlerContext,
   PolicyEngine,
+  PolicyDecision,
+  PolicyEvaluationRequest,
 } from '@atlas/ports';
 
 // Hook invoked for every event produced by submitIntent (handler-emitted or
@@ -44,6 +46,33 @@ export interface IngressState {
    * via `@atlas/adapters-policy-cedar` (Chunk 6b).
    */
   policyEngine: PolicyEngine;
+  /**
+   * Audit hook for `StructuredAuthz.PolicyEvaluated` (Chunk 6c). Called
+   * on every deny by default, and on permits when `AUDIT_EMIT_PERMITS=true`.
+   * The hook is responsible for building + dispatching the audit event
+   * (the engine just decides; the wiring layer routes via the existing
+   * event pipeline). Optional — adapters that wire neither cedar nor
+   * audit may leave this `undefined`.
+   *
+   * Signature: receives the request + decision; returns void. Errors
+   * thrown here MUST NOT block the deny-throw — wrap in try/catch at the
+   * call site.
+   */
+  auditPolicyEvaluated?: (
+    request: PolicyEvaluationRequest,
+    decision: PolicyDecision,
+    context: { correlationId: string; idempotencyKey: string },
+  ) => Promise<void> | void;
+}
+
+const PERMIT_EMIT_ENV = 'AUDIT_EMIT_PERMITS';
+
+function shouldEmitAudit(decision: PolicyDecision): boolean {
+  if (decision.effect === 'deny') return true;
+  // Permit emission is a future-config opt-in. Reading the env at call
+  // time keeps tests independent (set/restore in beforeEach) — caching
+  // would force resetModules.
+  return process.env[PERMIT_EMIT_ENV] === 'true';
 }
 
 function err(code: string, message: string, status: number, correlationId: string): never {
@@ -126,7 +155,7 @@ export async function submitIntent(
   const resourceType = envelope.payload.resourceType;
   const resourceId =
     typeof envelope.payload.resourceId === 'string' ? envelope.payload.resourceId : '';
-  const decision = await state.policyEngine.evaluate({
+  const evaluationRequest: PolicyEvaluationRequest = {
     principal: {
       id: state.principalId,
       tenantId: state.tenantId,
@@ -140,7 +169,29 @@ export async function submitIntent(
       attributes: {},
     },
     context: { correlationId },
-  });
+  };
+  const decision = await state.policyEngine.evaluate(evaluationRequest);
+
+  // Audit emit (Chunk 6c — `StructuredAuthz.PolicyEvaluated`). Deny by
+  // default; permits opt in via `AUDIT_EMIT_PERMITS=true`. Wired via the
+  // optional `auditPolicyEvaluated` hook on IngressState so this package
+  // doesn't depend on the cedar adapter (Chunk 1 port-boundary rule).
+  // Errors from the audit hook MUST NOT block the deny throw — Invariant
+  // I2 says no side effects on a denied request, but recording the
+  // denial *is* the intended audit side effect, so the throw still wins.
+  if (state.auditPolicyEvaluated && shouldEmitAudit(decision)) {
+    try {
+      await state.auditPolicyEvaluated(evaluationRequest, decision, {
+        correlationId,
+        idempotencyKey: envelope.idempotencyKey,
+      });
+    } catch {
+      // Swallow audit-emit errors so a flaky audit pipeline doesn't
+      // turn a clean deny into a 500. Audit emitters are expected to
+      // log internally; if they don't, the deny still surfaces.
+    }
+  }
+
   if (decision.effect === 'deny') {
     // Deliberately opaque user-facing message — matches Rust ingress
     // (`crates/ingress/src/errors.rs` `unauthorized()`) and prevents
