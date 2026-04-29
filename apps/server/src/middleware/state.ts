@@ -29,15 +29,28 @@ import {
   composeRegistries,
 } from '@atlas/modules-authz';
 import { wirePolicyCacheInvalidation } from '@atlas/adapters-policy-cedar';
+import type { CedarBundleCache } from '@atlas/adapters-policy-cedar';
 import type {
   IngressState,
   EventDispatcher,
 } from '@atlas/ingress';
+import type { PolicyEngine } from '@atlas/ports';
 import type { Principal } from '@atlas/platform-core';
 import { ensureTenantMigrated, type AppState } from '../bootstrap.ts';
 
 function newAuditId(): string {
   return `audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Structural type guard — is this engine a Cedar bundle cache (i.e.
+ * exposes `invalidate` + `invalidateAll`)? The stub engine doesn't,
+ * so the wiring layer skips wiring `wirePolicyCacheInvalidation` for
+ * stub-mode deployments.
+ */
+function isBundleCache(engine: PolicyEngine): engine is PolicyEngine & CedarBundleCache {
+  const e = engine as unknown as Partial<CedarBundleCache>;
+  return typeof e.invalidate === 'function' && typeof e.invalidateAll === 'function';
 }
 
 export interface RequestBundle {
@@ -65,18 +78,13 @@ export async function buildRequestBundle(
 
   // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
   // emitted by activate / archive. Wiring is lazy: only wires when the
-  // configured engine is the Cedar adapter (the stub engine doesn't
-  // cache anything). Plain duck-typed check on `invalidate` keeps the
-  // wiring layer unaware of the concrete adapter type.
-  const policyEngine = state.policyEngine as unknown as {
-    invalidate?: (tenantId: string) => void;
-    invalidateAll?: () => void;
-  };
-  const onPolicyCacheTags =
-    typeof policyEngine.invalidate === 'function' &&
-    typeof policyEngine.invalidateAll === 'function'
-      ? wirePolicyCacheInvalidation(state.policyEngine as Parameters<typeof wirePolicyCacheInvalidation>[0])
-      : null;
+  // configured engine exposes the bundle-cache surface (the stub engine
+  // doesn't cache anything). The narrow duck-type guard mirrors the
+  // `CedarBundleCache` interface that `wirePolicyCacheInvalidation`
+  // accepts — no `as` cast needed once the guard returns true.
+  const onPolicyCacheTags = isBundleCache(state.policyEngine)
+    ? wirePolicyCacheInvalidation(state.policyEngine)
+    : null;
 
   const dispatch: EventDispatcher = async (envelope) => {
     await dispatchCatalogEvent(envelope, {

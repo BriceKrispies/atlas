@@ -182,11 +182,9 @@ export const contract: SurfaceContract = {
     },
   ],
 
-  channelEvents: [
-    {
-      eventType: 'projection.updated',
-      transport: 'sse',
-      reaction: 'Refresh policies list when a Policy event lands',
-    },
-  ],
+  // SSE-driven live refresh is deferred to v2 — wiring requires
+  // server-side dispatch of `projection.updated` events for the Policy
+  // resource, which the current dispatcher does not yet emit. The
+  // contract stays honest: empty until the subscription actually fires.
+  channelEvents: [],
 };

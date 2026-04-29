@@ -103,11 +103,15 @@ export class PostgresPolicyStore implements PolicyStore {
     description: string | null;
     principalId: string | null;
   }): Promise<number> {
-    // Compute next version under SERIALIZABLE-equivalent semantics by
-    // using a single INSERT ... SELECT MAX+1. The PRIMARY KEY (tenant_id,
-    // version) catches any race; on conflict we retry once. (Two concurrent
-    // creators are exceptionally rare in admin flows; the retry covers
-    // the lost-race case.)
+    // Compute next version via SELECT MAX+1, then INSERT. Each query
+    // runs in its own implicit transaction (autocommit) — they are NOT
+    // SERIALIZABLE. The PRIMARY KEY (tenant_id, version) catches the
+    // resulting race when two concurrent creators read the same MAX,
+    // and the retry loop below picks up after a unique-violation. Net
+    // effect: the FINAL version assignment is non-deterministic across
+    // racing requests, but the response always reflects the version
+    // that actually landed. Acceptable for admin authoring flows;
+    // would not be acceptable for a hot write path.
     const wrapper = {
       format: 'cedar-text',
       policies: input.cedarText,

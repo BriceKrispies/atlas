@@ -14,8 +14,6 @@
  * lands, this module sprouts a constructor that takes one.
  */
 
-import type { CedarPolicyEngine } from './cedar-policy-engine.ts';
-
 const TENANT_TAG_PREFIX = 'Tenant:';
 const POLICY_TAG_PREFIX = 'Policy:';
 
@@ -78,9 +76,14 @@ export function applyCacheTags(
  *
  *   const onEvent = wirePolicyCacheInvalidation(engine);
  *   dispatcher.after((envelope) => onEvent(envelope.cacheInvalidationTags));
+ *
+ * Accepts `CedarBundleCache` (structural type) rather than the concrete
+ * `CedarPolicyEngine` so the wiring layer's duck-type check on
+ * `invalidate` + `invalidateAll` is enforced at the type level — no
+ * `as` cast needed at the call site.
  */
 export function wirePolicyCacheInvalidation(
-  engine: CedarPolicyEngine,
+  engine: CedarBundleCache,
 ): (tags: ReadonlyArray<string> | null | undefined) => void {
   return (tags) => {
     applyCacheTags(engine, tags);

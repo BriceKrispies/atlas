@@ -69,11 +69,82 @@ class PolicyEditorPage extends AtlasSurface {
    * `render()`. Sidesteps the signal-based reactive effect AtlasSurface
    * uses by default; the editor's local state isn't a signal so we
    * trigger updates by hand from event handlers.
+   *
+   * Followup (next chunk): migrate `_state` to a signal so the base
+   * class's reactive effect handles re-rendering — preserves
+   * `<atlas-code-editor>` cursor + scroll across updates.
+   *
+   * The validation path explicitly DOES NOT call this (`_runValidation`
+   * uses `_applyValidationDom` for surgical updates) because firing
+   * `_rerender` every 250ms while the user types destroys cursor +
+   * scroll inside `<atlas-code-editor>` — a real UX regression caught
+   * by the 6d audit.
    */
   private _rerender(): void {
     const fragment = this.render();
     this.textContent = '';
     this.appendChild(fragment);
+  }
+
+  /**
+   * Surgical update for the validation-only path. Mutates the
+   * validation-alert region and the disabled state of the save/activate
+   * buttons in-place, preserving the live `<atlas-code-editor>` so the
+   * cursor + scroll position survive each debounced validation cycle.
+   */
+  private _applyValidationDom(errors: readonly string[]): void {
+    const saveBtn = this.querySelector(
+      'atlas-button[name="save-button"]',
+    ) as (HTMLElement & { disabled?: boolean }) | null;
+    const activateBtn = this.querySelector(
+      'atlas-button[name="activate-button"]',
+    ) as (HTMLElement & { disabled?: boolean }) | null;
+    if (saveBtn) saveBtn.toggleAttribute('disabled', this._state.saving || errors.length > 0);
+    if (activateBtn)
+      activateBtn.toggleAttribute(
+        'disabled',
+        this._state.activating || this._state.status !== 'draft' || errors.length > 0,
+      );
+
+    const existingAlert = this.querySelector('atlas-alert[name="validation-alert"]');
+    if (errors.length === 0) {
+      existingAlert?.remove();
+      return;
+    }
+
+    if (existingAlert) {
+      existingAlert.textContent = '';
+      const stack = document.createElement('atlas-stack');
+      stack.setAttribute('gap', 'xs');
+      for (const m of errors) {
+        const t = document.createElement('atlas-text');
+        t.textContent = m;
+        stack.appendChild(t);
+      }
+      existingAlert.appendChild(stack);
+      return;
+    }
+
+    const alert = document.createElement('atlas-alert');
+    alert.setAttribute('name', 'validation-alert');
+    alert.setAttribute('variant', 'warning');
+    alert.setAttribute('heading', 'Cedar validation errors');
+    const stack = document.createElement('atlas-stack');
+    stack.setAttribute('gap', 'xs');
+    for (const m of errors) {
+      const t = document.createElement('atlas-text');
+      t.textContent = m;
+      stack.appendChild(t);
+    }
+    alert.appendChild(stack);
+    // Insert after the heading row so the alert appears at the top of
+    // the surface, matching what `render()` produces.
+    const grid = this.querySelector('atlas-grid');
+    if (grid?.parentElement) {
+      grid.parentElement.insertBefore(alert, grid);
+    } else {
+      this.appendChild(alert);
+    }
   }
 
   override async load(): Promise<EditorState> {
@@ -355,21 +426,20 @@ class PolicyEditorPage extends AtlasSurface {
   }
 
   private async _runValidation(): Promise<void> {
+    let errs: readonly string[];
     try {
-      const errs = await validateCedarText(this._state.cedarText);
-      this._state = { ...this._state, validationErrors: errs };
+      errs = await validateCedarText(this._state.cedarText);
       this.emit('admin.authz.policy-editor.validated', { ok: errs.length === 0 });
-      this._rerender();
     } catch (e) {
       // cedar-wasm load error — surface as a single validation entry so
       // the user knows save will still work but real-time validation
       // is degraded.
-      this._state = {
-        ...this._state,
-        validationErrors: [`cedar-wasm: ${(e as Error).message}`],
-      };
-      this._rerender();
+      errs = [`cedar-wasm: ${(e as Error).message}`];
     }
+    this._state = { ...this._state, validationErrors: errs };
+    // Surgical DOM update — preserves <atlas-code-editor> cursor +
+    // scroll. See `_rerender` doc for the regression this avoids.
+    this._applyValidationDom(errs);
   }
 
   private async _save(): Promise<void> {
