@@ -45,6 +45,21 @@ interface EventEnvelope {
  * The component provides the payload (actionId, resourceType, etc.),
  * this function adds the envelope fields the backend requires.
  */
+/**
+ * Convert PascalCase segments of an actionId to lower_snake and join with
+ * dots, plus a `.v1` suffix. Mirrors `actionIdToSchemaId` in
+ * `@atlas/adapters-node` so client-side envelope construction matches
+ * the server's schema-validator lookup.
+ */
+function deriveSchemaId(actionId: string): string {
+  const PASCAL_BOUNDARY = /(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g;
+  const segments = actionId
+    .split('.')
+    .map((s) => s.replace(PASCAL_BOUNDARY, '_').toLowerCase())
+    .filter((s) => s.length > 0);
+  return `${segments.join('.')}.v1`;
+}
+
 function wrapIntent(payload: IntentPayload): EventEnvelope {
   const actionId = payload.actionId ?? '';
   // Derive eventType from actionId: "ContentPages.Page.Create" → "ContentPages.PageCreateRequested"
@@ -57,7 +72,11 @@ function wrapIntent(payload: IntentPayload): EventEnvelope {
   return {
     eventId: `evt-${uid()}`,
     eventType,
-    schemaId: 'ui.contentpages.page.create.v1',
+    // Schema id is derived from the actionId so the envelope routes to
+    // the right validator on the server (`@atlas/adapters-node`'s
+    // `actionIdToSchemaId` does the same conversion). Authz, catalog,
+    // and content actions all flow through this single helper.
+    schemaId: deriveSchemaId(actionId),
     schemaVersion: 1,
     occurredAt: new Date().toISOString(),
     tenantId: TENANT_ID,

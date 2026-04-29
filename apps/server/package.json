@@ -15,6 +15,7 @@
     "@atlas/adapters-policy-cedar": "workspace:*",
     "@atlas/adapters-policy-stub": "workspace:*",
     "@atlas/ingress": "workspace:*",
+    "@atlas/modules-authz": "workspace:*",
     "@atlas/modules-catalog": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",

@@ -9,6 +9,7 @@ interface ShellModule {
 
 const MODULES: readonly ShellModule[] = [
   { id: 'content', label: 'Content' },
+  { id: 'authz/policies', label: 'Authorization' },
   { id: 'badges', label: 'Badges' },
   { id: 'points', label: 'Points' },
   { id: 'org', label: 'Org' },
@@ -254,13 +255,25 @@ class AdminShell extends AtlasSurface {
     toggle?.setAttribute('aria-label', 'Open navigation');
   }
 
+  /**
+   * Match a child's `data-route` against the current hash. The match is
+   * a *prefix* match against the leading hash segment so nested routes
+   * (e.g. `#/authz/policies/123`) still display the same surface.
+   * `data-route="authz/policies"` matches both `authz/policies` and
+   * `authz/policies/123`.
+   */
+  private _matchesRoute(routeAttr: string, hash: string): boolean {
+    if (routeAttr === hash) return true;
+    return hash.startsWith(`${routeAttr}/`);
+  }
+
   private _route(): void {
     const hash = window.location.hash.replace('#/', '') || 'content';
 
     for (const item of this._shadow.querySelectorAll('atlas-nav-item')) {
       const href = item.getAttribute('href') ?? '';
       const itemRoute = href.replace('#/', '');
-      if (itemRoute === hash) {
+      if (this._matchesRoute(itemRoute, hash)) {
         item.setAttribute('active', '');
         item.setAttribute('aria-current', 'page');
       } else {
@@ -269,14 +282,29 @@ class AdminShell extends AtlasSurface {
       }
     }
 
-    for (const child of Array.from(this.children)) {
+    // Longest-prefix-match wins: pick the *most specific* matching child
+    // route so nested routes (e.g. `authz/policies/new`) display the
+    // editor instead of the list. Children without `data-route` are
+    // chrome (dialogs etc.) — always shown.
+    let best: HTMLElement | null = null;
+    let bestLen = -1;
+    const children = Array.from(this.children).filter((c): c is HTMLElement => c instanceof HTMLElement);
+    for (const child of children) {
       const route = child.getAttribute('data-route');
-      if (child instanceof HTMLElement) {
-        if (!route || route === hash) {
-          child.style.display = '';
-        } else {
-          child.style.display = 'none';
-        }
+      if (route !== null && this._matchesRoute(route, hash) && route.length > bestLen) {
+        best = child;
+        bestLen = route.length;
+      }
+    }
+
+    for (const child of children) {
+      const route = child.getAttribute('data-route');
+      if (route === null) {
+        child.style.display = '';
+      } else if (child === best) {
+        child.style.display = '';
+      } else {
+        child.style.display = 'none';
       }
     }
   }

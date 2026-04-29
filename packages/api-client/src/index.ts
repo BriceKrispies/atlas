@@ -18,3 +18,12 @@ export const backend: Backend =
   backendType === 'http' ? httpBackend : mockBackend;
 
 export type { Backend, BackendEventCallback, Unsubscribe } from './backend.ts';
+
+export {
+  listPolicies,
+  getPolicy,
+  createPolicy,
+  activatePolicy,
+  archivePolicy,
+} from './authz.ts';
+export type { PolicyStatus, PolicySummary, PolicyDetail } from './authz.ts';

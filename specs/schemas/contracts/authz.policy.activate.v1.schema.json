@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "authz.policy.activate.v1",
+  "title": "AuthzPolicyActivatePayload",
+  "description": "Payload schema for Authz.Policy.Activate — promotes a draft to active and demotes the prior active in one transaction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionId", "resourceType", "version"],
+  "properties": {
+    "actionId": { "type": "string", "const": "Authz.Policy.Activate" },
+    "resourceType": { "type": "string", "const": "Policy" },
+    "resourceId": { "type": ["string", "null"] },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

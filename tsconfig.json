@@ -42,6 +42,8 @@
       "@atlas/ingress/*": ["./packages/ingress/src/*"],
       "@atlas/modules-catalog": ["./packages/modules-catalog/src/index.ts"],
       "@atlas/modules-catalog/*": ["./packages/modules-catalog/src/*"],
+      "@atlas/modules-authz": ["./packages/modules-authz/src/index.ts"],
+      "@atlas/modules-authz/*": ["./packages/modules-authz/src/*"],
       "@atlas/server": ["./apps/server/src/main.ts"],
       "@atlas/server/*": ["./apps/server/src/*"]
     }

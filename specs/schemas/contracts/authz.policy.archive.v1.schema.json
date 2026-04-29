@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "authz.policy.archive.v1",
+  "title": "AuthzPolicyArchivePayload",
+  "description": "Payload schema for Authz.Policy.Archive — flips status to archived; refused if it would leave the tenant policy-less.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionId", "resourceType", "version"],
+  "properties": {
+    "actionId": { "type": "string", "const": "Authz.Policy.Archive" },
+    "resourceType": { "type": "string", "const": "Policy" },
+    "resourceId": { "type": ["string", "null"] },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

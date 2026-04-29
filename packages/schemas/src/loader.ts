@@ -8,6 +8,9 @@ import seedApplied from './generated/catalog.seed_package_applied.v1.schema.json
 import familyPublished from './generated/catalog.family_published.v1.schema.json' with { type: 'json' };
 import variantUpserted from './generated/catalog.variant_upserted.v1.schema.json' with { type: 'json' };
 import policyEvaluated from './generated/platform.policy_evaluated.v1.schema.json' with { type: 'json' };
+import authzPolicyCreate from './generated/authz.policy.create.v1.schema.json' with { type: 'json' };
+import authzPolicyActivate from './generated/authz.policy.activate.v1.schema.json' with { type: 'json' };
+import authzPolicyArchive from './generated/authz.policy.archive.v1.schema.json' with { type: 'json' };
 import moduleManifestRaw from './generated/module.manifest.json' with { type: 'json' };
 import badgeFamilySeedRaw from './generated/badge-family.json' with { type: 'json' };
 
@@ -18,6 +21,9 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   familyPublished as AnySchemaObject,
   variantUpserted as AnySchemaObject,
   policyEvaluated as AnySchemaObject,
+  authzPolicyCreate as AnySchemaObject,
+  authzPolicyActivate as AnySchemaObject,
+  authzPolicyArchive as AnySchemaObject,
 ];
 
 let cachedAjv: Ajv2020 | null = null;

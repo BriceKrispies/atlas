@@ -23,6 +23,12 @@ import {
   dispatchCatalogEvent,
   type CatalogQueryDeps,
 } from '@atlas/modules-catalog';
+import {
+  PostgresPolicyStore,
+  authzHandlerRegistry,
+  composeRegistries,
+} from '@atlas/modules-authz';
+import { wirePolicyCacheInvalidation } from '@atlas/adapters-policy-cedar';
 import type {
   IngressState,
   EventDispatcher,
@@ -51,15 +57,40 @@ export async function buildRequestBundle(
   const projections = new PostgresProjectionStore(sql);
   const search = new PostgresSearchEngine(sql);
   const catalogState = new PostgresCatalogStateStore(sql);
-  const handlers = catalogHandlerRegistry();
+  const policyStore = new PostgresPolicyStore(state.controlPlaneSql);
+  const handlers = composeRegistries(
+    catalogHandlerRegistry(),
+    authzHandlerRegistry(policyStore),
+  );
 
-  const dispatch: EventDispatcher = (envelope) =>
-    dispatchCatalogEvent(envelope, {
+  // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
+  // emitted by activate / archive. Wiring is lazy: only wires when the
+  // configured engine is the Cedar adapter (the stub engine doesn't
+  // cache anything). Plain duck-typed check on `invalidate` keeps the
+  // wiring layer unaware of the concrete adapter type.
+  const policyEngine = state.policyEngine as unknown as {
+    invalidate?: (tenantId: string) => void;
+    invalidateAll?: () => void;
+  };
+  const onPolicyCacheTags =
+    typeof policyEngine.invalidate === 'function' &&
+    typeof policyEngine.invalidateAll === 'function'
+      ? wirePolicyCacheInvalidation(state.policyEngine as Parameters<typeof wirePolicyCacheInvalidation>[0])
+      : null;
+
+  const dispatch: EventDispatcher = async (envelope) => {
+    await dispatchCatalogEvent(envelope, {
       catalogState,
       projections,
       search,
       cache,
     });
+    // Apply policy-bundle cache invalidation AFTER the catalog dispatcher
+    // returns so the next evaluate sees the freshly-activated bundle.
+    if (onPolicyCacheTags) {
+      onPolicyCacheTags(envelope.cacheInvalidationTags);
+    }
+  };
 
   const ingress: IngressState = {
     tenantId: principal.tenantId,

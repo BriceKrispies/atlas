@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "authz.policy.create.v1",
+  "title": "AuthzPolicyCreatePayload",
+  "description": "Payload schema for Authz.Policy.Create intents — saves a new draft Cedar policy bundle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionId", "resourceType", "cedarText", "schemaVersion"],
+  "properties": {
+    "actionId": { "type": "string", "const": "Authz.Policy.Create" },
+    "resourceType": { "type": "string", "const": "Policy" },
+    "resourceId": { "type": ["string", "null"] },
+    "cedarText": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "description": { "type": "string" }
+  }
+}

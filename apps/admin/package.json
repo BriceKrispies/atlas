@@ -14,7 +14,8 @@
     "@atlas/core": "workspace:*",
     "@atlas/api-client": "workspace:*",
     "@atlas/design": "workspace:*",
-    "@atlas/widgets": "workspace:*"
+    "@atlas/widgets": "workspace:*",
+    "@cedar-policy/cedar-wasm": "^4.10.0"
   },
   "devDependencies": {
     "@atlas/test-fixtures": "workspace:*",

@@ -19,6 +19,7 @@ import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
 import { healthRoutes } from './routes/health.ts';
 import { intentRoutes } from './routes/intents.ts';
 import { catalogRoutes } from './routes/catalog.ts';
+import { authzRoutes } from './routes/authz.ts';
 import { debugRoutes } from './routes/debug.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
@@ -33,6 +34,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.use('*', principalMiddleware(state));
   authed.route('/', intentRoutes(state));
   authed.route('/', catalogRoutes(state));
+  authed.route('/', authzRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes());
   }
