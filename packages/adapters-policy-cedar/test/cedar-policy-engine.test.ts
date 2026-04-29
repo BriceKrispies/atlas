@@ -76,12 +76,11 @@ describe('CedarPolicyEngine — real Cedar semantics', () => {
       resource: { type: 'Family', id: 'fam-1', tenantId: TENANT_A, attributes: {} },
     });
     expect(decision.effect).toBe('permit');
-    // Cedar assigns positional ids (`policy0`, `policy1`, ...) to policies
-    // parsed from a concatenated string. The `@id(...)` annotation is
-    // captured but does NOT replace the policy id — that requires the
-    // map/object form of `staticPolicies`. Schema-aware id wiring is a
-    // 6c follow-up.
-    expect(decision.matchedPolicies).toContain('policy0');
+    // Bundle uses the `@id("read-only")` annotation; the engine builds
+    // the map form of `staticPolicies` so Cedar surfaces the
+    // human-named id in `diagnostics.reason` rather than positional
+    // `policy0`.
+    expect(decision.matchedPolicies).toContain('read-only');
   });
 
   test('deny on non-matching action', async () => {
@@ -113,9 +112,8 @@ describe('CedarPolicyEngine — real Cedar semantics', () => {
     expect(denied.effect).toBe('deny');
     // Cedar's "reason" set names policies that *contributed* to the
     // decision. For deny via forbid, the forbid policy is reported.
-    // FORBID_OVERRIDES has the permit first (policy0) and forbid second
-    // (policy1); the reason set on a deny is the forbid id.
-    expect(denied.matchedPolicies).toContain('policy1');
+    // FORBID_OVERRIDES annotates the forbid as `@id("forbid-deletes")`.
+    expect(denied.matchedPolicies).toContain('forbid-deletes');
   });
 
   test('attribute-based: principal.department == resource.department permits', async () => {
@@ -224,6 +222,29 @@ describe('CedarPolicyEngine — real Cedar semantics', () => {
       resource: { type: 'Family', id: 'fam-1', tenantId: TENANT_A, attributes: {} },
     });
     expect(refreshed.effect).toBe('deny');
+  });
+
+  test('bundle without @id annotations falls back to positional ids', async () => {
+    // Sanity check: when policies omit `@id(...)`, the engine still
+    // works (raw-string form). matchedPolicies will be Cedar's
+    // positional ids (`policy0`, `policy1`, ...).
+    const noAnnotations = `
+      permit (
+        principal,
+        action == Action::"Catalog.Family.Read",
+        resource is Family
+      );
+    `;
+    const engine = new CedarPolicyEngine(
+      makeBundleLoader({ [TENANT_A]: noAnnotations }),
+    );
+    const decision = await engine.evaluate({
+      principal: { id: 'alice', tenantId: TENANT_A, attributes: {} },
+      action: 'Catalog.Family.Read',
+      resource: { type: 'Family', id: 'fam-1', tenantId: TENANT_A, attributes: {} },
+    });
+    expect(decision.effect).toBe('permit');
+    expect(decision.matchedPolicies).toContain('policy0');
   });
 
   test('malformed bundle parses via wrapper helper', () => {

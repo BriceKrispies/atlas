@@ -109,6 +109,35 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
       }
     });
 
+    test('decision shape on deny: reasons (when present) is an array of strings', async () => {
+      // Deny is the path most likely to leak structure — pin shape on
+      // both branches so a Cedar regression that ships a ParsedPolicy
+      // object instead of a string surfaces at the contract layer.
+      const decision = await engine.evaluate(
+        makeRequest({ principalTenant: 'tenant-a', resourceTenant: 'tenant-b' }),
+      );
+      expect(decision.effect).toBe('deny');
+      if (decision.reasons !== undefined) {
+        expect(Array.isArray(decision.reasons)).toBe(true);
+        for (const r of decision.reasons) {
+          expect(typeof r).toBe('string');
+        }
+      }
+    });
+
+    test('decision shape on deny: matchedPolicies (when present) is an array of strings', async () => {
+      const decision = await engine.evaluate(
+        makeRequest({ principalTenant: 'tenant-a', resourceTenant: 'tenant-b' }),
+      );
+      expect(decision.effect).toBe('deny');
+      if (decision.matchedPolicies !== undefined) {
+        expect(Array.isArray(decision.matchedPolicies)).toBe(true);
+        for (const p of decision.matchedPolicies) {
+          expect(typeof p).toBe('string');
+        }
+      }
+    });
+
     test('different action-resource pairs yield decisions of consistent shape', async () => {
       // Real engines must differentiate (e.g. one action permitted, another
       // denied). The stub does not — it ignores action/resource and only
@@ -140,6 +169,23 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
       await expect(
         engine.evaluate(
           makeRequest({ principalTenant: 'tenant-a', resourceTenant: '' }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    test('rejects whitespace-only principal.id', async () => {
+      await expect(
+        engine.evaluate(makeRequest({ principalId: '   ' })),
+      ).rejects.toThrow();
+    });
+
+    test('rejects whitespace-only tenant ids', async () => {
+      await expect(
+        engine.evaluate(makeRequest({ principalTenant: '\t' })),
+      ).rejects.toThrow();
+      await expect(
+        engine.evaluate(
+          makeRequest({ principalTenant: 'tenant-a', resourceTenant: '   ' }),
         ),
       ).rejects.toThrow();
     });
@@ -211,25 +257,40 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
     // (forbid-overrides, attribute-based permit/deny, matched-policies).
     // We keep `describe.skip` here so the contract surface still
     // documents the expectation without forcing every adapter to satisfy
-    // it inline.
+    // it inline. Bodies use `expect.fail(...)` so flipping `.skip` to
+    // `describe` (when adding a new adapter that should satisfy these
+    // inline) immediately surfaces "still TODO" rather than passing
+    // vacuously.
     // -----------------------------------------------------------------
     describe.skip('real engine semantics (Cedar — see cedar adapter test)', () => {
-      test('forbid overrides permit (Invariant I4: deny-overrides-allow)', async () => {
+      test('forbid overrides permit (Invariant I4: deny-overrides-allow)', () => {
         // When a tenant has both a `permit` and a `forbid` rule that match
         // the same request, the decision must be `deny`.
+        expect.fail(
+          'TODO: implement when adapting a real engine inline against this contract',
+        );
       });
 
-      test('attribute-based: principal.department === resource.department permits', async () => {
+      test('attribute-based: principal.department === resource.department permits', () => {
         // A policy keyed on principal attributes resolves against the
         // request envelope's attribute map.
+        expect.fail(
+          'TODO: implement when adapting a real engine inline against this contract',
+        );
       });
 
-      test('matchedPolicies returns policy ids that contributed to the decision', async () => {
+      test('matchedPolicies returns policy ids that contributed to the decision', () => {
         // Real adapters expose policy ids; stub returns undefined.
+        expect.fail(
+          'TODO: implement when adapting a real engine inline against this contract',
+        );
       });
 
-      test('different actions produce different decisions for the same principal/resource', async () => {
+      test('different actions produce different decisions for the same principal/resource', () => {
         // e.g. Catalog.Family.Read permits, Catalog.Family.Delete denies.
+        expect.fail(
+          'TODO: implement when adapting a real engine inline against this contract',
+        );
       });
     });
   });

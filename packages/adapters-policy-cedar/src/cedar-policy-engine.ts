@@ -41,12 +41,22 @@ import type { ParsedBundle, PolicyBundleLoader } from './bundle-loader.ts';
  * subpackage exports a `.d.ts` that requires WASM resolution, and we want
  * this module to typecheck without the WASM file present.
  */
+/**
+ * Cedar's `StaticPolicySet` accepts either a raw string (positional ids
+ * `policy0`, `policy1`, ...) or `Record<PolicyId, Policy>` where the key
+ * we choose becomes the `policyId` Cedar reports back in
+ * `diagnostics.reason`. We use the map form whenever the bundle has
+ * `@id("...")` annotations so admin UI / audit events surface
+ * human-named policy ids instead of `policy0`.
+ */
+type StaticPolicies = string | Record<string, string>;
+
 interface AuthorizationCall {
   principal: { type: string; id: string };
   action: { type: string; id: string };
   resource: { type: string; id: string };
   context: Record<string, unknown>;
-  policies: { staticPolicies: string };
+  policies: { staticPolicies: StaticPolicies };
   entities: Array<{
     uid: { type: string; id: string };
     attrs: Record<string, unknown>;
@@ -74,6 +84,10 @@ interface CedarFailureResponse {
 
 type CedarResponse = CedarSuccessResponse | CedarFailureResponse;
 
+type PolicySetTextToPartsAnswer =
+  | { type: 'success'; policies: string[]; policy_templates: string[] }
+  | { type: 'failure'; errors: Array<{ message: string }> };
+
 /**
  * Subset of `@cedar-policy/cedar-wasm/nodejs` we depend on. Declared
  * explicitly so the rest of the codebase can mock it in tests without
@@ -81,6 +95,7 @@ type CedarResponse = CedarSuccessResponse | CedarFailureResponse;
  */
 export interface CedarWasm {
   isAuthorized(call: AuthorizationCall): CedarResponse;
+  policySetTextToParts(policysetStr: string): PolicySetTextToPartsAnswer;
 }
 
 export type CedarWasmLoader = () => Promise<CedarWasm>;
@@ -97,15 +112,24 @@ const defaultLoader: CedarWasmLoader = async () => {
   const mod = (await import(
     '@cedar-policy/cedar-wasm/nodejs'
   )) as unknown as Record<string, unknown> & { default?: Record<string, unknown> };
-  const candidate = (mod['isAuthorized'] ?? mod.default?.['isAuthorized']) as
+  const isAuthorized = (mod['isAuthorized'] ?? mod.default?.['isAuthorized']) as
     | CedarWasm['isAuthorized']
     | undefined;
-  if (typeof candidate !== 'function') {
+  const policySetTextToParts = (mod['policySetTextToParts'] ??
+    mod.default?.['policySetTextToParts']) as
+    | CedarWasm['policySetTextToParts']
+    | undefined;
+  if (typeof isAuthorized !== 'function') {
     throw new Error(
       'cedar-wasm: failed to resolve isAuthorized from @cedar-policy/cedar-wasm/nodejs',
     );
   }
-  return { isAuthorized: candidate };
+  if (typeof policySetTextToParts !== 'function') {
+    throw new Error(
+      'cedar-wasm: failed to resolve policySetTextToParts from @cedar-policy/cedar-wasm/nodejs',
+    );
+  }
+  return { isAuthorized, policySetTextToParts };
 };
 
 export interface CedarPolicyEngineOptions {
@@ -148,13 +172,15 @@ export class CedarPolicyEngine implements PolicyEngine {
     // Shape validation — every adapter is expected to reject malformed
     // input rather than silently coerce. Mirrors `StubPolicyEngine` so the
     // contract suite passes both adapters with the same assertions.
-    if (!request.principal.id) {
+    // Whitespace-only IDs (`"   "`, `"\t"`) are also rejected so they
+    // can't smuggle through as truthy strings.
+    if (request.principal.id.trim().length === 0) {
       throw new Error('PolicyEngine: principal.id must be non-empty');
     }
-    if (!request.principal.tenantId) {
+    if (request.principal.tenantId.trim().length === 0) {
       throw new Error('PolicyEngine: principal.tenantId must be non-empty');
     }
-    if (!request.resource.tenantId) {
+    if (request.resource.tenantId.trim().length === 0) {
       throw new Error('PolicyEngine: resource.tenantId must be non-empty');
     }
 
@@ -181,13 +207,14 @@ export class CedarPolicyEngine implements PolicyEngine {
     }
 
     const cedar = await this.ensureCedar();
+    const staticPolicies = this.staticPoliciesFor(bundle, cedar);
     const refs = buildCedarRequest(request);
     const call: AuthorizationCall = {
       principal: refs.principal,
       action: refs.action,
       resource: refs.resource,
       context: refs.context,
-      policies: { staticPolicies: bundle.cedarText },
+      policies: { staticPolicies },
       entities: refs.entities,
     };
 
@@ -247,6 +274,29 @@ export class CedarPolicyEngine implements PolicyEngine {
     return fresh;
   }
 
+  /**
+   * Resolve the `staticPolicies` payload for a bundle. If the bundle has
+   * `@id("name")` annotations on its policies, build the map form so
+   * Cedar surfaces the human-named ids in `diagnostics.reason`.
+   * Otherwise fall through to the raw text (positional `policy0`,
+   * `policy1`, ... ids) — matches Cedar's default and stays compatible
+   * with bundles that haven't been annotated yet.
+   *
+   * Result is memoised on the cached `ParsedBundle` so we only split
+   * once per (tenantId, version).
+   */
+  private staticPoliciesFor(
+    bundle: ParsedBundle,
+    cedar: CedarWasm,
+  ): StaticPolicies {
+    if (bundle.staticPolicies !== undefined) {
+      return bundle.staticPolicies;
+    }
+    const map = buildNamedPolicyMap(bundle.cedarText, cedar);
+    bundle.staticPolicies = map ?? bundle.cedarText;
+    return bundle.staticPolicies;
+  }
+
   private async ensureCedar(): Promise<CedarWasm> {
     if (this.cedar) return this.cedar;
     // Coalesce concurrent evaluators on first hit so we never load the
@@ -259,4 +309,49 @@ export class CedarPolicyEngine implements PolicyEngine {
     }
     return this.cedarLoading;
   }
+}
+
+/**
+ * Match Cedar's `@id("name")` annotation. The string-literal grammar
+ * allows `\"` and `\\` escapes; we keep the captured form raw and let
+ * Cedar/JSON parse the escapes downstream when serialising the
+ * `staticPolicies` map.
+ */
+const ID_ANNOTATION = /@id\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
+
+/**
+ * Split a Cedar bundle into individual policies and key them by
+ * `@id("...")` annotation. Returns `null` (so the caller falls back to
+ * positional ids) when:
+ *  - The bundle fails to split (parse error — Cedar's `isAuthorized`
+ *    will surface the same error path).
+ *  - Any policy is missing an `@id()` annotation.
+ *  - Two policies share an id (cannot key the map without losing one).
+ *
+ * Templates are not currently supported; if the bundle has any, fall
+ * back to the raw-string form.
+ */
+function buildNamedPolicyMap(
+  cedarText: string,
+  cedar: CedarWasm,
+): Record<string, string> | null {
+  let parts: PolicySetTextToPartsAnswer;
+  try {
+    parts = cedar.policySetTextToParts(cedarText);
+  } catch {
+    return null;
+  }
+  if (parts.type === 'failure') return null;
+  if (parts.policy_templates.length > 0) return null;
+  if (parts.policies.length === 0) return null;
+
+  const map: Record<string, string> = {};
+  for (const policyText of parts.policies) {
+    const match = ID_ANNOTATION.exec(policyText);
+    if (!match || match[1] === undefined) return null;
+    const id = match[1];
+    if (Object.prototype.hasOwnProperty.call(map, id)) return null;
+    map[id] = policyText;
+  }
+  return map;
 }

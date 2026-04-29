@@ -92,6 +92,10 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
         new PostgresBundleLoader(controlPlaneSql),
       );
       break;
+    default:
+      // Adding a new `PolicyEngineKind` without a case here is a compile
+      // error rather than silent fall-through.
+      assertNever(config.policyEngine);
   }
 
   return {
@@ -103,6 +107,10 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     migratedTenants: new Set<string>(),
     policyEngine,
   };
+}
+
+function assertNever(x: never): never {
+  throw new Error(`unreachable: unexpected value ${JSON.stringify(x)}`);
 }
 
 /**

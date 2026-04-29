@@ -21,13 +21,15 @@ export class StubPolicyEngine implements PolicyEngine {
   async evaluate(request: PolicyEvaluationRequest): Promise<PolicyDecision> {
     // Input validation — every adapter must reject obviously malformed
     // requests so callers can't silently smuggle through "" tenant ids.
-    if (!request.principal.id) {
+    // `.trim().length === 0` also catches whitespace-only IDs (`"   "`,
+    // `"\t"`); `if (!x)` alone would let those through as truthy.
+    if (request.principal.id.trim().length === 0) {
       throw new Error('PolicyEngine: principal.id must be non-empty');
     }
-    if (!request.principal.tenantId) {
+    if (request.principal.tenantId.trim().length === 0) {
       throw new Error('PolicyEngine: principal.tenantId must be non-empty');
     }
-    if (!request.resource.tenantId) {
+    if (request.resource.tenantId.trim().length === 0) {
       throw new Error('PolicyEngine: resource.tenantId must be non-empty');
     }
 

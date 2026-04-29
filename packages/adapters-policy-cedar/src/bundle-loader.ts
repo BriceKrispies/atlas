@@ -36,6 +36,15 @@ export interface ParsedBundle {
   cedarText: string;
   /** Wrapper schema version — 1 today; bump when format evolves. */
   schemaVersion: number;
+  /**
+   * Memoised `staticPolicies` payload for Cedar's `isAuthorized` call —
+   * populated lazily by `CedarPolicyEngine` on first evaluate. Either a
+   * raw string (positional `policy0`, `policy1`, ... ids when the bundle
+   * has no `@id("...")` annotations) or `Record<string, string>` keyed by
+   * the annotation name. Held on the bundle so we split once per
+   * (tenantId, version).
+   */
+  staticPolicies?: string | Record<string, string>;
 }
 
 export interface PolicyBundleLoader {

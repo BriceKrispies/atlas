@@ -105,7 +105,8 @@ export async function submitIntent(
   // semantics live inside the adapter (Invariant I4). Resource and
   // principal attributes are empty in 6a — Chunk 6b populates them via the
   // catalog handler resource-fetch step before this call.
-  const resourceType = envelope.payload.resourceType;
+  const resourceType =
+    typeof envelope.payload.resourceType === 'string' ? envelope.payload.resourceType : '';
   const resourceId =
     typeof envelope.payload.resourceId === 'string' ? envelope.payload.resourceId : '';
   const decision = await state.policyEngine.evaluate({
@@ -124,9 +125,15 @@ export async function submitIntent(
     context: { correlationId },
   });
   if (decision.effect === 'deny') {
+    // Deliberately opaque user-facing message — matches Rust ingress
+    // (`crates/ingress/src/errors.rs` `unauthorized()`) and prevents
+    // leaking policy ids, matched-rule reasons, or Cedar AST fragments
+    // to a denied principal. Diagnostics (decision.reasons,
+    // decision.matchedPolicies) belong in structured audit events
+    // (Chunk 6c — `StructuredAuthz.PolicyEvaluated`), not the HTTP body.
     err(
       'UNAUTHORIZED',
-      decision.reasons?.[0] ?? 'Policy denied',
+      'Not authorized to perform this action',
       403,
       correlationId,
     );
