@@ -6,13 +6,25 @@
  * context per `invoke`, zero imports allowed.
  *
  * Two adapters share one execution core:
- *   - `NodeWasmHost`:    server-side, `FilesystemPluginLoader` typical.
+ *   - `WorkerWasmHost`:  server-side, `FilesystemPluginLoader` typical.
+ *                        Each `invoke` runs in a fresh `worker_threads`
+ *                        Worker so a CPU-bound plugin can be hard-
+ *                        preempted via `worker.terminate()` and the
+ *                        memory cap is enforced at the V8 isolate
+ *                        boundary (real OS-level cap, not post-hoc).
  *   - `BrowserWasmHost`: sim mode, `InMemoryPluginLoader` typical.
+ *                        Native `WebAssembly` API; no preemption (Web
+ *                        Workers are a separate, later concern).
  *
- * Both expose the same `WasmHost` port; tests in `@atlas/contract-tests`
- * exercise both adapters from one fixture.
+ * `NodeWasmHost` is retained as a deprecated alias for `WorkerWasmHost`
+ * so pre-Chunk-12 call sites work unchanged.
+ *
+ * Both adapters expose the same `WasmHost` port; tests in
+ * `@atlas/contract-tests` exercise both adapters from one fixture.
  */
 
+export { WorkerWasmHost } from './worker-host.ts';
+export type { WorkerWasmHostOptions } from './worker-host.ts';
 export { NodeWasmHost } from './node-host.ts';
 export type { NodeWasmHostOptions } from './node-host.ts';
 export { BrowserWasmHost } from './browser-host.ts';

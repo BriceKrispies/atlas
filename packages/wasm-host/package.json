@@ -7,11 +7,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./node": "./src/node-host.ts",
+    "./worker": "./src/worker-host.ts",
     "./browser": "./src/browser-host.ts",
     "./loader": "./src/plugin-loader.ts"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
-    "@atlas/ports": "workspace:*"
+    "@atlas/ports": "workspace:*",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@atlas/contract-tests": "workspace:*",

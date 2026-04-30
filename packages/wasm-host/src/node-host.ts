@@ -1,84 +1,39 @@
 /**
  * Node-side WasmHost adapter.
  *
- * Implementation choice: native `WebAssembly` API (Node 18+ ships it
- * stable). Looked at `@bytecodealliance/wasmtime` and `wasmtime` on npm;
- * neither has the maturity / cross-platform binary support to bet on
- * for the parity loop today (no Windows binaries on `wasmtime`,
- * `@bytecodealliance/wasmtime` last published 2022). Trade-off: no
- * fuel limit. We keep the `fuelLimit` field on `WasmInvocation` so the
- * port matches the Rust contract numerically — it's accepted but not
- * enforced here. Memory cap is enforced post-hoc against the
- * `WebAssembly.Memory` buffer length after `render` returns. Wall-clock
- * timeout is enforced via `Promise.race` — for CPU-bound modules that
- * wedge the event loop the only true preemption is a Worker thread,
- * which is a follow-up; the demo plugin and any well-behaved plugin
- * returns inside microseconds.
+ * Pre-Chunk 12 this class ran the plugin on the main event loop with a
+ * `Promise.race` timeout; that couldn't preempt CPU-bound modules and
+ * the memory cap was a post-hoc check. Chunk 12 closed the architectural
+ * audit's last production-cutover BLOCKER by moving execution into a
+ * `worker_threads` Worker — see `worker-host.ts` for the real
+ * implementation.
  *
- * Same `WasmHost` contract as the browser adapter; tests in
- * `@atlas/contract-tests` cover both adapters with one fixture.
+ * `NodeWasmHost` is retained as a thin alias over `WorkerWasmHost` so
+ * existing call sites (e.g. `apps/server/src/bootstrap.ts`) work
+ * unchanged. Prefer `WorkerWasmHost` for new code.
+ *
+ * @deprecated Use `WorkerWasmHost`. The two are construction-equivalent;
+ * `NodeWasmHost` is kept for compatibility with pre-Chunk-12 callers.
  */
 
-import type {
-  WasmHost,
-  WasmInvocation,
-  WasmPluginLoader,
-} from '@atlas/ports';
-import {
-  WasmHostError,
-  DEFAULT_TIMEOUT_MS,
-  DEFAULT_MEMORY_LIMIT_MB,
-} from './errors.ts';
-import { compileAndValidate, runModule } from './execute.ts';
+import type { WasmHost, WasmInvocation } from '@atlas/ports';
+import { WorkerWasmHost, type WorkerWasmHostOptions } from './worker-host.ts';
 
-export interface NodeWasmHostOptions {
-  loader: WasmPluginLoader;
-}
+export type NodeWasmHostOptions = WorkerWasmHostOptions;
 
+/**
+ * @deprecated Alias for `WorkerWasmHost`. Construction signature is
+ * identical; `invoke` semantics are identical. New code should import
+ * `WorkerWasmHost` directly.
+ */
 export class NodeWasmHost implements WasmHost {
-  readonly #loader: WasmPluginLoader;
+  readonly #inner: WorkerWasmHost;
 
   constructor(options: NodeWasmHostOptions) {
-    this.#loader = options.loader;
+    this.#inner = new WorkerWasmHost(options);
   }
 
-  async invoke(invocation: WasmInvocation): Promise<unknown> {
-    const timeoutMs = invocation.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const memoryLimitMb = invocation.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
-
-    // Sub-zero / zero timeouts are an explicit "no time at all" signal —
-    // mirrors what a `tokio::time::timeout(Duration::ZERO, ...)` does in
-    // the Rust host (it never polls the future). Bail before even
-    // touching the loader so callers that pass `timeoutMs: 0` as a
-    // "disable" sentinel get a clean rejection instead of a partial run.
-    if (timeoutMs <= 0) {
-      throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
-    }
-
-    const deadline = Date.now() + timeoutMs;
-    const bytes = await this.#loader.load(invocation.pluginRef);
-    if (Date.now() >= deadline) {
-      throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
-    }
-    const module = await compileAndValidate(bytes);
-    if (Date.now() >= deadline) {
-      throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
-    }
-
-    const work = runModule(module, invocation.input, { memoryLimitMb });
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      const remaining = Math.max(0, deadline - Date.now());
-      timer = setTimeout(() => {
-        reject(new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`));
-      }, remaining);
-    });
-
-    try {
-      return await Promise.race([work, timeout]);
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+  invoke(invocation: WasmInvocation): Promise<unknown> {
+    return this.#inner.invoke(invocation);
   }
 }
