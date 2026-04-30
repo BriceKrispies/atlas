@@ -3,7 +3,7 @@
  *
  * Schema is installed by the bundled migration
  * `migrations/tenant/20260428000004_catalog_state.sql` (run via the
- * adapters-node migration runner).
+ * @atlas/adapter-node migration runner).
  *
  * One row per tenant (the IDB shape is also keyed on `tenantId`). `put`
  * is INSERT ... ON CONFLICT (tenant_id) DO UPDATE.

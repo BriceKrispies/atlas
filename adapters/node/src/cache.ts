@@ -3,7 +3,7 @@
  *
  * Schema is installed by the bundled migration
  * `migrations/tenant/20260428000002_cache_entries.sql` (run via the
- * adapters-node migration runner).
+ * @atlas/adapter-node migration runner).
  *
  * Behaviour:
  * - `set` upserts on `cache_key`. `ttlSeconds=0` stores `expires_at = NULL`

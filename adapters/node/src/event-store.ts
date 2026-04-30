@@ -2,7 +2,7 @@
  * PostgresEventStore — Postgres-backed `EventStore` adapter.
  *
  * Schema is installed by the bundled migration
- * `migrations/tenant/20260428000001_events.sql` (run via the adapters-node
+ * `migrations/tenant/20260428000001_events.sql` (run via the @atlas/adapter-node
  * migration runner). This adapter no longer creates tables on the fly.
  *
  * Idempotency is **tenant-scoped** — `(tenant_id, idempotency_key)` is the

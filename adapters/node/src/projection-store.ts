@@ -3,7 +3,7 @@
  *
  * Schema is installed by the bundled migration
  * `migrations/tenant/20260428000003_projections.sql` (run via the
- * adapters-node migration runner).
+ * @atlas/adapter-node migration runner).
  *
  * `value` is `jsonb` — the contract requires "values can be primitives";
  * `jsonb` accepts numbers, strings, booleans, arrays, objects, and SQL
