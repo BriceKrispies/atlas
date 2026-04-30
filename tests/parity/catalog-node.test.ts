@@ -12,7 +12,7 @@
 import { describe, test, expect } from 'vitest';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
-import type { VariantRow } from '@atlas/modules-catalog';
+import type { VariantRow } from '@atlas/catalog';
 
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
 const d = baseUrl ? describe : describe.skip;

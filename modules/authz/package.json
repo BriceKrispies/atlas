@@ -1,5 +1,5 @@
 {
-  "name": "@atlas/modules-content-pages",
+  "name": "@atlas/authz",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "postgres": "^3.4.5",
     "vitest": "^4.1.5"
   }
 }

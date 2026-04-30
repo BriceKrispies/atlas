@@ -19,7 +19,7 @@ import {
   listPages,
   getPage,
   getRenderTree,
-} from '@atlas/modules-content-pages';
+} from '@atlas/content-pages';
 import { evaluateRead, type IngressState } from '@atlas/ingress';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';

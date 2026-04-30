@@ -1,6 +1,6 @@
 import { badgeFamilySeed } from '@atlas/schemas';
 import type { IntentEnvelope } from '@atlas/platform-core';
-import { newEventId } from '@atlas/modules-catalog';
+import { newEventId } from '@atlas/catalog';
 
 export interface BadgeFamilySeedDoc {
   packageKey: string;

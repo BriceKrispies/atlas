@@ -1,5 +1,5 @@
 /**
- * ContentPages error taxonomy. Mirrors the shape of `@atlas/modules-authz`'s
+ * ContentPages error taxonomy. Mirrors the shape of `@atlas/authz`'s
  * `AuthzError`: a `code` (taxonomy string), human message, and a
  * suggested HTTP status. The wiring layer maps these to error envelopes.
  */

@@ -23,12 +23,12 @@ import type {
   VariantTableResponse,
   SearchParams,
   SearchResponse,
-} from '@atlas/modules-catalog';
+} from '@atlas/catalog';
 import type {
   PageDocument,
   PageSummary,
   RenderTree,
-} from '@atlas/modules-content-pages';
+} from '@atlas/content-pages';
 
 export interface IngressFailure {
   code: string;

@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { createSimIngress, makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
-import { newEventId, type VariantRow } from '@atlas/modules-catalog';
+import { newEventId, type VariantRow } from '@atlas/catalog';
 import type { SearchDocument } from '@atlas/platform-core';
 
 describe('[sim] catalog_badge_family parity', () => {

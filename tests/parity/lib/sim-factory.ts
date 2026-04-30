@@ -28,7 +28,7 @@ import {
   getVariantTable,
   searchCatalog,
   type CatalogQueryDeps,
-} from '@atlas/modules-catalog';
+} from '@atlas/catalog';
 import {
   contentPagesHandlerRegistry,
   contentPagesDispatcher,
@@ -37,8 +37,8 @@ import {
   getRenderTree as getContentPageRenderTreeQuery,
   renderTreeKey as contentRenderTreeKey,
   type ContentPagesQueryDeps,
-} from '@atlas/modules-content-pages';
-import { composeRegistries } from '@atlas/modules-authz';
+} from '@atlas/content-pages';
+import { composeRegistries } from '@atlas/authz';
 import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import {
   IngressError,

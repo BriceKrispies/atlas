@@ -35,7 +35,7 @@ import {
 } from '@atlas/adapters-node';
 import {
   renderTreeKey as contentRenderTreeKey,
-} from '@atlas/modules-content-pages';
+} from '@atlas/content-pages';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
@@ -184,7 +184,7 @@ export function debugRoutes(state: AppState): Hono<{ Variables: ServerVariables 
   // PostgresCache has no per-tenant flush surface, so we mirror the
   // `invalidateByTags(['Tenant:{tenantId}'])` semantics that every cache
   // writer in the platform already uses (see `Tenant:{tenantId}` tag
-  // convention in modules-catalog / modules-authz).
+  // convention in @atlas/catalog / @atlas/authz).
   app.post('/debug/cache/clear', async (c: AppCtx) => {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');

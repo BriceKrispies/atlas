@@ -9,7 +9,7 @@
  *    rules ban and is exempt by scope.
  *
  * 2. Port-boundary rule (Chunk 1 of the TS rewrite). Domain code
- *    (`packages/modules-*`) and the ingress pipeline (`packages/ingress`)
+ *    (`modules/*`) and the ingress pipeline (`packages/ingress`)
  *    must depend only on `@atlas/ports` + `@atlas/platform-core` + their
  *    siblings — NEVER on a concrete adapter. Apps wire concrete adapters,
  *    so they are exempt.
@@ -46,7 +46,7 @@ export default [
   },
   {
     files: [
-      'packages/modules-*/**/*.ts',
+      'modules/*/**/*.ts',
       'packages/ingress/**/*.ts',
     ],
     languageOptions: {
@@ -90,7 +90,12 @@ export default [
         {
           patterns: [
             {
-              group: ['@atlas/adapters-*', '@atlas/modules-*'],
+              group: [
+                '@atlas/adapters-*',
+                '@atlas/catalog',
+                '@atlas/authz',
+                '@atlas/content-pages',
+              ],
               message:
                 'Ports must not depend on concrete adapters or domain modules — that inverts the dependency arrow.',
             },

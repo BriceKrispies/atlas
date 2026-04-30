@@ -1,5 +1,5 @@
 /**
- * @atlas/modules-content-pages — Page CRUD + render-tree projection.
+ * @atlas/content-pages — Page CRUD + render-tree projection.
  *
  * Mirrors the Rust content-pages handler logic in
  * `crates/ingress/src/main.rs::handle_intent` (Page.Create branch) +

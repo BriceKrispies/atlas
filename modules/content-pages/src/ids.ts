@@ -1,7 +1,7 @@
 /**
  * Deterministic id helpers for the content-pages module.
  *
- * Mirrors `@atlas/modules-catalog`'s `ids.ts` shape so dispatch can
+ * Mirrors `@atlas/catalog`'s `ids.ts` shape so dispatch can
  * stamp envelope ids the same way across modules.
  */
 

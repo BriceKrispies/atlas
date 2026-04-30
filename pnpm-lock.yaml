@@ -152,21 +152,21 @@ importers:
       '@atlas/adapters-policy-stub':
         specifier: workspace:*
         version: link:../../packages/adapters-policy-stub
+      '@atlas/authz':
+        specifier: workspace:*
+        version: link:../../modules/authz
+      '@atlas/catalog':
+        specifier: workspace:*
+        version: link:../../modules/catalog
+      '@atlas/content-pages':
+        specifier: workspace:*
+        version: link:../../modules/content-pages
       '@atlas/ingress':
         specifier: workspace:*
         version: link:../../packages/ingress
       '@atlas/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
-      '@atlas/modules-authz':
-        specifier: workspace:*
-        version: link:../../packages/modules-authz
-      '@atlas/modules-catalog':
-        specifier: workspace:*
-        version: link:../../packages/modules-catalog
-      '@atlas/modules-content-pages':
-        specifier: workspace:*
-        version: link:../../packages/modules-content-pages
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../../packages/platform-core
@@ -220,6 +220,44 @@ importers:
       linkedom:
         specifier: ^0.18.0
         version: 0.18.12
+
+  modules/authz:
+    dependencies:
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../../packages/platform-core
+      '@atlas/ports':
+        specifier: workspace:*
+        version: link:../../packages/ports
+    devDependencies:
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.9
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
+
+  modules/catalog:
+    dependencies:
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../../packages/platform-core
+      '@atlas/ports':
+        specifier: workspace:*
+        version: link:../../packages/ports
+
+  modules/content-pages:
+    dependencies:
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../../packages/platform-core
+      '@atlas/ports':
+        specifier: workspace:*
+        version: link:../../packages/ports
+    devDependencies:
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
 
   packages/adapters-idb:
     dependencies:
@@ -380,44 +418,6 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
 
-  packages/modules-authz:
-    dependencies:
-      '@atlas/platform-core':
-        specifier: workspace:*
-        version: link:../platform-core
-      '@atlas/ports':
-        specifier: workspace:*
-        version: link:../ports
-    devDependencies:
-      postgres:
-        specifier: ^3.4.5
-        version: 3.4.9
-      vitest:
-        specifier: ^4.1.5
-        version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
-
-  packages/modules-catalog:
-    dependencies:
-      '@atlas/platform-core':
-        specifier: workspace:*
-        version: link:../platform-core
-      '@atlas/ports':
-        specifier: workspace:*
-        version: link:../ports
-
-  packages/modules-content-pages:
-    dependencies:
-      '@atlas/platform-core':
-        specifier: workspace:*
-        version: link:../platform-core
-      '@atlas/ports':
-        specifier: workspace:*
-        version: link:../ports
-    devDependencies:
-      vitest:
-        specifier: ^4.1.5
-        version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
-
   packages/page-templates:
     dependencies:
       '@atlas/core':
@@ -480,6 +480,9 @@ importers:
       '@atlas/ports':
         specifier: workspace:*
         version: link:../ports
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
     devDependencies:
       '@atlas/contract-tests':
         specifier: workspace:*

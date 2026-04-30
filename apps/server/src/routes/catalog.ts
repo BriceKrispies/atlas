@@ -3,7 +3,7 @@
  *
  * Mirrors `crates/ingress/src/main.rs::handle_catalog_*`. Each route resolves
  * the tenant pool via `buildRequestBundle`, then delegates to the catalog
- * query-router in `@atlas/modules-catalog`.
+ * query-router in `@atlas/catalog`.
  */
 
 import { Hono } from 'hono';
@@ -16,7 +16,7 @@ import {
   parseFilterQuery,
   type SearchParams,
   type VariantTableParams,
-} from '@atlas/modules-catalog';
+} from '@atlas/catalog';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';
 import { buildRequestBundle } from '../middleware/state.ts';

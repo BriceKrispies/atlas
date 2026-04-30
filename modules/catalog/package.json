@@ -1,5 +1,5 @@
 {
-  "name": "@atlas/modules-catalog",
+  "name": "@atlas/catalog",
   "version": "0.1.0",
   "private": true,
   "type": "module",

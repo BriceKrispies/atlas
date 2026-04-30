@@ -6,7 +6,7 @@
  */
 
 import type { IntentEnvelope } from '@atlas/platform-core';
-import { newEventId } from '@atlas/modules-catalog';
+import { newEventId } from '@atlas/catalog';
 import { loadBadgeFamilySeed } from './fixtures.ts';
 
 export interface BuildIntentOpts {

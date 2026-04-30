@@ -9,7 +9,7 @@
 import { describe, test, expect } from 'vitest';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
-import { newEventId } from '@atlas/modules-catalog';
+import { newEventId } from '@atlas/catalog';
 import type { IntentEnvelope } from '@atlas/platform-core';
 
 function buildPageCreateIntent(opts: {

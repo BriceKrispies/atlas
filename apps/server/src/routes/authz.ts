@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { PostgresPolicyStore } from '@atlas/modules-authz';
+import { PostgresPolicyStore } from '@atlas/authz';
 import { evaluateRead } from '@atlas/ingress';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';

@@ -23,17 +23,17 @@ import {
   catalogHandlerRegistry,
   catalogDispatcher,
   type CatalogQueryDeps,
-} from '@atlas/modules-catalog';
+} from '@atlas/catalog';
 import {
   PostgresPolicyStore,
   authzHandlerRegistry,
   composeRegistries,
-} from '@atlas/modules-authz';
+} from '@atlas/authz';
 import {
   contentPagesHandlerRegistry,
   contentPagesDispatcher,
   type ContentPagesQueryDeps,
-} from '@atlas/modules-content-pages';
+} from '@atlas/content-pages';
 import { policyCacheDispatcher } from '@atlas/adapters-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapters-policy-cedar';
 import type {

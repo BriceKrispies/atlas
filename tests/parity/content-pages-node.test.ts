@@ -14,7 +14,7 @@ import { describe, test, expect } from 'vitest';
 import { UnsupportedInMode } from './lib/factory.ts';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
-import { newEventId } from '@atlas/modules-catalog';
+import { newEventId } from '@atlas/catalog';
 import type { IntentEnvelope } from '@atlas/platform-core';
 
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
