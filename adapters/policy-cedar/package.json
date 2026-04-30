@@ -1,0 +1,25 @@
+{
+  "name": "@atlas/adapter-policy-cedar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "atlas-cedar-check": "bin/cedar-check.ts"
+  },
+  "dependencies": {
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*",
+    "@atlas/schemas": "workspace:*",
+    "@cedar-policy/cedar-wasm": "^4.10.0"
+  },
+  "devDependencies": {
+    "@atlas/contract-tests": "workspace:*",
+    "postgres": "^3.4.5",
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
+  }
+}

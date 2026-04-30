@@ -2,7 +2,7 @@
  * PostgresPolicyStore — concrete adapter over `control_plane.policies`.
  *
  * The table is owned by the control-plane DB. Layout (from the existing
- * migration in `packages/adapters-node`):
+ * migration in `adapters/node`):
  *
  *   tenant_id text NOT NULL,
  *   version int NOT NULL,

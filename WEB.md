@@ -4,7 +4,7 @@ Vanilla web components — no React, Vue, or Angular. Custom component system bu
 
 > **Note:** the TypeScript workspace lives at the repo root (no more `frontend/`
 > subdirectory). The backend simulator (`@atlas/sim` today, splitting into
-> `@atlas/ports` + `@atlas/adapters-idb` + `@atlas/ingress` + `@atlas/modules-*`
+> `@atlas/ports` + `@atlas/adapter-idb` + `@atlas/ingress` + `@atlas/modules-*`
 > in Chunk 1) shares this workspace. A future Node server (`apps/server`) will
 > sit here too.
 

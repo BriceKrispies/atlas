@@ -32,7 +32,7 @@ import {
   PostgresEventStore,
   PostgresProjectionStore,
   PostgresSearchEngine,
-} from '@atlas/adapters-node';
+} from '@atlas/adapter-node';
 import {
   renderTreeKey as contentRenderTreeKey,
 } from '@atlas/content-pages';

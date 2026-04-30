@@ -60,7 +60,7 @@ export default [
         {
           patterns: [
             {
-              group: ['@atlas/adapters-*'],
+              group: ['@atlas/adapter-*'],
               message:
                 'Domain modules and ingress must not import concrete adapters. Use ports from @atlas/ports instead. Apps wire adapters.',
             },
@@ -78,7 +78,7 @@ export default [
     // Ports define the seam between domain modules and adapters; they MUST
     // depend only on `@atlas/platform-core` and themselves. Importing a
     // concrete adapter or a domain module from a port would create a cycle.
-    files: ['packages/ports/**/*.ts'],
+    files: ['ports/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2023,
@@ -91,7 +91,7 @@ export default [
           patterns: [
             {
               group: [
-                '@atlas/adapters-*',
+                '@atlas/adapter-*',
                 '@atlas/catalog',
                 '@atlas/authz',
                 '@atlas/content-pages',

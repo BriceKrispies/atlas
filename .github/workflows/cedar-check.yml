@@ -9,7 +9,7 @@ name: Cedar Check
 on:
   pull_request:
     paths:
-      - 'packages/adapters-policy-cedar/**'
+      - 'adapters/policy-cedar/**'
       - 'packages/schemas/**'
       - 'specs/policy-fixtures/**'
       - 'package.json'

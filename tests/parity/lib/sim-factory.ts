@@ -8,8 +8,8 @@ import {
   IdbCatalogStateStore,
   IdbRenderTreeStore,
   type IdbDb,
-} from '@atlas/adapters-idb';
-import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
+} from '@atlas/adapter-idb';
+import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
 import {
   BrowserWasmHost,
   InMemoryPluginLoader,

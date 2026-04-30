@@ -253,7 +253,7 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
     // Real-engine-only scenarios. The stub does not inspect action,
     // resource, or attributes; Cedar must. The Cedar adapter's real
     // assertions live in
-    // `packages/adapters-policy-cedar/test/cedar-policy-engine.test.ts`
+    // `adapters/policy-cedar/test/cedar-policy-engine.test.ts`
     // (forbid-overrides, attribute-based permit/deny, matched-policies).
     // We keep `describe.skip` here so the contract surface still
     // documents the expectation without forcing every adapter to satisfy

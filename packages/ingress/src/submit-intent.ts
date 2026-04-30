@@ -47,7 +47,7 @@ export interface IngressState {
    * Authorization seam (Invariant I2). Called between schema/idempotency
    * validation and handler dispatch. The default wiring is
    * `StubPolicyEngine` (allow-all + tenant-scope); production wires Cedar
-   * via `@atlas/adapters-policy-cedar` (Chunk 6b).
+   * via `@atlas/adapter-policy-cedar` (Chunk 6b).
    */
   policyEngine: PolicyEngine;
   /**

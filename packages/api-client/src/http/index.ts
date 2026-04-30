@@ -48,7 +48,7 @@ interface EventEnvelope {
 /**
  * Convert PascalCase segments of an actionId to lower_snake and join with
  * dots, plus a `.v1` suffix. Mirrors `actionIdToSchemaId` in
- * `@atlas/adapters-node` so client-side envelope construction matches
+ * `@atlas/adapter-node` so client-side envelope construction matches
  * the server's schema-validator lookup.
  */
 function deriveSchemaId(actionId: string): string {
@@ -73,7 +73,7 @@ function wrapIntent(payload: IntentPayload): EventEnvelope {
     eventId: `evt-${uid()}`,
     eventType,
     // Schema id is derived from the actionId so the envelope routes to
-    // the right validator on the server (`@atlas/adapters-node`'s
+    // the right validator on the server (`@atlas/adapter-node`'s
     // `actionIdToSchemaId` does the same conversion). Authz, catalog,
     // and content actions all flow through this single helper.
     schemaId: deriveSchemaId(actionId),

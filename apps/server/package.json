@@ -11,9 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@atlas/adapters-node": "workspace:*",
-    "@atlas/adapters-policy-cedar": "workspace:*",
-    "@atlas/adapters-policy-stub": "workspace:*",
+    "@atlas/adapter-node": "workspace:*",
+    "@atlas/adapter-policy-cedar": "workspace:*",
+    "@atlas/adapter-policy-stub": "workspace:*",
     "@atlas/ingress": "workspace:*",
     "@atlas/metrics": "workspace:*",
     "@atlas/authz": "workspace:*",

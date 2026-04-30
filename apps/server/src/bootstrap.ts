@@ -21,8 +21,8 @@ import {
   PostgresControlPlaneRegistry,
   PostgresTenantDbProvider,
   runMigrations,
-} from '@atlas/adapters-node';
-import { StubPolicyEngine } from '@atlas/adapters-policy-stub';
+} from '@atlas/adapter-node';
+import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
 import {
   NodeWasmHost,
   FilesystemPluginLoader,
@@ -32,8 +32,8 @@ import {
   CedarPolicyEngine,
   PostgresBundleLoader,
   generateCedarSchema,
-} from '@atlas/adapters-policy-cedar';
-import type { ModuleManifest } from '@atlas/adapters-policy-cedar';
+} from '@atlas/adapter-policy-cedar';
+import type { ModuleManifest } from '@atlas/adapter-policy-cedar';
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AppConfig } from './config.ts';

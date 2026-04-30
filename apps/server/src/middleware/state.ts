@@ -14,11 +14,11 @@ import {
   PostgresSearchEngine,
   PostgresCatalogStateStore,
   PostgresRenderTreeStore,
-} from '@atlas/adapters-node';
+} from '@atlas/adapter-node';
 import {
   policyEvaluatedEvent,
   shouldEmitPolicyEvaluated,
-} from '@atlas/adapters-policy-cedar';
+} from '@atlas/adapter-policy-cedar';
 import {
   catalogHandlerRegistry,
   catalogDispatcher,
@@ -34,8 +34,8 @@ import {
   contentPagesDispatcher,
   type ContentPagesQueryDeps,
 } from '@atlas/content-pages';
-import { policyCacheDispatcher } from '@atlas/adapters-policy-cedar';
-import type { CedarBundleCache } from '@atlas/adapters-policy-cedar';
+import { policyCacheDispatcher } from '@atlas/adapter-policy-cedar';
+import type { CedarBundleCache } from '@atlas/adapter-policy-cedar';
 import type {
   IngressState,
   EventDispatcher,
