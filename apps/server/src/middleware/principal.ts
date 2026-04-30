@@ -26,6 +26,27 @@ import { correlationIdFor } from './correlation.ts';
 const DEBUG_PRINCIPAL_HEADER = 'X-Debug-Principal';
 const VALID_DEBUG_TYPES = new Set(['user', 'service', 'anonymous']);
 
+/**
+ * Validate a tenant id. Mirrors the Rust counterpart `validate_tenant_id`
+ * in `crates/ingress/src/authn.rs`. Length capped at 64; must start with
+ * an ASCII alphanumeric; subsequent characters limited to alphanumerics,
+ * `-`, and `_`.
+ *
+ * The 8/9/10 architectural audit flagged this as a BLOCKER for
+ * production cutover: without validation, a tenant id from an untrusted
+ * IdP claim becomes a tenant-injection primitive into cache keys
+ * (Invariant I9), search scope (I7), and SQL `WHERE tenant_id = $1`.
+ */
+const TENANT_ID_FIRST_CHAR = /^[A-Za-z0-9]/;
+const TENANT_ID_CHARSET = /^[A-Za-z0-9_-]+$/;
+
+function isValidTenantId(value: string): boolean {
+  if (value.length === 0 || value.length > 64) return false;
+  if (!TENANT_ID_FIRST_CHAR.test(value)) return false;
+  if (!TENANT_ID_CHARSET.test(value)) return false;
+  return true;
+}
+
 export interface ServerVariables {
   state: AppState;
   principal: Principal;
@@ -43,7 +64,7 @@ function parseDebugPrincipal(
   const id = parts[1] ?? '';
   if (!id) return null;
   const tenantId = parts.length === 3 ? (parts[2] ?? '') : defaultTenantId;
-  if (!tenantId) return null;
+  if (!isValidTenantId(tenantId)) return null;
   return { principalId: id, tenantId };
 }
 
@@ -160,11 +181,23 @@ export function principalMiddleware(state: AppState) {
       );
     }
     const tenantClaim = claims['tenant_id'];
-    const tenantId =
+    const candidateTenant =
       typeof tenantClaim === 'string' && tenantClaim.length > 0
         ? tenantClaim
         : state.config.tenantId;
-    c.set('principal', { principalId: sub, tenantId });
+    if (!isValidTenantId(candidateTenant)) {
+      // Reject malformed tenant ids from any source — JWT claim or
+      // configured default. The downstream invariants (I7, I9, SQL
+      // tenant scope) all assume the value is a well-formed identifier.
+      return errorResponse(
+        c,
+        'PRINCIPAL_INVALID',
+        'Invalid tenant_id claim',
+        401,
+        correlationId,
+      );
+    }
+    c.set('principal', { principalId: sub, tenantId: candidateTenant });
     await next();
     return;
   };

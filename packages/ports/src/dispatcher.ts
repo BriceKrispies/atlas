@@ -23,10 +23,18 @@
  *     once, append it to the composer, done.
  *
  * Composition is sequential and order-independent in the success case
- * (each dispatcher is a no-op for events it doesn't care about). On
- * failure, the chain short-circuits via the rejected promise — the
- * composer does not catch errors. That mirrors today's hand-rolled
- * chain semantics.
+ * (each dispatcher is a no-op for events it doesn't care about).
+ *
+ * **On failure: best-effort run-all, then re-throw the first error.**
+ * Pre-Chunk 11 the composer short-circuited on the first rejection,
+ * which meant a thrown projection rebuild could leave cache-tag
+ * invalidation un-fired (the architectural audit's SHOULD-FIX). The
+ * current contract: every dispatcher gets called for every envelope;
+ * if any throws, the composer captures the first error and re-throws
+ * it after the chain completes. Module dispatchers are expected to be
+ * idempotent against their own re-runs (rebuild-from-event-history
+ * semantics, Invariant I12) so a partial first pass followed by a
+ * later full rebuild is safe.
  *
  * Port-boundary rule (`eslint.config.ts`): this file MUST NOT import
  * from `@atlas/adapters-*` or `@atlas/modules-*`. The whole point is
@@ -79,6 +87,14 @@ export function cacheTagDispatcher(cache: Cache): EventDispatcher {
  * content-pages, cache-tag invalidation, policy-bundle invalidation)
  * the projection rebuilds are independent and the two cache flushes
  * run last so callers see the freshly-projected state.
+ *
+ * **Error semantics** (Chunk 11): every dispatcher runs even if an
+ * earlier one throws. The first error is captured and re-thrown after
+ * the chain completes. This guarantees the cross-cutting cache-tag +
+ * policy-bundle invalidation dispatchers fire even when a projection
+ * rebuild fails partway through — without it, stale cache entries
+ * would survive past their invalidation window. Module dispatchers
+ * must be idempotent against re-runs (Invariant I12).
  */
 export function composeDispatchers(
   ...dispatchers: ReadonlyArray<EventDispatcher | null | undefined>
@@ -90,8 +106,24 @@ export function composeDispatchers(
     if (d != null) real.push(d);
   }
   return async (envelope) => {
+    let firstError: unknown = NO_ERROR;
     for (const d of real) {
-      await d(envelope);
+      try {
+        await d(envelope);
+      } catch (err) {
+        if (firstError === NO_ERROR) firstError = err;
+        // Continue to the next dispatcher so cleanup-shaped
+        // dispatchers (cache-tag invalidation, policy-bundle
+        // invalidation) still fire on partial failure.
+      }
     }
+    if (firstError !== NO_ERROR) throw firstError;
   };
 }
+
+/**
+ * Sentinel for "no error yet" — distinguishes from a dispatcher that
+ * actually threw `undefined` (which would otherwise be indistinguishable
+ * from "haven't seen an error" if we used `undefined` directly).
+ */
+const NO_ERROR: unique symbol = Symbol('NO_ERROR');
