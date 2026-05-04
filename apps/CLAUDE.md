@@ -1,23 +1,23 @@
 # `/apps` — Runnable Units
 
-Each app is a deployable artifact: a Hono server, a Vite SPA shell, or (legacy)
-a Rust binary. Apps are the only place that wires concrete adapters, registers
-HTTP routes, or boots a UI shell.
+Each app is a deployable artifact: a Hono server or a Vite SPA shell. Apps are
+the only place that wires concrete adapters, registers HTTP routes, or boots a
+UI shell.
 
 ## Inventory
 
 | App | Type | Purpose | Dev port |
 |-----|------|---------|----------|
 | **`server/`** — `@atlas/server` | Node + Hono | Production HTTP ingress; intents, catalog, authz, content-pages, events. **Read [`server/CLAUDE.md`](server/CLAUDE.md).** | 3000 |
+| **`projection-worker/`** — `@atlas/projection-worker` | Node | Polls event store, runs projections + cache invalidation | — |
 | **`admin/`** — `@atlas/admin` | Vite SPA | Admin shell: pages list, authz policy editor | 5173 (or 5199 in `playwright.config.ts`) |
 | **`authoring/`** — `@atlas/authoring` | Vite SPA | Page-template editor, block editor, layout editor, gallery | 5181 |
 | **`sandbox/`** — `@atlas/sandbox` | Vite SPA | Specimen gallery + registry inspection for design / widgets | 5180 |
-| **`control-plane/`** — `atlas-platform-control-plane` | Rust + Axum | Tenant + seed admin REST. **Legacy; will be ported.** | 8000 |
+| **`sim/`** — `@atlas/sim` | Node | Closed-loop in-process sim for parity tests | — |
 
 How to tell at a glance:
 - **Server-side** apps have a Node entry in `package.json`'s `main`/`exports` and use Hono.
 - **Frontend** apps ship a `vite.config.ts` and `index.html`, and register custom elements at boot.
-- **Rust** apps have a `Cargo.toml`. Treat as legacy.
 
 ## Server-side: `apps/server`
 
@@ -64,7 +64,6 @@ Both design and widgets must be imported in `main.ts` so their
 | **admin** | `core`, `design`, `widgets`, `api-client`, `test-fixtures` |
 | **authoring** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `test-state`, `test-fixtures` |
 | **sandbox** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `test-fixtures` |
-| **control-plane** (Rust) | workspace crates only — legacy |
 
 ## Conventions
 

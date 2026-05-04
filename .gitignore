@@ -1,8 +1,3 @@
-# Rust
-/target
-**/*.rs.bk
-Cargo.lock
-
 # IDE
 .claude/
 .vscode/
@@ -26,7 +21,6 @@ infra/compose/.env.itest
 
 # Test artifacts
 test-results.xml
-tests/blackbox/target/
 test-results/
 playwright-report/
 tests/bdd/screenshots/

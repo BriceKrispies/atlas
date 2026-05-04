@@ -1,12 +1,12 @@
 # Atlas Platform
 
-Multi-tenant CMS + workflow platform. **TypeScript-first** (Node + browser).
+Multi-tenant CMS + workflow platform. **TypeScript** (Node + browser).
 Hexagonal architecture: ports define the surface, adapters implement them, modules
 hold domain logic, packages are shared infrastructure, apps wire it all together.
 
-A legacy Rust implementation lives under `/crates`. It is being deprecated as
-features port to TS — **prefer the TS side; do not extend `/crates`** unless the
-user explicitly asks.
+A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`,
+and `/tests/blackbox` has been removed. Some specs still reference Rust paths
+as historical context — treat those as legacy notes, not active code locations.
 
 ## Agent Routing — Where to Go
 
@@ -25,7 +25,6 @@ Pick the closest match and read its CLAUDE.md before working in that area.
 | BDD / Playwright e2e | [`tests/bdd/README.md`](tests/bdd/README.md) |
 | Specifications — source of truth for behavior | [`specs/CLAUDE.md`](specs/CLAUDE.md) |
 | Containers / compose / dev infrastructure | [`infra/CLAUDE.md`](infra/CLAUDE.md) |
-| **Legacy Rust** — only if user explicitly asks | [`crates/CLAUDE.md`](crates/CLAUDE.md) |
 
 ## Top-level Layout
 
@@ -34,11 +33,10 @@ adapters/   port implementations (idb, node-postgres, policy-cedar, policy-stub)
 ports/      @atlas/ports — port interfaces only
 modules/    domain logic (authz, catalog, content-pages)
 packages/   shared infra: core, design, widgets, ingress, schemas, …
-apps/       runnable units: server (Hono), admin, authoring, sandbox, control-plane (Rust)
-tests/      bdd, parity, integration, blackbox (Rust)
+apps/       runnable units: server (Hono), admin, authoring, sandbox
+tests/      bdd, parity, integration
 specs/      RFC-style specs and lexicon — the source of truth
 infra/      compose files, container runtime
-crates/     LEGACY Rust — being phased out, do not extend
 ```
 
 ## Domain Map
@@ -146,7 +144,6 @@ These two rules are non-negotiable. They show up in nearly every code review:
 
 - **Podman, not Docker.** Container runtime defaults to Podman. `CONTAINER_RUNTIME=docker` to override.
 - **Module IDs are kebab-case.** Workspace names use `@atlas/<name>`; module dirs match.
-- **`/crates` is legacy.** Don't add features there. The TS side is authoritative.
 - **DB connection** (server): `CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane`. Host port `15433` is intentional — picked outside the standard 5432/5433 range to dodge native-Postgres collisions on dev machines. See [`PORTS.md`](PORTS.md).
 - **`X-Debug-Principal`** header is gated by `TEST_AUTH_ENABLED=true` and only valid in non-prod.
 

@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint clean run-ingress run-workers spec-check help
+.PHONY: help
 .PHONY: db-up db-down db-reset db-migrate db-seed db-status db-wait db-logs
 .PHONY: obs-up obs-down obs-logs obs-reset obs-open obs-status
 .PHONY: keycloak-up keycloak-down keycloak-status keycloak-logs keycloak-reset keycloak-open keycloak-wait
@@ -24,15 +24,7 @@ PGPASSWORD ?= local_dev_password
 CONTROL_PLANE_DB_URL ?= postgres://$(DB_USER):$(PGPASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)
 
 help:
-	@echo "Available targets:"
-	@echo "  build         - Build all crates"
-	@echo "  test          - Run all tests"
-	@echo "  fmt           - Format code with rustfmt"
-	@echo "  lint          - Lint code with clippy"
-	@echo "  clean         - Clean build artifacts"
-	@echo "  run-ingress   - Run ingress service"
-	@echo "  run-workers   - Run workers service"
-	@echo "  spec-check    - Validate golden fixtures"
+	@echo "Available targets (TypeScript build/test/lint via pnpm — see package.json):"
 	@echo ""
 	@echo "Database targets (using $(CONTAINER_RUNTIME)):"
 	@echo "  db-up         - Start Postgres container, wait for readiness, and run migrations"
@@ -84,30 +76,6 @@ help:
 	@echo "  Or use Dozzle web UI: http://localhost:8080"
 	@echo ""
 	@echo "Set CONTAINER_RUNTIME=docker to use docker instead of podman"
-
-build:
-	cargo build
-
-test:
-	cargo test
-
-fmt:
-	cargo fmt --all
-
-lint:
-	cargo clippy --all-targets --all-features -- -D warnings
-
-clean:
-	cargo clean
-
-run-ingress:
-	cargo run -p atlas-platform-ingress
-
-run-workers:
-	cargo run -p atlas-platform-workers
-
-spec-check:
-	cargo run -p atlas-platform-spec-validate
 
 # Database lifecycle targets
 db-status:
@@ -179,14 +147,14 @@ db-migrate: export ATLAS_ENV = dev
 db-migrate: export CONTROL_PLANE_DB_URL := $(CONTROL_PLANE_DB_URL)
 db-migrate: db-wait
 	@echo "=== Running Database Migrations ==="
-	cargo run -p atlas-platform-control-plane-db --bin migrate
-	@echo "✓ Migrations complete"
+	@echo "Migrations run automatically when @atlas/server boots (apps/server/src/bootstrap.ts)."
+	@echo "To force-run, start the server: pnpm --filter @atlas/server dev"
 
 db-seed: export ATLAS_ENV = dev
 db-seed: export CONTROL_PLANE_DB_URL := $(CONTROL_PLANE_DB_URL)
 db-seed: db-wait
 	@echo "=== Seeding Database ==="
-	cargo run -p atlas-platform-control-plane-db --bin seed
+	pnpm --filter @atlas/adapter-node seed
 	@echo "✓ Seed complete"
 
 # Observability lifecycle targets
@@ -338,7 +306,7 @@ itest-reset:
 
 itest-test:
 	@echo "=== Running Black-Box Integration Tests ==="
-	@cd tests/blackbox && cargo test --release -- --test-threads=4
+	@pnpm test:integration
 	@echo "✓ All tests passed"
 
 itest: itest-up
