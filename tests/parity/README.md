@@ -15,8 +15,11 @@ Both factories implement the same `BrowserIngress` interface declared in
 difference between the two `*-sim` / `*-node` files for a given scenario is
 the factory import.
 
-When **both** modes are green for two consecutive weeks, parity is "proven for
-the current scope" and the Rust sunset (Chunk 8) can begin.
+Sim/node parity remains the primary correctness signal across both
+storage backends. (Historical note: the suite originally also acted as
+the gate for sunsetting the Rust prototype — that prototype was removed
+on 2026-05-04, so today the suite simply guards browser-vs-server
+behavior parity for `BrowserIngress`.)
 
 ## Running
 

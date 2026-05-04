@@ -8,6 +8,7 @@ import {
   hashPassword,
   validatePasswordComplexity,
 } from '../crypto/password.ts';
+import { handleSessionRevokeAllForUser } from './session-revoke.ts';
 
 export interface PasswordSetCommand {
   tenantId: string;
@@ -21,6 +22,15 @@ export interface PasswordSetCommand {
 export interface PasswordSetResult {
   envelope: EventEnvelope;
   document: UserDocument;
+  /**
+   * Follow-up envelopes — one `Identity.SessionEnded` per active
+   * session the user had at the moment the password changed. Empty
+   * when the user had no active sessions. Session-fixation reset:
+   * password rotation invalidates every stale cookie/bearer the user
+   * (or an attacker who phished the old password) might still hold.
+   */
+  follow: EventEnvelope[];
+  revokedSessionIds: string[];
 }
 
 /**
@@ -87,5 +97,26 @@ export async function handlePasswordSet(
   envelope.eventId = stored.eventId;
   envelope.seq = stored.seq;
 
-  return { envelope, document };
+  // Session-fixation reset. Any cookie/bearer the user (or a phisher)
+  // still holds for a prior session is invalidated by the password
+  // change. We pass `reason: 'password_changed'` so the audit trail
+  // and risk engine can distinguish this from an admin-initiated revoke.
+  const revoke = await handleSessionRevokeAllForUser(
+    {
+      tenantId: cmd.tenantId,
+      correlationId: cmd.correlationId,
+      principalId: cmd.principalId,
+      userId: cmd.userId,
+      reason: 'password_changed',
+    },
+    eventStore,
+    entities,
+  );
+
+  return {
+    envelope,
+    document,
+    follow: revoke.envelopes,
+    revokedSessionIds: revoke.revokedSessionIds,
+  };
 }

@@ -1,467 +1,217 @@
 # Authorization
 
-This document describes the **implemented** authorization system in the Atlas Platform ingress service.
+This document describes the **implemented** authorization system. Code is
+TypeScript; the legacy Rust prototype was deleted on 2026-05-04.
 
 ## Invariants
 
-**Invariant I2: Authorization Before Execution**
-Every non-public ingress request MUST perform a primary authorization decision before dispatch. No handler logic executes until authorization allows.
+**I2 — Authorization Before Execution.** Every non-public ingress
+request performs a primary authorization decision before handler
+dispatch. No domain logic runs until authz allows.
 
-**Invariant I4: Deny-Overrides-Allow**
-- Any DENY rule overrides all ALLOW rules
-- If no policies match, default decision is DENY
-- Policy evaluation is deterministic
+**I4 — Deny-Overrides-Allow.** Any DENY rule overrides all ALLOW rules.
+With no policies matching, the default decision is DENY. Cedar enforces
+this natively.
 
-**Invariant I5: Single Source of Truth for Tenant**
-- Authorization decisions MUST use the canonical tenant_id from the authenticated Principal
-- Request body tenant_id fields are validated against Principal's tenant_id
-- Mismatch between Principal tenant and request tenant results in rejection
+**I9 — Tenant in scope.** Authorization decisions use the canonical
+`tenantId` from the authenticated `Principal`. Request payloads cannot
+override it.
 
 ## Authorization Model
 
-The platform uses an **ABAC (Attribute-Based Access Control)** policy engine with deny-overrides-allow semantics.
+The platform uses **Cedar** (`@cedar-policy/cedar-wasm`) as the policy
+engine in production. A stub engine (`adapters/policy-stub`) is used in
+tests/dev to exercise the path with allow-all or deny-all decisions.
 
-**Implementation**: `crates/core/src/policy.rs`
+| Layer | Code |
+|---|---|
+| Port interface | `ports/src/policy-engine.ts` |
+| Cedar adapter | `adapters/policy-cedar/src/` |
+| Stub adapter | `adapters/policy-stub/src/` |
+| Policy CRUD module | `modules/authz/src/` |
+| Per-request enforcement | `packages/ingress/src/submit-intent.ts:186-306` |
 
-**Note**: The policy engine is designed to be replaceable with Cedar in the future. Current implementation uses a simpler condition-based evaluator that follows the same deny-overrides-allow semantics Cedar uses.
+The `POLICY_ENGINE` env var (`cedar` | `stub`) selects which adapter
+boots in `apps/server/src/bootstrap.ts`.
 
-## Action/Resource Model
+## Action / Resource Model
 
-Actions and resources are **derived from the intent payload**, not hardcoded constants. This enables fine-grained authorization that matches the actual operations defined in module manifests.
+Actions and resources are derived from the intent payload — not
+hardcoded. Each module declares its actions in its handler registry.
 
-### Action Identity
+**`actionId`** — `<Module>.<Resource>.<Verb>` or `<Module>.<Verb>`. For
+example, `Identity.AuthSession.Issue`, `ContentPages.Page.Create`.
 
-**Source**: `payload.actionId` field in the intent envelope
+**`resourceType`** + optional **`resourceId`** — taken from the intent
+envelope so policies can target specific resources.
 
-**Format**: `{Module}.{Resource}.{Verb}` or `{Module}.{Verb}`
+Validation rules:
+- `actionId` ≥ 2 dot-separated segments; alphanumeric + underscore.
+- `resourceType` required, alphanumeric.
+- `resourceId` optional (absent for create operations).
 
-**Examples**:
-- `ContentPages.Page.Create` - Create a page in ContentPages module
-- `ContentPages.Page.Update` - Update an existing page
-- `Analytics.Query` - Query analytics data
+## Policy Storage
 
-**Validation Rules**:
-- At least 2 dot-separated segments required
-- Each segment must be non-empty
-- Each segment must be alphanumeric (underscores allowed)
+`modules/authz/src/policy-store.ts`:
 
-**Relationship to Module Manifests**: Action IDs in intents MUST match `actionId` declarations in module manifests. This enables:
-1. Discovery of valid actions at deploy time
-2. Action registry validation
-3. Audit logging with stable identifiers
+```ts
+export type PolicyStatus = 'draft' | 'active' | 'archived';
 
-### Resource Identity
+export interface PolicySummary {
+  tenantId: string;
+  version: number;
+  status: PolicyStatus;
+  // ... created/lastModified metadata
+}
 
-**Source**: `payload.resourceType` and optional `payload.resourceId` from the intent envelope
+export interface PolicyDetail extends PolicySummary {
+  cedarText: string;
+}
 
-| Field | Description | Example |
-|-------|-------------|---------|
-| `resource_type` | Type of resource (from manifest) | `Page`, `WidgetInstance` |
-| `resource_id` | Specific resource ID (optional) | `page-123` |
-
-**Validation Rules**:
-- `resource_type` is required and must be alphanumeric
-- `resource_id` is optional (absent for creation operations)
-
-### Intent Payload Structure
-
-For authorization, intents MUST include these fields in their payload:
-
-```json
-{
-  "actionId": "ContentPages.Page.Create",
-  "resourceType": "Page",
-  "resourceId": null,
-  "payload": {
-    // action-specific data
-  }
+export interface PolicyStore {
+  list(tenantId: string): Promise<readonly PolicySummary[]>;
+  get(tenantId: string, version: number): Promise<PolicyDetail | null>;
+  // create-as-draft / activate / archive
 }
 ```
 
-**Implementation**: `IntentAuthzRequest::from_payload()` in `crates/ingress/src/authz.rs`
+The Postgres implementation is `modules/authz/src/postgres-policy-store.ts`.
+Each tenant has at most one `active` row; activating a new version
+archives the previous one in the same transaction.
 
-### Why This Design
+## Lifecycle Handlers
 
-1. **Not Generic**: Instead of a single `Intent.Submit` action, we use the specific action from the payload. This enables policies like "allow user X to create pages but not delete them."
+Registered via `authzHandlerRegistry`:
 
-2. **Manifest-Aligned**: Action IDs match module manifest declarations, creating a single source of truth for what actions exist.
+| Action | Handler |
+|---|---|
+| `Authz.Policy.Create` | `handlers/create-policy.ts` (status: draft) |
+| `Authz.Policy.Activate` | `handlers/activate-policy.ts` |
+| `Authz.Policy.Archive` | `handlers/archive-policy.ts` |
 
-3. **Extensible**: Adding new actions requires only manifest updates and policies - no code changes to the authorization layer.
+Activation invalidates the per-tenant policy cache (`Tenant:<id>` cache
+tag, I10) so the next `submitIntent` reloads the bundle.
 
-4. **Auditable**: Logs and metrics capture the specific action, not a generic "submit intent."
+## Enforcement Flow
 
-## Authorization Components
+```
+POST /api/v1/intents
+  └─ apps/server/src/index.ts → routes/intents.ts
+  └─ packages/ingress/src/submit-intent.ts
+       1. envelope shape + correlation id
+       2. principal already on context (principalMiddleware)
+       3. tenantId from principal == envelope.tenantId  (I9)
+       4. idempotency key non-empty  (I3 — full lookup in A2-hardening)
+       5. schema validation
+       6. PolicyEngine.evaluate({
+            principal, action: envelope.payload.actionId,
+            resource: { type, id }, environment: { tenantId, occurredAt }
+          })
+          → DENY → 403, log, return
+          → ALLOW → 7
+       7. Handler dispatch (modules/<x>/src/handlers/registry.ts)
+```
 
-### Principal
+Anchoring lines: tenant-match check at
+`packages/ingress/src/submit-intent.ts:149`; authz block at
+`packages/ingress/src/submit-intent.ts:186-306`; handler dispatch at
+`:309`.
 
-Identity of the requester, constructed during authentication:
+## Principal Attributes Available to Policies
 
-```rust
-pub struct Principal {
-    pub id: String,
-    pub principal_type: PrincipalType,  // User, Service, Anonymous
-    pub tenant_id: String,
-    pub claims: HashMap<String, serde_json::Value>,
+The `Principal` is defined in
+`packages/platform-core/src/types.ts`:
+
+```ts
+export interface Principal {
+  principalId: string;
+  tenantId: string;
+  userId?: string;
+  attributes?: Record<string, unknown>;
 }
 ```
 
-Principal attributes available in policies via `to_policy_attributes()`:
-- `id`: Principal identifier
-- `type`: "user", "service", or "anonymous"
-- `tenant_id`: Tenant the principal belongs to
-- Any additional claims from authentication
-
-### Authorization Context
-
-Built from the intent payload and principal:
-
-```rust
-pub struct AuthorizationContext {
-    pub request: IntentAuthzRequest,  // action_id, resource_type, resource_id
-    pub tenant_id: String,            // From Principal (canonical)
-}
-```
-
-### PolicyEvaluationContext
-
-The context passed to the policy engine:
-
-```rust
-pub struct PolicyEvaluationContext {
-    pub principal_attributes: HashMap<String, serde_json::Value>,
-    pub resource_attributes: HashMap<String, serde_json::Value>,
-    pub environment_attributes: HashMap<String, serde_json::Value>,
-}
-```
-
-**principal_attributes**: From `Principal::to_policy_attributes()`
-- `id`, `type`, `tenant_id`, plus any claims
-
-**resource_attributes**: From the intent payload
-- `action_id`: The specific action (e.g., `ContentPages.Page.Create`)
-- `resource_type`: Type of resource (e.g., `Page`)
-- `resource_id`: Specific resource ID (if applicable)
-
-**environment_attributes**: Environmental context
-- `tenant_id`: Request tenant scope (from Principal)
-- `timestamp`: Request timestamp (ISO 8601)
-
-## Enforcement Point
-
-### Primary Enforcement: Ingress Gateway
-
-**Location**: `crates/ingress/src/main.rs` - `handle_intent()` handler
-
-**Authorization Flow**:
-```
-Request arrives at /api/v1/intents
-    |
-authn_middleware extracts Principal
-    |
-Handler validates idempotency key
-    |
-Handler validates tenant match (Principal.tenant_id == envelope.tenant_id)
-    |
-Extract IntentAuthzRequest from envelope.payload:
-  - action_id from payload.actionId
-  - resource_type from payload.resourceType
-  - resource_id from payload.resourceId (optional)
-    |
-If extraction fails: 400 Bad Request
-    |
-Build AuthorizationContext:
-  - request: IntentAuthzRequest
-  - tenant_id: from Principal
-    |
-Build PolicyEvaluationContext:
-  - principal_attributes: from Principal
-  - resource_attributes: action_id, resource_type, resource_id
-  - environment_attributes: tenant_id, timestamp
-    |
-Call PolicyEngine.evaluate()
-    |
-If DENY: Return 403 Forbidden, log denial
-If ALLOW: Proceed to business logic
-```
-
-**Implementation**: `crates/ingress/src/authz.rs`
+The Cedar adapter projects this into the standard ABAC shape:
+`{ principal: { id, tenantId, ...attributes }, action, resource:
+{ type, id }, context: { tenantId, occurredAt } }`. Custom claims and
+scheme-specific fields (`sessionId`, `apiKeyId`, `scopes`,
+`oauthTokenId`) ride on `attributes`.
 
 ## Tenant Handling
 
-### Tenant Resolution
-
-Tenant is determined by the authenticated Principal. The request body's `tenant_id` is validated to match.
-
-**Tenant Sources** (precedence order):
-1. X-Debug-Principal header tenant segment (test mode only)
-2. X-Tenant-ID header
-3. TENANT_ID environment variable
-
-### Default Tenant Behavior
-
-| Mode | Behavior |
-|------|----------|
-| Test mode (`TEST_AUTH_ENABLED=true`) | Default to "default" tenant if not specified |
-| Production mode | Require explicit TENANT_ID or warn about degraded mode |
-
-**Implementation**: `crates/ingress/src/bootstrap.rs`
-
-### Tenant Validation
-
-1. Principal's `tenant_id` is set during authentication
-2. Authorization context uses Principal's `tenant_id`
-3. Request body `tenant_id` is validated against Principal's `tenant_id`
-4. Mismatch results in `403 Forbidden`
-
-**Test Coverage**:
-- Principal in tenant-A allowed to access tenant-A resources
-- Principal in tenant-A denied access to tenant-B resources
-- Invalid tenant format rejected with 400
-
-## Policy Engine
-
-**Implementation**: `crates/core/src/policy.rs`
-
-### Policy Structure
-
-```rust
-pub struct Policy {
-    pub policy_id: String,
-    pub tenant_id: String,
-    pub rules: Vec<PolicyRule>,
-    pub version: u32,
-    pub status: PolicyStatus,  // Active or Inactive
-}
-
-pub struct PolicyRule {
-    pub rule_id: String,
-    pub effect: PolicyEffect,  // Allow or Deny
-    pub conditions: Condition,
-}
-```
-
-### Condition Types
-
-```rust
-pub enum Condition {
-    Literal { value: bool },
-    And { operands: Vec<Condition> },
-    Or { operands: Vec<Condition> },
-    Not { operand: Box<Condition> },
-    Equals { left: Box<Condition>, right: Box<Condition> },
-    Attribute { path: String, source: AttributeSource },
-}
-
-pub enum AttributeSource {
-    Principal,
-    Resource,
-    Environment,
-}
-```
-
-### Example: Action-Specific Policy
-
-```rust
-// Allow users with 'editor' role to create and update pages
-Policy {
-    policy_id: "editor-page-policy",
-    tenant_id: "tenant-001",
-    rules: vec![
-        PolicyRule {
-            rule_id: "allow-page-create",
-            effect: PolicyEffect::Allow,
-            conditions: Condition::And {
-                operands: vec![
-                    Condition::Attribute {
-                        path: "role".to_string(),
-                        source: AttributeSource::Principal,
-                    },
-                    // Additional condition to check action_id would go here
-                ]
-            },
-        },
-    ],
-    version: 1,
-    status: PolicyStatus::Active,
-}
-```
-
-### Evaluation Semantics
-
-1. Iterate through all **Active** policies
-2. For each policy, evaluate all rules against the context
-3. Collect matching ALLOW rules and DENY rules
-4. **Deny-overrides-allow**: If any DENY rule matched, return DENY
-5. If at least one ALLOW rule matched (and no DENY), return ALLOW
-6. If no rules matched, return DENY (default deny)
-
-### Decision Structure
-
-```rust
-pub struct PolicyDecision {
-    pub decision: Decision,      // Allow or Deny
-    pub matched_rules: Vec<String>,
-    pub reason: String,
-}
-```
+1. `tenantId` is set on the `Principal` during authentication.
+2. `submitIntent` rejects requests whose envelope `tenantId` does not
+   match the `Principal.tenantId`.
+3. The Cedar adapter's `context.tenantId` always equals the
+   `Principal.tenantId`.
+4. Mismatch → `403`, code `PRINCIPAL_INVALID`.
 
 ## Error Model
 
-| Error | Status | Meaning |
-|-------|--------|---------|
-| Missing actionId/resourceType | 400 | Intent payload missing authorization fields |
-| Invalid actionId format | 400 | actionId doesn't match required format |
-| Invalid resourceType format | 400 | resourceType contains invalid characters |
-| Authorization denied | 403 | Policy evaluation returned DENY |
-| Tenant mismatch | 403 | Request tenant differs from Principal tenant |
+| Error | HTTP | Code |
+|---|---|---|
+| Missing actionId / resourceType | 400 | `INTENT_INVALID` |
+| Bad actionId / resourceType format | 400 | `INTENT_INVALID` |
+| Authorization denied | 403 | `AUTHZ_DENIED` |
+| Tenant mismatch | 403 | `PRINCIPAL_INVALID` |
 
-**Response Format** (400 - Invalid Payload):
-```json
+Error responses do not leak Cedar internals. Internal denial reasons
+(matched rules, policy IDs) are logged but not returned.
+
+## Logging & Metrics
+
+**Denial (INFO):** `actionId`, `resourceType`, `resourceId`, `principalId`,
+`tenantId`, `correlationId`, denial reason, matched rule IDs.
+
+**Metric:** `authz_decisions_total{decision="allow|deny", action=…}`.
+
+## Permission and Role Model (Identity ↔ Authz integration)
+
+`modules/identity/src/policies/role-packs.ts` exports the
+platform-default Cedar bundle (`buildRolePackBundle`). Roles are simply
+permission bundles:
+
+```ts
 {
-  "error": "bad_request",
-  "message": "Invalid request"
+  "Tenant Admin": ["*"],
+  "Editor": ["ContentPages.*", "Catalog.Page.Read"],
+  // ...
 }
 ```
 
-**Response Format** (403 - Forbidden):
-```json
-{
-  "error": "forbidden",
-  "message": "Access denied"
-}
-```
+When a user logs in, `Membership.roles` are hydrated into
+`Principal.attributes.roles`. Cedar policies match on roles directly;
+the role pack is loaded as part of the per-tenant bundle.
 
-Note: Error responses intentionally do not leak internal details.
+Per-tenant custom roles atop the platform defaults are an A4-phase
+deliverable.
 
-## Logging
+## Effective-Permissions Cache
 
-**Authorization Request Validation Failed** (INFO level):
-- `error`: Validation error message
-- `event_type`: The event type from the envelope
+Cedar evaluates the policy set on every request, but the *bundle* is
+cached per-tenant:
 
-**Authorization Denied** (INFO level):
-- `action_id`: The specific action that was denied
-- `resource_type`: Resource type
-- `resource_id`: Resource ID (if present)
-- `reason`: Policy denial reason
-- `matched_rules`: Rules that caused denial
-- `principal_id`: Who was denied
-- `tenant_id`: Tenant scope
+- Cache key: `authz:bundle:<tenantId>` (I9 — tenant in key).
+- Invalidation: event-driven via tags (I10) — `Authz.Policy.Activated`
+  emits `cacheInvalidationTags: ['Tenant:<id>', 'AuthzBundle:<id>']`.
 
-**Metrics**:
-- `policy_evaluations_total{decision="allow|deny"}`: Counter of policy decisions
+Per-user effective permissions are not separately cached today; they
+ride on the principal attributes that policy evaluation reads each
+request. If profiling shows hot-path cost, a per-user permission
+projection is the obvious next step.
 
 ## Configuration
 
-**Policy Loading**:
-- Policies loaded at ingress startup from Control Plane (if enabled)
-- Falls back to in-memory allow-all policy for development
-- Bootstrap: `crates/ingress/src/bootstrap.rs`
-
-**Default Development Policy**:
-```rust
-Policy {
-    policy_id: "allow-all",
-    tenant_id: "{configured_tenant}",
-    rules: vec![PolicyRule {
-        rule_id: "allow-all-rule",
-        effect: PolicyEffect::Allow,
-        conditions: Condition::Literal { value: true },
-    }],
-    version: 1,
-    status: PolicyStatus::Active,
-}
-```
-
-## Future: Cedar Integration
-
-The current policy engine is designed to be replaced with Cedar:
-
-**What will change**:
-- Policy language: Current JSON conditions → Cedar policy language
-- Policy storage: Current Vec<Policy> → Cedar policy store
-- Evaluation: Current custom evaluator → Cedar authorization engine
-
-**What will NOT change**:
-- Authorization flow (same enforcement point)
-- Action/Resource model (same mapping from intent payload)
-- Deny-overrides-allow semantics (Cedar's default)
-- Error model and response format
-
-## Permission and Role Model
-
-Authorization decisions depend on knowing what a principal is allowed to do. The identity layer (`crosscut/identity.md`) defines the entities; this section describes how they integrate with the ABAC engine.
-
-### Permissions
-
-Permissions are system-defined capability atoms. Their `code` uses the same namespace as `actionId` in intent payloads:
-
-```
-content.pages.create
-content.pages.update
-content.pages.delete
-badges.definitions.create
-badges.awards.grant
-audit.history.view
-org.business_units.create
-```
-
-Modules declare their permissions in their manifests. When a module is enabled for a tenant, its permissions become available for role composition in that tenant.
-
-**Relationship to Policy Evaluation:**
-
-The existing ABAC engine evaluates policies against a `PolicyEvaluationContext` that includes `principal_attributes`. With the role/permission model, the principal's effective permissions (union of all permissions from all active, non-expired role assignments) are included in `principal_attributes` as a `permissions` array. Policies can then condition on specific permissions:
-
-```
-# Pseudocode for how roles feed into ABAC
-principal_attributes = {
-    "id": "user-123",
-    "type": "user",
-    "tenant_id": "tenant-001",
-    "permissions": ["content.pages.create", "content.pages.update", "badges.definitions.create"],
-    "roles": ["Content Editor", "Badge Admin"]
-}
-```
-
-The simplest policy pattern: an ALLOW rule that checks whether `principal_attributes.permissions` contains the `resource_attributes.action_id`. This replaces the current "allow-all" development policy with real permission checks.
-
-### Roles
-
-Roles are tenant-defined groupings of permissions. See `crosscut/identity.md` for the full entity definition and `schemas/identity.md` for the data model.
-
-Key integration points:
-- **Role assignment** changes invalidate the effective permissions cache for affected users
-- **Role permission** changes invalidate the effective permissions cache for ALL users with that role
-- **Module enablement** changes affect which permissions are available for role composition
-- **Default roles** (Tenant Admin, User) are created when a tenant is provisioned
-
-### Effective Permissions Resolution
-
-At authorization time, the effective permissions for a principal are resolved:
-
-```
-1. Look up User by Principal.id (idp_subject) + Principal.tenant_id
-2. Fetch all active, non-expired UserRole assignments for that user
-3. For each role, fetch all RolePermission entries
-4. Union of all permission codes = effective permissions
-5. Include in principal_attributes for policy evaluation
-```
-
-This resolution SHOULD be cached per-user. Cache invalidation triggers:
-- UserRole assigned or revoked → invalidate that user
-- RolePermission granted or revoked → invalidate all users with that role
-- User deactivated → invalidate that user (all permissions revoked)
-- Role archived → invalidate all users who had that role
-
-Cache key: `authz:permissions:{tenant_id}:{user_id}` (follows I9 — tenant in key)
-Invalidation: event-driven via tags (follows I10)
+| Env var | Purpose |
+|---|---|
+| `POLICY_ENGINE` | `cedar` or `stub` |
+| `POLICY_DEFAULT_ALLOW_ALL` | Dev-only override; never set in prod |
 
 ## Open Questions
 
-- How are action IDs validated against the action registry at runtime?
-- Should unknown action IDs be rejected or just logged?
-- How are policies versioned and deployed across ingress instances?
-- What is the cache invalidation strategy for compiled policies?
-- Should effective permissions be computed at auth time (per-request) or pre-computed in a projection?
-- How does the Cedar migration affect the permission/role model? (Cedar has its own role concepts)
-- Should there be a "capability check" API endpoint (given user X, can they do action Y?) for UI feature gating?
+- Action-registry validation. Today the registry is implicit (the
+  handler entries in each module's `registry.ts` define what's
+  callable); a manifest-level registry that ingress can validate
+  against pre-dispatch is on the spec backlog.
+- Per-tenant role packs (custom roles atop platform defaults) — A4.
+- Feature-gate API ("can principal P do action A?") for UI gating.

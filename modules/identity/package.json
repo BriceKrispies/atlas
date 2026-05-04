@@ -11,7 +11,7 @@
     "@atlas/adapter-policy-cedar": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",
-    "@node-rs/argon2": "^2.0.2"
+    "hash-wasm": "^4.12.0"
   },
   "scripts": {
     "test": "vitest run"

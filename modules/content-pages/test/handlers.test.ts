@@ -58,6 +58,17 @@ class InMemoryEventStore implements EventStore {
     return this.events.find((e) => e.eventId === eventId) ?? null;
   }
 
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    return (
+      this.events.find(
+        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
+
   async readEvents(_tenantId: string): Promise<EventEnvelope[]> {
     return this.events.map((e) => ({ ...e }));
   }

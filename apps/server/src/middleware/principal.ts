@@ -19,10 +19,30 @@
 import type { Context, Next } from 'hono';
 import { jwtVerify } from 'jose';
 import type { Principal } from '@atlas/platform-core';
+import {
+  PostgresEntityStore,
+} from '@atlas/adapter-node';
+import {
+  parseApiKeyBearer,
+  getApiKeyEntity,
+  getSessionEntity,
+  findOAuthTokensByLookup,
+  hashSecret,
+  lookupOf,
+  constantTimeEqual,
+  verifyPassword,
+  checkSessionLifetime,
+  touchSessionLastSeen,
+  type ApiKeyDocument,
+  type AuthSessionDocument,
+  type OAuthAccessTokenDocument,
+} from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
+import { ensureTenantMigrated } from '../bootstrap.ts';
 import { errorResponse } from './errors.ts';
 import { correlationIdFor } from './correlation.ts';
 import { resolveHostTenant } from './tenant-resolution.ts';
+import { parseSessionCookie } from './cookie.ts';
 
 const DEBUG_PRINCIPAL_HEADER = 'X-Debug-Principal';
 const VALID_DEBUG_TYPES = new Set(['user', 'service', 'anonymous']);
@@ -77,6 +97,181 @@ function parseDebugPrincipal(
   return { principalId: id, tenantId };
 }
 
+/**
+ * Try the three bearer-token schemes in order: ApiKey → AuthSession
+ * access token → OAuth access token. Returns:
+ *   - a `Principal` on success
+ *   - `null` if no scheme could be tried (no Authorization header, or
+ *     none of the prefix detectors matched) — caller falls back to
+ *     JWT or rejects
+ *   - `'fail-with-error'` if a scheme matched but the credential is
+ *     bad — the function has already written the error response.
+ *
+ * Tenant id resolution: schemes that key off an entity row need the
+ * tenant context. ApiKey + Session + OAuth tokens are tenant-scoped,
+ * so we use the host-resolved tenant id (custom-domains stub) or the
+ * configured default. Mismatch with the row's `tenantId` is treated
+ * as "wrong scheme" so we fall through.
+ */
+async function tryBearerSchemes(
+  c: Context<{ Variables: ServerVariables }>,
+  state: AppState,
+  correlationId: string,
+): Promise<Principal | null | 'fail-with-error'> {
+  const authHeader = c.req.header('Authorization') ?? c.req.header('authorization');
+  const cookieHeader = c.req.header('cookie');
+  // Try the access-token from `Authorization: Bearer ...` if present;
+  // otherwise the cookie's refresh-secret can authorize ONLY for
+  // /refresh and /logout routes (handled separately).
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    // No bearer header. The cookie alone isn't sufficient for authed
+    // routes — fall through to JWT (which will reject if also absent).
+    return null;
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  const tenantId = c.get('hostTenantId') ?? state.config.tenantId ?? null;
+  if (!tenantId) return null;
+
+  // Resolve the per-tenant entity store ONCE; all three schemes share it.
+  let entities: PostgresEntityStore;
+  try {
+    const sql = await ensureTenantMigrated(state, tenantId);
+    entities = new PostgresEntityStore(sql);
+  } catch {
+    // Tenant unknown / migration error — treat as JWT-fallback.
+    return null;
+  }
+
+  // (a) ApiKey: `atlas_<keyId>_<secret>`.
+  if (token.startsWith('atlas_')) {
+    const parsed = parseApiKeyBearer(token);
+    if (!parsed) {
+      errorResponse(c, 'API_KEY_MALFORMED', 'malformed API key', 401, correlationId);
+      return 'fail-with-error';
+    }
+    const apiKey: ApiKeyDocument | null = await getApiKeyEntity(
+      entities,
+      tenantId,
+      parsed.keyId,
+    );
+    if (!apiKey) {
+      errorResponse(c, 'API_KEY_NOT_FOUND', 'unknown API key', 401, correlationId);
+      return 'fail-with-error';
+    }
+    const now = Date.now();
+    const validStatus =
+      apiKey.status === 'active' ||
+      (apiKey.status === 'rotated' &&
+        apiKey.rotationOverlapUntil &&
+        new Date(apiKey.rotationOverlapUntil).getTime() > now);
+    if (!validStatus) {
+      errorResponse(c, 'API_KEY_REVOKED', 'API key not valid', 401, correlationId);
+      return 'fail-with-error';
+    }
+    if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= now) {
+      errorResponse(c, 'API_KEY_EXPIRED', 'API key expired', 401, correlationId);
+      return 'fail-with-error';
+    }
+    const ok = await verifyPassword(parsed.secret, apiKey.secretHash);
+    if (!ok) {
+      errorResponse(c, 'API_KEY_NOT_FOUND', 'unknown API key', 401, correlationId);
+      return 'fail-with-error';
+    }
+    return {
+      principalId: apiKey.userId ?? apiKey.servicePrincipalId ?? apiKey.keyId,
+      tenantId,
+      attributes: { apiKeyId: apiKey.keyId, scopes: apiKey.scopes },
+    };
+  }
+
+  // (b) AuthSession access token. Lookup by hash prefix; constant-time
+  // hash compare.
+  const sessionPrincipal = await tryAccessToken(c, entities, tenantId, token);
+  if (sessionPrincipal) return sessionPrincipal;
+
+  // (c) OAuth access token. Same opaque-token shape, different entity.
+  const oauthPrincipal = await tryOAuthToken(entities, tenantId, token);
+  if (oauthPrincipal) return oauthPrincipal;
+
+  // None of the opaque-token schemes matched → fall through to JWT.
+  return null;
+}
+
+async function tryAccessToken(
+  c: Context<{ Variables: ServerVariables }>,
+  entities: PostgresEntityStore,
+  tenantId: string,
+  token: string,
+): Promise<Principal | null> {
+  const presentedHash = hashSecret(token);
+  const lookup = lookupOf(token);
+  // Scan the lookup bucket. The index makes this O(bucket size).
+  const candidates = await (entities as unknown as {
+    query: <T>(t: string, type: string, opts: { attrsEqual: Record<string, unknown> }) => Promise<{ attrs: T }[]>;
+  }).query<AuthSessionDocument>(tenantId, 'AuthSession', {
+    attrsEqual: { accessTokenLookup: lookup },
+  });
+  for (const row of candidates) {
+    if (!constantTimeEqual(row.attrs.accessTokenHash, presentedHash)) continue;
+    const session = row.attrs;
+    if (new Date(session.accessExpiresAt).getTime() <= Date.now()) {
+      // Access token expired. Don't return null/auth-fail — the route
+      // path expects 401 with a clear code. We let it fall through to
+      // JWT scheme below; that scheme will reject with PRINCIPAL_INVALID.
+      // A future refinement: return SESSION_EXPIRED here.
+      continue;
+    }
+    const lifetime = checkSessionLifetime(session);
+    if (!lifetime.ok) continue;
+    // Touch lastSeenAt — keeps idle-timeout alive while the user is
+    // active. Best-effort: a failure here doesn't block the request.
+    try {
+      await touchSessionLastSeen(entities, session);
+    } catch {
+      // Swallow — see comment.
+    }
+    void c; // reserved for future surfacing
+    return {
+      principalId: session.userId,
+      tenantId,
+      userId: session.userId,
+      attributes: { sessionId: session.sessionId },
+    };
+  }
+  return null;
+}
+
+async function tryOAuthToken(
+  entities: PostgresEntityStore,
+  tenantId: string,
+  token: string,
+): Promise<Principal | null> {
+  const presentedHash = hashSecret(token);
+  const lookup = lookupOf(token);
+  const candidates: OAuthAccessTokenDocument[] = await findOAuthTokensByLookup(
+    entities,
+    tenantId,
+    lookup,
+  );
+  for (const t of candidates) {
+    if (!constantTimeEqual(t.secretHash, presentedHash)) continue;
+    if (t.status !== 'active') continue;
+    if (new Date(t.expiresAt).getTime() <= Date.now()) continue;
+    return {
+      principalId: t.servicePrincipalId || t.apiKeyId,
+      tenantId,
+      attributes: {
+        apiKeyId: t.apiKeyId,
+        oauthTokenId: t.tokenId,
+        scopes: t.scopes,
+      },
+    };
+  }
+  return null;
+}
+
 export function principalMiddleware(state: AppState) {
   return async (
     c: Context<{ Variables: ServerVariables }>,
@@ -102,7 +297,58 @@ export function principalMiddleware(state: AppState) {
     );
     c.set('hostTenantId', hostTenantId);
 
-    // 1. Try X-Debug-Principal first when test-auth is enabled.
+    // 1. Cookie session — only used when the request didn't ALSO bring
+    //    a bearer token. Browser flows usually carry both (cookie for
+    //    refresh, access token in Authorization header) — bearer wins
+    //    in that case. This branch handles routes that the SPA hits
+    //    without a fresh access token (e.g. an XHR right after a
+    //    refresh response landed but before the in-memory access token
+    //    was updated).
+    const bearerPresent =
+      !!(c.req.header('Authorization') ?? c.req.header('authorization'));
+    if (!bearerPresent) {
+      const cookie = parseSessionCookie(c.req.header('cookie'));
+      if (cookie) {
+        const tenantId = hostTenantId ?? state.config.tenantId ?? null;
+        if (tenantId) {
+          try {
+            const sql = await ensureTenantMigrated(state, tenantId);
+            const entities = new PostgresEntityStore(sql);
+            const session = await getSessionEntity(
+              entities,
+              tenantId,
+              cookie.sessionId,
+            );
+            if (session) {
+              const presented = hashSecret(cookie.refreshSecret);
+              if (constantTimeEqual(session.refreshTokenHash, presented)) {
+                const lifetime = checkSessionLifetime(session);
+                if (lifetime.ok) {
+                  // Best-effort touch — same pattern as bearer path.
+                  try {
+                    await touchSessionLastSeen(entities, session);
+                  } catch {
+                    // ignore
+                  }
+                  c.set('principal', {
+                    principalId: session.userId,
+                    tenantId,
+                    userId: session.userId,
+                    attributes: { sessionId: session.sessionId },
+                  });
+                  await next();
+                  return;
+                }
+              }
+            }
+          } catch {
+            // tenant resolution / DB error — fall through to other schemes.
+          }
+        }
+      }
+    }
+
+    // 2. X-Debug-Principal — test-auth shortcut.
     if (state.config.testAuth.enabled) {
       const debugHeader = c.req.header(DEBUG_PRINCIPAL_HEADER);
       if (debugHeader) {
@@ -137,7 +383,24 @@ export function principalMiddleware(state: AppState) {
       }
     }
 
-    // 2. JWT path.
+    // 3. Bearer Authorization — three sub-schemes detected by prefix.
+    //    a) `atlas_<keyId>_<secret>` → ApiKey
+    //    b) JWT (three dot-separated base64url segments)         → JWT
+    //    c) anything else (opaque)                               → AuthSession access OR OAuth token
+    //
+    //    The schemes are tried in order; a mismatch falls through
+    //    rather than rejecting outright so we don't lock out a
+    //    legitimate JWT just because someone fat-fingered a key.
+
+    const bearerPrincipal = await tryBearerSchemes(c, state, correlationId);
+    if (bearerPrincipal === 'fail-with-error') return; // already responded
+    if (bearerPrincipal) {
+      c.set('principal', bearerPrincipal);
+      await next();
+      return;
+    }
+
+    // 4. JWT path (fallback).
     // Rust counterpart: authn_middleware in crates/ingress/src/authn.rs returns
     // 401 with a non-structured `{error: "unauthorized"}` body for every authn
     // failure (missing creds, malformed JWT, signature/audience/expiry, missing

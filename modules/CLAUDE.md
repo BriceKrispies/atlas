@@ -87,7 +87,7 @@ asserting `envelope.cacheInvalidationTags` for every test case.
 
 - **Handler pattern.** Each handler takes `(IntentHandlerContext, IntentEnvelope)` and emits a primary event plus optional follow-ups. Registries map `actionId` (e.g. `Authz.Policy.Create`) → handler. Apps compose registries via `composeRegistries`.
 - **Dispatcher pattern.** Each module exports a dispatcher factory. Apps fold module dispatchers through `composeDispatchers` from `@atlas/ports`. Events arrive as `EventEnvelope`; the dispatcher fans out to projections.
-- **Errors.** One `<Module>Error` class per module with a `code: string` field; error-code strings match the legacy Rust enum variants for parity. Status codes are baked into constructors.
+- **Errors.** One `<Module>Error` class per module with a `code: string` field. Error-code strings are listed in `errors.ts` and referenced by status-code-aware constructors; the canonical taxonomy lives in `specs/crosscut/errors.md` and `specs/error_taxonomy.json`.
 - **Payload validation helpers.** Tiny readers (`readString`, `readNumber`, `readOptionalString`) are duplicated per module — keep them; do not abstract.
 - **Query façades.** When a module exposes more than a handful of read paths, a `query-router.ts` (or top-level `queries.ts`) bundles a `QueryDeps` type. Apps build that bundle per request, including tenant-scoped adapters.
 - **No I/O imports.** Modules import only from `@atlas/ports`, `@atlas/platform-core`, and standard libs. Reaching for an adapter package from inside a module is a bug.

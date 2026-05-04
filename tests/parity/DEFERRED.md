@@ -18,8 +18,7 @@ debug surface (`/debug/events/:eventId`, `/debug/search/index`,
 | `catalog_search::test_search_index_cache_invalidation_tag_present` | `catalog-search-node.test.ts` | `GET /debug/events/:eventId` |
 
 The debug surface is gated by `DEBUG_AUTH_ENDPOINT_ENABLED=true` and
-`TEST_AUTH_ENABLED=true`, matching the Rust ingress gate (see
-`crates/ingress/src/main.rs`). When either is unset the routes aren't
+`TEST_AUTH_ENABLED=true`. When either is unset the routes aren't
 mounted and the node-mode helpers (`readEventTags`, `truncateSearch`,
 `indexSearchDocument`) raise `UnsupportedInMode` so tests skip cleanly.
 

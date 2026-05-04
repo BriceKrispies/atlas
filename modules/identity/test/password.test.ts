@@ -43,6 +43,16 @@ class InMemoryEventStore implements EventStore {
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
     return this.events.find((e) => e.eventId === eventId) ?? null;
   }
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    return (
+      this.events.find(
+        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
   async readEvents(): Promise<EventEnvelope[]> {
     return this.events.map((e) => ({ ...e }));
   }
@@ -309,9 +319,16 @@ describe('Identity.Login.Password', () => {
       fx.entities,
     );
     expect(result.envelope.eventType).toBe('Identity.LoginSucceeded');
-    expect(result.follow.map((e) => e.eventType)).toEqual(['Identity.UserUpdated']);
+    // A2.3: success path now emits UserUpdated + SessionIssued (no
+    // evictions since this is the user's first session in this test).
+    expect(result.follow.map((e) => e.eventType)).toEqual([
+      'Identity.UserUpdated',
+      'Identity.SessionIssued',
+    ]);
     expect(result.user?.lastLoginAt).toBeTruthy();
     expect(result.user?.failedLoginCount).toBe(0);
+    expect(result.sessionResult?.cookiePayload).toContain('.');
+    expect(result.sessionResult?.plaintextAccessToken.length).toBeGreaterThan(20);
   });
 
   it('wrong password emits LoginRejected with reason=wrong_password', async () => {

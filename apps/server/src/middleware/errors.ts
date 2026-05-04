@@ -16,6 +16,49 @@
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { IngressError } from '@atlas/platform-core';
+import { IdentityError } from '@atlas/identity';
+
+/**
+ * Collapse user-enumerable identity error codes to opaque ones at the
+ * HTTP boundary. Internal codes (`USER_NOT_FOUND`, `PASSWORD_INVALID`,
+ * `ACCOUNT_LOCKED`, `SESSION_REVOKED`, etc.) stay in the audit log so
+ * operators can diagnose; the client sees one of:
+ *   - `IDENTITY_INVALID` for any login failure
+ *   - `SESSION_INVALID` for any session-validation failure
+ *   - the original code for everything else
+ *
+ * Without this, an attacker can enumerate which emails are registered
+ * (USER_NOT_FOUND vs PASSWORD_INVALID) and probe session lifecycle
+ * state (NOT_FOUND vs REVOKED vs EXPIRED).
+ */
+const LOGIN_FAILURE_CODES = new Set([
+  'USER_NOT_FOUND',
+  'USER_SUSPENDED',
+  'PASSWORD_INVALID',
+  'ACCOUNT_LOCKED',
+  'RATE_LIMITED',
+]);
+const SESSION_FAILURE_CODES = new Set([
+  'SESSION_NOT_FOUND',
+  'SESSION_EXPIRED',
+  'SESSION_REVOKED',
+  'SESSION_REUSE_DETECTED',
+  'SESSION_HARD_TIMEOUT',
+  'SESSION_IDLE_TIMEOUT',
+]);
+
+export function publicIdentityCode(internalCode: string): {
+  code: string;
+  message: string;
+} {
+  if (LOGIN_FAILURE_CODES.has(internalCode)) {
+    return { code: 'IDENTITY_INVALID', message: 'invalid credentials' };
+  }
+  if (SESSION_FAILURE_CODES.has(internalCode)) {
+    return { code: 'SESSION_INVALID', message: 'session is not valid' };
+  }
+  return { code: internalCode, message: '' };
+}
 
 export interface ErrorEnvelope {
   error: {
@@ -77,6 +120,15 @@ export function mapError(
   e: unknown,
   correlationId: string,
 ): Response {
+  if (e instanceof IdentityError) {
+    const pub = publicIdentityCode(e.code);
+    if (pub.code !== e.code) {
+      // Collapsed code — substitute the opaque message too so the
+      // client never sees "user not found" vs "wrong password".
+      return errorResponse(c, pub.code, pub.message, e.status, correlationId);
+    }
+    return errorResponse(c, e.code, e.message, e.status, correlationId);
+  }
   if (e instanceof IngressError) {
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
   }

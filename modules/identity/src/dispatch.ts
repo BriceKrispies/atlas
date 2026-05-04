@@ -21,13 +21,21 @@ import type {
   RelationStore,
 } from '@atlas/ports';
 import type {
+  ApiKeyDocument,
+  AuthSessionDocument,
   InviteTokenDocument,
   MembershipDocument,
+  OAuthAccessTokenDocument,
+  ServicePrincipalDocument,
   UserDocument,
 } from './types.ts';
 import { putUserEntity } from './entities/user.ts';
 import { putMembershipEntity } from './entities/membership.ts';
 import { putInviteTokenEntity } from './entities/invite-token.ts';
+import { putSessionEntity } from './entities/auth-session.ts';
+import { putApiKeyEntity } from './entities/api-key.ts';
+import { putServicePrincipalEntity } from './entities/service-principal.ts';
+import { putOAuthTokenEntity } from './entities/oauth-token.ts';
 import {
   linkInviteToUser,
   linkMembershipToUser,
@@ -39,6 +47,19 @@ export interface IdentityDispatchContext {
   cache?: Cache;
 }
 
+// All Phase A2 service-credential events. Each carries a merged
+// document on `payload.document`; dispatcher persists.
+const A2_KEY_EVENTS: ReadonlySet<string> = new Set([
+  'Identity.ApiKeyCreated',
+  'Identity.ApiKeyRotated',
+  'Identity.ApiKeyRevoked',
+  'Identity.ServicePrincipalCreated',
+  'Identity.ServicePrincipalScopesChanged',
+  'Identity.ServicePrincipalDisabled',
+  'Identity.OAuthTokenIssued',
+  'Identity.OAuthTokenRevoked',
+]);
+
 const HANDLED_EVENT_TYPES = new Set([
   'Identity.UserCreated',
   'Identity.UserUpdated',
@@ -47,6 +68,21 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.MembershipCreated',
   'Identity.InviteIssued',
   'Identity.InviteAccepted',
+  // Phase A2 — session lifecycle.
+  'Identity.SessionIssued',
+  'Identity.SessionRefreshed',
+  'Identity.SessionEnded',
+  // SessionAnomaly is emitted but carries no document — see below.
+  'Identity.SessionAnomaly',
+  // Phase A2.7-A2.9 — service credentials.
+  'Identity.ApiKeyCreated',
+  'Identity.ApiKeyRotated',
+  'Identity.ApiKeyRevoked',
+  'Identity.ServicePrincipalCreated',
+  'Identity.ServicePrincipalScopesChanged',
+  'Identity.ServicePrincipalDisabled',
+  'Identity.OAuthTokenIssued',
+  'Identity.OAuthTokenRevoked',
 ]);
 
 export async function dispatchIdentityEvent(
@@ -55,11 +91,22 @@ export async function dispatchIdentityEvent(
 ): Promise<void> {
   if (!HANDLED_EVENT_TYPES.has(envelope.eventType)) return;
 
+  // SessionAnomaly carries diagnostic fields, not a document — it's
+  // an audit-only event. The corresponding RevokeAllForUser path
+  // emits SessionEnded events that DO carry documents; this branch
+  // is just a no-op so the event lands in the audit log without
+  // touching projections.
+  if (envelope.eventType === 'Identity.SessionAnomaly') return;
+
   const payload = envelope.payload as Record<string, unknown>;
   const document = payload['document'] as
     | UserDocument
     | MembershipDocument
     | InviteTokenDocument
+    | AuthSessionDocument
+    | ApiKeyDocument
+    | ServicePrincipalDocument
+    | OAuthAccessTokenDocument
     | undefined;
   if (!document) return;
 
@@ -88,6 +135,30 @@ export async function dispatchIdentityEvent(
         t.tenantId,
         t.tokenId,
         t.acceptedUserId,
+      );
+    }
+  } else if (
+    envelope.eventType === 'Identity.SessionIssued' ||
+    envelope.eventType === 'Identity.SessionRefreshed' ||
+    envelope.eventType === 'Identity.SessionEnded'
+  ) {
+    // All three carry the merged AuthSession document; the dispatcher
+    // just persists. Status discrimination lives at the audit layer.
+    await putSessionEntity(ctx.entities, document as AuthSessionDocument);
+  } else if (A2_KEY_EVENTS.has(envelope.eventType)) {
+    if (
+      envelope.eventType.startsWith('Identity.ApiKey')
+    ) {
+      await putApiKeyEntity(ctx.entities, document as ApiKeyDocument);
+    } else if (envelope.eventType.startsWith('Identity.ServicePrincipal')) {
+      await putServicePrincipalEntity(
+        ctx.entities,
+        document as ServicePrincipalDocument,
+      );
+    } else if (envelope.eventType.startsWith('Identity.OAuth')) {
+      await putOAuthTokenEntity(
+        ctx.entities,
+        document as OAuthAccessTokenDocument,
       );
     }
   }

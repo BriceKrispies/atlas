@@ -18,11 +18,16 @@ All `make` targets use `$(CONTAINER_RUNTIME)-compose` automatically.
 
 ## Dockerfiles
 
-| File | Builds |
+> **Stale.** The Dockerfiles below were authored for the Rust prototype
+> (multi-stage `cargo` builds) and have not been ported to the TS stack
+> yet. They reference deleted `crates/` / `tools/` / `tests/blackbox`
+> paths. A TS Dockerfile for `apps/server` is on the backlog.
+
+| File | Status |
 |------|--------|
-| `docker/Dockerfile.ingress` | Ingress service image |
-| `docker/Dockerfile.workers` | Workers service image |
-| `docker/Dockerfile.itest` | Full-stack test container (single container with all services) |
+| `docker/Dockerfile.ingress` | Stale (Rust); rewrite for `apps/server` pending |
+| `docker/Dockerfile.workers` | Stale (Rust); rewrite for `apps/projection-worker` pending |
+| `docker/Dockerfile.itest` | Stale (Rust); itest stack to be re-thought against TS |
 
 ## Key Ports
 
@@ -39,8 +44,6 @@ the rationale.
 | 3001 | Grafana |
 | 9090 | Prometheus |
 | 3100 | Loki |
-| 8080 | Dozzle log viewer (itest stack) |
-| 9101 | Workers metrics |
 
 ## Scripts
 
@@ -70,4 +73,4 @@ Env var: `CONTROL_PLANE_DB_URL`
 - Grafana: `http://localhost:3001` (admin/admin)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
-- App metrics: `http://localhost:3000/metrics` (ingress), `http://localhost:9101/metrics` (workers)
+- App metrics: `http://localhost:3000/metrics` (server)

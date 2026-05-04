@@ -50,6 +50,16 @@ class InMemoryEventStore implements EventStore {
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
     return this.events.find((e) => e.eventId === eventId) ?? null;
   }
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    return (
+      this.events.find(
+        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
   async readEvents(): Promise<EventEnvelope[]> {
     return this.events.map((e) => ({ ...e }));
   }
@@ -366,16 +376,22 @@ describe('Identity.Invite.Issue + Accept', () => {
         correlationId: 'c',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'charlie@example.com',
         primaryIdpSubject: 'sub-charlie',
       },
       fx.events,
       fx.entities,
     );
     expect(accept.envelope.eventType).toBe('Identity.InviteAccepted');
-    // Two follow events: UserCreated + MembershipCreated.
+    // Follow chain: pre-primary UserCreated + MembershipCreated, plus
+    // the post-primary SessionIssued (A2.3 wires session creation into
+    // invite-accept). The order is [UserCreated, MembershipCreated,
+    // ...evictedSessions, SessionIssued] — no evictions on first
+    // session for a new user.
     expect(accept.follow.map((e) => e.eventType)).toEqual([
       'Identity.UserCreated',
       'Identity.MembershipCreated',
+      'Identity.SessionIssued',
     ]);
 
     await dispatchAll(fx);
@@ -423,6 +439,7 @@ describe('Identity.Invite.Issue + Accept', () => {
           correlationId: 'c',
           principalId: null,
           presentedToken: 'not-a-real-token-aaaaaaaaaaaaaaaaaaaaaaa',
+          acceptedEmail: 'dave@example.com',
         },
         fx.events,
         fx.entities,
@@ -451,6 +468,7 @@ describe('Identity.Invite.Issue + Accept', () => {
           correlationId: 'c',
           principalId: null,
           presentedToken: issued.plaintextToken,
+          acceptedEmail: 'eve@example.com',
         },
         fx.events,
         fx.entities,
@@ -487,14 +505,17 @@ describe('Identity.Invite.Issue + Accept', () => {
         correlationId: 'c',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'frank@example.com',
       },
       fx.events,
       fx.entities,
     );
     expect(accept.user.userId).toBe(userResult.document.userId);
-    // No follow-up UserCreated when reusing.
+    // No follow-up UserCreated when reusing — but SessionIssued still
+    // lands (A2.3 wires session creation on accept).
     expect(accept.follow.map((e) => e.eventType)).toEqual([
       'Identity.MembershipCreated',
+      'Identity.SessionIssued',
     ]);
   });
 });
@@ -519,6 +540,7 @@ describe('I12 — projections rebuild from event history alone', () => {
         correlationId: 'c',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'rebuild@example.com',
       },
       fx.events,
       fx.entities,

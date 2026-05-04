@@ -8,6 +8,7 @@
 
 import type { EntityStore, RelationStore } from '@atlas/ports';
 import type {
+  AuthSessionDocument,
   MembershipDocument,
   UserDocument,
   InviteTokenDocument,
@@ -23,6 +24,11 @@ import {
   listMembershipsForTenant,
 } from './entities/membership.ts';
 import { getInviteTokenEntity } from './entities/invite-token.ts';
+import {
+  findSessionsByAccessLookup,
+  getSessionEntity,
+  listActiveSessionsForUser,
+} from './entities/auth-session.ts';
 
 export interface IdentityQueryDeps {
   tenantId: string;
@@ -83,3 +89,38 @@ export async function getInviteToken(
 ): Promise<InviteTokenDocument | null> {
   return getInviteTokenEntity(deps.entities, deps.tenantId, tokenId);
 }
+
+// Phase A2 — sessions.
+
+export async function getSession(
+  deps: IdentityQueryDeps,
+  sessionId: string,
+): Promise<AuthSessionDocument | null> {
+  return getSessionEntity(deps.entities, deps.tenantId, sessionId);
+}
+
+/**
+ * Sessions for the current user, oldest-first by `issuedAt`. Used by
+ * the `/identity/sessions` self-service route + the concurrent-limit
+ * eviction path.
+ */
+export async function listOwnSessions(
+  deps: IdentityQueryDeps,
+  userId: string,
+): Promise<AuthSessionDocument[]> {
+  return listActiveSessionsForUser(deps.entities, deps.tenantId, userId);
+}
+
+/**
+ * Resolve a session by the lookup prefix derived from a presented
+ * access token. The principal middleware's bearer-auth path uses this
+ * to find the candidate session row, then verifies the full hash.
+ */
+export async function findSessionsByAccessTokenLookup(
+  deps: IdentityQueryDeps,
+  accessTokenLookup: string,
+): Promise<AuthSessionDocument[]> {
+  return findSessionsByAccessLookup(deps.entities, deps.tenantId, accessTokenLookup);
+}
+
+// END Phase A2 sessions.

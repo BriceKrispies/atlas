@@ -167,9 +167,32 @@ async function submitIntentInner(
     err('SCHEMA_VALIDATION_FAILED', `payload schema validation failed: ${detail}`, 400, correlationId);
   }
 
-  // 4. Idempotency key non-empty
+  // 4. Idempotency (Invariant I3). Two-stage check:
+  //    (a) the key must be present and non-empty;
+  //    (b) if a previous event already exists for this (tenantId, key),
+  //        return the cached response WITHOUT re-running authz or the
+  //        handler. The append() seam dedups events at the storage
+  //        layer, but handlers commonly write entities or generate
+  //        secrets BEFORE appending — replays without this short-circuit
+  //        would double-execute those side effects.
   if (!envelope.idempotencyKey || envelope.idempotencyKey.length === 0) {
     err('INVALID_IDEMPOTENCY_KEY', 'idempotencyKey is required', 400, correlationId);
+  }
+  const priorEvent = await state.eventStore.findByIdempotencyKey(
+    state.tenantId,
+    envelope.idempotencyKey,
+  );
+  if (priorEvent) {
+    // Recovered — return the original response shape. We deliberately
+    // do not re-run the dispatcher chain: the prior call already did,
+    // and replaying projections risks projection-store inconsistency
+    // for handlers that aren't pure-functional over events.
+    observe(envelope.payload.actionId ?? 'unknown', 'permit');
+    return {
+      eventId: priorEvent.eventId,
+      tenantId: state.tenantId,
+      principalId: state.principalId,
+    };
   }
 
   // 5. Action lookup

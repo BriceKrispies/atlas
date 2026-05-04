@@ -32,24 +32,15 @@ Files not matching this convention are ignored by the validator but may still se
 
 ## Validation Tool
 
-The `spec_validate` tool validates fixtures against `atlas_core` domain types and semantic rules:
+Run the validator with:
 
 ```bash
-# Validate all fixtures
-cargo run -p atlas-platform-spec-validate
-
-# List discovered fixtures
-cargo run -p atlas-platform-spec-validate -- --list
-
-# Filter by kind
-cargo run -p atlas-platform-spec-validate -- --kind event_envelope
-
-# Filter by expectation
-cargo run -p atlas-platform-spec-validate -- --expect invalid
-
-# Show help
-cargo run -p atlas-platform-spec-validate -- --help
+make spec-check
 ```
+
+This runs the TypeScript spec validator across all fixtures and checks
+them against the JSON Schema contracts under
+`specs/schemas/contracts/`.
 
 ## Fixture Categories
 

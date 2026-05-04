@@ -2,8 +2,10 @@ import type { EventEnvelope } from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
+  AuthSessionDocument,
   InviteTokenDocument,
   MembershipDocument,
+  SessionPolicy,
   UserDocument,
 } from '../types.ts';
 import { newEventId, newMembershipId, newUserId } from '../ids.ts';
@@ -14,6 +16,7 @@ import {
 } from '../crypto/secret-hash.ts';
 import { findInviteTokensByLookup } from '../entities/invite-token.ts';
 import { findUserByEmail } from '../entities/user.ts';
+import { handleSessionIssue } from './session-issue.ts';
 
 export interface InviteAcceptCommand {
   tenantId: string;
@@ -21,10 +24,28 @@ export interface InviteAcceptCommand {
   principalId: string | null;
   /** Plaintext token presented by the invitee. */
   presentedToken: string;
+  /**
+   * Email the invitee asserts as their own. Compared (case-insensitive)
+   * against `invite.email` after the token-hash match passes. Required
+   * — without it, anyone holding the plaintext token can claim it on
+   * any email's behalf, defeating the invite-binding contract.
+   *
+   * Routes are responsible for proving the invitee actually owns this
+   * email (out-of-band confirmation link, prior session, etc.) before
+   * passing it here. The handler treats the field as already-verified.
+   */
+  acceptedEmail: string;
   /** Optional IDP subject to bind to the User on first login. */
   primaryIdpSubject?: string | null;
   givenName?: string;
   familyName?: string;
+  /** Caller's IP for the SessionIssued audit event. */
+  ip?: string;
+  userAgent?: string;
+  /** Session policy applied to the minted session. */
+  sessionPolicy?: SessionPolicy;
+  /** Skip session creation. Default true (mints session on accept). */
+  issueSession?: boolean;
 }
 
 export interface InviteAcceptResult {
@@ -35,6 +56,18 @@ export interface InviteAcceptResult {
   user: UserDocument;
   /** The Membership minted by accepting. */
   membership: MembershipDocument;
+  /**
+   * Session minted on accept (so the invitee lands on the app already
+   * logged in). Plaintexts are surfaced ONCE — the route layer sets
+   * the cookie + returns the access token. Undefined when
+   * `issueSession=false`.
+   */
+  sessionResult?: {
+    document: AuthSessionDocument;
+    plaintextRefreshToken: string;
+    plaintextAccessToken: string;
+    cookiePayload: string;
+  };
 }
 
 /**
@@ -83,6 +116,15 @@ export async function handleInviteAccept(
       404,
     );
   }
+  // Defensive tenant-binding. Lookup is already tenant-scoped, but
+  // assert post-match in case a future adapter weakens the partition.
+  if (invite.tenantId !== cmd.tenantId) {
+    throw new IdentityError(
+      codes.INVITE_NOT_FOUND,
+      'invite not found or already used',
+      404,
+    );
+  }
   if (new Date(invite.expiresAt) < new Date()) {
     throw new IdentityError(
       codes.INVITE_EXPIRED,
@@ -95,6 +137,26 @@ export async function handleInviteAccept(
       codes.INVITE_ALREADY_USED,
       `invite is in status ${invite.status}`,
       409,
+    );
+  }
+  // Email-binding. The route layer is responsible for verifying the
+  // caller actually owns `acceptedEmail` (link click in a confirmation
+  // email, existing session, etc.) — the handler treats it as already
+  // verified and only checks it matches the invite. Returns the same
+  // opaque INVITE_NOT_FOUND code on mismatch so the caller can't probe
+  // which email an invite was issued to. Placed after expiry/status so
+  // existing legitimate flows that already gated on those still produce
+  // the more specific error codes; mismatched-email is reported as
+  // not-found because that's what the caller would observe if they had
+  // a stale token for someone else.
+  if (
+    cmd.acceptedEmail.trim().toLowerCase() !==
+    invite.email.trim().toLowerCase()
+  ) {
+    throw new IdentityError(
+      codes.INVITE_NOT_FOUND,
+      'invite not found or already used',
+      404,
     );
   }
 
@@ -206,5 +268,42 @@ export async function handleInviteAccept(
   envelope.eventId = stored.eventId;
   envelope.seq = stored.seq;
 
-  return { envelope, follow, user, membership };
+  // Mint the session AFTER InviteAccepted lands so audit ordering
+  // reflects "user existed before they got a session". The session
+  // events are appended via handleSessionIssue's own append calls;
+  // we accumulate them onto `follow` for the caller's awareness.
+  const issueSession = cmd.issueSession ?? true;
+  if (!issueSession) {
+    return { envelope, follow, user, membership };
+  }
+
+  const session = await handleSessionIssue(
+    {
+      tenantId: cmd.tenantId,
+      correlationId: cmd.correlationId,
+      // Front-door redemption: the calling principal is the
+      // unauthenticated /invite/accept surface, not the user being
+      // provisioned. `null` opts out of the principal===userId assertion.
+      principalId: null,
+      userId: user.userId,
+      ...(cmd.ip !== undefined ? { ip: cmd.ip } : {}),
+      ...(cmd.userAgent !== undefined ? { userAgent: cmd.userAgent } : {}),
+      ...(cmd.sessionPolicy !== undefined ? { policy: cmd.sessionPolicy } : {}),
+    },
+    eventStore,
+    entities,
+  );
+
+  return {
+    envelope,
+    follow: [...follow, ...session.follow, session.envelope],
+    user,
+    membership,
+    sessionResult: {
+      document: session.document,
+      plaintextRefreshToken: session.plaintextRefreshToken,
+      plaintextAccessToken: session.plaintextAccessToken,
+      cookiePayload: session.cookiePayload,
+    },
+  };
 }

@@ -23,6 +23,21 @@ export interface EventStore {
   getEvent(eventId: string): Promise<EventEnvelope | null>;
 
   /**
+   * Look up an existing event by its idempotency key for the given
+   * tenant. Used by ingress (Invariant I3) to short-circuit handler
+   * dispatch when a request is replayed — without this, a retried
+   * intent would re-execute the handler's side effects (entity writes,
+   * secret generation, etc.) even though the event itself dedups at
+   * append time.
+   *
+   * Returns `null` when no event exists for that (tenant, key) pair.
+   */
+  findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null>;
+
+  /**
    * Read all events for a tenant in seq order. Used by tooling and
    * projection rebuild paths. The projection worker uses `WorkerSource`
    * for live streaming rather than this method.

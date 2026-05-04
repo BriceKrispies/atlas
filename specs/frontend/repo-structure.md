@@ -2,7 +2,13 @@
 
 ## Overview
 
-The Atlas frontend lives in a `frontend/` directory at the repository root, alongside the existing Rust backend. It is a JavaScript monorepo managed by pnpm workspaces. All 4 frontend apps and all shared packages live in this monorepo.
+The Atlas frontend lives at the repository root. It is a TypeScript monorepo managed by pnpm workspaces — all frontend apps and shared packages live here.
+
+> **Historical note.** This document was originally drafted when the repo
+> hosted a Rust backend under `crates/`. That prototype was deleted on
+> 2026-05-04; the TS implementation is now the only one. References
+> below to "the Rust backend" or `crates/` are obsolete — treat them as
+> historical context.
 
 All code is **modern vanilla JavaScript** — no framework, no TypeScript. The custom component system (`@atlas/core`) provides rendering, reactivity, routing, and data fetching. Type documentation uses JSDoc annotations where useful.
 

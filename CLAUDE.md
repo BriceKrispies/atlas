@@ -34,7 +34,7 @@ ports/      @atlas/ports — port interfaces only
 modules/    domain logic (authz, catalog, content-pages)
 packages/   shared infra: core, design, widgets, ingress, schemas, …
 apps/       runnable units: server (Hono), admin, authoring, sandbox
-tests/      bdd, parity, integration
+tests/      bdd (Playwright + Gherkin)
 specs/      RFC-style specs and lexicon — the source of truth
 infra/      compose files, container runtime
 ```

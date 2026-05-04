@@ -59,6 +59,16 @@ class InMemoryEventStore implements EventStore {
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
     return this.events.find((e) => e.eventId === eventId) ?? null;
   }
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    return (
+      this.events.find(
+        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
   async readEvents(): Promise<EventEnvelope[]> {
     return this.events.map((e) => ({ ...e }));
   }
@@ -258,6 +268,7 @@ describe('platform-oidc.feature: Invitee completes first login', () => {
         correlationId: 'corr-accept-1',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'admin@example.com',
         primaryIdpSubject: 'sub-admin-from-jwt',
       },
       fx.events,
@@ -321,6 +332,7 @@ describe('platform-oidc.feature: Returning user — Phase A1 portion', () => {
         correlationId: 'c2',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'alice@acme.com',
         primaryIdpSubject: 'sub-alice',
       },
       fx.events,
@@ -366,6 +378,7 @@ describe('password.feature: User sets initial password from invite', () => {
         correlationId: 'c-accept',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'alice@smb.com',
       },
       fx.events,
       fx.entities,
@@ -434,6 +447,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
         correlationId: 'c-a',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'alice@smb.com',
       },
       fx.events,
       fx.entities,
@@ -520,6 +534,7 @@ describe('password.feature: Password complexity rejected at set-time', () => {
         correlationId: 'c2',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'alice@smb.com',
       },
       fx.events,
       fx.entities,
@@ -585,6 +600,7 @@ describe('magic-link.feature: First-admin bootstrap (atlasctl)', () => {
         correlationId: 'c-click',
         principalId: null,
         presentedToken: issued.plaintextToken,
+        acceptedEmail: 'admin@scribe.com',
         primaryIdpSubject: 'sub-from-platform-oidc',
       },
       fx.events,

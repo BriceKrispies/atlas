@@ -28,14 +28,16 @@ failed" / "connection refused" head-scratching during dev.
 | **5180** | — | `apps/sandbox` Vite dev | (sandbox config) | (positional `--port`) |
 | **5182** | — | `apps/sim` Vite dev (BDD) | `playwright.bdd.config.ts` | (positional `--port`) |
 | **15433** | 5432 | Postgres (control plane) | `infra/compose/compose.control-plane.yml` | `POSTGRES_PORT` / `DB_PORT` |
-| **8000** | 8000 | `apps/control-plane` (legacy Rust) | `apps/control-plane/Cargo.toml` | — |
 | **8081** | 8080 | Keycloak admin | `infra/compose/compose.keycloak.yml` | (in compose) |
 | **3001** | 3000 | Grafana | `infra/compose/compose.observability.yml` | (in compose) |
 | **9090** | 9090 | Prometheus | `infra/compose/compose.observability.yml` | (in compose) |
 | **3100** | 3100 | Loki | `infra/compose/compose.observability.yml` | (in compose) |
-| **8080** | 8080 | Dozzle log viewer (itest only) | `infra/compose/docker-compose.itest.yml` | (in compose) |
-| **9101** | 9101 | Workers Prometheus metrics | `apps/control-plane` worker config | — |
 | **5050** | 80 | pgAdmin (control plane stack) | `infra/compose/compose.control-plane.yml` | — |
+
+> The legacy Rust `apps/control-plane` (host port 8000), the Workers
+> Prometheus exporter (9101), and the Dozzle log viewer (8080) were tied
+> to the deleted Rust prototype. Their rows are gone — re-add only if a
+> TS replacement claims those ports.
 
 ## Adding a new service
 

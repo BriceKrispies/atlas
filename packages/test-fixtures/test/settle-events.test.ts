@@ -43,6 +43,16 @@ function fakeStore(events: EventEnvelope[]): EventStore {
     async getEvent(eventId: string): Promise<EventEnvelope | null> {
       return events.find((e) => e.eventId === eventId) ?? null;
     },
+    async findByIdempotencyKey(
+      tenantId: string,
+      idempotencyKey: string,
+    ): Promise<EventEnvelope | null> {
+      return (
+        events.find(
+          (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
+        ) ?? null
+      );
+    },
     async readEvents(): Promise<EventEnvelope[]> {
       return events;
     },

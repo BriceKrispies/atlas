@@ -52,7 +52,7 @@ adapter packages directly — apps wire concrete adapters at boot.
 - **One file per port.** Each port gets its own `<port>.ts` with a single export.
 - **Tests colocated.** Per-adapter tests live in `test/` and pull contract suites from `@atlas/contract-tests`. Both `node` and `idb` should run the same tests for any port they share.
 - **No cross-adapter imports.** Adapters never import each other. They depend on `@atlas/ports`, `@atlas/platform-core`, `@atlas/schemas`.
-- **Lockstep migrations.** Postgres SQL in `node/src/migrations/` mirrors the legacy Rust migrations. When a column moves, both sides must update or the parity tests will diverge.
+- **Lockstep migrations.** Postgres SQL in `node/src/migrations/` is split into `control-plane/` and `tenant/` runs. When a schema change lands, the matching IndexedDB schema in `idb/src/db.ts` must move too, or the parity tests will diverge.
 
 ## Consumers
 

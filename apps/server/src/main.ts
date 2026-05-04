@@ -24,7 +24,8 @@ import { authzRoutes } from './routes/authz.ts';
 import { contentPagesRoutes } from './routes/content-pages.ts';
 import { debugRoutes } from './routes/debug.ts';
 import { eventsRoutes } from './routes/events.ts';
-import { identityRoutes } from './routes/identity.ts';
+import { identityAuthedRoutes, identityRoutes } from './routes/identity.ts';
+import { oauthRoutes } from './routes/oauth.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -40,6 +41,9 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // user has no JWT yet — that's exactly what they're getting by
   // accepting the invite.
   app.route('/', identityRoutes(state));
+  // OAuth routes are also public — auth lives in client_id +
+  // client_secret on the request body (RFC 6749).
+  app.route('/', oauthRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();
@@ -49,6 +53,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', authzRoutes(state));
   authed.route('/', contentPagesRoutes(state));
   authed.route('/', eventsRoutes(state));
+  authed.route('/', identityAuthedRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes(state));
   }

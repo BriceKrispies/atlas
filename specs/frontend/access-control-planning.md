@@ -19,8 +19,9 @@ the engine actually decides.
 | `specs/crosscut/authz.md` | Implemented engine: PolicyEvaluationContext, evaluation flow, error model, future Cedar migration |
 | `specs/crosscut/identity.md` | User entity, Principal vs User, lifecycle |
 | `specs/schemas/identity.md` | Permission, Role, RolePermission, UserRole, UserProfile entities |
-| `crates/core/src/policy.rs` | Policy engine implementation |
-| `crates/ingress/src/authz.rs` | Enforcement point — IntentAuthzRequest extraction |
+| `modules/authz/src/` | Policy CRUD module + Cedar bundle integration |
+| `adapters/policy-cedar/src/` | Cedar policy engine adapter |
+| `packages/ingress/src/submit-intent.ts` | Enforcement point (authz block at lines 186-306) |
 
 ### The three layers
 

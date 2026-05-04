@@ -1,506 +1,308 @@
 # SYSTEM_MAP.md
 
-> This document helps AI agents quickly understand the shape of the Atlas repository and find things.
-> All claims are traceable to concrete files/paths. If something couldn't be verified, it's marked UNKNOWN.
+> Compact deep-dive guide for AI agents. Every claim cites a real file or
+> directory in the current TypeScript codebase. The Rust prototype was
+> deleted on 2026-05-04 — anything mentioning `crates/`, `cargo`, `axum`,
+> or `wasmtime` is stale and should be ignored.
 
 ---
 
 ## A. One-Screen Overview
 
-**What this repo is**: A multi-tenant CMS platform implementing hexagonal architecture with CQRS, event sourcing, and ABAC authorization. The system is specification-first: specs are the source of truth, code is secondary.
+**What this repo is.** Multi-tenant CMS + workflow platform built on a
+hexagonal (ports/adapters) architecture with CQRS and event-sourced
+projections. Code is TypeScript end-to-end (Node + browser). Specs are the
+source of truth; see `specs/CLAUDE.md`.
 
-**How to get it running locally**:
+**Get it running locally.**
 ```bash
-# Build all crates
-make build
-
-# Start database (requires docker or podman)
-make db-up && make db-migrate && make db-seed
-
-# Run ingress service (with database)
-CONTROL_PLANE_ENABLED=true TENANT_ID=tenant-001 make run-ingress
-
-# Run ingress service (in-memory mode, no database)
-make run-ingress
-
-# Run workers
-make run-workers
-
-# Run tests
-make test
-
-# Validate specs/fixtures
-make spec-check
+pnpm install
+make db-up                       # Postgres on host port 15433 (Podman)
+pnpm --filter @atlas/server dev  # Hono server on :3000
+pnpm dev                         # Admin shell (Vite)
+pnpm test                        # Unit tests
+pnpm bdd                         # Playwright + Gherkin
+make spec-check                  # Spec/fixture validation
 ```
 
-**Evidence**:
-- `README.md:1-3` (description)
-- `README.md:274-307` (quick start commands)
-- `Makefile:61-84` (build/run targets)
+Evidence: `package.json`, `Makefile`, `apps/server/package.json`.
 
 ---
 
-## B. Workspace / Top-Level Layout
+## B. Workspace Layout
 
 ```
 atlas/
-├── crates/                    # Rust workspace members (core libraries + binaries)
-│   ├── core/                  # Pure domain logic, types, policy evaluation
-│   ├── runtime/               # Port traits (hexagonal architecture abstractions)
-│   ├── adapters/              # Concrete implementations (in-memory, postgres)
-│   ├── ingress/               # HTTP ingress binary (single chokepoint)
-│   ├── workers/               # Background job processor binary
-│   ├── wasm_runtime/          # WASM plugin executor (zero-authority sandbox)
-│   ├── atlas_config/          # Environment configuration (AtlasEnv, strict/dev modes)
-│   ├── spec_validate/         # Fixture validation CLI
-│   ├── atlasctl/              # Operator CLI client
-│   ├── control_plane_db/      # Database migrations and seeds
-│   ├── diagnostics/           # Logging, tracing, metrics setup
-│   └── atlas-compiler/        # EMPTY/STUB - future use
-├── plugins/
-│   └── demo-transform/        # Demo WASM plugin (no_std, emits render tree IR)
+├── adapters/           Port implementations
+│   ├── idb/            Browser IndexedDB
+│   ├── node-postgres/  Server Postgres
+│   ├── policy-cedar/   Cedar policy engine adapter
+│   └── policy-stub/    Allow-all stub for tests/dev
 ├── apps/
-│   └── control-plane/         # Control plane HTTP API service
-├── specs/                     # Specifications (source of truth)
-│   ├── crosscut/              # Cross-cutting concerns (authn, authz, events, etc.)
-│   ├── modules/               # Module specifications (8 modules)
-│   ├── schemas/               # Conceptual data schemas + JSON contract schemas
-│   └── fixtures/              # Golden examples (validatable)
-├── infra/
-│   ├── compose/               # Docker/Podman compose files
-│   ├── docker/                # Dockerfiles
-│   ├── k8s/                   # EMPTY - placeholder for K8s manifests
-│   └── kafka/                 # EMPTY - placeholder for Kafka config
-├── scripts/                   # Shell scripts for lifecycle management
+│   ├── admin/          Admin shell (Vite + AtlasElement)
+│   ├── authoring/      Authoring shell
+│   ├── sandbox/        Component sandbox / playground
+│   ├── server/         Hono HTTP server (sole HTTP boundary, I1)
+│   └── projection-worker/  Async projection worker
+├── modules/            Pure domain logic (no I/O imports)
+│   ├── authz/          Policy CRUD + Cedar bundle integration
+│   ├── catalog/        Taxonomies / families / variants
+│   ├── content-pages/  Page CRUD + render-tree projection
+│   └── identity/       Users / sessions / API keys / OAuth
+├── packages/           Shared infra
+│   ├── core/           AtlasElement, signals, html template
+│   ├── design/         Component library
+│   ├── widgets/        Higher-order widgets
+│   ├── ingress/        Submit-intent pipeline (the I1 chokepoint logic)
+│   ├── platform-core/  EventEnvelope, IntentEnvelope, common types
+│   └── schemas/        JSON Schema contracts
+├── ports/              @atlas/ports — port interfaces only
+├── specs/              RFC-style specs (source of truth)
 ├── tests/
-│   └── blackbox/              # Black-box integration tests (35+ tests, 8 suites)
-├── tools/
-│   └── cli/                   # Development scaffolding CLI (`atlas` command)
-├── Cargo.toml                 # Workspace definition
-├── Makefile                   # Build, test, infra automation
-└── README.md                  # Main documentation entry point
+│   ├── bdd/            Playwright + Gherkin features
+│   └── parity/         Historical (Rust↔TS parity, deletion candidate)
+└── infra/              Compose files for Postgres dev stack
 ```
-
-**Evidence**:
-- `Cargo.toml:1-19` (workspace members)
-- `README.md:32-43` (workspace structure)
-- Directory listing via `find . -maxdepth 2 -type d`
 
 ---
 
 ## C. Architecture Landmarks
 
-### Core Invariants / Architecture Documentation
+### Source-of-truth docs
 
-| Document | Location | Purpose |
-|----------|----------|---------|
-| Architecture spec | `specs/architecture.md` | Hexagonal, event-driven, policy-first design |
-| Normative requirements | `specs/normative_requirements.md` | Compiler validation rules (RFC 2119) |
-| Surface inventory | `specs/spec_surface_inventory.md` | Descriptive inventory of all artifacts |
-| Error taxonomy | `specs/error_taxonomy.json` | Canonical error codes (25+ codes) |
-| Glossary | `specs/glossary.md` | Core terminology definitions |
+| Doc | Purpose |
+|---|---|
+| `specs/architecture.md` | Principles P1-P6, Invariants I1-I12 |
+| `specs/lifecycle.md` | 5-min end-to-end request trace (WRITE + READ paths) |
+| `specs/normative_requirements.md` | RFC 2119 compliance rules |
+| `specs/LEXICON.md` | Canonical vocabulary |
+| `specs/glossary.md` | Concept definitions |
+| `CLAUDE.md` (root) | Agent routing — which CLAUDE.md to read for which task |
 
-### Specs / Schemas / Fixtures
+### Code landmarks
 
-| Type | Location | Count |
-|------|----------|-------|
-| JSON Schema contracts | `specs/schemas/contracts/*.schema.json` | 10 schemas (incl. render_tree) |
-| Conceptual schemas | `specs/schemas/*.md` | 8 files |
-| Fixtures (golden examples) | `specs/fixtures/*.json` | 15 files |
-| Module specifications | `specs/modules/*/` | 8 modules |
-| Cross-cutting specs | `specs/crosscut/*.md` | 8 files |
-
-### Runtime / Ingress / Workers / Adapters
-
-| Component | Location | Entry Point |
-|-----------|----------|-------------|
-| Core domain types | `crates/core/` | `src/lib.rs` |
-| Port traits | `crates/runtime/src/ports.rs` | EventStore, Cache, SearchEngine, etc. |
-| In-memory adapters | `crates/adapters/src/memory.rs` | InMemoryEventStore, InMemoryCache |
-| Postgres adapter | `crates/adapters/src/postgres_registry.rs` | PostgresControlPlaneRegistry |
-| WASM plugin runtime | `crates/wasm_runtime/src/lib.rs` | Zero-authority sandbox (wasmtime) |
-| Render tree validator | `crates/wasm_runtime/src/render_tree.rs` | V1–V17 validation rules |
-| Ingress HTTP | `crates/ingress/src/main.rs` | Routes: `/api/v1/intents`, `/api/v1/pages/:id/render`, `/`, `/metrics` |
-| In-process worker | `crates/ingress/src/worker.rs` | Event loop: projections + WASM execution |
-| Workers | `crates/workers/src/main.rs` | Background event processor (standalone binary) |
-| Render tree viewer | `crates/ingress/static/viewer.html` | Frontend: renders render tree IR to DOM |
-| Control Plane API | `apps/control-plane/src/main.rs` | Admin routes: `/healthz`, `/admin/*` |
-
-**Evidence**:
-- `specs/` directory structure
-- `crates/*/Cargo.toml` files
-- `crates/ingress/src/main.rs:1-100`
-- `crates/runtime/src/ports.rs`
+| Component | Location |
+|---|---|
+| HTTP entry | `apps/server/src/index.ts` |
+| Submit-intent pipeline | `packages/ingress/src/submit-intent.ts` |
+| Principal middleware (cookie/bearer) | `apps/server/src/middleware/principal.ts` |
+| Module-state composition | `apps/server/src/middleware/state.ts` |
+| Event envelope / intent envelope types | `packages/platform-core/src/` |
+| Port interfaces | `ports/src/` |
+| Postgres adapters | `adapters/node-postgres/src/` |
+| Cedar policy adapter | `adapters/policy-cedar/src/` |
+| Async projection worker | `apps/projection-worker/src/tenant-loop.ts` |
 
 ---
 
-## D. Runtime Request Flow
+## D. Runtime Request Flow (WRITE path)
 
-Trace of a typical request from edge to domain (based on `crates/ingress/src/main.rs`):
+For the canonical full trace see `specs/lifecycle.md`. Compact version:
 
 ```
-1. HTTP Entry (POST /api/v1/intents)
-   └── crates/ingress/src/main.rs:handle_intent()
+1. POST /api/v1/intents
+   └── apps/server/src/index.ts (Hono routes)
 
-2. Authentication (authn_middleware)
-   └── crates/ingress/src/authn.rs
-   └── Extracts Principal from:
-       - X-Debug-Principal header (test mode only, feature-gated)
-       - OIDC JWT token (production)
-   └── Principal: { id, principal_type, tenant_id, claims }
+2. Principal middleware
+   └── apps/server/src/middleware/principal.ts
+   └── Resolves Principal from:
+       - Session cookie  (validates AuthSession entity, status, expiries)
+       - API-key bearer  (atlas_<keyId>_<secret>, parseApiKeyBearer)
+       - OAuth bearer    (OAuthAccessToken entity)
+       - X-Debug-Principal header (TEST_AUTH_ENABLED only)
 
-3. Tenant Validation (validate_tenant_match)
-   └── crates/ingress/src/authz.rs
-   └── Ensures request tenant_id matches Principal tenant_id
+3. Submit-intent pipeline
+   └── packages/ingress/src/submit-intent.ts
+   ├── 4. Idempotency-key non-empty check  (I3 — full lookup landing in A2-hardening)
+   ├── 5. Schema validation (action payload)
+   ├── 6. Authorization (PolicyEngine.evaluate)  (I2, I4)
+   ├── 7. Tenant-match assertion  (I9 prep)
+   └── 8. Handler dispatch
+        └── modules/<x>/src/handlers/registry.ts
 
-4. Payload Validation
-   └── Extracts actionId, resourceType from payload
-   └── Validates actionId format: Module.Verb
+4. Handler
+   └── modules/<x>/src/handlers/<action>.ts
+   └── Validates payload, reads ports, emits primary EventEnvelope (+ optional follow-ups)
 
-5. Authorization (authorize)
-   └── crates/ingress/src/authz.rs
-   └── Loads policies from RuntimeConfig
-   └── Evaluates via PolicyEngine (deny-overrides-allow)
-   └── Returns 403 on deny
+5. Event-store append
+   └── ports/src/event-store.ts → adapters/node-postgres/src/event-store.ts
 
-6. Idempotency Check
-   └── crates/adapters/src/memory.rs:InMemoryEventStore
-   └── Checks idempotency_key against seen keys
-   └── Returns existing event_id if duplicate
+6. Dispatcher chain (inline by default — WORKER_MODE)
+   └── apps/server/src/middleware/state.ts
+   ├── module dispatchers   (modules/<x>/src/dispatch.ts) rebuild projections
+   ├── cacheTagDispatcher   purges by cacheInvalidationTags  (I10)
+   └── SSE broadcast        notifies live frontends
 
-7. Event Store Append
-   └── crates/runtime/src/ports.rs:EventStore::append()
-   └── Stores EventEnvelope
-
-8. Response (202 Accepted)
-   └── Returns { event_id, tenant_id }
+7. 202 Accepted
+   └── { eventId, tenantId, correlationId }
 ```
 
-**Workers Processing** (in-process, `crates/ingress/src/worker.rs`):
-```
-1. Poll EventStore for new events (every 2s)
-2. Extract page data from event payload (pageId, title, slug)
-3. Build RenderPageModel projection (tenant-scoped key)
-4. Execute WASM plugin (if pluginRef present) → render tree IR
-5. Validate render tree (V1–V17) → store in ProjectionStore
-6. On WASM failure: store { "renderError": "..." }
-7. Pages without pluginRef get default render tree (heading + paragraph)
-```
-
-**Render Tree Query** (`GET /api/v1/pages/:page_id/render`):
-```
-1. Authenticate principal (authn middleware)
-2. Extract tenant_id from principal
-3. Look up RenderTree:{tenant_id}:{page_id} in ProjectionStore
-4. Return JSON render tree (200) or NOT_FOUND (404)
-```
-
-**Standalone Workers** (background, `crates/workers/src/main.rs`):
-```
-1. Poll EventStore for new events
-2. Extract cache_invalidation_tags from event payload
-3. Invalidate cache by tags (I10)
-4. TODO: Trigger analytics, jobs
-```
-
-**Evidence**:
-- `crates/ingress/src/main.rs` (full file)
-- `crates/ingress/src/authn.rs`
-- `crates/ingress/src/authz.rs`
-- `crates/workers/src/main.rs`
+**Async mode.** Set `WORKER_MODE=async`. The handler returns 202; events
+flow into `apps/projection-worker/src/tenant-loop.ts`, which runs the
+identical dispatcher chain. Composition must stay in sync between the two
+locations.
 
 ---
 
-## E. Data & Storage
+## E. Read Path
 
-### Databases Used
-
-| Database | Purpose | Configuration |
-|----------|---------|---------------|
-| PostgreSQL 16 | Control plane registry | `infra/compose/compose.control-plane.yml` |
-| In-memory | Development/testing fallback | `CONTROL_PLANE_ENABLED=false` |
-
-### Control Plane Schema
-
-Tables (inferred from `crates/control_plane_db/src/bin/seed.rs`):
-- `control_plane._migrations` - Migration tracking
-- `control_plane.tenants` - Tenant records
-- `control_plane.modules` - Module registry
-- `control_plane.module_versions` - Versioned manifests
-- `control_plane.tenant_modules` - Tenant-module enablement
-- `control_plane.schema_registry` - JSON schema storage
-- `control_plane.policies` - Policy bundles
-
-### Migrations Location
-
-| Type | Location | Invocation |
-|------|----------|------------|
-| SQL migrations | `crates/control_plane_db/migrations/*.sql` | `make db-migrate` |
-| Migration runner | `crates/control_plane_db/src/bin/migrate.rs` | Binary: `migrate` |
-| Seed script | `crates/control_plane_db/src/bin/seed.rs` | `make db-seed` |
-
-### Environment Variables
-
-```bash
-CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:5432/control_plane
-CONTROL_PLANE_ENABLED=true|false
-TENANT_ID=tenant-001
+```
+1. GET /api/v1/<resource>   (apps/server/src/routes/*.ts)
+2. Principal middleware     (same as write)
+3. Tenant-scoped query      (modules/<x>/src/queries.ts)
+4. Cache lookup             (port: ports/src/cache.ts)
+5. Projection store read    (port: ports/src/projection-store.ts)
+6. JSON response
 ```
 
-**Evidence**:
-- `infra/compose/compose.control-plane.yml`
-- `crates/control_plane_db/src/lib.rs`
-- `crates/control_plane_db/src/bin/seed.rs`
-- `README.md:213-229`
+Cache keys MUST include `tenantId` (I9). Cache is invalidated by tag, not
+TTL (I10) — handlers are responsible for handwritten
+`cacheInvalidationTags` on every event they emit.
 
 ---
 
-## F. Modules / Bounded Contexts
+## F. Identity Module — Detailed Map
 
-### Feature Modules (from `specs/modules/`)
+The largest active surface today. Implemented over phases A1 → A2.9.
 
-| Module | Purpose | Spec Location |
-|--------|---------|---------------|
-| audit | Intent history & activity tracking | `specs/modules/audit/` |
-| badges | Badge awards system | `specs/modules/badges/` |
-| comms | Communications & messaging | `specs/modules/comms/` |
-| content | Content & media library | `specs/modules/content/` |
-| import | Spreadsheet upload & validation | `specs/modules/import/` |
-| org | Organization & business units | `specs/modules/org/` |
-| points | Point system & rewards | `specs/modules/points/` |
-| tokens | Token registry & evaluation | `specs/modules/tokens/` |
+### Entities (L3 substrate)
+- `User` — `modules/identity/src/entities/user.ts`
+- `Membership` — `modules/identity/src/entities/membership.ts`
+- `InviteToken` — `modules/identity/src/entities/invite-token.ts`
+- `AuthSession` — `modules/identity/src/entities/auth-session.ts`
+- `ApiKey` — `modules/identity/src/entities/api-key.ts`
+- `ServicePrincipal` — `modules/identity/src/entities/service-principal.ts`
+- `OAuthAccessToken` — `modules/identity/src/entities/oauth-token.ts`
 
-Each module directory contains:
-- `README.md` - Overview
-- `surfaces.md` - UI surfaces
-- `events.md` - Event definitions
+### Handlers (registered in `modules/identity/src/handlers/registry.ts`)
 
-### Module Manifest Schema
+| Action | Handler |
+|---|---|
+| `Identity.User.Create` | `user-create.ts` |
+| `Identity.Membership.Create` | `membership-create.ts` |
+| `Identity.Invite.Issue` | `invite-issue.ts` |
+| `Identity.Invite.Accept` | `invite-accept.ts` |
+| `Identity.User.SetPassword` | `password-set.ts` |
+| `Identity.Login.Password` | `password-login.ts` |
+| `Identity.AuthSession.Issue` | `session-issue.ts` |
+| `Identity.AuthSession.Refresh` | `session-refresh.ts` |
+| `Identity.AuthSession.Revoke` | `session-revoke.ts` |
+| `Identity.AuthSession.RevokeAllForUser` | `session-revoke.ts` |
+| `Identity.ApiKey.Create / Rotate / Revoke` | `api-key-*.ts` |
+| `Identity.ServicePrincipal.Create / SetScopes / Disable` | `service-principal.ts` |
 
-Modules declare capabilities via manifest (`specs/schemas/contracts/module_manifest.schema.json`):
-- `actions` - Actions module can handle
-- `resources` - Resources module owns
-- `events.publishes` - Events module emits
-- `events.consumes` - Events module handles
-- `projections` - Read models maintained
-- `migrations` - Database migrations
-- `jobs` - Background jobs
-- `uiRoutes` - Frontend routes
-- `cacheArtifacts` - Cached data
+### Out-of-band (RFC 6749) routes
 
-Example manifest: `specs/modules/content-pages.json`
+OAuth issue/revoke run on dedicated `/oauth/token` and `/oauth/revoke`
+routes (wire shape is RFC 6749, not Atlas intent envelope). Direct exports
+in `modules/identity/src/index.ts`: `oauthIssueToken`, `oauthRevokeToken`.
 
-**Evidence**:
-- `specs/modules/*/` directory structure
-- `specs/schemas/contracts/module_manifest.schema.json`
-- `specs/modules/content-pages.json`
+### Crypto helpers
+- `crypto/password.ts` — Argon2id (`hashPassword`, `verifyPassword`, `validatePasswordComplexity`)
+- `crypto/secret-hash.ts` — `generateSecret` (256-bit), `hashSecret` (SHA-256), `lookupOf`, `constantTimeEqual`
 
----
-
-## G. Testing & Validation
-
-### Black-Box Integration Tests
-
-| Location | `tests/blackbox/` |
-|----------|-------------------|
-| Test suites | `tests/blackbox/suites/*.rs` |
-| Test harness | `tests/blackbox/harness/` |
-| Configuration | `tests/blackbox/.env.local` |
-
-**Test Suites (35+ tests total)**:
-
-| Suite | Tests | Validates |
-|-------|-------|-----------|
-| health_test.rs | 3 | Service availability, metrics endpoint |
-| intent_submission_test.rs | 5 | Core API functionality |
-| idempotency_test.rs | 4 | Invariant I3 (idempotency) |
-| authorization_test.rs | 3 | Invariant I2 (policy-based access) |
-| authentication_test.rs | 8 | OIDC/JWT validation |
-| observability_test.rs | 5 | Metrics instrumentation |
-| closed_loop_test.rs | 4 | Intent → projection → query pipeline |
-| render_tree_test.rs | 1 | WASM render tree end-to-end |
-
-**Commands**:
-```bash
-# Start integration test stack
-make itest-up
-
-# Run all tests
-make itest-test
-
-# Full workflow
-make itest
-
-# Stop stack
-make itest-down
-```
-
-### Fixture/Spec Validation
-
-| Tool | `crates/spec_validate/` |
-|------|------------------------|
-| Binary | `spec_validate` |
-| Command | `make spec-check` or `cargo run -p atlas-platform-spec-validate` |
-
-**Fixture Naming Convention**: `<kind>__<expect>__<name>.json`
-- Kinds: `event_envelope`, `module_manifest`, `search_documents`, `analytics_events`
-- Expectations: `valid`, `invalid`
-
-**Validatable Fixtures**:
-- `event_envelope__valid__canonical.json`
-- `event_envelope__invalid__missing_idempotency.json`
-- `module_manifest__valid__content_pages.json`
-- `search_documents__valid__sample.json`
-- `analytics_events__valid__sample.json`
-
-**Evidence**:
-- `tests/blackbox/README.md`
-- `tests/blackbox/suites/*.rs`
-- `crates/spec_validate/src/main.rs`
-- `specs/fixtures/README.md`
+### Test surfaces
+- `acceptance.test.ts` — A1 acceptance
+- `a2-acceptance.test.ts` — A2 acceptance
+- `password.test.ts` — Argon2id + lockout
+- `session.test.ts` — issue/refresh/revoke + rotation + reuse-detection
+- `handlers.test.ts` — registry-level dispatch
+- `role-packs.test.ts` — Cedar role-pack bundle
 
 ---
 
-## H. Operations & Tooling
+## G. Data & Storage
 
-### Makefile Targets
+| Store | Adapter | Notes |
+|---|---|---|
+| Event store | `adapters/node-postgres/src/event-store.ts` | Append-only, tenant-scoped |
+| Entity store (L3 substrate) | `adapters/node-postgres/src/entity-store.ts` | Document + edges |
+| Projection store | `adapters/node-postgres/src/projection-store.ts` | Read models |
+| Cache | `adapters/node-postgres/src/cache.ts` (or in-memory in dev) | Tag-based purge |
+| Search | TBD (port defined in `ports/src/search-engine.ts`) | |
+
+**Default Postgres URL** (server):
+`CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane`.
+Host port `15433` is intentional — avoids collisions with native Postgres
+on dev machines. See `PORTS.md`.
+
+---
+
+## H. Testing
+
+| Type | Command | Location |
+|---|---|---|
+| Unit | `pnpm test` | `modules/<x>/test/`, `packages/<x>/test/` |
+| Typecheck | `pnpm typecheck` | repo-wide |
+| Lint | `pnpm lint` | repo-wide |
+| BDD (Playwright + Gherkin) | `pnpm bdd` | `tests/bdd/features/` |
+| E2E | `pnpm test:e2e` | Playwright |
+| Spec/fixture validation | `make spec-check` | `specs/fixtures/` |
+
+`tests/parity/` (historical Rust↔TS parity) is a deletion candidate.
+
+---
+
+## I. Operations & Tooling
+
+### Make targets
 
 | Category | Targets |
-|----------|---------|
-| Build | `build`, `test`, `fmt`, `lint`, `clean` |
-| Services | `run-ingress`, `run-workers`, `spec-check` |
-| Database | `db-up`, `db-down`, `db-reset`, `db-migrate`, `db-seed`, `db-status`, `db-logs` |
-| Observability | `obs-up`, `obs-down`, `obs-status`, `obs-logs`, `obs-reset`, `obs-open` |
-| Integration Tests | `itest-up`, `itest-down`, `itest-restart`, `itest-logs`, `itest-status`, `itest-clean`, `itest-reset`, `itest-test`, `itest` |
+|---|---|
+| Database | `db-up`, `db-down`, `db-migrate`, `db-seed`, `db-reset` |
+| Specs | `spec-check` |
 
-### Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/itest-lifecycle.sh` | Integration test stack lifecycle |
-| `scripts/db-lifecycle.sh` | Control plane database lifecycle |
-| `scripts/wait-for-healthy.sh` | Wait for container health |
-| `scripts/test-authn.sh` | Authentication test runner |
-| `scripts/test-authz.sh` | Authorization test runner |
-| `scripts/test-authn.ps1` | PowerShell authn tests |
-| `scripts/test-authz.ps1` | PowerShell authz tests |
-
-### CLI Tools
-
-| Tool | Location | Purpose |
-|------|----------|---------|
-| `atlasctl` | `crates/atlasctl/` | Operator CLI for runtime operations |
-| `atlas` | `tools/cli/` | Development scaffolding CLI |
-
-**atlasctl commands**:
-- `status` - Check ingress health
-- `invoke <action>` - Submit intent
-- `actions list` - List actions (stub)
-- `trace <id>` - Trace by correlation ID (stub)
-
-**atlas commands** (dev scaffolding):
-- `scaffold` - Scaffold new service
-- `validate` - Validate manifests
-- `gen` - Generate infrastructure
-- `run` / `run-all` - Run services
-- `dev` - Manage dev environment
-- `module` - Manage modules
-
-### Docker Compose Files
+### Compose files
 
 | File | Purpose |
-|------|---------|
-| `infra/compose/compose.dev.yml` | Local dev with Keycloak |
-| `infra/compose/compose.keycloak.yml` | Standalone Keycloak |
-| `infra/compose/compose.control-plane.yml` | Control plane database |
-| `infra/compose/compose.observability.yml` | Prometheus, Grafana, Loki |
-| `infra/compose/docker-compose.itest.yml` | Full integration test stack |
+|---|---|
+| `infra/compose/compose.control-plane.yml` | Postgres + Keycloak dev stack |
 
-### Dockerfiles
+### CLIs
 
-| File | Builds |
-|------|--------|
-| `infra/docker/Dockerfile.ingress` | Ingress service image |
-| `infra/docker/Dockerfile.workers` | Workers service image |
-| `apps/control-plane/Dockerfile` | Control plane API image |
-
-**Evidence**:
-- `Makefile:1-241`
-- `scripts/*.sh`
-- `crates/atlasctl/src/main.rs`
-- `tools/cli/src/main.rs`
-- `infra/compose/*.yml`
-- `infra/docker/Dockerfile.*`
+| Tool | Status |
+|---|---|
+| `atlasctl` (operator CLI) | Rust prototype deleted; TS rewrite TBD |
 
 ---
 
-## I. "Where to Change X" Quick Index
+## J. "Where to Change X" Quick Index
 
-| Intent | Likely Location(s) |
-|--------|-------------------|
-| Add new action | 1. Define in module manifest (`specs/modules/*/`)<br>2. Add handler in domain crate<br>3. Register in action registry |
-| Add new schema/fixture | 1. Schema: `specs/schemas/contracts/*.schema.json`<br>2. Fixture: `specs/fixtures/<kind>__<expect>__<name>.json` |
-| Change authz policy semantics | 1. Policy engine: `crates/core/src/policy.rs`<br>2. Policy schema: `specs/schemas/contracts/policy_ast.schema.json` |
-| Add a projection | 1. Declare in module manifest (`projections` array)<br>2. Implement in workers (`crates/workers/`) |
-| Change ingress validation | 1. Handler: `crates/ingress/src/main.rs:handle_intent()`<br>2. Authn: `crates/ingress/src/authn.rs`<br>3. Authz: `crates/ingress/src/authz.rs` |
-| Add new event type | 1. Define in `crates/core/src/types.rs`<br>2. Add to module manifest events<br>3. Add fixture: `specs/fixtures/event_envelope__valid__*.json` |
-| Add new port/adapter | 1. Port trait: `crates/runtime/src/ports.rs`<br>2. In-memory: `crates/adapters/src/memory.rs`<br>3. Postgres: `crates/adapters/src/postgres_registry.rs` |
-| Add new HTTP endpoint | 1. Ingress: `crates/ingress/src/main.rs` (Router)<br>2. Control plane: `apps/control-plane/src/main.rs` |
-| Add/modify WASM plugin | 1. Plugin source: `plugins/<name>/src/lib.rs`<br>2. Build: `cargo build --manifest-path plugins/<name>/Cargo.toml --target wasm32-unknown-unknown --release`<br>3. Copy `.wasm` to plugin dir |
-| Add render tree node type | 1. Validator: `crates/wasm_runtime/src/render_tree.rs` (add to type arrays + props)<br>2. Viewer: `crates/ingress/static/viewer.html` (add renderer) |
-| Add database migration | 1. SQL file: `crates/control_plane_db/migrations/`<br>2. Run: `make db-migrate` |
-| Add integration test | 1. New suite: `tests/blackbox/suites/*_test.rs`<br>2. Harness helpers: `tests/blackbox/harness/`<br>3. Register in `tests/blackbox/Cargo.toml` |
-| Add cross-cutting spec | `specs/crosscut/<concern>.md` |
-| Add new module spec | 1. Dir: `specs/modules/<module>/`<br>2. Files: README.md, surfaces.md, events.md |
-
-**Evidence**:
-- All source files inspected throughout exploration
+| Intent | Location |
+|---|---|
+| Add new intent action | 1. Handler in `modules/<x>/src/handlers/<action>.ts`<br>2. Register in `modules/<x>/src/handlers/registry.ts`<br>3. Schema in `packages/schemas/` |
+| Add new schema | `packages/schemas/src/` (Zod) + `specs/schemas/contracts/<name>.schema.json` if it's spec-tracked |
+| Change authz policy semantics | `modules/authz/src/policy/evaluate.ts`, `adapters/policy-cedar/src/` |
+| Add a projection | New file under `modules/<x>/src/projections/`; wire in `modules/<x>/src/dispatch.ts` |
+| Change ingress validation | `packages/ingress/src/submit-intent.ts` |
+| Add new event type | `packages/platform-core/src/event-envelope.ts` types + module-level emit site |
+| Add new port | Trait in `ports/src/<name>.ts`, in-memory in test fixtures, real impl in `adapters/<name>/` |
+| Add new HTTP route | `apps/server/src/routes/<name>.ts` + register in `apps/server/src/index.ts` |
+| Add component | New file in `packages/design/src/components/` extending `AtlasElement` |
 
 ---
 
-## J. Open Questions / UNKNOWNs
+## K. Invariant → Code Map
 
-| Topic | What Couldn't Be Verified |
-|-------|--------------------------|
-| atlas-compiler | Crate exists but is empty/stub - purpose unknown |
-| Full Postgres adapter | `postgres_registry.rs` implementation details not examined |
-| Condition evaluation | Full policy condition types in `policy.rs` not examined |
-| ActionRegistry | `crates/runtime/src/registry.rs` implementation not examined |
-| Singleflight | `crates/runtime/src/singleflight.rs` implementation not examined |
-| K8s manifests | `infra/k8s/` directory is empty |
-| Kafka config | `infra/kafka/` directory is empty |
-| Tenant databases | Database-per-tenant described in architecture but adapters use single control plane DB |
-| Message bus | Described in architecture but no adapter implementation found |
-| Cedar policies | Cedar policy language mentioned but current implementation uses simpler Policy type |
-| Schema validation at ingress | Test marked `#[ignore]` - not fully implemented |
-| Keycloak realm setup | Required for auth tests but configuration not in repo |
-
-**Evidence**:
-- Gaps identified during exploration of all directories and files
+| Invariant | Where enforced |
+|---|---|
+| I1 single ingress | `apps/server/src/index.ts` is the only HTTP-bound app |
+| I2 authz before exec | `packages/ingress/src/submit-intent.ts:186-306` (before handler dispatch) |
+| I3 idempotency before exec | `packages/ingress/src/submit-intent.ts:170-329` (non-empty check today; full lookup in A2-hardening) |
+| I4 deny-overrides-allow | `modules/authz/src/policy/evaluate.ts`, `adapters/policy-cedar/` |
+| I5 correlation propagation | `IntentHandlerContext.correlationId` threaded through every handler |
+| I7 tenant isolation in search | Search adapter takes `tenantId` in scope |
+| I9 cache key tenant scope | `cacheInvalidationTags` always include `Tenant:${tenantId}` |
+| I10 event-driven invalidation | `cacheTagDispatcher` in `apps/server/src/middleware/state.ts` |
+| I12 rebuildable projections | Each `modules/<x>/src/dispatch.ts` is pure-function over events |
 
 ---
 
-## Appendix: Core Invariants Reference
+## L. Known Gaps
 
-| ID | Invariant | Enforcement Location |
-|----|-----------|---------------------|
-| I1 | Single Ingress Enforcement | `crates/ingress/src/main.rs` |
-| I2 | Authorization Precedes Execution | `crates/ingress/src/authz.rs` |
-| I3 | Idempotency Before Execution | `crates/adapters/src/memory.rs` |
-| I4 | Deny-Overrides-Allow | `crates/core/src/policy.rs` |
-| I5 | Correlation Propagation | Event envelope fields |
-| I6 | Causation Linkage | Event envelope `causationId` |
-| I7 | Tenant Isolation in Search | `crates/runtime/src/ports.rs:SearchEngine` |
-| I8 | Permission-Filtered Search | `crates/runtime/src/ports.rs:SearchEngine` |
-| I9 | Cache Keys Include TenantId | `crates/runtime/src/ports.rs:Cache` |
-| I10 | Event-Driven Cache Invalidation | `crates/workers/src/main.rs`, `crates/ingress/src/worker.rs` |
-| I11 | Deterministic Time Bucketing | `crates/runtime/src/ports.rs:AnalyticsStore` |
-| I12 | Projections Are Rebuildable | `crates/ingress/src/worker.rs` (in-process loop rebuilds from events) |
-
-**Evidence**:
-- `specs/architecture.md:73-277` (invariant definitions)
-- Source code locations as listed
-
----
-
-*Generated from repository exploration. Last updated: 2026-02-10*
+- **Async outbox / message bus.** Inline + per-tenant async loops exist; no Kafka/NATS adapter.
+- **Per-tenant DBs.** Tenancy is a column today, not a schema.
+- **Rate limiting at ingress.** Per-user lockout exists for password-login; no IP/global throttle.
+- **Search engine adapter.** Port defined; no real adapter beyond in-memory.
+- **`atlasctl` CLI.** Rust prototype deleted; TS rewrite TBD.
+- **Identity Phase A3+.** OIDC, magic-link, password reset, MFA, WebAuthn, SAML — see `PROGRESS.md` and `specs/domains/identity/authn.md`.

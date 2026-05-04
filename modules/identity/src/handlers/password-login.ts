@@ -1,10 +1,16 @@
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
-import type { UserDocument } from '../types.ts';
+import type {
+  AuthSessionDocument,
+  SessionPolicy,
+  UserDocument,
+} from '../types.ts';
 import { newEventId } from '../ids.ts';
 import { findUserByEmail } from '../entities/user.ts';
 import { verifyPassword } from '../crypto/password.ts';
+import { hashSecret } from '../crypto/secret-hash.ts';
+import { handleSessionIssue } from './session-issue.ts';
 
 export interface PasswordLoginCommand {
   tenantId: string;
@@ -14,15 +20,44 @@ export interface PasswordLoginCommand {
   attemptUserAgent?: string;
   email: string;
   password: string;
+  /**
+   * Session policy applied when minting an AuthSession on success.
+   * Defaults to `DEFAULT_SESSION_POLICY`. Phase A2.4 (lifetime
+   * middleware) wires the per-tenant resolver in `apps/server`.
+   */
+  sessionPolicy?: SessionPolicy;
+  /**
+   * Set false to skip session creation on the success path — handy
+   * for tests that exercise the password-verify logic in isolation
+   * (Phase A1's tests use this implicitly by ignoring `sessionResult`).
+   * Default true.
+   */
+  issueSession?: boolean;
 }
 
 export interface PasswordLoginResult {
   /** Primary event: LoginSucceeded or LoginRejected. */
   envelope: EventEnvelope;
-  /** Follow events: a UserAccountLocked when the lockout threshold trips. */
+  /**
+   * Follow events. On success: `[UserUpdated, ...evictedSessions,
+   * SessionIssued]`. On rejection: `[UserUpdated]` when the failure
+   * counter advances or the lockout threshold trips.
+   */
   follow: ReadonlyArray<EventEnvelope>;
   /** The User on success (with refreshed lastLoginAt + zero failure count). */
   user: UserDocument | null;
+  /**
+   * Session minted on success. Plaintexts are surfaced ONCE — the route
+   * layer sets the cookie + returns the access token. Undefined on
+   * rejection or when `issueSession=false`.
+   */
+  sessionResult?: {
+    document: AuthSessionDocument;
+    plaintextRefreshToken: string;
+    plaintextAccessToken: string;
+    /** `<sessionId>.<refreshSecret>` — set as the session cookie. */
+    cookiePayload: string;
+  };
 }
 
 /**
@@ -149,8 +184,16 @@ export async function handlePasswordLogin(
       principalId: null,
       userId: user?.userId ?? null,
       cacheInvalidationTags: [`Tenant:${cmd.tenantId}`],
+      // PII reduction: for `unknown_user` rejects (user does not exist
+      // in the tenant), record only a SHA-256 hash of the email instead
+      // of the plaintext. Otherwise an attacker probing emails leaves a
+      // forever-PII trail in the event log for non-customers. For all
+      // other rejects the user does exist, so the email is already
+      // discoverable elsewhere — keep it for audit usefulness.
       payload: {
-        email,
+        ...(rejectReason === 'unknown_user'
+          ? { emailHash: hashSecret(email.toLowerCase().trim()) }
+          : { email }),
         reason: rejectReason,
         ...(cmd.attemptIp !== undefined ? { ip: cmd.attemptIp } : {}),
         ...(cmd.attemptUserAgent !== undefined
@@ -225,5 +268,42 @@ export async function handlePasswordLogin(
   envelope.eventId = stored.eventId;
   envelope.seq = stored.seq;
 
-  return { envelope, follow: [updateEvent], user: updated };
+  // Mint the session AFTER LoginSucceeded lands in the log so the
+  // audit ordering matches the lifecycle: the login is what authorized
+  // the session creation. handleSessionIssue appends its own events;
+  // we append them to our follow list.
+  const issueSession = cmd.issueSession ?? true;
+  if (!issueSession) {
+    return { envelope, follow: [updateEvent], user: updated };
+  }
+
+  const session = await handleSessionIssue(
+    {
+      tenantId: cmd.tenantId,
+      correlationId: cmd.correlationId,
+      // Front-door authentication: the calling principal is the
+      // unauthenticated /login surface, not the user being identified.
+      // `null` opts out of the principal===userId assertion in
+      // handleSessionIssue.
+      principalId: null,
+      userId: updated.userId,
+      ...(cmd.attemptIp !== undefined ? { ip: cmd.attemptIp } : {}),
+      ...(cmd.attemptUserAgent !== undefined ? { userAgent: cmd.attemptUserAgent } : {}),
+      ...(cmd.sessionPolicy !== undefined ? { policy: cmd.sessionPolicy } : {}),
+    },
+    eventStore,
+    entities,
+  );
+
+  return {
+    envelope,
+    follow: [updateEvent, ...session.follow, session.envelope],
+    user: updated,
+    sessionResult: {
+      document: session.document,
+      plaintextRefreshToken: session.plaintextRefreshToken,
+      plaintextAccessToken: session.plaintextAccessToken,
+      cookiePayload: session.cookiePayload,
+    },
+  };
 }

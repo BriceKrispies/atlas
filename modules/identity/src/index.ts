@@ -17,6 +17,10 @@ export {
   newMembershipId,
   newInviteTokenId,
   membershipEntityIdFor,
+  newSessionId,
+  newApiKeyId,
+  newServicePrincipalId,
+  newOAuthTokenId,
 } from './ids.ts';
 
 export type {
@@ -26,7 +30,20 @@ export type {
   MembershipDocument,
   InviteTokenStatus,
   InviteTokenDocument,
+  // Phase A2
+  AuthSessionStatus,
+  AuthSessionDocument,
+  SessionEndReason,
+  ApiKeyStatus,
+  ApiKeyDocument,
+  ServicePrincipalStatus,
+  ServicePrincipalDocument,
+  OAuthAccessTokenStatus,
+  OAuthAccessTokenDocument,
+  SessionPolicy,
 } from './types.ts';
+
+export { DEFAULT_SESSION_POLICY } from './types.ts';
 
 export { IdentityError, codes as identityErrorCodes } from './errors.ts';
 
@@ -69,6 +86,9 @@ export {
 export type {
   IdentityDispatchContext,
   IdentityQueryDeps,
+  IdentityDispatchContextA2,
+  IdentityQueryDepsA2,
+  SessionPolicyResolver,
 } from './entities/contracts.ts';
 
 export { seedIdentityEntityTypes } from './entities/seed.ts';
@@ -105,6 +125,24 @@ export {
   type PasswordLoginResult,
 } from './handlers/password-login.ts';
 export {
+  handleSessionIssue,
+  type SessionIssueCommand,
+  type SessionIssueResult,
+} from './handlers/session-issue.ts';
+export {
+  handleSessionRefresh,
+  type SessionRefreshCommand,
+  type SessionRefreshResult,
+} from './handlers/session-refresh.ts';
+export {
+  handleSessionRevoke,
+  handleSessionRevokeAllForUser,
+  type SessionRevokeCommand,
+  type SessionRevokeResult,
+  type SessionRevokeAllForUserCommand,
+  type SessionRevokeAllForUserResult,
+} from './handlers/session-revoke.ts';
+export {
   identityHandlerEntries,
   identityHandlerRegistry,
 } from './handlers/registry.ts';
@@ -122,7 +160,89 @@ export {
   getMembership,
   listMemberships,
   getInviteToken,
+  getSession,
+  listOwnSessions,
+  findSessionsByAccessTokenLookup,
 } from './queries.ts';
+
+// AuthSession entity-store wrappers — surfaced for routes/middleware
+// that need direct access (e.g. principal middleware bearer-auth).
+export {
+  AUTH_SESSION_ENTITY_TYPE,
+  AUTH_SESSION_LATEST_VERSION,
+  getSessionEntity,
+  putSessionEntity,
+  listActiveSessionsForUser,
+  findSessionsByRefreshLookup,
+  findSessionsByAccessLookup,
+} from './entities/auth-session.ts';
+
+// Phase A2.7-A2.9 — service credentials.
+export {
+  API_KEY_ENTITY_TYPE,
+  API_KEY_LATEST_VERSION,
+  getApiKeyEntity,
+  putApiKeyEntity,
+  listApiKeysForOwner,
+  parseApiKeyBearer,
+} from './entities/api-key.ts';
+export {
+  SERVICE_PRINCIPAL_ENTITY_TYPE,
+  SERVICE_PRINCIPAL_LATEST_VERSION,
+  getServicePrincipalEntity,
+  putServicePrincipalEntity,
+  listServicePrincipals,
+} from './entities/service-principal.ts';
+export {
+  OAUTH_TOKEN_ENTITY_TYPE,
+  OAUTH_TOKEN_LATEST_VERSION,
+  getOAuthTokenEntity,
+  putOAuthTokenEntity,
+  findOAuthTokensByLookup,
+} from './entities/oauth-token.ts';
+export {
+  handleApiKeyCreate,
+  type ApiKeyCreateCommand,
+  type ApiKeyCreateResult,
+} from './handlers/api-key-create.ts';
+export {
+  handleApiKeyRotate,
+  type ApiKeyRotateCommand,
+  type ApiKeyRotateResult,
+} from './handlers/api-key-rotate.ts';
+export {
+  handleApiKeyRevoke,
+  type ApiKeyRevokeCommand,
+  type ApiKeyRevokeResult,
+} from './handlers/api-key-revoke.ts';
+export {
+  handleServicePrincipalCreate,
+  handleServicePrincipalSetScopes,
+  handleServicePrincipalDisable,
+  type ServicePrincipalCreateCommand,
+  type ServicePrincipalCreateResult,
+  type ServicePrincipalSetScopesCommand,
+  type ServicePrincipalSetScopesResult,
+  type ServicePrincipalDisableCommand,
+  type ServicePrincipalDisableResult,
+} from './handlers/service-principal.ts';
+export {
+  handleOAuthIssueToken,
+  type OAuthIssueCommand,
+  type OAuthIssueResult,
+} from './handlers/oauth-token-issue.ts';
+export {
+  handleOAuthRevokeToken,
+  type OAuthRevokeCommand,
+  type OAuthRevokeResult,
+} from './handlers/oauth-token-revoke.ts';
+
+// Session lifetime helpers (Phase A2.4).
+export {
+  checkSessionLifetime,
+  touchSessionLastSeen,
+  type LifetimeCheckResult,
+} from './session-lifetime.ts';
 
 // Crypto helpers (for routes that issue/verify invites + passwords).
 export {

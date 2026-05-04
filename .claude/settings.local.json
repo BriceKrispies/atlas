@@ -138,7 +138,8 @@
       "Bash(POSTGRES_USER=atlas_platform POSTGRES_PASSWORD=local_dev_password POSTGRES_DB=control_plane POSTGRES_PORT=5433 make -n db-up)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(pnpm install *)",
-      "Bash(pnpm --filter @atlas/identity test)"
+      "Bash(pnpm --filter @atlas/identity test)",
+      "Bash(pnpm remove *)"
     ]
   }
 }

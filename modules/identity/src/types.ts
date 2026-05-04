@@ -1,8 +1,12 @@
 /**
  * Domain types for the identity module.
  *
- * Three first-class entities: `User`, `Membership`, `InviteToken`.
- * Stored on the L3 substrate (`entities` table) — no per-domain tables.
+ * Phase A1 entities: `User`, `Membership`, `InviteToken`.
+ * Phase A2 entities: `AuthSession`, `ApiKey`, `ServicePrincipal`,
+ *                    `OAuthAccessToken`.
+ *
+ * All stored on the L3 substrate (`entities` table) — no per-domain
+ * tables.
  */
 
 export type UserStatus = 'active' | 'suspended' | 'deprovisioned';
@@ -102,3 +106,250 @@ export interface InviteTokenDocument {
   acceptedUserId?: string;
   createdAt: string;
 }
+
+// ===================================================================
+// Phase A2 — Sessions, API keys, service principals, OAuth tokens.
+// ===================================================================
+
+export type AuthSessionStatus = 'active' | 'expired' | 'revoked' | 'evicted';
+
+/**
+ * Reason a session ended. Set when status flips off `'active'`. Used
+ * by the audit feed (Phase A4) and the risk engine (Phase A7) to
+ * classify session terminations.
+ */
+export type SessionEndReason =
+  | 'user_logout'
+  | 'admin_revoke'
+  | 'reuse_detected'
+  | 'idle_timeout'
+  | 'hard_timeout'
+  | 'evicted'
+  | 'password_changed'
+  | 'tenant_force_relogin';
+
+/**
+ * AuthSession — the durable record of an authentication ceremony's
+ * outcome. Keyed by `sessionId` (entity_id, stable for the session's
+ * lifetime). Refresh tokens rotate IN PLACE: each refresh updates
+ * `refreshTokenHash` + `accessTokenHash`. The previous refresh hash
+ * lingers for a short grace window so a network blip on the rotation
+ * response doesn't lock the user out.
+ *
+ * Reuse-detection: if a presented refresh token matches the *previous*
+ * hash AND the grace window has elapsed, we treat it as suspected
+ * theft and emit `Identity.SessionAnomaly` + `RevokeAllForUser`.
+ *
+ * The browser cookie carries `<sessionId>.<refreshSecret>` so the
+ * refresh endpoint can resolve the session in O(1) without a hash
+ * scan; the secret is then hash-compared against `refreshTokenHash`.
+ */
+export interface AuthSessionDocument {
+  sessionId: string;
+  tenantId: string;
+  userId: string;
+  /** SHA-256 of the current refresh secret (32 random bytes). */
+  refreshTokenHash: string;
+  /** Lookup prefix (first 8 hex chars of `refreshTokenHash`). */
+  refreshTokenLookup: string;
+  /** Previous-rotation refresh hash, kept during the grace window. */
+  previousRefreshTokenHash?: string;
+  /** ISO timestamp of when the previous hash was last current. */
+  previousRotatedAt?: string;
+  /**
+   * Ring buffer of refresh-token hashes that have rotated past the grace
+   * window — capped at `MAX_REVOKED_REFRESH_HASHES` (oldest first;
+   * trimmed from the front when full). Presenting any of these on a
+   * refresh is unambiguous reuse: the legitimate client moved on to a
+   * newer secret long ago. Closes the gap where a stolen original
+   * refresh secret falls through `previousRefreshTokenHash` after two
+   * or more honest rotations and would otherwise produce a generic
+   * SESSION_NOT_FOUND with no anomaly emission.
+   */
+  revokedRefreshTokenHashes?: string[];
+  /**
+   * SHA-256 of the current short-lived access secret. Access tokens
+   * go in `Authorization: Bearer`; refresh in the cookie. Access
+   * rotates with refresh.
+   */
+  accessTokenHash: string;
+  accessTokenLookup: string;
+  accessExpiresAt: string;
+  /** ISO timestamp of session creation (the original auth ceremony). */
+  issuedAt: string;
+  lastRefreshedAt: string;
+  /** Updated on every authenticated request — drives idle-timeout. */
+  lastSeenAt: string;
+  /** Hard-timeout cap; sessions cannot be refreshed past this point. */
+  hardExpiresAt: string;
+  status: AuthSessionStatus;
+  /** Initial IP from the auth ceremony. Updated on each refresh. */
+  ip?: string;
+  /** Initial user-agent from the auth ceremony. Updated on each refresh. */
+  userAgent?: string;
+  /** Set when status flips off `'active'`. */
+  endReason?: SessionEndReason;
+  endedAt?: string;
+}
+
+export type ApiKeyStatus = 'active' | 'revoked' | 'rotated';
+
+/**
+ * ApiKey — long-lived bearer credential for service-to-service or
+ * power-user automation. Bearer scheme: `atlas_<keyId>_<secret>`.
+ *
+ *   - `keyId` (entity_id, NON-secret) is encoded into the bearer
+ *     string for O(1) entity lookup.
+ *   - `secret` (32 random bytes, base64url) is hashed via Argon2id
+ *     and only the hash persists.
+ *
+ * Scopes constrain the action set the key can submit. An empty
+ * `scopes` array means deny-everything (defensive default — explicit
+ * scope grants required).
+ *
+ * Rotation: `Identity.ApiKey.Rotate` mints a new ApiKey row; the old
+ * row's status flips to `'rotated'` with a 24h overlap window during
+ * which presentations of the old key still validate (helps clients
+ * that can't reload config instantly).
+ */
+export interface ApiKeyDocument {
+  keyId: string;
+  tenantId: string;
+  /** Argon2id hash of the secret half of the bearer string. */
+  secretHash: string;
+  /** Operator-visible label. */
+  name: string;
+  /**
+   * Owner. Exactly one of `userId` or `servicePrincipalId` is set;
+   * the bearer-auth path infers the principal from whichever is
+   * present.
+   */
+  userId?: string;
+  servicePrincipalId?: string;
+  /**
+   * Action ids this key can submit. Treated as an explicit allow-list
+   * — empty means no permitted actions.
+   */
+  scopes: string[];
+  status: ApiKeyStatus;
+  issuedAt: string;
+  lastUsedAt?: string;
+  /** Optional auto-expiry. Unset means "expires on revoke or rotate." */
+  expiresAt?: string;
+  /** Set on the SUCCESSOR row when minted via rotation. */
+  rotatedFromKeyId?: string;
+  /** Set on the PREDECESSOR row when rotated away from. */
+  rotatedToKeyId?: string;
+  /** ISO timestamp of when the rotation overlap window ends. */
+  rotationOverlapUntil?: string;
+  endedAt?: string;
+  endReason?: 'admin_revoke' | 'rotated' | 'expired';
+}
+
+export type ServicePrincipalStatus = 'active' | 'disabled';
+
+/**
+ * ServicePrincipal — non-human identity owned by a User (the operator
+ * who created it). Carries a scope set that bounds the API keys it
+ * owns: any key minted under a SP must have `scopes ⊆ sp.scopes`.
+ *
+ * Phase A2 ships only manual creation. Future SCIM (Phase A4) extends
+ * with provisioned service principals from the IDP.
+ */
+export interface ServicePrincipalDocument {
+  spId: string;
+  tenantId: string;
+  displayName: string;
+  /** UserId of the operator who created the SP (audit trail). */
+  ownerUserId: string;
+  /**
+   * Scope ceiling. ApiKeys owned by this SP cannot exceed this set.
+   * Empty means the SP exists but cannot be used until scopes are
+   * granted.
+   */
+  scopes: string[];
+  status: ServicePrincipalStatus;
+  createdAt: string;
+  updatedAt: string;
+  /** Set when status flips to `'disabled'`. */
+  disabledAt?: string;
+  disabledBy?: string;
+}
+
+export type OAuthAccessTokenStatus = 'active' | 'revoked' | 'expired';
+
+/**
+ * OAuthAccessToken — the OAuth 2.0 client_credentials grant outcome.
+ * Wire-shape stays standard (`access_token` opaque string); persisted
+ * as a hashed entity so the token can be revoked instantly.
+ *
+ * `tokenId` doubles as the JTI (RFC 7519 JWT ID claim concept) for
+ * the revocation list. Querying entities of type 'OAuthAccessToken'
+ * with `status='revoked' AND expiresAt > now` gives the active
+ * deny-list.
+ *
+ * Short-lived (typically 1 hour). Hash with SHA-256 — Argon2id is
+ * overkill for high-entropy short-lived tokens.
+ */
+export interface OAuthAccessTokenDocument {
+  tokenId: string;
+  tenantId: string;
+  /** SHA-256 of the opaque access secret. */
+  secretHash: string;
+  /** Lookup prefix (first 8 hex chars of `secretHash`). */
+  secretLookup: string;
+  /** The ApiKey that minted this token. */
+  apiKeyId: string;
+  /** The ServicePrincipal owning the ApiKey (denormalized for audit). */
+  servicePrincipalId: string;
+  /** Token-side scopes (subset of the ApiKey's scopes at issue time). */
+  scopes: string[];
+  status: OAuthAccessTokenStatus;
+  issuedAt: string;
+  expiresAt: string;
+  revokedAt?: string;
+  revokedReason?: 'admin_revoke' | 'client_revoke' | 'rotated';
+}
+
+/**
+ * Per-tenant session policy. Stored on
+ * `control_plane.tenants.session_policy_json` and read by the
+ * session-lifetime middleware. Every value has a platform default;
+ * tenants override.
+ */
+export interface SessionPolicy {
+  /**
+   * Cap on simultaneously-active sessions for a single user. On
+   * Issue, exceeding sessions are evicted oldest-first.
+   * Default 10.
+   */
+  maxConcurrentSessions: number;
+  /**
+   * Idle-timeout window. A session not seen for this many minutes
+   * is rejected with `session_idle` and status flips to `'expired'`.
+   * Default 30.
+   */
+  idleTimeoutMinutes: number;
+  /**
+   * Absolute lifetime cap. A session older than this many hours is
+   * rejected with `session_hard_timeout` and the user must
+   * re-authenticate from scratch.
+   * Default 24.
+   */
+  hardTimeoutHours: number;
+  /**
+   * Grace window during which a previous-rotation refresh token is
+   * still accepted (handles network blips on the rotation response).
+   * Outside the window, presenting the previous hash triggers reuse
+   * detection.
+   * Default 30.
+   */
+  refreshGraceSeconds: number;
+}
+
+export const DEFAULT_SESSION_POLICY: SessionPolicy = {
+  maxConcurrentSessions: 10,
+  idleTimeoutMinutes: 30,
+  hardTimeoutHours: 24,
+  refreshGraceSeconds: 30,
+};

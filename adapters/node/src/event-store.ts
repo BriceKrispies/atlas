@@ -126,6 +126,23 @@ export class PostgresEventStore implements EventStore {
     return rowToEnvelope(existing[0]!);
   }
 
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    const rows = await this.sql<EventRow[]>`
+      SELECT event_id, event_type, schema_id, schema_version, tenant_id,
+             idempotency_key, occurred_at, correlation_id, causation_id,
+             principal_id, user_id, payload, cache_invalidation_tags, seq
+      FROM events
+      WHERE tenant_id = ${tenantId}
+        AND idempotency_key = ${idempotencyKey}
+      LIMIT 1
+    `;
+    const row = rows[0];
+    return row ? rowToEnvelope(row) : null;
+  }
+
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
     const rows = await this.sql<EventRow[]>`
       SELECT event_id, event_type, schema_id, schema_version, tenant_id,

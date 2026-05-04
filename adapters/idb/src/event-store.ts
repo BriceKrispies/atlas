@@ -59,6 +59,18 @@ export class IdbEventStore implements EventStore {
     return v ? rowToEnvelope(v) : null;
   }
 
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<EventEnvelope | null> {
+    const idx = this.db
+      .transaction('events', 'readonly')
+      .objectStore('events')
+      .index('by_tenant_idempotency_key');
+    const row = await idx.get([tenantId, idempotencyKey]);
+    return row ? rowToEnvelope(row) : null;
+  }
+
   async readEvents(tenantId: string): Promise<EventEnvelope[]> {
     // Tenant scoping is mandatory (Invariant I7). The port signature is
     // `tenantId: string`; there is no cross-tenant escape hatch.

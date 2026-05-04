@@ -1,8 +1,7 @@
 # `apps/server` — `@atlas/server`
 
-The single HTTP ingress (Invariant I1). Hono on `@hono/node-server`. Mirrors
-behavior of the legacy Rust `crates/ingress` and is the production target
-going forward.
+The single HTTP ingress (Invariant I1). Hono on `@hono/node-server`. This is
+the production HTTP boundary for Atlas.
 
 ## Layout
 
@@ -140,9 +139,3 @@ pnpm --filter @atlas/server dev
 
 Make sure Postgres is up: `make db-up`. To use the debug-principal flow, set
 `TEST_AUTH_ENABLED=true` and pass `X-Debug-Principal: <principal-json>`.
-
-## When Looking for Behavior That's Still in Rust
-
-If you're tracing a route or behavior that exists in `crates/ingress/` but not
-yet in `apps/server`, that's expected — porting is in progress (see
-`PROGRESS.md`). Add the port here; do not extend the Rust side.
