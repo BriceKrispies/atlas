@@ -8,6 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*",
     "@playwright/test": "^1.48.0",
     "@axe-core/playwright": "^4.10.0"
   }

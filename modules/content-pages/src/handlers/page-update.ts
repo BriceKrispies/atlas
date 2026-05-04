@@ -1,9 +1,9 @@
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { EventStore, ProjectionStore } from '@atlas/ports';
+import type { EntityStore, EventStore } from '@atlas/ports';
 import { ContentPagesError, codes } from '../errors.ts';
 import type { PageDocument, PageStatus } from '../types.ts';
 import { newEventId } from '../ids.ts';
-import { readPageDocument } from '../projections/page-document.ts';
+import { getPageEntity } from '../entities/page.ts';
 
 export interface PageUpdateCommand {
   tenantId: string;
@@ -26,7 +26,7 @@ export interface PageUpdateResult {
 /**
  * `ContentPages.Page.Update` handler.
  *
- * Reads the existing document via the projection store, applies partial
+ * Reads the existing document via the `Page` entity, applies partial
  * updates, re-stamps `updatedAt`, and emits a `ContentPages.PageUpdated`
  * event whose payload contains the merged document.
  *
@@ -35,9 +35,9 @@ export interface PageUpdateResult {
 export async function handlePageUpdate(
   cmd: PageUpdateCommand,
   eventStore: EventStore,
-  projections: ProjectionStore,
+  entities: EntityStore,
 ): Promise<PageUpdateResult> {
-  const existing = await readPageDocument(cmd.tenantId, cmd.pageId, projections);
+  const existing = await getPageEntity(entities, cmd.tenantId, cmd.pageId);
   if (!existing) {
     throw new ContentPagesError(
       codes.PAGE_NOT_FOUND,
@@ -77,7 +77,8 @@ export async function handlePageUpdate(
   };
 
   const stored = await eventStore.append(envelope);
-  envelope.eventId = stored;
+  envelope.eventId = stored.eventId;
+  envelope.seq = stored.seq;
 
   return { envelope, document };
 }

@@ -73,7 +73,8 @@ export async function handlePageCreate(
   };
 
   const stored = await eventStore.append(envelope);
-  envelope.eventId = stored;
+  envelope.eventId = stored.eventId;
+  envelope.seq = stored.seq;
 
   return { envelope, document };
 }

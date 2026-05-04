@@ -13,3 +13,8 @@ export {
   dragWidget,
   resizeWidget,
 } from './test-state.ts';
+export { settleEvents } from './settle-events.ts';
+export type {
+  SettleEventsOptions,
+  SettleEventsResult,
+} from './settle-events.ts';

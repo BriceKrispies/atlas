@@ -80,3 +80,70 @@ export function intentDurationSeconds(): Histogram {
     }),
   );
 }
+
+/**
+ * Total projections built by the worker, labelled by projection
+ * type (e.g. `render-page`). Mirrors the Rust worker's
+ * `projections_built_total` counter so dashboards stay portable
+ * across the TS + Rust runtimes.
+ */
+export function projectionsBuiltTotal(): Counter {
+  return getOrRegister(
+    new Counter({
+      name: 'atlas_projections_built_total',
+      help: 'Total projections built, labelled by projection type.',
+      labelNames: ['projection_type'],
+    }),
+  );
+}
+
+/**
+ * Total WASM plugin executions, labelled by plugin id and outcome
+ * (`ok` or `error`). Matches the Rust wasm_runtime counter so
+ * cross-runtime dashboards continue to work.
+ */
+export function wasmExecutionsTotal(): Counter {
+  return getOrRegister(
+    new Counter({
+      name: 'atlas_wasm_executions_total',
+      help: 'Total WASM plugin executions, labelled by plugin and result.',
+      labelNames: ['plugin_id', 'result'],
+    }),
+  );
+}
+
+/**
+ * Total worker heartbeats emitted, labelled by worker id. Mirrors
+ * the Rust worker's `worker_heartbeats_total` counter — used by
+ * liveness alerts on the worker fleet.
+ */
+export function workerHeartbeatsTotal(): Counter {
+  return getOrRegister(
+    new Counter({
+      name: 'atlas_worker_heartbeats_total',
+      help: 'Total worker heartbeats, labelled by worker id.',
+      labelNames: ['worker_id'],
+    }),
+  );
+}
+
+/**
+ * Total guardrail events recorded by the diagnostics helpers
+ * (`guardrail`, `techDebt`, `mvpShortcut`). Labels mirror the Rust
+ * `guardrail_hits_total` counter exactly: `kind` (e.g. tech_debt,
+ * mvp_shortcut, perf_workaround), `id` (unique guardrail identifier),
+ * and `component` (module/subsystem where the guardrail lives).
+ *
+ * NOTE: name is unprefixed (`guardrail_hits_total`) to match the Rust
+ * `metrics::counter!` emission directly — dashboards built off the
+ * Rust runtime keep working without rewrites.
+ */
+export function guardrailHitsTotal(): Counter {
+  return getOrRegister(
+    new Counter({
+      name: 'guardrail_hits_total',
+      help: 'Total guardrail events recorded, labelled by kind, id, and component.',
+      labelNames: ['kind', 'id', 'component'],
+    }),
+  );
+}

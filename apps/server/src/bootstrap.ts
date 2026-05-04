@@ -19,9 +19,21 @@ import postgres from 'postgres';
 import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import {
   PostgresControlPlaneRegistry,
+  PostgresCustomDomainStore,
+  PostgresEntityStore,
+  PostgresEntityTypeRegistry,
+  PostgresRelationStore,
   PostgresTenantDbProvider,
   runMigrations,
 } from '@atlas/adapter-node';
+import type {
+  CustomDomainStore,
+  EntityStore,
+  EntityTypeRegistry,
+  RelationStore,
+} from '@atlas/ports';
+import { reconcileEntityIndexes, UpcasterRegistry } from '@atlas/platform-core';
+import { TenantHostCache } from './middleware/tenant-resolution.ts';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
 import {
   NodeWasmHost,
@@ -37,12 +49,33 @@ import type { ModuleManifest } from '@atlas/adapter-policy-cedar';
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AppConfig } from './config.ts';
+import { ServerEventBroadcast } from './events/broadcast.ts';
 
 export interface AppState {
   readonly config: AppConfig;
   readonly controlPlaneSql: postgres.Sql;
   readonly tenantDb: PostgresTenantDbProvider;
   readonly controlPlaneRegistry: PostgresControlPlaneRegistry;
+  /**
+   * Custom-domain (host header → tenant id) store. Stub-mode today —
+   * see `specs/domains/tenancy/capabilities/custom-domains/README.md`.
+   * The host resolver in `middleware/principal.ts` reads through
+   * `customDomainCache` to avoid one DB round-trip per request.
+   */
+  readonly customDomains: CustomDomainStore;
+  readonly customDomainCache: TenantHostCache;
+  /**
+   * L3 substrate: read-side metadata + the generic entity store. The
+   * registry resolves "tenant override > platform default" when a
+   * Phase F caller asks for a tenant-specific schema; for now (Phase A)
+   * everything's a platform default.
+   *
+   * The upcaster registry is shared per-process; modules register their
+   * version-step transforms at boot. See
+   * `packages/platform-core/src/upcaster.ts`.
+   */
+  readonly entityTypeRegistry: EntityTypeRegistry;
+  readonly upcasterRegistry: UpcasterRegistry;
   /**
    * Lazily resolved JWKS. Null when test-auth is enabled and no JWKS URL was
    * configured. The principal middleware checks before invoking.
@@ -70,6 +103,19 @@ export interface AppState {
    * when no plugin is named.
    */
   readonly wasmHost: WasmHost;
+  /**
+   * Process-wide broadcast channel for `ServerEvent`s. Mirrors the Rust
+   * ingress's `tokio::sync::broadcast::Sender<ServerEvent>` (see
+   * `crates/ingress/src/main.rs` AppState). Published to from the
+   * per-request dispatcher chain (`serverEventDispatcher` in
+   * `middleware/state.ts`); consumed by the SSE handler at
+   * `routes/events.ts` and the WS handler when it lands.
+   *
+   * In-memory + per-process — for multi-replica deployments this needs
+   * replacing with a fan-out via Redis pub/sub or similar. The Rust
+   * binary has the same limitation today.
+   */
+  readonly serverEvents: ServerEventBroadcast;
 }
 
 export async function bootstrap(config: AppConfig): Promise<AppState> {
@@ -83,6 +129,10 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
 
   const tenantDb = new PostgresTenantDbProvider(controlPlaneSql);
   const controlPlaneRegistry = new PostgresControlPlaneRegistry(controlPlaneSql);
+  const customDomains = new PostgresCustomDomainStore(controlPlaneSql);
+  const customDomainCache = new TenantHostCache();
+  const entityTypeRegistry = new PostgresEntityTypeRegistry(controlPlaneSql);
+  const upcasterRegistry = new UpcasterRegistry();
 
   let jwks: JWTVerifyGetKey | null = null;
   if (config.oidc.jwksUrl) {
@@ -130,16 +180,81 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     loader: new FilesystemPluginLoader(),
   });
 
+  // Capacity 256 matches the Rust ingress's
+  // `broadcast::channel::<ServerEvent>(256)` so per-subscriber lag
+  // semantics are equivalent across runtimes.
+  const serverEvents = new ServerEventBroadcast(256);
+
   return {
     config,
     controlPlaneSql,
     tenantDb,
     controlPlaneRegistry,
+    customDomains,
+    customDomainCache,
+    entityTypeRegistry,
+    upcasterRegistry,
     jwks,
     migratedTenants: new Set<string>(),
     policyEngine,
     wasmHost,
+    serverEvents,
   };
+}
+
+/**
+ * Per-tenant on-demand helpers for the L3 substrate.
+ *
+ * Constructed when the request-scoped tenant pool is available
+ * (`ensureTenantMigrated`). The entity store and relation store are
+ * cheap to construct (just hold the `Sql`), so we do it per-request
+ * rather than caching — keeps the lifetime aligned with the pool.
+ */
+export function entityStoreFor(sql: postgres.Sql, state: AppState): EntityStore {
+  // Pre-populate latest-version map from the registry so writes default
+  // correctly when callers don't pin a version. The registry is fetched
+  // lazily; a stale value here just means writes go in at an older
+  // version, which the upcaster pipeline corrects on read.
+  // For now we keep the map empty; modules that care set their own
+  // explicit `schemaVersion` on each `put`. Phase A.5 wires the
+  // population.
+  void state;
+  return new PostgresEntityStore(sql);
+}
+
+export function relationStoreFor(sql: postgres.Sql): RelationStore {
+  return new PostgresRelationStore(sql);
+}
+
+/**
+ * Reconcile expression indexes on a tenant's `entities` table against
+ * the platform-default `index_registry`. Run after tenant migrations
+ * apply. Idempotent — uses `CREATE INDEX IF NOT EXISTS`.
+ *
+ * Index materialization at deploy time was the recommendation in the
+ * L3 plan ("predictable but slower rollout") rather than runtime
+ * reconciliation. Per-tenant first-touch is effectively the deploy
+ * time for a tenant; subsequent boots see the indexes already there
+ * and the reconcile is a no-op.
+ */
+export async function reconcileTenantIndexes(
+  state: AppState,
+  sql: postgres.Sql,
+): Promise<void> {
+  const declared = await state.entityTypeRegistry.listAllPlatformIndexes();
+  const liveRows = await sql<Array<{ indexname: string }>>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'entities'
+  `;
+  const live = new Set(liveRows.map((r) => r.indexname));
+  const { create, drop } = reconcileEntityIndexes(declared, live);
+  for (const stmt of drop) {
+    await sql.unsafe(stmt);
+  }
+  for (const stmt of create) {
+    await sql.unsafe(stmt);
+  }
 }
 
 function assertNever(x: never): never {
@@ -157,6 +272,10 @@ export async function ensureTenantMigrated(
   const sql = await state.tenantDb.getPool(tenantId);
   if (!state.migratedTenants.has(tenantId)) {
     await runMigrations(sql, 'tenant');
+    // After base migrations, reconcile the platform-default expression
+    // indexes on `entities`. No-op when no platform indexes have been
+    // registered yet (Phase A initial state).
+    await reconcileTenantIndexes(state, sql);
     state.migratedTenants.add(tenantId);
   }
   return sql;

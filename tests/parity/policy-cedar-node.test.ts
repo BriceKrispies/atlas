@@ -85,7 +85,7 @@ async function seedPolicy(
 d('[node] Cedar policy engine parity', () => {
   const dbUrl =
     process.env['CONTROL_PLANE_DB_URL'] ??
-    'postgres://atlas_platform:local_dev_password@localhost:5433/control_plane';
+    'postgres://atlas_platform:local_dev_password@localhost:15433/control_plane';
   let sql: postgres.Sql;
 
   beforeAll(() => {

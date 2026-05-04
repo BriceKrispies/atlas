@@ -28,6 +28,10 @@ class PoliciesListPage extends AtlasSurface {
 
   override render(): DocumentFragment {
     const rows = (this.data as readonly PolicySummary[] | null) ?? [];
+    // Body-slot pattern (ADR-0001): the heading + actions live in the
+    // surface frame and stay visible across loading/empty/error states.
+    // Only the contents of `[data-surface-body]` get swapped when the
+    // framework overlays a non-success state.
     return html`
       <atlas-stack gap="lg">
         <atlas-stack direction="row" justify="space-between" align="center">
@@ -42,7 +46,9 @@ class PoliciesListPage extends AtlasSurface {
             New policy
           </atlas-button>
         </atlas-stack>
-        ${this._renderTable(rows)}
+        <div data-surface-body>
+          ${this._renderTable(rows)}
+        </div>
       </atlas-stack>
     `;
   }

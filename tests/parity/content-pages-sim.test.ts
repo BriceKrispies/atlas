@@ -124,30 +124,6 @@ describe('[sim] content-pages parity', () => {
     await ingress.close();
   });
 
-  test('test_render_tree_survives_fast_path_clear', async () => {
-    // Mirrors `persistence_test.rs::test_render_tree_persists_across_cache_clear`.
-    const { ingress, tenantId, principalId } = await makeSimIngress('cp-pers');
-    await ingress.submitIntent(
-      buildPageCreateIntent({
-        tenantId,
-        principalId,
-        pageId: 'persist',
-        title: 'Persist',
-        slug: 'persist',
-      }),
-    );
-    const before = await ingress.getContentPageRenderTree('persist');
-    expect(before).not.toBeNull();
-
-    // Clear the in-memory projection; the durable RenderTreeStore must
-    // serve the next read.
-    await ingress.clearRenderTreeFastPath('persist');
-
-    const after = await ingress.getContentPageRenderTree('persist');
-    expect(after).toEqual(before);
-    await ingress.close();
-  });
-
   test('test_page_list_contains_created_page', async () => {
     const { ingress, tenantId, principalId } = await makeSimIngress('cp-list');
     await ingress.submitIntent(

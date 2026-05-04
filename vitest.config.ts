@@ -15,6 +15,7 @@ const r = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      '@atlas/platform-core/spec-validate': r('./packages/platform-core/src/spec-validate/index.ts'),
       '@atlas/platform-core': r('./packages/platform-core/src/index.ts'),
       '@atlas/schemas': r('./packages/schemas/src/index.ts'),
       '@atlas/ports': r('./ports/src/index.ts'),
@@ -49,12 +50,25 @@ export default defineConfig({
       'ports/src/**/*.test.ts',
       'bundles/*/test/**/*.test.ts',
       'tests/parity/**/*.test.ts',
+      // apps/projection-worker is a node-only worker — Vitest tests only,
+      // no Playwright specs to conflict with.
+      'apps/projection-worker/test/**/*.test.ts',
+      'apps/projection-worker/src/**/*.test.ts',
     ],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
       '**/test-results/**',
-      'apps/**',
+      // Frontend / server / sandbox apps host Playwright specs (test.describe
+      // from @playwright/test) which Vitest must not collect — they crash on
+      // import. Listed individually instead of `apps/**` so apps that are
+      // legitimately Vitest-only (projection-worker) can opt in via include.
+      'apps/admin/**',
+      'apps/authoring/**',
+      'apps/sandbox/**',
+      'apps/sim/**',
+      'apps/server/**',
+      'apps/control-plane/**',
       'tests/integration/**',
       'tests/blackbox/**',
     ],

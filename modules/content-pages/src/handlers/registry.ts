@@ -1,9 +1,9 @@
 import type {
+  EntityStore,
   HandlerRegistry,
   IntentHandler,
   IntentHandlerContext,
   HandlerResult,
-  ProjectionStore,
 } from '@atlas/ports';
 import type { IntentEnvelope } from '@atlas/platform-core';
 import { handlePageCreate } from './page-create.ts';
@@ -46,12 +46,12 @@ function readOptionalStatus(
 /**
  * Construct content-pages handler entries.
  *
- * Update needs the `ProjectionStore` to read the prior document; that's
+ * Update needs the `EntityStore` to read the prior document; that's
  * not on `IntentHandlerContext`, so the wiring layer injects it via a
- * closure (mirrors `authzHandlerEntries(store)`).
+ * closure.
  */
 export function contentPagesHandlerEntries(
-  projections: ProjectionStore,
+  entities: EntityStore,
 ): ReadonlyArray<readonly [string, IntentHandler]> {
   const createHandler: IntentHandler = {
     async handle(
@@ -128,7 +128,7 @@ export function contentPagesHandlerEntries(
             : {}),
         },
         ctx.eventStore,
-        projections,
+        entities,
       );
       return { primary: result.envelope, follow: [] };
     },
@@ -161,9 +161,9 @@ export function contentPagesHandlerEntries(
 }
 
 export function contentPagesHandlerRegistry(
-  projections: ProjectionStore,
+  entities: EntityStore,
 ): HandlerRegistry {
-  const map = new Map<string, IntentHandler>(contentPagesHandlerEntries(projections));
+  const map = new Map<string, IntentHandler>(contentPagesHandlerEntries(entities));
   return {
     get(actionId: string): IntentHandler | undefined {
       return map.get(actionId);

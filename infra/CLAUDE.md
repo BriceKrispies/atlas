@@ -10,7 +10,7 @@ All `make` targets use `$(CONTAINER_RUNTIME)-compose` automatically.
 
 | File | Purpose | Up / Down |
 |------|---------|-----------|
-| `compose/compose.control-plane.yml` | Postgres DB (port 5433) | `make db-up` / `make db-down` |
+| `compose/compose.control-plane.yml` | Postgres DB (host port 15433) | `make db-up` / `make db-down` |
 | `compose/compose.keycloak.yml` | Keycloak IdP (port 8081) | `make keycloak-up` / `make keycloak-down` |
 | `compose/compose.observability.yml` | Prometheus + Grafana + Loki | `make obs-up` / `make obs-down` |
 | `compose/compose.dev.yml` | Local dev (combined services) | — |
@@ -26,10 +26,15 @@ All `make` targets use `$(CONTAINER_RUNTIME)-compose` automatically.
 
 ## Key Ports
 
-| Port | Service |
-|------|---------|
+Atlas dev services use **uncommon port numbers** (mostly 5-digit) to avoid
+collisions with native installs on a developer's machine. See
+[`../PORTS.md`](../PORTS.md) at the repo root for the canonical list and
+the rationale.
+
+| Host Port | Service |
+|-----------|---------|
 | 3000 | Ingress HTTP |
-| 5433 | Postgres |
+| 15433 | Postgres (was 5433 — moved to dodge native postgres collision) |
 | 8081 | Keycloak admin console |
 | 3001 | Grafana |
 | 9090 | Prometheus |
@@ -49,7 +54,7 @@ All `make` targets use `$(CONTAINER_RUNTIME)-compose` automatically.
 ## DB Connection
 
 ```
-postgres://atlas_platform:local_dev_password@localhost:5433/control_plane
+postgres://atlas_platform:local_dev_password@localhost:15433/control_plane
 ```
 
 Env var: `CONTROL_PLANE_DB_URL`

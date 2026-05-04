@@ -8,6 +8,7 @@ import type {
   SearchEngine,
   ControlPlaneRegistry,
   CatalogStateStore,
+  EntityStore,
   HandlerRegistry,
   IntentHandlerContext,
   PolicyEngine,
@@ -43,6 +44,29 @@ export interface IngressState {
   catalogState: CatalogStateStore;
   handlers: HandlerRegistry;
   dispatch: EventDispatcher;
+  /**
+   * Optional L3 entity store for ABAC resource-attribute population.
+   * When set, submit-intent looks up `(resourceType, resourceId)` and
+   * surfaces the entity's `attrs` to the policy engine alongside the
+   * tenant id. Wired in `apps/server/src/middleware/state.ts`. Test
+   * fixtures that construct an IngressState manually may leave it
+   * `undefined` — submit-intent treats that as "no resource attrs"
+   * (back-compatible with the pre-A1 `attributes: {}` shape).
+   */
+  entities?: EntityStore;
+  /**
+   * Roles for the request principal. Hydrated by the wiring layer's
+   * principal-enrichment step from the `Membership` entity. Empty when
+   * the principal has no Membership in the request tenant (anonymous /
+   * service principal / pre-bootstrap). Surfaced to the policy engine
+   * via `principal.attributes.roles`.
+   */
+  principalRoles?: string[];
+  /**
+   * ABAC attributes for the principal. Hydrated by the wiring layer
+   * from the `User` entity (curated subset — never `passwordHash` etc).
+   */
+  principalAttributes?: Record<string, unknown>;
   /**
    * Authorization seam (Invariant I2). Called between schema/idempotency
    * validation and handler dispatch. The default wiring is
@@ -185,18 +209,45 @@ async function submitIntentInner(
   const resourceType = envelope.payload.resourceType;
   const resourceId =
     typeof envelope.payload.resourceId === 'string' ? envelope.payload.resourceId : '';
+
+  // Resource-attribute lookup for ABAC. Best-effort: if the entity
+  // store isn't wired (test fixture) or the resource doesn't yet exist
+  // (Create intents), we surface an empty attrs map. Cedar policies
+  // that reference resource attrs gracefully evaluate to deny when the
+  // attribute is absent — same behaviour as pre-A1.
+  //
+  // Read goes through the per-tenant entity store and is bounded by
+  // (tenantId, type, id) — Invariant I7 holds at the storage layer.
+  let resourceAttributes: Record<string, unknown> = {};
+  if (state.entities && resourceId) {
+    try {
+      const row = await state.entities.get(state.tenantId, resourceType, resourceId);
+      if (row && row.status === 'active') {
+        resourceAttributes = row.attrs as Record<string, unknown>;
+      }
+    } catch {
+      // Lookup failure is non-fatal — treat as "no attrs" and let the
+      // policy engine decide. Wiring layer logs the underlying error.
+    }
+  }
+
+  const principalAttributes: Record<string, unknown> = {
+    ...(state.principalAttributes ?? {}),
+    ...(state.principalRoles !== undefined ? { roles: state.principalRoles } : {}),
+  };
+
   const evaluationRequest: PolicyEvaluationRequest = {
     principal: {
       id: state.principalId,
       tenantId: state.tenantId,
-      attributes: {},
+      attributes: principalAttributes,
     },
     action: actionId,
     resource: {
       type: resourceType,
       id: resourceId,
       tenantId: state.tenantId,
-      attributes: {},
+      attributes: resourceAttributes,
     },
     context: { correlationId },
   };
@@ -294,7 +345,8 @@ async function submitIntentInner(
     payload: envelope.payload,
   };
   const stored = await state.eventStore.append(generic);
-  generic.eventId = stored;
+  generic.eventId = stored.eventId;
+  generic.seq = stored.seq;
   await state.dispatch(generic);
 
   observe(actionId, 'permit');

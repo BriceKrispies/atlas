@@ -12,11 +12,8 @@
 
 import { describe, test, expect, beforeEach } from 'vitest';
 import {
-  // @ts-expect-error — not exported yet (red phase)
   projectionsBuiltTotal,
-  // @ts-expect-error — not exported yet (red phase)
   wasmExecutionsTotal,
-  // @ts-expect-error — not exported yet (red phase)
   workerHeartbeatsTotal,
   resetRegistry,
   getRegistry,

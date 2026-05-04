@@ -46,10 +46,12 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       store = await makeStore();
     });
 
-    test('append returns the envelope eventId for a fresh idempotency key', async () => {
+    test('append returns a StoredEvent with the envelope eventId for a fresh idempotency key', async () => {
       const env = makeEvent({ eventId: 'evt-001' });
-      const id = await store.append(env);
-      expect(id).toBe('evt-001');
+      const stored = await store.append(env);
+      expect(stored.eventId).toBe('evt-001');
+      expect(typeof stored.seq).toBe('bigint');
+      expect(stored.seq > 0n).toBe(true);
     });
 
     test('append + getEvent round-trip preserves envelope shape', async () => {
@@ -73,8 +75,10 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       const env = makeEvent({ eventId: 'evt-orig', idempotencyKey: 'idem-replay' });
       const r1 = await store.append(env);
       const r2 = await store.append(env);
-      expect(r1).toBe('evt-orig');
-      expect(r2).toBe('evt-orig');
+      expect(r1.eventId).toBe('evt-orig');
+      expect(r2.eventId).toBe('evt-orig');
+      // Idempotency: replay returns the SAME seq (no new row inserted).
+      expect(r2.seq).toBe(r1.seq);
     });
 
     test('append returns the original eventId when the same idempotency key is replayed with a DIFFERENT eventId/payload', async () => {
@@ -90,7 +94,7 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
         payload: { v: 2 },
       });
       const r2 = await store.append(second);
-      expect(r2).toBe('evt-first');
+      expect(r2.eventId).toBe('evt-first');
     });
 
     test('idempotency key is tenant-scoped — same key in different tenants produces two distinct events', async () => {
@@ -106,8 +110,8 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       });
       const ra = await store.append(a);
       const rb = await store.append(b);
-      expect(ra).toBe('evt-a');
-      expect(rb).toBe('evt-b');
+      expect(ra.eventId).toBe('evt-a');
+      expect(rb.eventId).toBe('evt-b');
 
       const aEvents = await store.readEvents('tenant-a');
       const bEvents = await store.readEvents('tenant-b');
@@ -128,8 +132,8 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       });
       const ra = await store.append(a);
       const rb = await store.append(b);
-      expect(ra).toBe('evt-orig-tenant');
-      expect(rb).toBe('evt-orig-tenant');
+      expect(ra.eventId).toBe('evt-orig-tenant');
+      expect(rb.eventId).toBe('evt-orig-tenant');
 
       const events = await store.readEvents('tenant-same');
       expect(events.length).toBe(1);
@@ -152,11 +156,14 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(list).toEqual([]);
     });
 
-    test('readEvents returns events strictly ascending by occurredAt (regardless of insertion order)', async () => {
+    test('readEvents returns events strictly ascending by seq (insertion order)', async () => {
       const t = (offset: number): string =>
         new Date(Date.UTC(2026, 0, 1, 0, 0, offset)).toISOString();
-      // Insert out of order: late, early, mid. The contract is the adapter
-      // sorts the result by occurredAt ASC.
+      // Insert out of order by occurredAt: late, early, mid. Contract is
+      // insertion order — seq is monotonic per tenant, assigned at append.
+      // This is the canonical event-sourcing order: what actually happened
+      // in the store, not what producers claimed via occurredAt (which
+      // may lie due to clock skew or backfill).
       await store.append(
         makeEvent({ eventId: 'evt-late', tenantId: 'tenant-ord', occurredAt: t(30) }),
       );
@@ -168,12 +175,12 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       );
 
       const events = await store.readEvents('tenant-ord');
-      expect(events.map((e) => e.eventId)).toEqual(['evt-early', 'evt-mid', 'evt-late']);
+      expect(events.map((e) => e.eventId)).toEqual(['evt-late', 'evt-early', 'evt-mid']);
 
       for (let i = 1; i < events.length; i++) {
         const prev = events[i - 1]!;
         const curr = events[i]!;
-        expect(prev.occurredAt <= curr.occurredAt).toBe(true);
+        expect(prev.seq! < curr.seq!).toBe(true);
       }
     });
 
@@ -229,11 +236,16 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       );
       const results = await Promise.all(envelopes.map((e) => store.append(e)));
 
-      const unique = new Set(results);
-      expect(unique.size).toBe(1);
+      // Idempotency: all 5 concurrent appends MUST resolve to the same
+      // eventId (and the same seq, since only one row is actually
+      // persisted).
+      const uniqueIds = new Set(results.map((r) => r.eventId));
+      expect(uniqueIds.size).toBe(1);
+      const uniqueSeqs = new Set(results.map((r) => r.seq));
+      expect(uniqueSeqs.size).toBe(1);
       const stored = await store.readEvents('tenant-conc');
       expect(stored.length).toBe(1);
-      expect(results[0]).toBe(stored[0]!.eventId);
+      expect(results[0]!.eventId).toBe(stored[0]!.eventId);
     });
 
     test('[error-shape] append with a missing required field on the envelope throws', async () => {
@@ -258,7 +270,7 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
     });
 
     test('[concurrency] interleaved appends across tenants do not cross-contaminate', async () => {
-      const ops: Promise<string>[] = [];
+      const ops: Promise<unknown>[] = [];
       for (let i = 0; i < 10; i++) {
         ops.push(
           store.append(

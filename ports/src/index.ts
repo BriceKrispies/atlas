@@ -1,10 +1,27 @@
-export type { EventStore } from './event-store.ts';
+export type { EventStore, StoredEvent } from './event-store.ts';
+export type { AnalyticsStore, AnalyticsQuery } from './analytics-store.ts';
+export type { AnalyticsEvent } from '@atlas/platform-core';
+export { InMemoryAnalyticsStore } from './analytics-store.ts';
 export type { Cache } from './cache.ts';
 export type { ProjectionStore } from './projection-store.ts';
 export type { SearchEngine } from './search-engine.ts';
 export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry.ts';
 export type { CatalogStateStore, CatalogStateRecord } from './catalog-state-store.ts';
-export type { RenderTreeStore } from './render-tree-store.ts';
+export type { CustomDomainStore, CustomDomain } from './custom-domain-store.ts';
+export type {
+  EntityStore,
+  Entity,
+  EntityStatus,
+  EntityWriteInput,
+  EntityListOptions,
+  EntityQueryOptions,
+} from './entity-store.ts';
+export type {
+  RelationStore,
+  Relation,
+  RelationWriteInput,
+} from './relation-store.ts';
+export type { EntityTypeRegistry } from './entity-type-registry.ts';
 export type {
   HandlerRegistry,
   IntentHandler,
@@ -26,3 +43,4 @@ export type {
   WasmInvocation,
   WasmPluginLoader,
 } from './wasm-host.ts';
+export type { WorkerSource, WorkerSubscription } from './worker-source.ts';

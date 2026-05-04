@@ -29,6 +29,9 @@ test-results.xml
 tests/blackbox/target/
 test-results/
 playwright-report/
+tests/bdd/screenshots/
+tests/bdd/report/
+.features-gen/
 
 # Node / pnpm / TS workspace
 node_modules/

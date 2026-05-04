@@ -30,4 +30,14 @@ export {
   intentsSubmittedTotal,
   policyEvaluationsTotal,
   intentDurationSeconds,
+  projectionsBuiltTotal,
+  wasmExecutionsTotal,
+  workerHeartbeatsTotal,
+  guardrailHitsTotal,
 } from './atlas-metrics.ts';
+export {
+  guardrail,
+  techDebt,
+  mvpShortcut,
+  type GuardrailOptions,
+} from './guardrail.ts';

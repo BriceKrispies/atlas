@@ -15,9 +15,34 @@
  * - INGRESS_PORT or PORT              server port (default 3000)
  * - RUST_LOG                          logged on boot for parity (no-op)
  * - POLICY_ENGINE                     `stub` | `cedar` (default `stub`)
+ * - WORKER_MODE                       `inline` | `async` (default `inline`)
  */
 
+import {
+  envBool,
+  envOr,
+  envRequired,
+  forbidInStrict,
+} from '@atlas/platform-core';
+
 export type PolicyEngineKind = 'stub' | 'cedar';
+
+/**
+ * Phase-3 cut-over flag for the worker migration (see
+ * `specs/worker.md`).
+ *
+ * - `inline` (default): the dispatcher chain composed in
+ *   `middleware/state.ts` runs synchronously inside the request, exactly
+ *   as it has since Chunk 8. Projections rebuild and cache invalidates
+ *   before the 202 is returned. This preserves pre-cut-over behaviour
+ *   so existing deployments and tests are unaffected unless they opt in.
+ * - `async`: the per-request `state.dispatch` becomes a no-op closure.
+ *   Events are still appended to the event store (that happens in
+ *   `submitIntent` and the audit hook); the projection-worker
+ *   (`apps/projection-worker`) is responsible for draining them via
+ *   `WorkerSource` and running the chain out-of-band.
+ */
+export type WorkerMode = 'inline' | 'async';
 
 export interface OidcConfig {
   issuerUrl: string;
@@ -46,26 +71,13 @@ export interface AppConfig {
    *   `control_plane.policies` table. Wired in Chunk 6b.
    */
   policyEngine: PolicyEngineKind;
-}
-
-function envBool(name: string): boolean {
-  const v = process.env[name];
-  if (v === undefined) return false;
-  const lower = v.toLowerCase();
-  return lower === '1' || lower === 'true' || lower === 'yes';
-}
-
-function envOr(name: string, fallback: string): string {
-  const v = process.env[name];
-  return v === undefined || v === '' ? fallback : v;
-}
-
-function envRequired(name: string): string {
-  const v = process.env[name];
-  if (v === undefined || v === '') {
-    throw new Error(`required env var ${name} is unset`);
-  }
-  return v;
+  /**
+   * Phase-3 worker cut-over flag. Read from `WORKER_MODE`; defaults to
+   * `'inline'`. When `'async'`, `apps/server`'s per-request
+   * `state.dispatch` is a no-op and the projection-worker is the sole
+   * consumer of new events. See {@link WorkerMode}.
+   */
+  workerMode: WorkerMode;
 }
 
 export function loadConfig(): AppConfig {
@@ -98,6 +110,10 @@ export function loadConfig(): AppConfig {
     ? envOr('OIDC_AUDIENCE', 'account')
     : envRequired('OIDC_AUDIENCE');
 
+  forbidInStrict(
+    'TENANT_ID',
+    'TENANT_ID is a dev-only override; production tenancy must come from the authenticated principal.',
+  );
   const tenantId = envOr('TENANT_ID', 'dev-tenant');
   const controlPlaneDbUrl = envRequired('CONTROL_PLANE_DB_URL');
   const rustLog = envOr('RUST_LOG', 'info');
@@ -110,6 +126,14 @@ export function loadConfig(): AppConfig {
   }
   const policyEngine: PolicyEngineKind = policyEngineRaw;
 
+  const workerModeRaw = envOr('WORKER_MODE', 'inline');
+  if (workerModeRaw !== 'inline' && workerModeRaw !== 'async') {
+    throw new Error(
+      `invalid WORKER_MODE: ${workerModeRaw} (expected 'inline' or 'async')`,
+    );
+  }
+  const workerMode: WorkerMode = workerModeRaw;
+
   return {
     port: portNum,
     controlPlaneDbUrl,
@@ -118,5 +142,6 @@ export function loadConfig(): AppConfig {
     tenantId,
     rustLog,
     policyEngine,
+    workerMode,
   };
 }

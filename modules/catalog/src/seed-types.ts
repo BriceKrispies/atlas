@@ -89,11 +89,18 @@ export interface SeedFamily {
   variants: SeedVariant[];
 }
 
+export interface SeedAsset {
+  assetKey: string;
+  mediaType?: string;
+  uri?: string;
+  metadata?: unknown;
+}
+
 export interface SeedPayload {
   taxonomyTrees: SeedTaxonomyTree[];
   unitDimensions?: SeedUnitDimension[];
   units?: SeedUnit[];
   attributeDefinitions?: SeedAttributeDefinition[];
   families: SeedFamily[];
-  assets?: Array<{ assetKey: string; mediaType?: string; uri?: string; metadata?: unknown }>;
+  assets?: SeedAsset[];
 }

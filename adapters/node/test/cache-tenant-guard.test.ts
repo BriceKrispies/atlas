@@ -39,6 +39,10 @@ if (HAS_DB) {
         cache.set('k1', { hello: 'world' }, {
           ttlSeconds: 60,
           tags: ['Resource:foo'],
+          // @ts-expect-error — RED PHASE: `privacy` field on CacheSetOptions
+          // is the feature this test is driving. When it lands the directive
+          // becomes a TS6133 (unused), forcing this comment + the test to
+          // be revisited.
           privacy: 'PRIVATE',
         }),
       ).rejects.toThrow(/tenant.*tag|I9/i);
@@ -51,6 +55,7 @@ if (HAS_DB) {
         cache.set('k2', { hello: 'world' }, {
           ttlSeconds: 60,
           tags: ['Resource:foo'],
+          // @ts-expect-error — RED PHASE: see test 1.
           privacy: 'PUBLIC',
         }),
       ).resolves.toBeUndefined();
@@ -63,6 +68,7 @@ if (HAS_DB) {
         cache.set('k3', { hello: 'world' }, {
           ttlSeconds: 60,
           tags: ['Tenant:t1', 'Resource:foo'],
+          // @ts-expect-error — RED PHASE: see test 1.
           privacy: 'PRIVATE',
         }),
       ).resolves.toBeUndefined();

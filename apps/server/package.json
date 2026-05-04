@@ -19,6 +19,7 @@
     "@atlas/authz": "workspace:*",
     "@atlas/catalog": "workspace:*",
     "@atlas/content-pages": "workspace:*",
+    "@atlas/identity": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",
     "@atlas/schemas": "workspace:*",

@@ -13,6 +13,10 @@ async function mockPolicies(page: import('@playwright/test').Page, body: unknown
 }
 
 test.describe('admin.authz.policies-list surface', () => {
+  // ADR-0001: surface uses the body-slot pattern, so the page heading
+  // stays visible across all states. The empty state replaces only the
+  // contents of `[data-surface-body]` inside `render()`, not the whole
+  // surface — heading + "New policy" button remain.
   test('navigates to empty state when tenant has no policies', async ({ page }) => {
     await mockPolicies(page, []);
     await page.goto('/#/authz/policies');

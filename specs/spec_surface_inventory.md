@@ -4,6 +4,12 @@
 **Purpose:** Comprehensive inventory of all spec artifacts in `/specs` as they exist, freezing the current surface area for compiler input definition.
 **Scope:** Descriptive only — no proposals, refactors, or design changes.
 
+> **NOTE (2026-05):** Paths in this inventory predate the canonical-domain
+> reorganization. Most `crosscut/<x>.md` and `modules/<x>/` entries have moved
+> into `specs/domains/<canonical-domain>/`. See [`CLAUDE.md`](CLAUDE.md) for
+> the migration map. This document is preserved as a snapshot of the pre-reorg
+> surface — do not edit its body to chase the new paths.
+
 **Normative Requirements:** For compiler-enforced requirements using RFC 2119 keywords (MUST, SHOULD, MAY), see `/specs/normative_requirements.md`. This inventory document is informative only.
 
 ---

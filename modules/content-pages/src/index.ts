@@ -1,13 +1,12 @@
 /**
- * @atlas/content-pages — Page CRUD + render-tree projection.
+ * @atlas/content-pages — Page + PageRenderTree on the L3 entity substrate.
  *
- * Mirrors the Rust content-pages handler logic in
- * `crates/ingress/src/main.rs::handle_intent` (Page.Create branch) +
- * `crates/ingress/src/worker.rs::build_render_tree` so render trees are
- * byte-equivalent across the Rust/TS flip.
+ * Storage: every Page and PageRenderTree is a row in `entities` keyed by
+ * `(tenantId, entity_type, entity_id)`; the page→render-tree relationship
+ * is a row in `relations` (edge_type='page.render-tree').
  */
 
-export { newEventId, pageDocumentKey, renderTreeKey, pageListKey } from './ids.ts';
+export { newEventId } from './ids.ts';
 export type {
   PageStatus,
   PageDocument,
@@ -36,22 +35,7 @@ export {
   contentPagesHandlerRegistry,
 } from './handlers/registry.ts';
 
-export {
-  defaultRenderTree,
-  buildRenderTree,
-  rebuildRenderTree,
-  deleteRenderTree,
-} from './projections/render-tree.ts';
-export {
-  upsertPageInList,
-  removePageFromList,
-  listPages as readPageList,
-} from './projections/page-list.ts';
-export {
-  readPageDocument,
-  writePageDocument,
-  deletePageDocument,
-} from './projections/page-document.ts';
+export { defaultRenderTree, buildRenderTree } from './render-tree.ts';
 
 export {
   dispatchContentPagesEvent,
@@ -66,3 +50,36 @@ export {
 } from './queries.ts';
 
 export { ContentPagesError, codes as contentPagesErrorCodes } from './errors.ts';
+
+// L3 substrate surface.
+export {
+  PAGE_ENTITY_TYPE,
+  PAGE_LATEST_VERSION,
+  getPageEntity,
+  putPageEntity,
+  deletePageEntity,
+  listPageEntities,
+} from './entities/page.ts';
+export {
+  PAGE_RENDER_TREE_ENTITY_TYPE,
+  PAGE_RENDER_TREE_LATEST_VERSION,
+  renderTreeEntityIdFor,
+  getRenderTreeEntity,
+  putRenderTreeEntity,
+  deleteRenderTreeEntity,
+  toRenderTree,
+  type PageRenderTreeAttrs,
+  type PutRenderTreeOptions,
+} from './entities/page-render-tree.ts';
+export {
+  PAGE_RENDER_TREE_EDGE,
+  PAGE_WIDGET_EDGE,
+  linkRenderTree,
+  unlinkRenderTree,
+  findRenderTreeIdFor,
+} from './entities/relations.ts';
+export type {
+  ContentPagesDispatchContextV2,
+  ContentPagesQueryDepsV2,
+} from './entities/contracts.ts';
+export { seedContentPagesEntityTypes } from './entities/seed.ts';

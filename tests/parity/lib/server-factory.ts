@@ -249,21 +249,6 @@ export async function createServerIngress(
       throw new IngressFailureError(r.failure);
     },
 
-    async clearRenderTreeFastPath(pageId: string): Promise<void> {
-      // Hits the test-only `/debug/render-tree/clear?pageId=...` endpoint
-      // shipped in Chunk 10. Available only when the server runs with both
-      // `TEST_AUTH_ENABLED=true` and `DEBUG_AUTH_ENDPOINT_ENABLED=true`.
-      // Tests should be guarded by `NODE_PARITY_BASE_URL` describe-skip.
-      const url = `${opts.baseUrl}/debug/render-tree/clear?pageId=${encodeURIComponent(pageId)}`;
-      const res = await fetch(url, { method: 'POST', headers: headers() });
-      if (res.status === 404 || res.status === 401) {
-        throw new UnsupportedInMode('clearRenderTreeFastPath', 'node');
-      }
-      if (!res.ok) {
-        throw new IngressFailureError(await parseErrorBody(res));
-      }
-    },
-
     async truncateSearch(): Promise<void> {
       const res = await fetch(`${opts.baseUrl}/debug/search/rebuild`, {
         method: 'POST',

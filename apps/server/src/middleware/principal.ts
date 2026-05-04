@@ -22,6 +22,7 @@ import type { Principal } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse } from './errors.ts';
 import { correlationIdFor } from './correlation.ts';
+import { resolveHostTenant } from './tenant-resolution.ts';
 
 const DEBUG_PRINCIPAL_HEADER = 'X-Debug-Principal';
 const VALID_DEBUG_TYPES = new Set(['user', 'service', 'anonymous']);
@@ -51,6 +52,14 @@ export interface ServerVariables {
   state: AppState;
   principal: Principal;
   correlationId: string;
+  /**
+   * Tenant id resolved from the request Host header against the
+   * `custom_domains` table. `null` when the host is not registered
+   * (the common case — most requests come in via subdomain). When set,
+   * the auth flow's tenant id MUST agree or the request is rejected
+   * with PRINCIPAL_INVALID/403.
+   */
+  hostTenantId: string | null;
 }
 
 function parseDebugPrincipal(
@@ -77,6 +86,22 @@ export function principalMiddleware(state: AppState) {
     c.set('correlationId', correlationId);
     c.set('state', state);
 
+    // 0. Custom-domain resolution. If the Host header is registered in
+    //    `control_plane.custom_domains` (active row), stash the
+    //    associated tenant id on the context so the auth path can
+    //    cross-check it. A mismatch with the JWT/debug `tenantId` is
+    //    rejected below as PRINCIPAL_INVALID/403.
+    //
+    //    No-match is the common case (subdomain / unrecognized host) —
+    //    we silently fall through. See
+    //    `specs/domains/tenancy/capabilities/custom-domains/README.md`.
+    const hostTenantId = await resolveHostTenant(
+      c.req.header('host'),
+      state.customDomains,
+      state.customDomainCache,
+    );
+    c.set('hostTenantId', hostTenantId);
+
     // 1. Try X-Debug-Principal first when test-auth is enabled.
     if (state.config.testAuth.enabled) {
       const debugHeader = c.req.header(DEBUG_PRINCIPAL_HEADER);
@@ -91,6 +116,18 @@ export function principalMiddleware(state: AppState) {
             'PRINCIPAL_INVALID',
             'Invalid X-Debug-Principal header',
             400,
+            correlationId,
+          );
+        }
+        if (hostTenantId !== null && hostTenantId !== debug.tenantId) {
+          // Host says tenantA, debug principal claims tenantB → reject.
+          // Prevents "log in to tenantA, browse to a custom-branded URL
+          // owned by tenantB to trigger tenantB-side actions".
+          return errorResponse(
+            c,
+            'PRINCIPAL_INVALID',
+            'Tenant scope mismatch between Host and X-Debug-Principal',
+            403,
             correlationId,
           );
         }
@@ -185,6 +222,15 @@ export function principalMiddleware(state: AppState) {
       typeof tenantClaim === 'string' && tenantClaim.length > 0
         ? tenantClaim
         : state.config.tenantId;
+    if (hostTenantId !== null && hostTenantId !== candidateTenant) {
+      return errorResponse(
+        c,
+        'PRINCIPAL_INVALID',
+        'Tenant scope mismatch between Host and JWT tenant_id claim',
+        403,
+        correlationId,
+      );
+    }
     if (!isValidTenantId(candidateTenant)) {
       // Reject malformed tenant ids from any source — JWT claim or
       // configured default. The downstream invariants (I7, I9, SQL

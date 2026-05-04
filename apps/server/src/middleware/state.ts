@@ -13,7 +13,6 @@ import {
   PostgresProjectionStore,
   PostgresSearchEngine,
   PostgresCatalogStateStore,
-  PostgresRenderTreeStore,
 } from '@atlas/adapter-node';
 import {
   policyEvaluatedEvent,
@@ -34,6 +33,13 @@ import {
   contentPagesDispatcher,
   type ContentPagesQueryDeps,
 } from '@atlas/content-pages';
+import {
+  identityHandlerRegistry,
+  identityDispatcher,
+  findUserByIdpSubject,
+  getMembershipEntity,
+  type IdentityQueryDeps,
+} from '@atlas/identity';
 import { policyCacheDispatcher } from '@atlas/adapter-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapter-policy-cedar';
 import type {
@@ -43,10 +49,52 @@ import type {
 import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import type { PolicyEngine } from '@atlas/ports';
 import type { Principal } from '@atlas/platform-core';
-import { ensureTenantMigrated, type AppState } from '../bootstrap.ts';
+import {
+  ensureTenantMigrated,
+  entityStoreFor,
+  relationStoreFor,
+  type AppState,
+} from '../bootstrap.ts';
+import { serverEventDispatcher } from '../events/dispatcher.ts';
 
 function newAuditId(): string {
   return `audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Process-level latch for the `worker.dispatch.skipped` log line. We log
+ * once on the first async-mode dispatch call so operators can see the
+ * cut-over flag is active, but don't spam every request thereafter.
+ */
+let asyncDispatchSkipLogged = false;
+
+/**
+ * Build the no-op dispatcher used when `WORKER_MODE=async`. Matches the
+ * `EventDispatcher` signature so the call sites in `submitIntent` and
+ * the audit hook are mode-agnostic. Emits a single structured log line
+ * the first time it's invoked process-wide.
+ */
+function buildAsyncNoopDispatch(
+  tenantId: string,
+  correlationId: string,
+): EventDispatcher {
+  return async (envelope) => {
+    if (!asyncDispatchSkipLogged) {
+      asyncDispatchSkipLogged = true;
+      console.log(
+        JSON.stringify({
+          event: 'worker.dispatch.skipped',
+          mode: 'async',
+          reason:
+            'WORKER_MODE=async — inline dispatch is a no-op; projection-worker drains the event store',
+          tenantId,
+          correlationId,
+          firstEventType: envelope.eventType,
+          firstEventId: envelope.eventId,
+        }),
+      );
+    }
+  };
 }
 
 /**
@@ -64,6 +112,16 @@ export interface RequestBundle {
   ingress: IngressState;
   catalogDeps: CatalogQueryDeps;
   contentPagesDeps: ContentPagesQueryDeps;
+  identityDeps: IdentityQueryDeps;
+  /**
+   * The principal as enriched against the request tenant's identity
+   * data: `userId` and `roles` populated from `User`/`Membership` lookups,
+   * `attributes` carrying User attrs for ABAC. The basic `Principal`
+   * (just `principalId` + `tenantId`) is what the principal middleware
+   * sets; this is what downstream callers should prefer when they need
+   * RBAC/ABAC.
+   */
+  principal: Principal;
 }
 
 export async function buildRequestBundle(
@@ -78,12 +136,31 @@ export async function buildRequestBundle(
   const projections = new PostgresProjectionStore(sql);
   const search = new PostgresSearchEngine(sql);
   const catalogState = new PostgresCatalogStateStore(sql);
-  const renderTreeStore = new PostgresRenderTreeStore(sql);
+  // L3 substrate — per-tenant entity + relation stores. Cheap closures
+  // over `sql`; one instance per request matches the lifetime of the
+  // rest of this bundle. Dispatcher + query deps share these instances.
+  const entities = entityStoreFor(sql, state);
+  const relations = relationStoreFor(sql);
+
+  // Identity enrichment — resolve User by JWT subject, Membership by
+  // (tenantId, userId), then layer roles + attributes onto the
+  // Principal so downstream authz reads them. The principal middleware
+  // only sets `principalId` + `tenantId`; everything else is hydrated
+  // here because the per-tenant entity store doesn't exist until
+  // `ensureTenantMigrated` runs.
+  //
+  // Lookup misses are not failures: bootstrap (no users yet), service
+  // principals (no Identity records), and operator principals all hit
+  // null. Authz layer denies actions that require RBAC; allowlist
+  // routes (health probes, SSE re-auth) check the absence explicitly.
+  const enrichedPrincipal = await enrichPrincipal(principal, entities);
+
   const policyStore = new PostgresPolicyStore(state.controlPlaneSql);
   const handlers = composeRegistries(
     catalogHandlerRegistry(),
     authzHandlerRegistry(policyStore),
-    contentPagesHandlerRegistry(projections),
+    contentPagesHandlerRegistry(entities),
+    identityHandlerRegistry(entities),
   );
 
   // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
@@ -114,21 +191,40 @@ export async function buildRequestBundle(
   //
   // Adding module #4 is one line in this composer, not a function-body
   // edit further down.
-  const dispatch: EventDispatcher = composeDispatchers(
+  //
+  // Phase-3 cut-over (`specs/worker.md`): when `WORKER_MODE=async` the
+  // chain becomes a no-op here — the projection-worker drains events
+  // from the event store and runs the same composition out-of-band.
+  // We still build `inlineDispatch` first because the call sites
+  // (submitIntent, the audit hook below) expect an `EventDispatcher`
+  // shape regardless of mode; in async mode we just don't invoke it.
+  const inlineDispatch: EventDispatcher = composeDispatchers(
     catalogDispatcher({ catalogState, projections, search, cache }),
     contentPagesDispatcher({
-      projections,
-      renderTreeStore,
+      entities,
+      relations,
       cache,
       ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
     }),
+    identityDispatcher({ entities, relations, cache }),
     cacheTagDispatcher(cache),
     policyBundle ? policyCacheDispatcher(policyBundle) : null,
+    // Fan freshly-dispatched events out to SSE/WS subscribers. Runs
+    // last so subscribers only see events whose projections have been
+    // rebuilt and whose cache tags have been invalidated. Mirrors the
+    // Rust worker's `event_sender.send(...)` calls (see
+    // `crates/ingress/src/worker.rs`).
+    serverEventDispatcher(state.serverEvents),
   );
 
+  const dispatch: EventDispatcher =
+    state.config.workerMode === 'async'
+      ? buildAsyncNoopDispatch(principal.tenantId, correlationId)
+      : inlineDispatch;
+
   const ingress: IngressState = {
-    tenantId: principal.tenantId,
-    principalId: principal.principalId,
+    tenantId: enrichedPrincipal.tenantId,
+    principalId: enrichedPrincipal.principalId,
     correlationId,
     eventStore,
     cache,
@@ -136,6 +232,12 @@ export async function buildRequestBundle(
     search,
     registry: state.controlPlaneRegistry,
     catalogState,
+    // L3 substrate threaded into ingress so submit-intent can populate
+    // `resource.attributes` for ABAC. Without this the policy engine
+    // sees `{}` for every resource and ABAC rules can never match.
+    entities,
+    principalRoles: enrichedPrincipal.roles ?? [],
+    principalAttributes: enrichedPrincipal.attributes ?? {},
     handlers,
     dispatch,
     policyEngine: state.policyEngine,
@@ -159,7 +261,8 @@ export async function buildRequestBundle(
         eventId: newAuditId(),
       });
       const stored = await eventStore.append(envelope);
-      envelope.eventId = stored;
+      envelope.eventId = stored.eventId;
+      envelope.seq = stored.seq;
       await dispatch(envelope);
     },
   };
@@ -182,9 +285,87 @@ export async function buildRequestBundle(
     tenantId: principal.tenantId,
     principalId: principal.principalId,
     correlationId,
-    projections,
-    renderTreeStore,
+    entities,
+    relations,
   };
 
-  return { ingress, catalogDeps, contentPagesDeps };
+  const identityDeps: IdentityQueryDeps = {
+    tenantId: principal.tenantId,
+    principalId: principal.principalId,
+    correlationId,
+    entities,
+    relations,
+  };
+
+  return {
+    ingress,
+    catalogDeps,
+    contentPagesDeps,
+    identityDeps,
+    principal: enrichedPrincipal,
+  };
+}
+
+/**
+ * Layer `userId`, `roles`, `attributes` onto the `Principal` from the
+ * tenant's Identity records.
+ *
+ * Rules:
+ *   - JWT auth: `principalId` is the IDP `sub`; look up User where
+ *     `primaryIdpSubject = principalId`.
+ *   - Test-auth (X-Debug-Principal): `principalId` is treated as the
+ *     User's id directly (or the bare service-principal id). The lookup
+ *     by IDP subject still runs first so debug principals injected via
+ *     a real OIDC pathway also resolve.
+ *   - No User match → `userId=null`, `roles=[]`, `attributes={}`. The
+ *     request is allowed to proceed; authz denies whatever needs RBAC.
+ */
+async function enrichPrincipal(
+  principal: Principal,
+  entities: import('@atlas/ports').EntityStore,
+): Promise<Principal> {
+  // Lookup-by-IDP-subject first (the JWT path); fall back to direct
+  // User-id lookup if the principalId happens to match a User entity_id
+  // (debug-principal path).
+  let user = await findUserByIdpSubject(
+    entities,
+    principal.tenantId,
+    principal.principalId,
+  );
+  if (!user) {
+    const direct = await import('@atlas/identity').then((m) =>
+      m.getUserEntity(entities, principal.tenantId, principal.principalId),
+    );
+    user = direct;
+  }
+  if (!user) {
+    return {
+      ...principal,
+      userId: null,
+      roles: [],
+      attributes: {},
+    };
+  }
+  const membership = await getMembershipEntity(
+    entities,
+    principal.tenantId,
+    user.userId,
+  );
+  return {
+    ...principal,
+    userId: user.userId,
+    roles: membership?.status === 'active' ? [...membership.roles] : [],
+    // Surface a curated subset of User attrs to ABAC. The full User
+    // doc carries internal fields (passwordHash, lockedUntil) that
+    // Cedar should never see — keep the projection narrow.
+    attributes: {
+      email: user.email,
+      ...(user.givenName !== undefined ? { givenName: user.givenName } : {}),
+      ...(user.familyName !== undefined ? { familyName: user.familyName } : {}),
+      userStatus: user.status,
+      ...(membership?.status !== undefined
+        ? { membershipStatus: membership.status }
+        : {}),
+    },
+  };
 }

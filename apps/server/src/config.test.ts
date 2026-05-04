@@ -40,7 +40,7 @@ describe('loadConfig() — TENANT_ID forbidden in strict mode (parity with Rust 
 
   test('throws when ATLAS_ENV is strict (TEST_AUTH_ENABLED unset) and TENANT_ID is set', () => {
     process.env['CONTROL_PLANE_DB_URL'] =
-      'postgres://atlas_platform:local_dev_password@localhost:5433/control_plane';
+      'postgres://atlas_platform:local_dev_password@localhost:15433/control_plane';
     process.env['OIDC_ISSUER_URL'] = 'https://issuer.example.com';
     process.env['OIDC_JWKS_URL'] = 'https://issuer.example.com/jwks';
     process.env['OIDC_AUDIENCE'] = 'atlas';
@@ -52,7 +52,7 @@ describe('loadConfig() — TENANT_ID forbidden in strict mode (parity with Rust 
 
   test('succeeds when ATLAS_ENV is dev (TEST_AUTH_ENABLED=true) and TENANT_ID is set', () => {
     process.env['CONTROL_PLANE_DB_URL'] =
-      'postgres://atlas_platform:local_dev_password@localhost:5433/control_plane';
+      'postgres://atlas_platform:local_dev_password@localhost:15433/control_plane';
     process.env['TEST_AUTH_ENABLED'] = 'true';
     process.env['TENANT_ID'] = 'foo';
 
@@ -63,7 +63,7 @@ describe('loadConfig() — TENANT_ID forbidden in strict mode (parity with Rust 
 
   test('succeeds when strict mode and TENANT_ID is unset', () => {
     process.env['CONTROL_PLANE_DB_URL'] =
-      'postgres://atlas_platform:local_dev_password@localhost:5433/control_plane';
+      'postgres://atlas_platform:local_dev_password@localhost:15433/control_plane';
     process.env['OIDC_ISSUER_URL'] = 'https://issuer.example.com';
     process.env['OIDC_JWKS_URL'] = 'https://issuer.example.com/jwks';
     process.env['OIDC_AUDIENCE'] = 'atlas';

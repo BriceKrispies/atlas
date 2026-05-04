@@ -95,8 +95,9 @@ export async function handleSeedPackageApply(
     },
   };
 
-  const storedEventId = await eventStore.append(envelope);
-  envelope.eventId = storedEventId;
+  const storedEvent = await eventStore.append(envelope);
+  envelope.eventId = storedEvent.eventId;
+  envelope.seq = storedEvent.seq;
 
   return { envelope, summary, familyIds, taxonomyTreeKeys };
 }

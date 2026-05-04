@@ -28,10 +28,6 @@ interface DataTableElement extends HTMLElement {
   data: readonly PageRow[];
 }
 
-interface ProjectionUpdatedEvent {
-  resourceType?: string;
-}
-
 const COLUMNS = (host: PagesListPage): readonly ColumnSpec[] => [
   { key: 'title', label: 'Title', sortable: true, filter: { type: 'text' } },
   {
@@ -79,11 +75,26 @@ class PagesListPage extends AtlasSurface {
     action: 'Create page',
   };
 
-  private _unsubscribe: (() => void) | null = null;
-
   override async load(): Promise<readonly PageRow[]> {
     const result = await backend.query('/pages');
     return (result as readonly PageRow[] | null) ?? [];
+  }
+
+  /**
+   * Tag-based subscription replaces the prior
+   * `backend.subscribe('projection.updated', …)` wiring (see
+   * `specs/worker.md` phase 5). Phase 5 server-side filtering is
+   * strict-equality only — no wildcards — so we subscribe to the
+   * coarse tenant tag rather than `Page:*`. The cost is one refetch
+   * on any tenant-level invalidation, which matches the previous
+   * behaviour (the old code reloaded on every `projection.updated`
+   * with `resourceType === 'page'`, regardless of which page).
+   */
+  override subscribesTo(): string[] {
+    const tenantId = (
+      import.meta.env.VITE_TENANT_ID ?? 'tenant-001'
+    ) as string;
+    return [`Tenant:${tenantId}`];
   }
 
   override render(): DocumentFragment {
@@ -123,23 +134,13 @@ class PagesListPage extends AtlasSurface {
   override onMount(): void {
     this.emit('admin.content.pages-list.page-viewed');
 
-    this._unsubscribe = backend.subscribe('projection.updated', (event: unknown) => {
-      const ev = event as ProjectionUpdatedEvent | null;
-      if (ev && ev.resourceType === 'page') {
-        void this.reload();
-      }
-    });
+    // SSE refetch is now wired via `subscribesTo()` + the bound
+    // backend adapter (see AtlasSurface in @atlas/core). No manual
+    // subscribe/unsubscribe here — AtlasSurface owns the lifecycle.
 
     this.addEventListener('empty-action', () => {
       void this._createPage();
     });
-  }
-
-  override onUnmount(): void {
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
-    }
   }
 
   async _createPage(): Promise<void> {

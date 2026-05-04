@@ -148,15 +148,17 @@ export function catalogRoutes(state: AppState): Hono<{ Variables: ServerVariable
       const result = await searchCatalog(bundle.catalogDeps, params);
       return c.json(result);
     } catch (e) {
-      // Defence-in-depth: the inner query handler still throws an Error
-      // decorated with `code: 'BAD_REQUEST'` if its own internal validators
-      // ever escalate. Keep the translation as a fallback so the shape
+      // Defence-in-depth: the inner query handler still throws a
+      // `CatalogError` with `code: 'INVALID_SEED_PAYLOAD'` if its own
+      // internal validators ever escalate (Rust parity:
+      // `crates/catalog/src/queries/search.rs` uses the same code for the
+      // empty-query case). Keep the translation as a fallback so the shape
       // matches the Rust ingress handler.
       if (
         typeof e === 'object' &&
         e !== null &&
         'code' in e &&
-        (e as { code: unknown }).code === 'BAD_REQUEST'
+        (e as { code: unknown }).code === 'INVALID_SEED_PAYLOAD'
       ) {
         return errorResponse(
           c,

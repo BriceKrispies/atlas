@@ -14,7 +14,7 @@
 #   make db-up                # Uses docker-compose with env vars from CLI
 #
 # Access:
-#   Postgres: localhost:5433
+#   Postgres: localhost:15433  (host port chosen to dodge native postgres on 5432/5433)
 #   pgAdmin:  http://localhost:5050
 
 services:
@@ -27,7 +27,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST_AUTH_METHOD: md5
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-15433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

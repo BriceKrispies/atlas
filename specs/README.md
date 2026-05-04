@@ -1,53 +1,58 @@
 # Specs Overview
 
-This directory contains formal specifications for the Atlas platform, organized into cross-cutting concerns and feature modules.
+Formal specifications for the Atlas platform. Organized around 26 business
+domains grouped into 5 platforms. See [`CLAUDE.md`](CLAUDE.md) for the full
+domain index, the legacy → canonical migration history, and routing for
+adding/modifying specs.
 
 ## Structure
 
 ```
 /specs
-  README.md           — this file
-  glossary.md         — key terms and definitions
-  error_taxonomy.json — canonical error codes and categories
-  /crosscut           — system-wide patterns and constraints
-    authn.md
-    authz.md
-    errors.md         — failure semantics and error contract
-    tenancy.md
-    security.md
-    events.md
-    storage.md
-  /modules            — feature module specifications
-    /<module-name>
-      README.md       — module overview
-      surfaces.md     — UI surface specifications
-      events.md       — intents and events emitted/consumed
+  CLAUDE.md                — primary index (read this first)
+  README.md                — this file
+  glossary.md              — key terms and definitions
+  error_taxonomy.json      — canonical error codes and categories
+  architecture.md          — principles P1-P6, invariants I1-I12
+  normative_requirements.md — RFC 2119 compliance rules
+  LEXICON.md               — canonical vocabulary (nouns, verbs, pipelines)
+  conformance.md           — invariant conformance checklist
+  spec_surface_inventory.md — full spec surface inventory
+
+  /domains                 — canonical home: 26 domains across 5 platforms
+    /<domain>              — README.md + migrated content
+      README.md            — domain overview (Platform / Status / Cross-refs)
+      <topic>.md           — migrated cross-cutting docs
+      <legacy-folder>/     — migrated module folders (README + surfaces + events)
+      features/            — Gherkin features (lazily created)
+
+  /crosscut                — system-wide content with no single domain home
+    atlasctl.md            — operator CLI spec
+    errors.md              — error taxonomy
+    events.md              — event vocabulary
+
+  /schemas                 — conceptual + JSON-schema contracts
+  /fixtures                — golden test fixtures
+  /policy-fixtures         — policy bundle fixtures
+  /frontend                — frontend specs
 ```
 
-## Modules
+## Adding a New Spec
 
-- **tokens** — Token registry and substitution system
-- **comms** — Email templates, messaging, and notification tracking
-- **org** — Business unit and organizational structure management
-- **content** — Announcements and media library
-- **points** — Point system configuration and management
-- **audit** — Intent history and activity tracking
-- **import** — Spreadsheet upload and validation
-- **badges** — Badge awards based on intents and roles
-
-## How to Add a New Spec
-
-1. Determine if the feature fits into an existing module or requires a new one
-2. If new module needed, create `/specs/modules/<module-name>/` with `README.md`, `surfaces.md`, `events.md`
-3. Update `/specs/glossary.md` with any new domain terms
-4. Add cross-cutting concerns to `/specs/crosscut/` if they affect multiple modules
-5. Use the Spec Card template from any existing `surfaces.md` for consistency
-6. Document dependencies on other modules explicitly
-7. Mark uncertainties as TODO/OPEN QUESTION rather than guessing
+1. Identify the canonical domain. See the platform → domain table in
+   [`CLAUDE.md`](CLAUDE.md).
+2. Drop content into `domains/<domain>/`. Use `README.md` for the overview;
+   add `<topic>.md` siblings for narrative pieces; add `features/` Gherkin
+   files when the spec gains executable witnesses.
+3. Reference `crosscut/errors.md` and `crosscut/events.md` from your spec
+   when relevant — those stay system-wide.
+4. Update `glossary.md` with any new vocabulary.
+5. If you genuinely need a 27th domain, bring it up before adding it — the
+   canonical map is intentionally stable.
 
 ## Reading Order
 
-1. Start with `glossary.md` for key terms
-2. Read `/crosscut` specs to understand system-wide constraints
-3. Dive into individual modules as needed
-4. Each module's `README.md` provides overview before diving into `surfaces.md`
+1. [`CLAUDE.md`](CLAUDE.md) — domain index + routing
+2. `glossary.md` — key terms
+3. `architecture.md` — principles + invariants
+4. The relevant `domains/<x>/README.md` for the area you're working in

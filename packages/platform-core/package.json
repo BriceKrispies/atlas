@@ -5,6 +5,10 @@
   "type": "module",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./spec-validate": "./src/spec-validate/index.ts"
+  },
+  "devDependencies": {
+    "@atlas/ports": "workspace:*"
   }
 }

@@ -6,7 +6,8 @@ import {
   IdbSearchEngine,
   InMemoryControlPlaneRegistry,
   IdbCatalogStateStore,
-  IdbRenderTreeStore,
+  IdbEntityStore,
+  IdbRelationStore,
   type IdbDb,
 } from '@atlas/adapter-idb';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
@@ -35,7 +36,6 @@ import {
   listPages as listContentPagesQuery,
   getPage as getContentPageQuery,
   getRenderTree as getContentPageRenderTreeQuery,
-  renderTreeKey as contentRenderTreeKey,
   type ContentPagesQueryDeps,
 } from '@atlas/content-pages';
 import { composeRegistries } from '@atlas/authz';
@@ -75,10 +75,13 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   const search = new IdbSearchEngine(db);
   const registry = new InMemoryControlPlaneRegistry();
   const catalogState = new IdbCatalogStateStore(db);
-  const renderTreeStore = new IdbRenderTreeStore(db);
+  // L3 substrate — IDB-backed entity + relation stores shared by the
+  // dispatcher chain, the handler registry, and the query deps.
+  const entities = new IdbEntityStore(db);
+  const relations = new IdbRelationStore(db);
   const handlers = composeRegistries(
     catalogHandlerRegistry(),
-    contentPagesHandlerRegistry(projections),
+    contentPagesHandlerRegistry(entities),
   );
   const policyEngine = new StubPolicyEngine();
 
@@ -97,8 +100,8 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
   const dispatch: EventDispatcher = composeDispatchers(
     catalogDispatcher({ catalogState, projections, search, cache }),
     contentPagesDispatcher({
-      projections,
-      renderTreeStore,
+      entities,
+      relations,
       cache,
       wasmHost,
     }),
@@ -130,8 +133,8 @@ async function buildContext(opts: FactoryOptions): Promise<SimContext> {
     tenantId: opts.tenantId,
     principalId: opts.principalId,
     correlationId: 'sim-corr',
-    projections,
-    renderTreeStore,
+    entities,
+    relations,
   };
 
   return {
@@ -218,11 +221,6 @@ export async function createSimIngress(opts: FactoryOptions): Promise<BrowserIng
     },
     getContentPageRenderTree(pageId) {
       return getContentPageRenderTreeQuery(ctx.contentPagesDeps, pageId);
-    },
-    async clearRenderTreeFastPath(pageId: string): Promise<void> {
-      await ctx.projections.delete(
-        contentRenderTreeKey(opts.tenantId, pageId),
-      );
     },
 
     async readEventTags(eventId) {

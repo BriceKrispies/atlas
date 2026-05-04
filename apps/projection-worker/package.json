@@ -1,0 +1,28 @@
+{
+  "name": "@atlas/projection-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atlas/adapter-node": "workspace:*",
+    "@atlas/authz": "workspace:*",
+    "@atlas/catalog": "workspace:*",
+    "@atlas/content-pages": "workspace:*",
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*",
+    "@atlas/wasm-host": "workspace:*",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.17",
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
+  }
+}

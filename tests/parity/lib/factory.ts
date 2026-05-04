@@ -81,13 +81,6 @@ export interface BrowserIngress {
   getContentPage(pageId: string): Promise<PageDocument | null>;
   getContentPageRenderTree(pageId: string): Promise<RenderTree | null>;
 
-  /**
-   * Sim-only: clear the in-memory render-tree projection for a page.
-   * Used by the `persistence_test`-equivalent scenario to prove the
-   * durable RenderTreeStore fallback works.
-   */
-  clearRenderTreeFastPath(pageId: string): Promise<void>;
-
   /** Sim-only: read the cacheInvalidationTags off the stored event envelope. */
   readEventTags(eventId: string): Promise<string[] | null>;
 

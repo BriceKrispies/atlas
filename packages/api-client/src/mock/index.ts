@@ -6,7 +6,13 @@
  */
 
 import * as store from './store.ts';
-import type { Backend, BackendEventCallback, Unsubscribe } from '../backend.ts';
+import type {
+  Backend,
+  BackendEventCallback,
+  SerializedServerEvent,
+  SerializedServerEventCallback,
+  Unsubscribe,
+} from '../backend.ts';
 
 type RouteHandler = (...params: string[]) => Promise<unknown>;
 
@@ -98,5 +104,36 @@ export const mockBackend: Backend = {
 
   subscribe(eventType: string, callback: BackendEventCallback): Unsubscribe {
     return store.subscribe(eventType, callback);
+  },
+
+  /**
+   * Mock implementation of tag-filtered subscription. The mock store
+   * only emits `projection.updated` events with no tags, so a non-empty
+   * tag-filter will simply receive nothing — that's correct semantics
+   * (no tag overlap = no delivery). Empty tag-filter receives every
+   * `projection.updated` event verbatim.
+   */
+  subscribeTags(
+    tags: string[],
+    callback: SerializedServerEventCallback,
+  ): Unsubscribe {
+    const tagSet = new Set(tags);
+    const wrapped: BackendEventCallback = (event: unknown): void => {
+      const ev = event as SerializedServerEvent;
+      if (tagSet.size > 0) {
+        const evTags = ev.tags;
+        if (!evTags || evTags.length === 0) return;
+        let matched = false;
+        for (const t of evTags) {
+          if (tagSet.has(t)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) return;
+      }
+      callback(ev);
+    };
+    return store.subscribe('projection.updated', wrapped);
   },
 };

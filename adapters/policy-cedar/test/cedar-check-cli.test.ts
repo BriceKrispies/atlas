@@ -32,7 +32,11 @@ const repoRoot = join(here, '..', '..', '..');
 const cliPath = join(repoRoot, 'adapters', 'policy-cedar', 'bin', 'cedar-check.ts');
 
 describe('cedar:check CLI — happy path', () => {
-  test('exits 0 against the bundled fixtures', () => {
+  // 30s timeout: tsx + Cedar WASM init alone can run 4-6s on a cold cache,
+  // and the default 5s testTimeout flakes on Windows when the suite is
+  // running under load. Cedar evaluation itself is fast — the bound is
+  // dominated by subprocess spawn + module resolution.
+  test('exits 0 against the bundled fixtures', { timeout: 30_000 }, () => {
     // Use shell: true so Windows .cmd shims (tsx.cmd) resolve. spawnSync
     // surfaces non-zero exits via `.status` rather than throwing, so we
     // assert directly. Skipped when the workspace tsx isn't installed

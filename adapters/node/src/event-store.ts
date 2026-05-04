@@ -14,7 +14,7 @@
  */
 
 import { IngressError, type EventEnvelope } from '@atlas/platform-core';
-import type { EventStore } from '@atlas/ports';
+import type { EventStore, StoredEvent } from '@atlas/ports';
 import type postgres from 'postgres';
 
 interface EventRow {
@@ -31,9 +31,15 @@ interface EventRow {
   user_id: string | null;
   payload: unknown;
   cache_invalidation_tags: string[] | null;
+  // BIGSERIAL — postgres.js returns int8 as string by default; we coerce to bigint.
+  seq: string | number | bigint;
 }
 
-function rowToEnvelope(row: EventRow): EventEnvelope {
+function toBigInt(v: string | number | bigint): bigint {
+  return typeof v === 'bigint' ? v : BigInt(v);
+}
+
+function rowToEnvelope(row: EventRow): StoredEvent {
   const occurred =
     row.occurred_at instanceof Date
       ? row.occurred_at.toISOString()
@@ -52,17 +58,20 @@ function rowToEnvelope(row: EventRow): EventEnvelope {
     userId: row.user_id,
     cacheInvalidationTags: row.cache_invalidation_tags,
     payload: row.payload,
+    seq: toBigInt(row.seq),
   };
 }
 
 export class PostgresEventStore implements EventStore {
   constructor(private readonly sql: postgres.Sql) {}
 
-  async append(envelope: EventEnvelope): Promise<string> {
+  async append(envelope: EventEnvelope): Promise<StoredEvent> {
     const tags = envelope.cacheInvalidationTags ?? null;
     // Insert; on (tenant_id, idempotency_key) conflict, do nothing and
-    // return no row. Then SELECT the existing event_id for that key.
-    const inserted = await this.sql<{ event_id: string }[]>`
+    // return no row. Then SELECT the existing record for that key.
+    // BIGSERIAL `seq` is assigned by Postgres on insert; returned to
+    // populate the envelope's seq field for the worker pipeline.
+    const inserted = await this.sql<{ event_id: string; seq: string | number | bigint }[]>`
       INSERT INTO events (
         event_id, event_type, schema_id, schema_version, tenant_id,
         idempotency_key, occurred_at, correlation_id, causation_id,
@@ -83,13 +92,20 @@ export class PostgresEventStore implements EventStore {
         ${tags as unknown as string[] | null}
       )
       ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
-      RETURNING event_id
+      RETURNING event_id, seq
     `;
     if (inserted.length > 0) {
-      return inserted[0]!.event_id;
+      return {
+        ...envelope,
+        eventId: inserted[0]!.event_id,
+        seq: toBigInt(inserted[0]!.seq),
+      };
     }
-    const existing = await this.sql<{ event_id: string }[]>`
-      SELECT event_id
+    // Idempotency hit — return the existing record with full row data.
+    const existing = await this.sql<EventRow[]>`
+      SELECT event_id, event_type, schema_id, schema_version, tenant_id,
+             idempotency_key, occurred_at, correlation_id, causation_id,
+             principal_id, user_id, payload, cache_invalidation_tags, seq
       FROM events
       WHERE tenant_id = ${envelope.tenantId}
         AND idempotency_key = ${envelope.idempotencyKey}
@@ -100,8 +116,6 @@ export class PostgresEventStore implements EventStore {
       // the follow-up SELECT also returned nothing. Surface as the
       // canonical `STORAGE_FAILED` so the boundary middleware in
       // `apps/server` maps it to a 500 with a stable error code.
-      // `correlationId` is the empty string — the middleware substitutes
-      // its own correlation id when the adapter doesn't have one.
       throw new IngressError(
         'STORAGE_FAILED',
         `EventStore.append: storage race — insert was a no-op but no existing row found for (${envelope.tenantId}, ${envelope.idempotencyKey})`,
@@ -109,14 +123,14 @@ export class PostgresEventStore implements EventStore {
         '',
       );
     }
-    return existing[0]!.event_id;
+    return rowToEnvelope(existing[0]!);
   }
 
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
     const rows = await this.sql<EventRow[]>`
       SELECT event_id, event_type, schema_id, schema_version, tenant_id,
              idempotency_key, occurred_at, correlation_id, causation_id,
-             principal_id, user_id, payload, cache_invalidation_tags
+             principal_id, user_id, payload, cache_invalidation_tags, seq
       FROM events
       WHERE event_id = ${eventId}
       LIMIT 1
@@ -126,13 +140,16 @@ export class PostgresEventStore implements EventStore {
   }
 
   async readEvents(tenantId: string): Promise<EventEnvelope[]> {
+    // Order by seq (per-tenant monotonic) — BIGSERIAL is assigned in
+    // insertion order, so this is also chronological. Tiebreaker
+    // unnecessary because seq is unique.
     const rows = await this.sql<EventRow[]>`
       SELECT event_id, event_type, schema_id, schema_version, tenant_id,
              idempotency_key, occurred_at, correlation_id, causation_id,
-             principal_id, user_id, payload, cache_invalidation_tags
+             principal_id, user_id, payload, cache_invalidation_tags, seq
       FROM events
       WHERE tenant_id = ${tenantId}
-      ORDER BY occurred_at ASC, event_id ASC
+      ORDER BY seq ASC
     `;
     return rows.map(rowToEnvelope);
   }

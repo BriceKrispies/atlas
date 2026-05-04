@@ -5,7 +5,13 @@
  * Requires the ingress service to be running on VITE_API_URL (default: http://localhost:3000).
  */
 
-import type { Backend, BackendEventCallback, Unsubscribe } from '../backend.ts';
+import type {
+  Backend,
+  BackendEventCallback,
+  SerializedServerEvent,
+  SerializedServerEventCallback,
+  Unsubscribe,
+} from '../backend.ts';
 
 const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const TENANT_ID: string = import.meta.env.VITE_TENANT_ID ?? 'tenant-001';
@@ -91,6 +97,99 @@ interface ServerSentEventLike {
   data: string;
 }
 
+/**
+ * Pool of EventSources keyed by their tag-filter signature.
+ *
+ * Multiple surfaces subscribed to the same tag set share one connection.
+ * When the last subscriber for a signature unsubscribes, the EventSource
+ * is closed and the entry removed.
+ *
+ * The signature is the sorted tag list joined by `,`. Empty signature
+ * (`''`) is the "no filter" pool slot used by the legacy `subscribe()`
+ * method and by `subscribeTags([], …)`.
+ */
+interface PooledSource {
+  source: EventSource;
+  /** All currently-attached `message`-style subscribers. */
+  subscribers: Set<(event: SerializedServerEvent) => void>;
+}
+
+const sourcePool = new Map<string, PooledSource>();
+
+function tagSignature(tags: readonly string[]): string {
+  // Sorting normalises ['B','A'] and ['A','B'] to the same signature so
+  // they share a connection. Empty list → '' (the back-compat slot).
+  return [...tags].sort().join(',');
+}
+
+function ensurePooledSource(tags: readonly string[]): PooledSource {
+  const signature = tagSignature(tags);
+  const existing = sourcePool.get(signature);
+  if (existing) return existing;
+
+  const url =
+    tags.length > 0
+      ? `${API_URL}/api/v1/events?tags=${encodeURIComponent(tags.join(','))}`
+      : `${API_URL}/api/v1/events`;
+  const source = new EventSource(url, {
+    // EventSource doesn't support custom headers; auth via cookie /
+    // query-token will land later (see TODO at top of file).
+  });
+  const pooled: PooledSource = {
+    source,
+    subscribers: new Set(),
+  };
+
+  // Single onmessage-style fanout: every named-event listener delegates
+  // to the subscriber set, so we only pay one parse per delivered event.
+  // We use a wildcard listener via `source.onmessage` AND attach a
+  // generic handler at addEventListener time per subscriber? No — the
+  // server emits `event: <eventType>` so we have to listen per event
+  // type. Cheapest portable shape: install a single listener for each
+  // event type the first time we see it. Since the server's eventType
+  // set is small (`projection.updated`, `cache.invalidated`), we attach
+  // both up front.
+  const dispatch = (e: Event): void => {
+    const msg = e as unknown as ServerSentEventLike;
+    let parsed: SerializedServerEvent;
+    try {
+      parsed = JSON.parse(msg.data) as SerializedServerEvent;
+    } catch {
+      return;
+    }
+    for (const cb of pooled.subscribers) {
+      try {
+        cb(parsed);
+      } catch (err) {
+        // One bad subscriber must not break the others.
+        console.error('[atlas/api-client] subscribeTags callback threw', err);
+      }
+    }
+  };
+  // Listen for the two server-emitted event types. New types added
+  // server-side need an entry here too.
+  source.addEventListener('projection.updated', dispatch);
+  source.addEventListener('cache.invalidated', dispatch);
+
+  sourcePool.set(signature, pooled);
+  return pooled;
+}
+
+function attachSubscriber(
+  signature: string,
+  pooled: PooledSource,
+  callback: (event: SerializedServerEvent) => void,
+): Unsubscribe {
+  pooled.subscribers.add(callback);
+  return () => {
+    pooled.subscribers.delete(callback);
+    if (pooled.subscribers.size === 0) {
+      pooled.source.close();
+      sourcePool.delete(signature);
+    }
+  };
+}
+
 export const httpBackend: Backend = {
   async query(path: string): Promise<unknown> {
     const res = await fetch(`${API_URL}/api/v1${path}`, {
@@ -118,23 +217,35 @@ export const httpBackend: Backend = {
   },
 
   subscribe(eventType: string, callback: BackendEventCallback): Unsubscribe {
-    const source = new EventSource(`${API_URL}/api/v1/events`, {
-      // Note: EventSource doesn't support custom headers natively.
-      // For auth, we'll need to use a polyfill or query param token.
-    });
-
-    const handler = (e: Event): void => {
-      const msg = e as unknown as ServerSentEventLike;
-      if (msg.type === eventType) {
-        callback(JSON.parse(msg.data) as unknown);
-      }
+    // Legacy event-type subscription. Routed through the same pool as
+    // `subscribeTags([], …)` so a page subscribing both ways shares
+    // one connection. We filter by `eventType` client-side since the
+    // server delivers all event types on the unfiltered stream.
+    const pooled = ensurePooledSource([]);
+    const wrapped = (parsed: SerializedServerEvent): void => {
+      if (parsed.eventType === eventType) callback(parsed);
     };
+    return attachSubscriber('', pooled, wrapped);
+  },
 
-    source.addEventListener(eventType, handler);
-
-    return () => {
-      source.removeEventListener(eventType, handler);
-      source.close();
-    };
+  subscribeTags(
+    tags: string[],
+    callback: SerializedServerEventCallback,
+  ): Unsubscribe {
+    const signature = tagSignature(tags);
+    const pooled = ensurePooledSource(tags);
+    return attachSubscriber(signature, pooled, callback);
   },
 };
+
+/**
+ * Test-only hook: drop every pooled EventSource. Not part of the
+ * public surface — exported for unit tests that swap the global
+ * `EventSource` constructor between cases.
+ */
+export function _resetSubscriptionPool(): void {
+  for (const pooled of sourcePool.values()) {
+    pooled.source.close();
+  }
+  sourcePool.clear();
+}

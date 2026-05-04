@@ -95,8 +95,8 @@ describe('IDB multi-tab stress', () => {
     const tabAOnly = ['idem-a-0', 'idem-a-1', 'idem-a-2', 'idem-a-3', 'idem-a-4'];
     const tabBOnly = ['idem-b-0', 'idem-b-1', 'idem-b-2', 'idem-b-3', 'idem-b-4'];
 
-    const aOps: Promise<string>[] = [];
-    const bOps: Promise<string>[] = [];
+    const aOps: Promise<{ eventId: string }>[] = [];
+    const bOps: Promise<{ eventId: string }>[] = [];
     for (const k of sharedKeys) {
       aOps.push(tabA.events.append(makeEvent({ tab: 'A', idempotencyKey: k })));
       bOps.push(tabB.events.append(makeEvent({ tab: 'B', idempotencyKey: k })));
@@ -121,8 +121,8 @@ describe('IDB multi-tab stress', () => {
     // Every shared key resolves to exactly one event in the store, and both
     // tabs' append() calls returned that event's id.
     for (let i = 0; i < sharedKeys.length; i++) {
-      const aId = aResults[i]!;
-      const bId = bResults[i]!;
+      const aId = aResults[i]!.eventId;
+      const bId = bResults[i]!.eventId;
       expect(aId).toBe(bId);
       const matchingStored = stored.filter((e) => e.idempotencyKey === sharedKeys[i]);
       expect(matchingStored.length).toBe(1);

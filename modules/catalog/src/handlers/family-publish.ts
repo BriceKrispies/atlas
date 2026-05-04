@@ -2,6 +2,7 @@ import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventStore, CatalogStateStore } from '@atlas/ports';
 import type { SeedPayload } from '../seed-types.ts';
 import { deterministicUuid, newEventId } from '../ids.ts';
+import { CatalogError } from '../errors.ts';
 
 export interface FamilyPublishCommand {
   tenantId: string;
@@ -23,16 +24,12 @@ export async function handleFamilyPublish(
 ): Promise<FamilyPublishResult> {
   const state = await catalogState.get(cmd.tenantId);
   if (!state) {
-    throw Object.assign(new Error(`family not found: ${cmd.familyKey}`), {
-      code: 'FAMILY_NOT_FOUND',
-    });
+    throw new CatalogError('FAMILY_NOT_FOUND', `family not found: ${cmd.familyKey}`);
   }
   const seed = state.payload as SeedPayload;
   const family = seed.families.find((f) => f.key === cmd.familyKey);
   if (!family) {
-    throw Object.assign(new Error(`family not found: ${cmd.familyKey}`), {
-      code: 'FAMILY_NOT_FOUND',
-    });
+    throw new CatalogError('FAMILY_NOT_FOUND', `family not found: ${cmd.familyKey}`);
   }
 
   const familyId = deterministicUuid('family', cmd.tenantId, family.key);
@@ -70,8 +67,10 @@ export async function handleFamilyPublish(
       publishedAt: occurredAt,
     },
   };
-  const storedFamilyId = await eventStore.append(familyEnvelope);
-  familyEnvelope.eventId = storedFamilyId;
+  const storedFamily = await eventStore.append(familyEnvelope);
+  familyEnvelope.eventId = storedFamily.eventId;
+  familyEnvelope.seq = storedFamily.seq;
+  const storedFamilyId = storedFamily.eventId;
 
   const variantEnvelopes: EventEnvelope[] = [];
   for (const v of family.variants) {
@@ -105,7 +104,8 @@ export async function handleFamilyPublish(
       },
     };
     const stored = await eventStore.append(envelope);
-    envelope.eventId = stored;
+    envelope.eventId = stored.eventId;
+    envelope.seq = stored.seq;
     variantEnvelopes.push(envelope);
   }
 

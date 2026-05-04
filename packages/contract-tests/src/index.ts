@@ -5,7 +5,10 @@ export { searchEngineContract } from './search-engine.ts';
 export { controlPlaneRegistryContract } from './control-plane-registry.ts';
 export { catalogStateStoreContract } from './catalog-state-store.ts';
 export { policyEngineContract } from './policy-engine.ts';
-export { renderTreeStoreContract } from './render-tree-store.ts';
+export {
+  runWorkerSourceContract,
+  type WorkerSourceFactory,
+} from './worker-source.ts';
 export {
   wasmHostContract,
   noopRenderWasm,

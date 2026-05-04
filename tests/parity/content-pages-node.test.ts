@@ -177,42 +177,6 @@ d('[node] content-pages parity', () => {
     await ingress.close();
   });
 
-  test('test_render_tree_survives_fast_path_clear', async () => {
-    // Mirrors `persistence_test.rs::test_render_tree_persists_across_cache_clear`
-    // and the sim-mode counterpart. Requires the
-    // `/debug/render-tree/clear` endpoint shipped in Chunk 10; when the
-    // env gate is off the helper raises `UnsupportedInMode` and the
-    // assertion passes the skip cleanly.
-    const { ingress, tenantId, principalId } =
-      await makeServerIngress('cp-pers');
-    await ingress.submitIntent(
-      buildPageCreateIntent({
-        tenantId,
-        principalId,
-        pageId: 'persist',
-        title: 'Persist',
-        slug: 'persist',
-      }),
-    );
-    const before = await ingress.getContentPageRenderTree('persist');
-    expect(before).not.toBeNull();
-
-    try {
-      await ingress.clearRenderTreeFastPath('persist');
-    } catch (e) {
-      if (e instanceof UnsupportedInMode) {
-        // Gate is off — graceful skip, mirrors the other gated scenarios.
-        await ingress.close();
-        return;
-      }
-      throw e;
-    }
-
-    const after = await ingress.getContentPageRenderTree('persist');
-    expect(after).toEqual(before);
-    await ingress.close();
-  });
-
   test('test_page_tenant_isolation', async () => {
     const a = await makeServerIngress('cp-iso-a');
     const b = await makeServerIngress('cp-iso-b');

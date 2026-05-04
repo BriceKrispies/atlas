@@ -1,48 +1,46 @@
 /**
  * ContentPages event dispatcher.
  *
- * Triggers projection rebuilds for `ContentPages.*` event types. Cache-tag
- * invalidation lives in a separate cross-cutting dispatcher in the wiring
- * layer (see `cacheTagDispatcher` consumers in apps/server) — do NOT
- * call `cache.invalidateByTags` here.
+ * Triggers entity writes for `ContentPages.*` event types. Cache-tag
+ * invalidation lives in a separate cross-cutting dispatcher in the
+ * wiring layer (see `cacheTagDispatcher` consumers in `apps/server`) —
+ * do NOT call `cache.invalidateByTags` here.
+ *
+ * Storage model: Page + PageRenderTree are entities (`entities` table)
+ * linked by a `page.render-tree` edge in `relations`. The render tree
+ * itself is a pure function of the page document plus an optional WASM
+ * plugin output (`pluginRef`).
  */
 
 import type { EventEnvelope } from '@atlas/platform-core';
 import type {
   Cache,
+  EntityStore,
   EventDispatcher,
-  ProjectionStore,
-  RenderTreeStore,
+  RelationStore,
   WasmHost,
 } from '@atlas/ports';
 import type { PageDocument } from './types.ts';
+import { buildRenderTree } from './render-tree.ts';
+import { putPageEntity, deletePageEntity } from './entities/page.ts';
 import {
-  writePageDocument,
-  deletePageDocument,
-} from './projections/page-document.ts';
-import {
-  rebuildRenderTree,
-  deleteRenderTree,
-} from './projections/render-tree.ts';
-import {
-  upsertPageInList,
-  removePageFromList,
-} from './projections/page-list.ts';
+  putRenderTreeEntity,
+  deleteRenderTreeEntity,
+} from './entities/page-render-tree.ts';
+import { linkRenderTree, unlinkRenderTree } from './entities/relations.ts';
 
 export interface ContentPagesDispatchContext {
-  projections: ProjectionStore;
-  renderTreeStore: RenderTreeStore;
+  entities: EntityStore;
+  relations: RelationStore;
   /**
-   * Reserved for future use. The wiring layer's separate
-   * `cacheTagDispatcher` performs envelope-level tag flushing — this
-   * dispatcher does not consume `cache` today. Kept on the context type
-   * so existing call sites compile.
+   * Reserved. Cross-cutting cache invalidation lives in the wiring
+   * layer's `cacheTagDispatcher`; this dispatcher does not consume
+   * `cache` directly.
    */
   cache?: Cache;
   /**
    * Optional WASM host for `pluginRef`-routed render trees. When
-   * unset, plugin pages render the default tree. Threaded by the
-   * wiring layer (server / sim factory).
+   * unset, pages with `pluginRef` still render the default tree.
    */
   wasmHost?: WasmHost;
 }
@@ -67,22 +65,22 @@ export async function dispatchContentPagesEvent(
   ) {
     const doc = payload['document'] as PageDocument | undefined;
     if (!doc) return;
-    await writePageDocument(doc, ctx.projections);
-    await upsertPageInList(envelope.tenantId, doc, ctx.projections);
-    await rebuildRenderTree(envelope.tenantId, doc.pageId, doc, {
-      projections: ctx.projections,
-      renderTreeStore: ctx.renderTreeStore,
-      ...(ctx.wasmHost !== undefined ? { wasmHost: ctx.wasmHost } : {}),
-    });
+    await putPageEntity(ctx.entities, doc);
+    const tree = await buildRenderTree(doc, ctx.wasmHost);
+    await putRenderTreeEntity(
+      ctx.entities,
+      doc.tenantId,
+      doc.pageId,
+      tree,
+      doc.pluginRef !== undefined ? { pluginId: doc.pluginRef } : {},
+    );
+    await linkRenderTree(ctx.relations, doc.tenantId, doc.pageId);
   } else if (envelope.eventType === 'ContentPages.PageDeleted') {
     const pageId = typeof payload['pageId'] === 'string' ? (payload['pageId'] as string) : '';
     if (!pageId) return;
-    await deletePageDocument(envelope.tenantId, pageId, ctx.projections);
-    await removePageFromList(envelope.tenantId, pageId, ctx.projections);
-    await deleteRenderTree(envelope.tenantId, pageId, {
-      projections: ctx.projections,
-      renderTreeStore: ctx.renderTreeStore,
-    });
+    await deletePageEntity(ctx.entities, envelope.tenantId, pageId);
+    await unlinkRenderTree(ctx.relations, envelope.tenantId, pageId);
+    await deleteRenderTreeEntity(ctx.entities, envelope.tenantId, pageId);
   }
 }
 

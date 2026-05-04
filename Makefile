@@ -7,13 +7,17 @@
 
 # Container runtime configuration
 CONTAINER_RUNTIME ?= podman
-COMPOSE_CMD = $(CONTAINER_RUNTIME)-compose
+# Use the built-in `compose` subcommand (Podman 4+, Docker 20.10+) rather
+# than the standalone `podman-compose` Python tool. Override with
+# `make COMPOSE_CMD=podman-compose db-up` if you have the standalone tool
+# installed and prefer it.
+COMPOSE_CMD ?= $(CONTAINER_RUNTIME) compose
 COMPOSE_FILE = infra/compose/compose.control-plane.yml
 CONTAINER_NAME = atlas-platform-control-plane-db
 
 # Database connection settings
 DB_HOST ?= localhost
-DB_PORT ?= 5433
+DB_PORT ?= 15433
 DB_USER ?= atlas_platform
 DB_NAME ?= control_plane
 PGPASSWORD ?= local_dev_password

@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @atlas/admin dev",
+    "dev:async": "tsx scripts/dev-async.ts",
     "sandbox": "pnpm --filter @atlas/sandbox dev",
     "authoring": "pnpm --filter @atlas/authoring dev",
     "build": "pnpm --filter './apps/*' build",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p tests/tsconfig.json",
     "typecheck:watch": "tsgo --noEmit -p tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,10 +19,18 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:sandbox": "pnpm --filter @atlas/sandbox test:e2e",
     "test:integration": "playwright test --config playwright.itest.config.ts",
+    "bdd:clean": "tsx tests/bdd/scripts/clear-artifacts.ts",
+    "bdd": "pnpm bdd:clean && tsx tests/bdd/scripts/run.ts on-failure on-failure",
+    "bdd:debug": "pnpm bdd:clean && tsx tests/bdd/scripts/run.ts on-failure always",
+    "bdd:all": "pnpm bdd:clean && tsx tests/bdd/scripts/run.ts always always",
+    "bdd:report": "playwright show-report tests/bdd/report",
     "lint": "eslint .",
     "lint:widgets": "eslint \"bundles/*/src/widgets/**/*.ts\"",
     "test:lint-rules": "pnpm -C packages/eslint-plugin-atlas-widgets test",
-    "cedar:check": "tsx adapters/policy-cedar/bin/cedar-check.ts"
+    "cedar:check": "tsx adapters/policy-cedar/bin/cedar-check.ts",
+    "domain:add": "tsx scripts/atlas-domain.ts add",
+    "domain:list": "tsx scripts/atlas-domain.ts list",
+    "domain:disable": "tsx scripts/atlas-domain.ts disable"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -40,6 +49,7 @@
     "idb": "^8.0.0",
     "jiti": "^2.6.1",
     "linkedom": "^0.18.0",
+    "playwright-bdd": "^8.5.0",
     "postgres": "^3.4.5",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

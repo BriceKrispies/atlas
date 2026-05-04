@@ -23,6 +23,7 @@ import { catalogRoutes } from './routes/catalog.ts';
 import { authzRoutes } from './routes/authz.ts';
 import { contentPagesRoutes } from './routes/content-pages.ts';
 import { debugRoutes } from './routes/debug.ts';
+import { eventsRoutes } from './routes/events.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -42,6 +43,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', catalogRoutes(state));
   authed.route('/', authzRoutes(state));
   authed.route('/', contentPagesRoutes(state));
+  authed.route('/', eventsRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes(state));
   }

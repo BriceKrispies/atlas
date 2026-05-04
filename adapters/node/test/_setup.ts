@@ -9,7 +9,7 @@
  * Provision locally (Podman):
  *   make db-up                       # starts the postgres container
  *   psql ... -c 'CREATE DATABASE adapters_node_test'
- *   export TEST_TENANT_DB_URL=postgres://atlas_platform:local_dev_password@localhost:5433/adapters_node_test
+ *   export TEST_TENANT_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/adapters_node_test
  *   pnpm --filter @atlas/adapter-node test
  *
  * Schema is installed by the bundled `runMigrations(sql, 'tenant')` —

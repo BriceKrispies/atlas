@@ -7,4 +7,5 @@ export type {
   SurfaceState,
   SurfaceLoadingConfig,
   SurfaceEmptyConfig,
+  SurfaceBackendAdapter,
 } from './component.ts';

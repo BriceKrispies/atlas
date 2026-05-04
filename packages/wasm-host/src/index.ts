@@ -42,3 +42,12 @@ export {
   DEFAULT_TIMEOUT_MS,
   MAX_SERIALIZED_OUTPUT,
 } from './errors.ts';
+export {
+  validateRenderTree,
+  RenderTreeError,
+} from './render-tree-validate.ts';
+export type {
+  RenderTree,
+  RenderNode,
+  RenderTreeInvariant,
+} from './render-tree-validate.ts';

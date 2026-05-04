@@ -34,6 +34,14 @@ import type {
 } from './policy-store.ts';
 import { AuthzError, codes } from './errors.ts';
 
+// NOTE: a shared `PolicyBundle` DTO lives in `@atlas/platform-core`
+// (`control-plane-db.ts`, mirroring `crates/control_plane_db/src/models.rs`).
+// We deliberately keep this local row type instead of adopting it: the
+// shared DTO models `policy_json` as opaque `JsonValue` to match the Rust
+// wire shape, whereas this adapter needs the wrapper's named fields
+// (`policies`, `format`, `description`) typed for safe destructuring,
+// and tracks the adapter-only `last_modified_by` column. Adopting the
+// shared type would require a cast on every access — net loss in safety.
 interface PolicyRow {
   tenant_id: string;
   version: number;

@@ -30,12 +30,8 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import {
   PostgresEventStore,
-  PostgresProjectionStore,
   PostgresSearchEngine,
 } from '@atlas/adapter-node';
-import {
-  renderTreeKey as contentRenderTreeKey,
-} from '@atlas/content-pages';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
@@ -196,36 +192,6 @@ export function debugRoutes(state: AppState): Hono<{ Variables: ServerVariables 
         WHERE tags && ${[tag]}::text[]
       `;
       return c.json({ cleared: true, deleted: result.count });
-    } catch (e) {
-      return mapError(c, e, correlationId);
-    }
-  });
-
-  // POST /debug/render-tree/clear?pageId=... — drop the in-memory
-  // render-tree projection for the caller's (tenant, pageId) pair.
-  // The durable RenderTreeStore is left intact, so subsequent reads
-  // hit the Postgres fallback path. Tenant-scoped: the caller's
-  // `tenantId` is the only one we ever delete from.
-  app.post('/debug/render-tree/clear', async (c: AppCtx) => {
-    const correlationId = c.get('correlationId');
-    const principal = c.get('principal');
-    const pageId = c.req.query('pageId') ?? '';
-    if (!pageId) {
-      return errorResponse(
-        c,
-        'BAD_REQUEST',
-        'pageId query parameter is required',
-        400,
-        correlationId,
-      );
-    }
-    try {
-      const sql = await ensureTenantMigrated(state, principal.tenantId);
-      const projections = new PostgresProjectionStore(sql);
-      const removed = await projections.delete(
-        contentRenderTreeKey(principal.tenantId, pageId),
-      );
-      return c.json({ cleared: true, removed });
     } catch (e) {
       return mapError(c, e, correlationId);
     }

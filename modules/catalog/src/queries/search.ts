@@ -1,6 +1,7 @@
 import type { SearchEngine } from '@atlas/ports';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchParams, SearchResponse, SearchResult } from '../responses.ts';
+import { CatalogError } from '../errors.ts';
 
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;
@@ -31,9 +32,12 @@ export async function handleSearch(
 ): Promise<SearchResponse> {
   const trimmed = params.q.trim();
   if (!trimmed) {
-    throw Object.assign(new Error('search query parameter `q` is required'), {
-      code: 'BAD_REQUEST',
-    });
+    // Rust parity: `crates/catalog/src/queries/search.rs` uses
+    // `CatalogError::InvalidSeedPayload` for the missing-query case.
+    throw new CatalogError(
+      'INVALID_SEED_PAYLOAD',
+      'search query parameter `q` is required',
+    );
   }
   let docs = await search.search(trimmed, tenantId, principalId);
   if (params.type && params.type.length > 0) {

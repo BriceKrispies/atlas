@@ -1,4 +1,6 @@
 export { deterministicUuid, newEventId } from './ids.ts';
+export { CatalogError } from './errors.ts';
+export type { CatalogErrorCode } from './errors.ts';
 export type {
   SeedPayload,
   SeedFamily,
@@ -13,6 +15,7 @@ export type {
   SeedDisplayPolicy,
   SeedUnit,
   SeedUnitDimension,
+  SeedAsset,
 } from './seed-types.ts';
 
 export type {

@@ -1,16 +1,24 @@
 /**
  * ContentPages handler unit tests.
  *
- * Exercises create/update/delete + the render-tree projection rebuild
- * against in-memory implementations of EventStore, ProjectionStore,
- * and RenderTreeStore.
+ * Exercises create/update/delete + the render-tree dispatch chain
+ * against in-memory implementations of EventStore, EntityStore, and
+ * RelationStore.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type {
   EventStore,
-  ProjectionStore,
-  RenderTreeStore,
+  StoredEvent,
+  Entity,
+  EntityListOptions,
+  EntityQueryOptions,
+  EntityStatus,
+  EntityStore,
+  EntityWriteInput,
+  Relation,
+  RelationStore,
+  RelationWriteInput,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import {
@@ -22,23 +30,28 @@ import {
   buildRenderTree,
   getPage,
   getRenderTree,
-  readPageList,
+  listPages,
   ContentPagesError,
   contentPagesErrorCodes,
-  pageDocumentKey,
-  renderTreeKey,
-  pageListKey,
+  getPageEntity,
+  getRenderTreeEntity,
+  findRenderTreeIdFor,
+  renderTreeEntityIdFor,
   type PageDocument,
-  type PageSummary,
   type ContentPagesQueryDeps,
 } from '../src/index.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
+  private nextSeq = new Map<string, bigint>();
 
-  async append(envelope: EventEnvelope): Promise<string> {
-    this.events.push({ ...envelope });
-    return envelope.eventId;
+  async append(envelope: EventEnvelope): Promise<StoredEvent> {
+    const current = this.nextSeq.get(envelope.tenantId) ?? 0n;
+    const seq = current + 1n;
+    this.nextSeq.set(envelope.tenantId, seq);
+    const stored: StoredEvent = { ...envelope, seq };
+    this.events.push(stored);
+    return stored;
   }
 
   async getEvent(eventId: string): Promise<EventEnvelope | null> {
@@ -50,70 +63,198 @@ class InMemoryEventStore implements EventStore {
   }
 }
 
-class InMemoryProjectionStore implements ProjectionStore {
-  data = new Map<string, unknown>();
+/**
+ * In-memory `EntityStore` mirroring the Postgres adapter shape: rows are
+ * keyed by (tenantId, entityType, entityId); `delete` is soft (marks
+ * status='deleted' rather than removing the row).
+ */
+class InMemoryEntityStore implements EntityStore {
+  rows = new Map<string, Entity<unknown>>();
 
-  async get(key: string): Promise<unknown | null> {
-    return this.data.has(key) ? this.data.get(key) ?? null : null;
+  private k(tenantId: string, entityType: string, entityId: string): string {
+    return `${tenantId}::${entityType}::${entityId}`;
   }
 
-  async set(key: string, value: unknown): Promise<void> {
-    this.data.set(key, value);
+  async get<TAttrs = unknown>(
+    tenantId: string,
+    entityType: string,
+    entityId: string,
+  ): Promise<Entity<TAttrs> | null> {
+    const row = this.rows.get(this.k(tenantId, entityType, entityId));
+    if (!row) return null;
+    if (row.status === 'deleted') return null;
+    return row as Entity<TAttrs>;
   }
 
-  async delete(key: string): Promise<boolean> {
-    return this.data.delete(key);
+  async put<TAttrs = unknown>(
+    input: EntityWriteInput<TAttrs>,
+  ): Promise<Entity<TAttrs>> {
+    const key = this.k(input.tenantId, input.entityType, input.entityId);
+    const existing = this.rows.get(key);
+    const now = new Date().toISOString();
+    const row: Entity<TAttrs> = {
+      tenantId: input.tenantId,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      schemaVersion: input.schemaVersion ?? 1,
+      attrs: input.attrs,
+      status: input.status ?? 'active',
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.rows.set(key, row as Entity<unknown>);
+    return row;
+  }
+
+  async delete(
+    tenantId: string,
+    entityType: string,
+    entityId: string,
+  ): Promise<void> {
+    const key = this.k(tenantId, entityType, entityId);
+    const existing = this.rows.get(key);
+    if (!existing) return;
+    this.rows.set(key, {
+      ...existing,
+      status: 'deleted',
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async list<TAttrs = unknown>(
+    tenantId: string,
+    entityType: string,
+    opts?: EntityListOptions,
+  ): Promise<Entity<TAttrs>[]> {
+    const desiredStatus: EntityStatus | null =
+      opts?.status === undefined ? 'active' : opts.status;
+    const rows = Array.from(this.rows.values()).filter(
+      (r) => r.tenantId === tenantId && r.entityType === entityType,
+    );
+    const filtered = rows
+      .filter((r) => (desiredStatus === null ? true : r.status === desiredStatus))
+      .sort((a, b) => a.entityId.localeCompare(b.entityId));
+    const afterIdx = opts?.after
+      ? filtered.findIndex((r) => r.entityId === opts.after)
+      : -1;
+    const sliced = afterIdx >= 0 ? filtered.slice(afterIdx + 1) : filtered;
+    const limited = opts?.limit !== undefined ? sliced.slice(0, opts.limit) : sliced;
+    return limited as Entity<TAttrs>[];
+  }
+
+  async query<TAttrs = unknown>(
+    tenantId: string,
+    entityType: string,
+    opts: EntityQueryOptions,
+  ): Promise<Entity<TAttrs>[]> {
+    const base = await this.list<TAttrs>(tenantId, entityType, opts);
+    if (!opts.attrsEqual) return base;
+    const predicates = Object.entries(opts.attrsEqual);
+    return base.filter((row) => {
+      const attrs = row.attrs as Record<string, unknown>;
+      return predicates.every(([k, v]) => attrs?.[k] === v);
+    });
   }
 }
 
-class InMemoryRenderTreeStore implements RenderTreeStore {
-  data = new Map<string, unknown>();
-  private k(tenantId: string, pageId: string): string {
-    return `${tenantId}::${pageId}`;
+class InMemoryRelationStore implements RelationStore {
+  rows = new Map<string, Relation<unknown>>();
+
+  private k(
+    tenantId: string,
+    edgeType: string,
+    fromId: string,
+    toId: string,
+  ): string {
+    return `${tenantId}::${edgeType}::${fromId}::${toId}`;
   }
 
-  async write(tenantId: string, pageId: string, tree: unknown): Promise<void> {
-    this.data.set(this.k(tenantId, pageId), tree);
+  async add<TAttrs = unknown>(
+    input: RelationWriteInput<TAttrs>,
+  ): Promise<Relation<TAttrs>> {
+    const key = this.k(input.tenantId, input.edgeType, input.fromId, input.toId);
+    const existing = this.rows.get(key);
+    const row: Relation<TAttrs> = {
+      tenantId: input.tenantId,
+      edgeType: input.edgeType,
+      fromId: input.fromId,
+      toId: input.toId,
+      attrs: input.attrs ?? null,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+    };
+    this.rows.set(key, row as Relation<unknown>);
+    return row;
   }
-  async read(tenantId: string, pageId: string): Promise<unknown | null> {
-    return this.data.get(this.k(tenantId, pageId)) ?? null;
+
+  async remove(
+    tenantId: string,
+    edgeType: string,
+    fromId: string,
+    toId: string,
+  ): Promise<void> {
+    this.rows.delete(this.k(tenantId, edgeType, fromId, toId));
   }
-  async delete(tenantId: string, pageId: string): Promise<void> {
-    this.data.delete(this.k(tenantId, pageId));
+
+  async outgoing<TAttrs = unknown>(
+    tenantId: string,
+    edgeType: string,
+    fromId: string,
+  ): Promise<Relation<TAttrs>[]> {
+    return Array.from(this.rows.values()).filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        r.edgeType === edgeType &&
+        r.fromId === fromId,
+    ) as Relation<TAttrs>[];
+  }
+
+  async incoming<TAttrs = unknown>(
+    tenantId: string,
+    edgeType: string,
+    toId: string,
+  ): Promise<Relation<TAttrs>[]> {
+    return Array.from(this.rows.values()).filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        r.edgeType === edgeType &&
+        r.toId === toId,
+    ) as Relation<TAttrs>[];
   }
 }
 
 interface Fixture {
   events: InMemoryEventStore;
-  projections: InMemoryProjectionStore;
-  renderTrees: InMemoryRenderTreeStore;
+  entities: InMemoryEntityStore;
+  relations: InMemoryRelationStore;
   cache: { invalidateByTags(): Promise<number> };
   queryDeps: ContentPagesQueryDeps;
+  tenantId: string;
   dispatch(envelope: EventEnvelope): Promise<void>;
 }
 
 function newFixture(tenantId = 't1', principalId = 'u1'): Fixture {
   const events = new InMemoryEventStore();
-  const projections = new InMemoryProjectionStore();
-  const renderTrees = new InMemoryRenderTreeStore();
+  const entities = new InMemoryEntityStore();
+  const relations = new InMemoryRelationStore();
   const cache = { invalidateByTags: async () => 0 };
   const queryDeps: ContentPagesQueryDeps = {
     tenantId,
     principalId,
     correlationId: 'corr',
-    projections,
-    renderTreeStore: renderTrees,
+    entities,
+    relations,
   };
   return {
     events,
-    projections,
-    renderTrees,
+    entities,
+    relations,
     cache,
     queryDeps,
+    tenantId,
     dispatch: (envelope) =>
       dispatchContentPagesEvent(envelope, {
-        projections,
-        renderTreeStore: renderTrees,
+        entities,
+        relations,
         cache: cache as never,
       }),
   };
@@ -144,7 +285,7 @@ describe('handlePageCreate', () => {
     expect(fx.events.events).toHaveLength(1);
   });
 
-  it('writes the document, page list, and render tree via the dispatcher', async () => {
+  it('writes the Page entity, render-tree entity, and relation via the dispatcher', async () => {
     const { envelope } = await handlePageCreate(
       {
         tenantId: 't1',
@@ -161,18 +302,25 @@ describe('handlePageCreate', () => {
     const doc = await getPage(fx.queryDeps, 'about');
     expect(doc?.title).toBe('About Us');
 
-    const list = await readPageList('t1', fx.projections);
-    expect(list.map((p: PageSummary) => p.pageId)).toEqual(['about']);
+    const summaries = await listPages(fx.queryDeps);
+    expect(summaries.map((p) => p.pageId)).toEqual(['about']);
 
     const tree = await getRenderTree(fx.queryDeps, 'about');
     expect(tree).toEqual(defaultRenderTree('About Us', 'about'));
 
-    // Render tree is also durable (write-through).
-    expect(await fx.renderTrees.read('t1', 'about')).toEqual(tree);
+    const pageEntity = await getPageEntity(fx.entities, 't1', 'about');
+    expect(pageEntity?.title).toBe('About Us');
+    expect(pageEntity?.pageId).toBe('about');
+
+    const treeEntity = await getRenderTreeEntity(fx.entities, 't1', 'about');
+    expect(treeEntity?.nodes).toEqual(defaultRenderTree('About Us', 'about').nodes);
+
+    const relId = await findRenderTreeIdFor(fx.relations, 't1', 'about');
+    expect(relId).toBe(renderTreeEntityIdFor('about'));
   });
 
   it('produces deterministic render-tree bytes from the same input', async () => {
-    const a = buildRenderTree({
+    const a = await buildRenderTree({
       pageId: 'p',
       tenantId: 't1',
       title: 'Hello',
@@ -181,7 +329,7 @@ describe('handlePageCreate', () => {
       createdAt: 'now',
       updatedAt: 'now',
     });
-    const b = buildRenderTree({
+    const b = await buildRenderTree({
       pageId: 'p',
       tenantId: 't1',
       title: 'Hello',
@@ -223,7 +371,7 @@ describe('handlePageUpdate', () => {
           title: 'X',
         },
         fx.events,
-        fx.projections,
+        fx.entities,
       ),
     ).rejects.toThrow(ContentPagesError);
   });
@@ -238,21 +386,31 @@ describe('handlePageUpdate', () => {
         title: 'Welcome Home',
       },
       fx.events,
-      fx.projections,
+      fx.entities,
     );
     expect(envelope.eventType).toBe('ContentPages.PageUpdated');
     await fx.dispatch(envelope);
 
     const doc = await getPage(fx.queryDeps, 'home');
     expect(doc?.title).toBe('Welcome Home');
-    // Render tree reflects the new title.
+
     const tree = await getRenderTree(fx.queryDeps, 'home');
     expect(tree).toEqual(defaultRenderTree('Welcome Home', 'home'));
+
+    const pageEntity = await getPageEntity(fx.entities, 't1', 'home');
+    expect(pageEntity?.title).toBe('Welcome Home');
+
+    const treeEntity = await getRenderTreeEntity(fx.entities, 't1', 'home');
+    expect(treeEntity?.nodes).toEqual(
+      defaultRenderTree('Welcome Home', 'home').nodes,
+    );
+
+    const relId = await findRenderTreeIdFor(fx.relations, 't1', 'home');
+    expect(relId).toBe(renderTreeEntityIdFor('home'));
   });
 
   it('preserves createdAt while bumping updatedAt', async () => {
     const before = (await getPage(fx.queryDeps, 'home')) as PageDocument;
-    // Wait a tick so the timestamps differ.
     await new Promise((r) => setTimeout(r, 5));
     const { envelope } = await handlePageUpdate(
       {
@@ -263,13 +421,20 @@ describe('handlePageUpdate', () => {
         slug: 'home-2',
       },
       fx.events,
-      fx.projections,
+      fx.entities,
     );
     await fx.dispatch(envelope);
     const after = (await getPage(fx.queryDeps, 'home')) as PageDocument;
     expect(after.createdAt).toBe(before.createdAt);
     expect(after.updatedAt).not.toBe(before.updatedAt);
     expect(after.slug).toBe('home-2');
+
+    const pageEntity = await getPageEntity(fx.entities, 't1', 'home');
+    expect(pageEntity?.createdAt).toBe(before.createdAt);
+    expect(pageEntity?.slug).toBe('home-2');
+
+    const relId = await findRenderTreeIdFor(fx.relations, 't1', 'home');
+    expect(relId).toBe(renderTreeEntityIdFor('home'));
   });
 });
 
@@ -291,7 +456,7 @@ describe('handlePageDelete', () => {
     await fx.dispatch(envelope);
   });
 
-  it('emits a PageDeleted event and clears all projections', async () => {
+  it('emits a PageDeleted event and removes entity + relation', async () => {
     const { envelope } = await handlePageDelete(
       {
         tenantId: 't1',
@@ -306,10 +471,11 @@ describe('handlePageDelete', () => {
 
     expect(await getPage(fx.queryDeps, 'gone')).toBeNull();
     expect(await getRenderTree(fx.queryDeps, 'gone')).toBeNull();
-    const list = await readPageList('t1', fx.projections);
-    expect(list).toEqual([]);
-    // Durable store cleaned up too.
-    expect(await fx.renderTrees.read('t1', 'gone')).toBeNull();
+    expect(await listPages(fx.queryDeps)).toEqual([]);
+
+    expect(await getPageEntity(fx.entities, 't1', 'gone')).toBeNull();
+    expect(await getRenderTreeEntity(fx.entities, 't1', 'gone')).toBeNull();
+    expect(await findRenderTreeIdFor(fx.relations, 't1', 'gone')).toBeNull();
   });
 });
 
@@ -328,43 +494,8 @@ describe('dispatchContentPagesEvent', () => {
       payload: {},
     };
     await fx.dispatch(ev);
-    // Nothing landed in the projection store.
-    expect(fx.projections.data.size).toBe(0);
-  });
-});
-
-describe('render-tree fallback', () => {
-  it('falls back to the durable store and repopulates the fast path', async () => {
-    const fx = newFixture();
-    const { envelope } = await handlePageCreate(
-      {
-        tenantId: 't1',
-        correlationId: 'c',
-        principalId: 'u1',
-        pageId: 'persist',
-        title: 'Persist',
-        slug: 'persist',
-      },
-      fx.events,
-    );
-    await fx.dispatch(envelope);
-
-    // Simulate an in-memory cache clear (parity with persistence_test.rs).
-    fx.projections.data.delete(renderTreeKey('t1', 'persist'));
-
-    const tree = await getRenderTree(fx.queryDeps, 'persist');
-    expect(tree).toEqual(defaultRenderTree('Persist', 'persist'));
-
-    // Fast path repopulated.
-    expect(fx.projections.data.has(renderTreeKey('t1', 'persist'))).toBe(true);
-  });
-});
-
-describe('id helpers', () => {
-  it('produces tenant-scoped projection keys', () => {
-    expect(pageDocumentKey('t1', 'p')).toBe('PageDocument:t1:p');
-    expect(renderTreeKey('t1', 'p')).toBe('RenderTree:t1:p');
-    expect(pageListKey('t1')).toBe('PageList:t1');
+    expect(fx.entities.rows.size).toBe(0);
+    expect(fx.relations.rows.size).toBe(0);
   });
 });
 

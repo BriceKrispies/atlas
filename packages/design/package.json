@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
     "./elements.css": "./src/elements.css",
-    "./shared-styles": "./src/shared-styles.ts"
+    "./shared-styles": "./src/shared-styles.ts",
+    "./*": "./src/*"
   },
   "scripts": {
     "test": "vitest run"

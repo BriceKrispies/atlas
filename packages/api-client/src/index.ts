@@ -17,7 +17,13 @@ const backendType: string = import.meta.env.VITE_BACKEND ?? 'mock';
 export const backend: Backend =
   backendType === 'http' ? httpBackend : mockBackend;
 
-export type { Backend, BackendEventCallback, Unsubscribe } from './backend.ts';
+export type {
+  Backend,
+  BackendEventCallback,
+  Unsubscribe,
+  SerializedServerEvent,
+  SerializedServerEventCallback,
+} from './backend.ts';
 
 export {
   listPolicies,

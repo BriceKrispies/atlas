@@ -54,9 +54,9 @@ Local provisioning (Podman):
 
 ```bash
 make db-up
-psql -h localhost -p 5433 -U atlas_platform -d postgres \
+psql -h localhost -p 15433 -U atlas_platform -d postgres \
   -c 'CREATE DATABASE adapters_node_test'
-export TEST_TENANT_DB_URL=postgres://atlas_platform:local_dev_password@localhost:5433/adapters_node_test
+export TEST_TENANT_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/adapters_node_test
 pnpm --filter @atlas/adapter-node test
 ```
 

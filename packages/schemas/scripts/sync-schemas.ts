@@ -14,8 +14,7 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..', '..', '..');
 const contracts = join(repoRoot, 'specs', 'schemas', 'contracts');
 const events = join(repoRoot, 'specs', 'schemas', 'events');
-const modulesDir = join(repoRoot, 'specs', 'modules');
-const seedDir = join(modulesDir, 'structured-catalog', 'seed-packages');
+const domainsDir = join(repoRoot, 'specs', 'domains');
 
 const outDir = resolve(__dirname, '..', 'src', 'generated');
 const manifestsOutDir = join(outDir, 'manifests');
@@ -43,34 +42,67 @@ for (const dir of [contracts, events]) {
   }
 }
 
-copyFileSync(join(seedDir, 'badge-family.json'), join(outDir, 'badge-family.json'));
+// Module-manifest sources after the 2026-05 spec migration. Legacy modules
+// previously lived under `specs/modules/<id>/module.manifest.json`; the
+// canonical home is now `specs/domains/<domain>/<legacy-folder>/module.manifest.json`.
+// Output filenames preserve the legacy module ids so the loader's static
+// imports continue to resolve.
+const moduleManifests: ReadonlyArray<{ outName: string; sourcePath: string }> = [
+  {
+    outName: 'structured-catalog.manifest.json',
+    sourcePath: join(
+      domainsDir,
+      'catalog',
+      'structured-catalog',
+      'module.manifest.json',
+    ),
+  },
+  {
+    outName: 'authz.manifest.json',
+    sourcePath: join(
+      domainsDir,
+      'authorization',
+      'authz-module',
+      'module.manifest.json',
+    ),
+  },
+  {
+    outName: 'content-pages.manifest.json',
+    sourcePath: join(
+      domainsDir,
+      'authoring',
+      'content-pages',
+      'module.manifest.json',
+    ),
+  },
+];
+
+const badgeFamilySeed = join(
+  domainsDir,
+  'catalog',
+  'structured-catalog',
+  'seed-packages',
+  'badge-family.json',
+);
+copyFileSync(badgeFamilySeed, join(outDir, 'badge-family.json'));
 copied.push('badge-family.json');
 
-// Discover per-module manifests under `specs/modules/<moduleId>/module.manifest.json`.
-// Each is copied into `generated/manifests/<moduleId>.manifest.json` so the
-// loader can import them statically as a stable, deterministic set.
 const manifestFiles: string[] = [];
-for (const entry of readdirSync(modulesDir)) {
-  const entryPath = join(modulesDir, entry);
-  let isDir = false;
+for (const m of moduleManifests) {
+  let exists = false;
   try {
-    isDir = statSync(entryPath).isDirectory();
+    exists = statSync(m.sourcePath).isFile();
   } catch {
-    continue;
+    exists = false;
   }
-  if (!isDir) continue;
-  const manifestPath = join(entryPath, 'module.manifest.json');
-  let manifestExists = false;
-  try {
-    manifestExists = statSync(manifestPath).isFile();
-  } catch {
-    manifestExists = false;
+  if (!exists) {
+    throw new Error(
+      `module manifest source not found: ${m.sourcePath} (expected for ${m.outName})`,
+    );
   }
-  if (!manifestExists) continue;
-  const outName = `${entry}.manifest.json`;
-  copyFileSync(manifestPath, join(manifestsOutDir, outName));
-  manifestFiles.push(outName);
-  copied.push(`manifests/${outName}`);
+  copyFileSync(m.sourcePath, join(manifestsOutDir, m.outName));
+  manifestFiles.push(m.outName);
+  copied.push(`manifests/${m.outName}`);
 }
 manifestFiles.sort();
 
