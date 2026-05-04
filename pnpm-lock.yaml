@@ -87,6 +87,9 @@ importers:
 
   adapters/node:
     dependencies:
+      '@atlas/adapter-policy-cedar':
+        specifier: workspace:*
+        version: link:../policy-cedar
       '@atlas/content-pages':
         specifier: workspace:*
         version: link:../../modules/content-pages
@@ -441,6 +444,9 @@ importers:
 
   modules/identity:
     dependencies:
+      '@atlas/adapter-policy-cedar':
+        specifier: workspace:*
+        version: link:../../adapters/policy-cedar
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../../packages/platform-core

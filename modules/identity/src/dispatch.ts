@@ -41,6 +41,9 @@ export interface IdentityDispatchContext {
 
 const HANDLED_EVENT_TYPES = new Set([
   'Identity.UserCreated',
+  'Identity.UserUpdated',
+  'Identity.AccountLocked',
+  'Identity.PasswordChanged',
   'Identity.MembershipCreated',
   'Identity.InviteIssued',
   'Identity.InviteAccepted',
@@ -60,7 +63,15 @@ export async function dispatchIdentityEvent(
     | undefined;
   if (!document) return;
 
-  if (envelope.eventType === 'Identity.UserCreated') {
+  if (
+    envelope.eventType === 'Identity.UserCreated' ||
+    envelope.eventType === 'Identity.UserUpdated' ||
+    envelope.eventType === 'Identity.AccountLocked' ||
+    envelope.eventType === 'Identity.PasswordChanged'
+  ) {
+    // All four event types carry the same merged-User payload shape.
+    // The event-type discrimination lives at the *audit* layer (event
+    // log carries the semantic event); the dispatcher just persists.
     await putUserEntity(ctx.entities, document as UserDocument, envelope.tenantId);
   } else if (envelope.eventType === 'Identity.MembershipCreated') {
     const m = document as MembershipDocument;

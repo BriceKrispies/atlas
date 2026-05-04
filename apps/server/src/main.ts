@@ -24,6 +24,7 @@ import { authzRoutes } from './routes/authz.ts';
 import { contentPagesRoutes } from './routes/content-pages.ts';
 import { debugRoutes } from './routes/debug.ts';
 import { eventsRoutes } from './routes/events.ts';
+import { identityRoutes } from './routes/identity.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -35,6 +36,10 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // network. If exposing the endpoint outside that perimeter, gate it with
   // authn here. Mirrors the Rust ingress's unauthenticated metrics route.
   app.route('/', metricsRoutes());
+  // Identity invite-accept is also public: the token IS the auth. The
+  // user has no JWT yet — that's exactly what they're getting by
+  // accepting the invite.
+  app.route('/', identityRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();

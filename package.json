@@ -30,7 +30,8 @@
     "cedar:check": "tsx adapters/policy-cedar/bin/cedar-check.ts",
     "domain:add": "tsx scripts/atlas-domain.ts add",
     "domain:list": "tsx scripts/atlas-domain.ts list",
-    "domain:disable": "tsx scripts/atlas-domain.ts disable"
+    "domain:disable": "tsx scripts/atlas-domain.ts disable",
+    "tenant:add-admin": "tsx scripts/tenant-add-admin.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

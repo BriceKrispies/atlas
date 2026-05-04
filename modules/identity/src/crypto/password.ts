@@ -15,11 +15,15 @@
  * params, and salt — no need to track them separately.
  */
 
-import { hash, verify, Algorithm } from '@node-rs/argon2';
+import { hash, verify } from '@node-rs/argon2';
 import { IdentityError, codes } from '../errors.ts';
 
+// Argon2id is the default algorithm in @node-rs/argon2 — pinning it
+// inline via the const-enum value (2) would trip verbatimModuleSyntax,
+// and the library accepts the numeric form. We omit `algorithm` instead
+// and rely on the default. If a future bump changes the default we'll
+// catch it via the verify roundtrip in the unit tests.
 const ARGON2_OPTIONS = {
-  algorithm: Algorithm.Argon2id,
   memoryCost: 64 * 1024, // 64 MiB
   timeCost: 3,
   parallelism: 4,

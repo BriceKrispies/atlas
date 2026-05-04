@@ -95,6 +95,16 @@ export {
   type InviteAcceptResult,
 } from './handlers/invite-accept.ts';
 export {
+  handlePasswordSet,
+  type PasswordSetCommand,
+  type PasswordSetResult,
+} from './handlers/password-set.ts';
+export {
+  handlePasswordLogin,
+  type PasswordLoginCommand,
+  type PasswordLoginResult,
+} from './handlers/password-login.ts';
+export {
   identityHandlerEntries,
   identityHandlerRegistry,
 } from './handlers/registry.ts';
@@ -114,10 +124,22 @@ export {
   getInviteToken,
 } from './queries.ts';
 
-// Crypto helpers (for routes that issue/verify invites).
+// Crypto helpers (for routes that issue/verify invites + passwords).
 export {
   generateSecret,
   hashSecret,
   lookupOf,
   constantTimeEqual,
 } from './crypto/secret-hash.ts';
+export {
+  hashPassword,
+  verifyPassword,
+  validatePasswordComplexity,
+} from './crypto/password.ts';
+
+// Platform-default role packs (Phase A1).
+export {
+  buildRolePacksCedar,
+  buildRolePackBundle,
+  type PolicyBundleWrapper,
+} from './policies/role-packs.ts';

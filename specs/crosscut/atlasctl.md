@@ -2,7 +2,7 @@
 
 This spec defines the architectural constraints and invariants for `atlasctl`, the operator/controller client for the Atlas platform.
 
-**(Planned)** — The `atlasctl` binary does not exist yet. This spec defines the contract that any implementation must satisfy.
+**(Planned)** — The TypeScript `atlasctl` binary does not exist yet. A legacy Rust prototype lives under `crates/atlasctl/` (status, invoke commands; actions-list and trace are stubs) and is being deprecated alongside the rest of `crates/`. This spec defines the contract that the TypeScript implementation must satisfy.
 
 ## Purpose
 
@@ -59,7 +59,7 @@ The client eliminates the need for ad-hoc scripts or direct database queries, en
 
 - Connect directly to databases (tenant or control plane)
 - Invoke handlers or business logic directly
-- Link server runtime crates (`crates/ingress`, `crates/workers`, `crates/runtime`)
+- Import server-side packages (`apps/server`, `modules/*`, `adapters/*`, `ports`) or the legacy server runtime crates (`crates/ingress`, `crates/workers`, `crates/runtime`)
 - Access internal message bus or queue systems
 
 **Rationale**: Ensures `atlasctl` cannot bypass ingress enforcement (I1) or authorization (I2).
@@ -106,16 +106,16 @@ All mutations flow through ingress or control plane API.
 
 ## Allowed Shared Code
 
-`atlasctl` MAY depend on the following shared crates/modules:
+`atlasctl` MAY depend on the following shared packages:
 
-| Shared Code | Purpose |
-|-------------|---------|
-| Schema types | Event envelope structs, intent payload types |
-| Manifest types | Module manifest definitions for validation |
-| Envelope builders | Helpers for constructing valid event envelopes |
-| Generated API clients | HTTP client code generated from OpenAPI specs |
-| Validation helpers | JSON Schema validators, format checkers |
-| Error types | Public error envelope types for parsing responses |
+| Shared Code | Purpose | Likely TS package |
+|-------------|---------|-------------------|
+| Schema types | Event envelope structs, intent payload types | `@atlas/schemas` |
+| Manifest types | Module manifest definitions for validation | `@atlas/platform-core` (public types only) |
+| Envelope builders | Helpers for constructing valid event envelopes | `@atlas/schemas` |
+| Generated API clients | HTTP client code generated from OpenAPI specs | `@atlas/api-client` |
+| Validation helpers | JSON Schema validators, format checkers | `@atlas/schemas` |
+| Error types | Public error envelope types for parsing responses | `@atlas/schemas` |
 
 ## Prohibited Coupling
 
@@ -123,15 +123,15 @@ All mutations flow through ingress or control plane API.
 
 | Prohibited | Reason |
 |------------|--------|
-| `crates/ingress` | Server runtime, would enable bypassing HTTP boundary |
-| `crates/workers` | Server runtime, internal job processing |
-| `crates/runtime` | Internal ports and adapters |
-| `crates/adapters` | Direct database/storage access |
-| `crates/control_plane_db` | Direct database access |
-| Business logic modules | Internal domain logic |
-| Policy evaluation code | Authorization is server-side only |
+| `apps/server` | Server runtime, would enable bypassing HTTP boundary |
+| `apps/projection-worker` | Server runtime, internal job processing |
+| `ports/` (`@atlas/ports`) | Internal port interfaces |
+| `adapters/node`, `adapters/idb` | Direct database/storage access |
+| `adapters/policy-cedar`, `adapters/policy-stub` | Authorization is server-side only |
+| `modules/*` | Internal domain logic |
+| Legacy `crates/{ingress,workers,runtime,adapters,control_plane_db}` | Same reasons; legacy Rust path |
 
-**Test**: A compliant `atlasctl` build MUST NOT transitively depend on any prohibited crate.
+**Test**: A compliant `atlasctl` build MUST NOT transitively depend on any prohibited package or crate.
 
 ## Observability Requirements
 

@@ -16,6 +16,7 @@ Feature: Login via Atlas's built-in OIDC IDP
     Given a tenant "acme" with the identity module enabled
     And the platform OIDC realm "acme" is provisioned
 
+  @phase-a1
   Scenario: First-admin bootstrap mints an InviteToken
     Given tenant "acme" has no users
     When the operator runs "atlasctl tenant add-admin acme admin@example.com"
@@ -24,6 +25,12 @@ Feature: Login via Atlas's built-in OIDC IDP
     And the magic-link URL is returned to the operator
     And no Membership exists yet
 
+  @phase-a1
+  # Phase A1's invite-accept route handles this end-to-end. The
+  # `primaryIdpSubject` field is populated when the body carries it
+  # (debug-principal flow); a real OIDC handshake is Phase A3 (federated
+  # OIDC) but the platform-OIDC variant here works against the
+  # configured single IDP today.
   Scenario: Invitee completes first login
     Given an InviteToken exists for "admin@example.com" in tenant "acme"
     When the invitee opens the magic-link URL
@@ -34,6 +41,10 @@ Feature: Login via Atlas's built-in OIDC IDP
     And an "Identity.UserCreated" event is emitted with the request correlationId
     And an "Identity.MembershipCreated" event is emitted
 
+  @phase-a1 @phase-a2
+  # Principal-resolution by `primaryIdpSubject` and role hydration are
+  # Phase A1. The `AuthSession` entity creation is Phase A2 — until then
+  # the principal is reconstructed per request from the JWT directly.
   Scenario: Returning user authenticates
     Given user "alice@acme.com" has an active Membership in "acme" with role "Author"
     When alice presents a valid OIDC JWT signed by the platform IDP
@@ -42,6 +53,11 @@ Feature: Login via Atlas's built-in OIDC IDP
     And an "Identity.LoginSucceeded" event is emitted with cache tags ["Tenant:acme", "User:alice"]
     And an "AuthSession" entity is created with status "active"
 
+  @phase-a2
+  # The "deny + emit `LoginRejected: no_membership`" path requires a
+  # principal-middleware enforcement step + audit emit pair that lands
+  # alongside the Phase A2 session work. Phase A1 hydrates `roles=[]`
+  # for no-membership; the concrete deny moves to A2.
   Scenario: User without Membership is rejected (Invariant I7)
     Given a valid OIDC JWT for "stranger@elsewhere.com" exists
     And no Membership for "stranger@elsewhere.com" in tenant "acme"
@@ -51,6 +67,9 @@ Feature: Login via Atlas's built-in OIDC IDP
     And an "Identity.LoginRejected" event is emitted with reason "no_membership"
     And no User entity is created (membership-required JIT)
 
+  @phase-a1
+  # Custom-domain stub already enforces Host ↔ tenant agreement. Phase
+  # A1 emits the `Identity.LoginRejected` event in the audit pipeline.
   Scenario: Tenant claim mismatch with Host (custom-domains gate)
     Given tenant "acme" has primary custom domain "community.acme.example"
     And an OIDC JWT has tenant_id claim "globex"
@@ -59,6 +78,7 @@ Feature: Login via Atlas's built-in OIDC IDP
     And the error message mentions Host
     And an "Identity.LoginRejected" event is emitted with reason "tenant_host_mismatch"
 
+  @phase-a1
   Scenario: Expired JWT rejected
     Given a JWT for "alice@acme.com" expired 60 seconds ago
     When the request presents the expired JWT
@@ -66,6 +86,10 @@ Feature: Login via Atlas's built-in OIDC IDP
     And no User or Membership lookup is attempted
     And an "Identity.LoginRejected" event is emitted with reason "token_expired"
 
+  @phase-a2
+  # Suspended-membership enforcement at the principal layer is Phase
+  # A2. Phase A1 hydrates `roles=[]` for suspended memberships; the
+  # explicit 403 + audit reason move to A2.
   Scenario: Suspended Membership blocks login
     Given user "fired@acme.com" has a Membership in "acme" with status "suspended"
     When fired presents a valid OIDC JWT

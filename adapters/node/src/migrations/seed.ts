@@ -38,7 +38,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
 import { seedContentPagesEntityTypes } from '@atlas/content-pages';
-import { seedIdentityEntityTypes } from '@atlas/identity';
+import {
+  seedIdentityEntityTypes,
+  buildRolePackBundle,
+} from '@atlas/identity';
+import { moduleManifests } from '@atlas/schemas';
+import type { ManifestAction } from '@atlas/adapter-policy-cedar';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // adapters/node/src/migrations/ -> repo root is four levels up.
@@ -64,6 +69,36 @@ interface JsonObject {
 
 function md5Hex(input: string): string {
   return createHash('md5').update(input).digest('hex');
+}
+
+/**
+ * Pull every `ManifestAction` declared across the bundled module
+ * manifests. Used to drive the role-pack Cedar generation. Defensive
+ * shape coercion — `moduleManifests()` returns `unknown[]` so we
+ * structurally pick what we need.
+ */
+function collectManifestActions(
+  manifests: ReadonlyArray<unknown>,
+): ManifestAction[] {
+  const out: ManifestAction[] = [];
+  for (const m of manifests) {
+    if (typeof m !== 'object' || m === null) continue;
+    const actions = (m as { actions?: unknown }).actions;
+    if (!Array.isArray(actions)) continue;
+    for (const a of actions) {
+      if (typeof a !== 'object' || a === null) continue;
+      const aid = (a as { actionId?: unknown }).actionId;
+      const rt = (a as { resourceType?: unknown }).resourceType;
+      if (typeof aid !== 'string' || typeof rt !== 'string') continue;
+      const verb = (a as { verb?: unknown }).verb;
+      out.push({
+        actionId: aid,
+        resourceType: rt,
+        ...(typeof verb === 'string' ? { verb } : {}),
+      } as ManifestAction);
+    }
+  }
+  return out;
 }
 
 function asString(v: unknown, ctx: string): string {
@@ -175,24 +210,20 @@ export async function runControlPlaneSeed(
     insertedSchemas.push(id);
   }
 
-  // 4. Baseline allow-all policy bundle for the sample tenant.
-  const policyBundle = {
-    policies: [
-      {
-        policyId: 'allow-all-admin',
-        tenantId: SAMPLE_TENANT_ID,
-        rules: [
-          {
-            ruleId: 'admin-allow-all',
-            effect: 'allow',
-            conditions: { type: 'literal', value: true },
-          },
-        ],
-        version: 1,
-        status: 'active',
-      },
-    ],
-  };
+  // 4. Platform-default role packs for the sample tenant.
+  //    Phase A1 (#44): replaces the legacy allow-all-admin stub bundle
+  //    with TenantAdmin/Author/Viewer/ServicePrincipal cedar permits
+  //    generated from the bundled module manifests' verbs. The
+  //    StubPolicyEngine doesn't read this row (it's allow-all by
+  //    construction); the CedarPolicyEngine does, and a wrong-format
+  //    row would hard-fail every request — so the wrapper is now
+  //    `format='cedar-text'`.
+  //
+  //    `ON CONFLICT DO NOTHING` keeps the seed idempotent. To re-run
+  //    after a policy schema change, bump the version manually or use
+  //    the activation flow (`Authz.Policy.Activate`).
+  const allActions = collectManifestActions(moduleManifests());
+  const policyBundle = buildRolePackBundle(allActions);
   await sql`
     INSERT INTO control_plane.policies (tenant_id, version, policy_json, status)
     VALUES (${SAMPLE_TENANT_ID}, 1, ${sql.json(policyBundle as never)}, 'active')
