@@ -27,6 +27,7 @@ import { eventsRoutes } from './routes/events.ts';
 import { identityAuthedRoutes, identityRoutes } from './routes/identity.ts';
 import { identityIdpRoutes } from './routes/identity-idp.ts';
 import { oauthRoutes } from './routes/oauth.ts';
+import { scimRoutes } from './routes/scim.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -45,6 +46,9 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // OAuth routes are also public — auth lives in client_id +
   // client_secret on the request body (RFC 6749).
   app.route('/', oauthRoutes(state));
+  // SCIM 2.0 — public mount because auth is the SCIM bearer token,
+  // not a JWT. The scim middleware self-validates the bearer.
+  app.route('/', scimRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();

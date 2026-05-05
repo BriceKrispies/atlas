@@ -86,3 +86,14 @@ export function newOAuthTokenId(): string {
 export function newIdentityProviderId(): string {
   return `idp-${token()}`;
 }
+
+/** Phase A4 — SCIM tokens, audit export configs, audit export runs. */
+export function newScimTokenId(): string {
+  return `scimtok-${token()}`;
+}
+export function newAuditExportConfigId(): string {
+  return `audex-${token()}`;
+}
+export function newAuditExportRunId(): string {
+  return `audexrun-${token()}`;
+}

@@ -11,6 +11,21 @@ export interface EventEnvelope {
   principalId?: string | null;
   userId?: string | null;
   cacheInvalidationTags?: string[] | null;
+  /**
+   * Phase A4 — audit retention tier. Stamped at emit time; never
+   * mutated downstream.
+   *
+   *   - `retention:1y`           — default for non-sensitive events
+   *   - `retention:7y`           — impersonation events (Phase A7)
+   *   - `retention:10y`          — break-glass events (Phase A7)
+   *   - `retention:tenant-policy:<n>y` — tenant-extended retention
+   *     above the default 1y (tenant policies can lengthen but
+   *     never shorten platform-set tiers)
+   *
+   * The audit-export pipeline (Phase A4.9) reads this tag; the
+   * platform-side cleanup job uses it to gate row-level deletes.
+   */
+  retentionTag?: string;
   payload: unknown;
   /**
    * Per-tenant monotonic sequence number, populated by the EventStore on

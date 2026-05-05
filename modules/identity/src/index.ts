@@ -22,6 +22,9 @@ export {
   newServicePrincipalId,
   newOAuthTokenId,
   newIdentityProviderId,
+  newScimTokenId,
+  newAuditExportConfigId,
+  newAuditExportRunId,
 } from './ids.ts';
 
 export type {
@@ -48,6 +51,16 @@ export type {
   IdentityProviderDocument,
   OidcDiscoveryDocument,
   RoleMapping,
+  // Phase A4 — SCIM + audit export.
+  ScimTokenStatus,
+  ScimTokenDocument,
+  AuditExportDestinationKind,
+  AuditExportS3Destination,
+  AuditExportStatus,
+  AuditExportCadence,
+  AuditExportConfigDocument,
+  AuditExportRunStatus,
+  AuditExportRunDocument,
 } from './types.ts';
 
 export { DEFAULT_SESSION_POLICY } from './types.ts';
@@ -171,6 +184,60 @@ export {
   listOwnSessions,
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
+
+// Phase A4.8 — Audit export config + handlers.
+export {
+  AUDIT_EXPORT_CONFIG_ENTITY_TYPE,
+  AUDIT_EXPORT_CONFIG_LATEST_VERSION,
+  AUDIT_EXPORT_RUN_ENTITY_TYPE,
+  AUDIT_EXPORT_RUN_LATEST_VERSION,
+  getAuditExportConfig,
+  putAuditExportConfig,
+  listAuditExportConfigs,
+  putAuditExportRun,
+  listAuditExportRuns,
+} from './entities/audit-export-config.ts';
+export {
+  handleAuditExportConfigure,
+  handleAuditExportActivate,
+  handleAuditExportDisable,
+  type AuditExportConfigureCommand,
+  type AuditExportConfigureResult,
+  type AuditExportActivateCommand,
+  type AuditExportActivateResult,
+  type AuditExportDisableCommand,
+  type AuditExportDisableResult,
+} from './handlers/audit-export-config.ts';
+
+// Phase A4.9 — Audit export pipeline.
+export {
+  runAuditExport,
+  exportTenantAudit,
+  InMemoryUploader,
+  type Uploader,
+  type AuditExportRunOptions,
+} from './audit-export.ts';
+
+// Phase A4 — SCIM token wrappers + handlers.
+export {
+  SCIM_TOKEN_ENTITY_TYPE,
+  SCIM_TOKEN_LATEST_VERSION,
+  getScimTokenEntity,
+  putScimTokenEntity,
+  findScimTokensByLookup,
+  listScimTokens,
+} from './entities/scim-token.ts';
+export {
+  handleScimTokenEnable,
+  handleScimTokenRotate,
+  handleScimTokenRevoke,
+  type ScimTokenEnableCommand,
+  type ScimTokenEnableResult,
+  type ScimTokenRotateCommand,
+  type ScimTokenRotateResult,
+  type ScimTokenRevokeCommand,
+  type ScimTokenRevokeResult,
+} from './handlers/scim-token.ts';
 
 // Phase A3 — IdentityProvider entity wrappers.
 export {

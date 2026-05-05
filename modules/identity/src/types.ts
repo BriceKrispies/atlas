@@ -472,3 +472,116 @@ export interface IdentityProviderDocument {
    */
   jwksFetchedAt?: string;
 }
+
+// ===================================================================
+// Phase A4 — SCIM 2.0 + per-tenant audit export.
+// ===================================================================
+
+export type ScimTokenStatus = 'active' | 'revoked' | 'rotated';
+
+/**
+ * Per-tenant SCIM bearer token. The IDP's SCIM connector hits Atlas
+ * with `Authorization: Bearer <secret>`. The secret is high-entropy
+ * + Argon2id-hashed at rest; lookup uses the prefix-bucket pattern.
+ *
+ * One ACTIVE token per tenant at a time (rotation creates a successor
+ * and flips the predecessor to `'rotated'` with an overlap window —
+ * same shape as ApiKey rotation).
+ */
+export interface ScimTokenDocument {
+  tokenId: string;
+  tenantId: string;
+  /** Argon2id hash of the bearer secret. */
+  secretHash: string;
+  /** SHA-256 prefix for bucket-narrowing on lookup. */
+  secretLookup: string;
+  /** Operator-visible label (e.g. "Okta production"). */
+  name: string;
+  status: ScimTokenStatus;
+  issuedAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  rotatedFromTokenId?: string;
+  rotatedToTokenId?: string;
+  rotationOverlapUntil?: string;
+  endedAt?: string;
+  endReason?: 'admin_revoke' | 'rotated' | 'expired';
+}
+
+export type AuditExportDestinationKind = 's3' | 's3-compatible';
+
+/**
+ * S3-compatible destination config. The export worker uses this to
+ * push JSON-Lines event batches to a customer-owned bucket.
+ *
+ * `endpoint` lets the customer point at MinIO / Cloudflare R2 / etc.
+ * `accessKey`/`secretKey` are stored in plaintext (rotated by the
+ * customer); for production deployments the secret half belongs in a
+ * separate KMS-fronted secret store (Phase A4 ships the entity-level
+ * shape; KMS integration is post-A4 polish).
+ */
+export interface AuditExportS3Destination {
+  kind: AuditExportDestinationKind;
+  endpoint?: string;
+  bucket: string;
+  region: string;
+  /** Path prefix inside the bucket. */
+  pathPrefix?: string;
+  accessKeyId?: string;
+  /** Secret key. PRODUCTION: pull from KMS / external secret store. */
+  secretAccessKey?: string;
+  /** Alternative auth: assume-role ARN (AWS-only). */
+  roleArn?: string;
+}
+
+export type AuditExportStatus = 'configured' | 'active' | 'disabled';
+
+export type AuditExportCadence = 'hourly' | 'daily';
+
+/**
+ * Per-tenant audit export config. One row per tenant. The worker
+ * polls active configs, drains events past `cursor` since the last
+ * run, serializes, pushes, advances the cursor.
+ */
+export interface AuditExportConfigDocument {
+  configId: string;
+  tenantId: string;
+  destination: AuditExportS3Destination;
+  cadence: AuditExportCadence;
+  /** Event store seq (as string for JSON safety) of the last event exported. */
+  cursor?: string;
+  status: AuditExportStatus;
+  /** Optional retention-tier filter — when unset, every tier exports. */
+  retentionFilter?: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastFailureReason?: string;
+}
+
+export type AuditExportRunStatus = 'running' | 'succeeded' | 'failed';
+
+/**
+ * One export run. Records what the worker did + what failed when it
+ * did. Persisted as an entity so operators can audit "did the
+ * 2026-05-04 09:00 export actually push everything?"
+ */
+export interface AuditExportRunDocument {
+  runId: string;
+  tenantId: string;
+  configId: string;
+  startedAt: string;
+  endedAt?: string;
+  /** Cursor at start (i.e. last-exported seq before this run). */
+  fromCursor: string;
+  /** Cursor at end on success. */
+  toCursor?: string;
+  status: AuditExportRunStatus;
+  /** Number of events successfully pushed in this run. */
+  eventCount?: number;
+  /** Bytes of payload pushed. */
+  bytes?: number;
+  /** Failure detail when status='failed'. */
+  failureReason?: string;
+}

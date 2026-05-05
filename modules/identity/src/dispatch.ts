@@ -22,11 +22,13 @@ import type {
 } from '@atlas/ports';
 import type {
   ApiKeyDocument,
+  AuditExportConfigDocument,
   AuthSessionDocument,
   IdentityProviderDocument,
   InviteTokenDocument,
   MembershipDocument,
   OAuthAccessTokenDocument,
+  ScimTokenDocument,
   ServicePrincipalDocument,
   UserDocument,
 } from './types.ts';
@@ -38,6 +40,8 @@ import { putApiKeyEntity } from './entities/api-key.ts';
 import { putServicePrincipalEntity } from './entities/service-principal.ts';
 import { putOAuthTokenEntity } from './entities/oauth-token.ts';
 import { putIdentityProviderEntity } from './entities/identity-provider.ts';
+import { putScimTokenEntity } from './entities/scim-token.ts';
+import { putAuditExportConfig } from './entities/audit-export-config.ts';
 import {
   linkInviteToUser,
   linkMembershipToUser,
@@ -92,6 +96,14 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.IdentityProviderActivated',
   'Identity.IdentityProviderDisabled',
   'Identity.IdentityProviderRotatedJwks',
+  // Phase A4 — SCIM tokens.
+  'Identity.ScimTokenEnabled',
+  'Identity.ScimTokenRotated',
+  'Identity.ScimTokenRevoked',
+  // Phase A4.8 — audit-export config.
+  'Identity.AuditExportConfigured',
+  'Identity.AuditExportActivated',
+  'Identity.AuditExportDisabled',
 ]);
 
 export async function dispatchIdentityEvent(
@@ -117,6 +129,8 @@ export async function dispatchIdentityEvent(
     | ServicePrincipalDocument
     | OAuthAccessTokenDocument
     | IdentityProviderDocument
+    | ScimTokenDocument
+    | AuditExportConfigDocument
     | undefined;
   if (!document) return;
 
@@ -175,12 +189,23 @@ export async function dispatchIdentityEvent(
         document as OAuthAccessTokenDocument,
       );
     }
+  } else if (envelope.eventType.startsWith('Identity.ScimToken')) {
+    // ScimToken Enabled / Rotated / Revoked all carry the merged
+    // ScimToken document.
+    await putScimTokenEntity(ctx.entities, document as ScimTokenDocument);
   } else if (envelope.eventType.startsWith('Identity.IdentityProvider')) {
     // All four IDP events (Configured / Activated / Disabled /
     // RotatedJwks) carry a merged IdentityProviderDocument. Persist.
     await putIdentityProviderEntity(
       ctx.entities,
       document as IdentityProviderDocument,
+    );
+  } else if (envelope.eventType.startsWith('Identity.AuditExport')) {
+    // AuditExport Configured / Activated / Disabled. Run-level
+    // events come from the worker (A4.9) and bypass this dispatcher.
+    await putAuditExportConfig(
+      ctx.entities,
+      document as AuditExportConfigDocument,
     );
   }
 }
