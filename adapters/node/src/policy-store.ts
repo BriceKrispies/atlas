@@ -2,7 +2,7 @@
  * PostgresPolicyStore — concrete adapter over `control_plane.policies`.
  *
  * The table is owned by the control-plane DB. Layout (from the existing
- * migration in `adapters/node`):
+ * migration in this package):
  *
  *   tenant_id text NOT NULL,
  *   version int NOT NULL,
@@ -11,8 +11,8 @@
  *   created_at timestamptz NOT NULL DEFAULT now(),
  *   PRIMARY KEY (tenant_id, version)
  *
- * Plus a partial unique index `WHERE status = 'active'` on `(tenant_id)` —
- * landed in 6b cleanup — which guarantees "exactly one active per tenant".
+ * Plus a partial unique index `WHERE status = 'active'` on `(tenant_id)`
+ * which guarantees "exactly one active per tenant".
  *
  * `policy_json` is the wrapper:
  *   `{ format: 'cedar-text', policies: '...', schemaVersion: 1 }`.
@@ -26,22 +26,15 @@
  */
 
 import type { Sql } from 'postgres';
-import type {
-  PolicyDetail,
-  PolicyStatus,
-  PolicyStore,
-  PolicySummary,
-} from './policy-store.ts';
-import { AuthzError, codes } from './errors.ts';
+import {
+  AuthzError,
+  authzErrorCodes,
+  type PolicyDetail,
+  type PolicyStatus,
+  type PolicyStore,
+  type PolicySummary,
+} from '@atlas/authz';
 
-// NOTE: a shared `PolicyBundle` DTO lives in `@atlas/platform-core`
-// (`control-plane-db.ts`, mirroring `crates/control_plane_db/src/models.rs`).
-// We deliberately keep this local row type instead of adopting it: the
-// shared DTO models `policy_json` as opaque `JsonValue` to match the Rust
-// wire shape, whereas this adapter needs the wrapper's named fields
-// (`policies`, `format`, `description`) typed for safe destructuring,
-// and tracks the adapter-only `last_modified_by` column. Adopting the
-// shared type would require a cast on every access — net loss in safety.
 interface PolicyRow {
   tenant_id: string;
   version: number;
@@ -111,15 +104,6 @@ export class PostgresPolicyStore implements PolicyStore {
     description: string | null;
     principalId: string | null;
   }): Promise<number> {
-    // Compute next version via SELECT MAX+1, then INSERT. Each query
-    // runs in its own implicit transaction (autocommit) — they are NOT
-    // SERIALIZABLE. The PRIMARY KEY (tenant_id, version) catches the
-    // resulting race when two concurrent creators read the same MAX,
-    // and the retry loop below picks up after a unique-violation. Net
-    // effect: the FINAL version assignment is non-deterministic across
-    // racing requests, but the response always reflects the version
-    // that actually landed. Acceptable for admin authoring flows;
-    // would not be acceptable for a hot write path.
     const wrapper = {
       format: 'cedar-text',
       policies: input.cedarText,
@@ -142,8 +126,6 @@ export class PostgresPolicyStore implements PolicyStore {
         return version;
       } catch (e) {
         const msg = (e as { message?: string }).message ?? '';
-        // PG unique-violation code is 23505. Retry on conflict; surface
-        // any other failure verbatim.
         if (!/23505|duplicate key/i.test(msg)) throw e;
       }
     }
@@ -155,10 +137,6 @@ export class PostgresPolicyStore implements PolicyStore {
     version: number;
     principalId: string | null;
   }): Promise<void> {
-    // Demote prior active(s) and promote the target inside a single
-    // transaction. The partial unique index enforces the invariant; we
-    // still issue the demote first to avoid the (otherwise valid) insert
-    // that briefly has two actives.
     await this.sql.begin(async (tx) => {
       const rows = await tx<{ status: string }[]>`
         SELECT status FROM control_plane.policies
@@ -168,14 +146,14 @@ export class PostgresPolicyStore implements PolicyStore {
       const row = rows[0];
       if (!row) {
         throw new AuthzError(
-          codes.POLICY_NOT_FOUND,
+          authzErrorCodes.POLICY_NOT_FOUND,
           `policy not found: tenant=${input.tenantId} version=${input.version}`,
           404,
         );
       }
       if (row.status !== 'draft') {
         throw new AuthzError(
-          codes.POLICY_NOT_DRAFT,
+          authzErrorCodes.POLICY_NOT_DRAFT,
           `policy version ${input.version} is ${row.status}, only drafts can be activated`,
           400,
         );
@@ -207,24 +185,20 @@ export class PostgresPolicyStore implements PolicyStore {
       const row = rows[0];
       if (!row) {
         throw new AuthzError(
-          codes.POLICY_NOT_FOUND,
+          authzErrorCodes.POLICY_NOT_FOUND,
           `policy not found: tenant=${input.tenantId} version=${input.version}`,
           404,
         );
       }
       if (row.status === 'archived') return;
       if (row.status === 'active') {
-        // Refuse to archive the only active row — would leave the tenant
-        // policy-less. The fallback (allow-all-with-tenant-scope) is
-        // documented behaviour for tenants who haven't authored a policy
-        // yet, NOT a deliberate "archive everything" recovery path.
         const activeCount = await tx<{ count: number }[]>`
           SELECT COUNT(*)::int AS count FROM control_plane.policies
           WHERE tenant_id = ${input.tenantId} AND status = 'active'
         `;
         if ((activeCount[0]?.count ?? 0) <= 1) {
           throw new AuthzError(
-            codes.POLICY_LAST_ACTIVE,
+            authzErrorCodes.POLICY_LAST_ACTIVE,
             'cannot archive the only active policy — activate a replacement first',
             400,
           );

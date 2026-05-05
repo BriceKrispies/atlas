@@ -29,6 +29,10 @@ import {
 } from './service-principal.ts';
 import { handleOAuthIssueToken } from './oauth-token-issue.ts';
 import { handleOAuthRevokeToken } from './oauth-token-revoke.ts';
+import { handleIdpConfigure } from './idp-configure.ts';
+import { handleIdpActivate } from './idp-activate.ts';
+import { handleIdpDisable } from './idp-disable.ts';
+import { handleIdpRotateJwks } from './idp-rotate-jwks.ts';
 import type { SessionEndReason } from '../types.ts';
 import { IdentityError } from '../errors.ts';
 
@@ -548,6 +552,113 @@ export function identityHandlerEntries(
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
           spId: readString(p, 'spId'),
+        },
+        ctx.eventStore,
+        entities,
+      );
+      return { primary: result.envelope, follow: [] };
+    },
+  };
+
+  // ----- Phase A3 — federated OIDC -------------------------------
+
+  const idpConfigureHandler: IntentHandler = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload as Record<string, unknown>;
+      const result = await handleIdpConfigure(
+        {
+          tenantId: ctx.tenantId,
+          correlationId: ctx.correlationId,
+          principalId: ctx.principalId,
+          displayName: readString(p, 'displayName'),
+          issuer: readString(p, 'issuer'),
+          audience: readString(p, 'audience'),
+          ...(readOptionalString(p, 'jwksUri') !== undefined
+            ? { jwksUri: readOptionalString(p, 'jwksUri') as string }
+            : {}),
+          ...(readOptionalString(p, 'groupClaimPath') !== undefined
+            ? {
+                groupClaimPath: readOptionalString(p, 'groupClaimPath') as string,
+              }
+            : {}),
+          ...(p['discoveryDocument'] !== undefined
+            ? {
+                discoveryDocument: p['discoveryDocument'] as never,
+              }
+            : {}),
+          ...(p['requireInvite'] !== undefined
+            ? { requireInvite: Boolean(p['requireInvite']) }
+            : {}),
+          ...(Array.isArray(p['defaultRolesOnFirstLogin'])
+            ? {
+                defaultRolesOnFirstLogin: readStringArray(
+                  p,
+                  'defaultRolesOnFirstLogin',
+                ),
+              }
+            : {}),
+          ...(Array.isArray(p['roleMappings'])
+            ? { roleMappings: p['roleMappings'] as never }
+            : {}),
+          ...(typeof p['priority'] === 'number'
+            ? { priority: p['priority'] as number }
+            : {}),
+        },
+        ctx.eventStore,
+      );
+      return { primary: result.envelope, follow: [] };
+    },
+  };
+
+  const idpActivateHandler: IntentHandler = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload as Record<string, unknown>;
+      const result = await handleIdpActivate(
+        {
+          tenantId: ctx.tenantId,
+          correlationId: ctx.correlationId,
+          principalId: ctx.principalId,
+          idpId: readString(p, 'idpId'),
+        },
+        ctx.eventStore,
+        entities,
+      );
+      return { primary: result.envelope, follow: [] };
+    },
+  };
+
+  const idpDisableHandler: IntentHandler = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload as Record<string, unknown>;
+      const result = await handleIdpDisable(
+        {
+          tenantId: ctx.tenantId,
+          correlationId: ctx.correlationId,
+          principalId: ctx.principalId,
+          idpId: readString(p, 'idpId'),
+        },
+        ctx.eventStore,
+        entities,
+      );
+      return { primary: result.envelope, follow: [] };
+    },
+  };
+
+  const idpRotateJwksHandler: IntentHandler = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload as Record<string, unknown>;
+      const result = await handleIdpRotateJwks(
+        {
+          tenantId: ctx.tenantId,
+          correlationId: ctx.correlationId,
+          principalId: ctx.principalId,
+          idpId: readString(p, 'idpId'),
+          ...(readOptionalString(p, 'jwksUri') !== undefined
+            ? { jwksUri: readOptionalString(p, 'jwksUri') as string }
+            : {}),
+          ...(p['discoveryDocument'] !== undefined
+            ? { discoveryDocument: p['discoveryDocument'] as never }
+            : {}),
         },
         ctx.eventStore,
         entities,

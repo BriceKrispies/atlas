@@ -36,6 +36,10 @@ import {
   SERVICE_PRINCIPAL_LATEST_VERSION,
 } from './service-principal.ts';
 import {
+  IDENTITY_PROVIDER_ENTITY_TYPE,
+  IDENTITY_PROVIDER_LATEST_VERSION,
+} from './identity-provider.ts';
+import {
   OAUTH_TOKEN_ENTITY_TYPE,
   OAUTH_TOKEN_LATEST_VERSION,
 } from './oauth-token.ts';
@@ -174,7 +178,9 @@ export async function seedIdentityEntityTypes(
       (${SERVICE_PRINCIPAL_ENTITY_TYPE}, NULL, ${SERVICE_PRINCIPAL_LATEST_VERSION},
        ${sql.json({ $id: 'identity.service_principal.v1', type: 'object' } as never)}, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, ${OAUTH_TOKEN_LATEST_VERSION},
-       ${sql.json({ $id: 'identity.oauth_token.v1', type: 'object' } as never)}, 'platform')
+       ${sql.json({ $id: 'identity.oauth_token.v1', type: 'object' } as never)}, 'platform'),
+      (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, ${IDENTITY_PROVIDER_LATEST_VERSION},
+       ${sql.json({ $id: 'identity.identity_provider.v1', type: 'object' } as never)}, 'platform')
     ON CONFLICT (entity_type, tenant_id) DO NOTHING
   `;
 
@@ -310,7 +316,19 @@ export async function seedIdentityEntityTypes(
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, 'apiKeyId',
        ${sql.json(['apiKeyId'] as never)}, FALSE, NULL, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform')
+       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+      (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'issuer',
+       ${sql.json(['issuer'] as never)}, FALSE, NULL, 'platform'),
+      (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'status',
+       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+      (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'kind',
+       ${sql.json(['kind'] as never)}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
+  // IdentityProvider lookup-by-issuer is the hot path on every JWT
+  // verification. The `(issuer, status)` composite materializes a
+  // partial index where status='active'. The named `issuer` index
+  // above + status filter at query time is sufficient for Phase A3
+  // throughput; if profiling flags it, add a partial expression
+  // index in a follow-up migration.
 }

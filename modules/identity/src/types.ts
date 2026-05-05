@@ -4,6 +4,7 @@
  * Phase A1 entities: `User`, `Membership`, `InviteToken`.
  * Phase A2 entities: `AuthSession`, `ApiKey`, `ServicePrincipal`,
  *                    `OAuthAccessToken`.
+ * Phase A3 entities: `IdentityProvider`.
  *
  * All stored on the L3 substrate (`entities` table) — no per-domain
  * tables.
@@ -353,3 +354,121 @@ export const DEFAULT_SESSION_POLICY: SessionPolicy = {
   hardTimeoutHours: 24,
   refreshGraceSeconds: 30,
 };
+
+// ===================================================================
+// Phase A3 — per-tenant OIDC federation.
+// ===================================================================
+
+export type IdentityProviderKind = 'oidc' | 'saml';
+
+export type IdentityProviderStatus = 'configured' | 'active' | 'disabled';
+
+/**
+ * Group-to-role mapping rule. Applied on every JWT login: the JWT's
+ * group claim (path on `IdentityProvider.attrs.groupClaimPath`) is
+ * matched against `group`; matching rules contribute their `roles`
+ * to the Membership.
+ *
+ * Multiple rules can match a single login (a user in groups
+ * "Engineering" + "OnCall" gets the union of both rules' roles).
+ */
+export interface RoleMapping {
+  /** Group value to match (exact, case-insensitive). */
+  group: string;
+  /** Roles granted when the rule matches. */
+  roles: string[];
+}
+
+/**
+ * OIDC discovery document subset Atlas reads. Mirrors the standard
+ * OIDC discovery shape (`openid-configuration`); we capture only the
+ * fields we use, the rest stays on `attrs.discoveryDocument` for
+ * debug.
+ */
+export interface OidcDiscoveryDocument {
+  issuer: string;
+  jwks_uri: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+  userinfo_endpoint?: string;
+  end_session_endpoint?: string;
+  /** Algorithms supported by the IDP for ID-token signing. */
+  id_token_signing_alg_values_supported?: string[];
+}
+
+/**
+ * IdentityProvider entity — per-tenant configuration of an external
+ * IDP. Phase A3 ships only `kind=oidc`; Phase A6 extends with
+ * `kind=saml`.
+ *
+ * Multiple IDPs per tenant are supported. On JWT iss-claim resolution
+ * we look up by `(tenantId, issuer)` — the IDP's issuer must equal
+ * the JWT's `iss` claim exactly. `priority` breaks ties when two
+ * IDPs share an issuer (rare; primarily used during cutover from
+ * one IDP to another).
+ */
+export interface IdentityProviderDocument {
+  idpId: string;
+  tenantId: string;
+  kind: IdentityProviderKind;
+  /** Operator-visible label. */
+  displayName: string;
+  /**
+   * The exact `iss` claim value JWTs from this IDP carry. Used as
+   * the lookup key.
+   */
+  issuer: string;
+  /** Audience the JWT MUST carry. Often the tenant's app URL. */
+  audience: string;
+  /**
+   * Direct JWKS endpoint URL. When provided, discovery is skipped.
+   * When absent, discovery resolves it from
+   * `<issuer>/.well-known/openid-configuration`.
+   */
+  jwksUri?: string;
+  /**
+   * Optional cached discovery document. Set on Configure when
+   * discovery succeeds. Refresh via `RotateJwks`.
+   */
+  discoveryDocument?: OidcDiscoveryDocument;
+  /**
+   * JIT-provisioning controls.
+   *
+   * `requireInvite=true` (enterprise default): a JWT for an unknown
+   * sub is REJECTED with `JIT_PROVISIONING_DISABLED` unless an
+   * `InviteToken` exists for the email; first JWT login activates
+   * the pre-provisioned Membership. `requireInvite=false`: any
+   * valid JWT mints a User + Membership using
+   * `defaultRolesOnFirstLogin`.
+   */
+  requireInvite: boolean;
+  /**
+   * Roles granted to JIT-provisioned Memberships when no
+   * group-claim mapping matches. Empty = JIT users get no roles
+   * (still creates User+Membership, but Membership.roles is []).
+   */
+  defaultRolesOnFirstLogin: string[];
+  /**
+   * JWT path to the group claim (defaults to `groups`). Supports
+   * dotted paths for nested claims, e.g. `realm_access.roles`.
+   */
+  groupClaimPath?: string;
+  /** Group-to-role mapping rules. Applied in declaration order. */
+  roleMappings: RoleMapping[];
+  /**
+   * Tie-breaker when multiple IDPs share an `issuer` (rare; primarily
+   * during cut-overs). Higher = winner.
+   */
+  priority: number;
+  status: IdentityProviderStatus;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt?: string;
+  disabledAt?: string;
+  disabledBy?: string;
+  /**
+   * Wall-clock of the last successful JWKS fetch. Used by the cache
+   * layer to stay under the bounded-refetch-rate cap on `kid`-miss.
+   */
+  jwksFetchedAt?: string;
+}

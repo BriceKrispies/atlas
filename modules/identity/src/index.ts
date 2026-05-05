@@ -21,6 +21,7 @@ export {
   newApiKeyId,
   newServicePrincipalId,
   newOAuthTokenId,
+  newIdentityProviderId,
 } from './ids.ts';
 
 export type {
@@ -41,6 +42,12 @@ export type {
   OAuthAccessTokenStatus,
   OAuthAccessTokenDocument,
   SessionPolicy,
+  // Phase A3 — federated OIDC.
+  IdentityProviderKind,
+  IdentityProviderStatus,
+  IdentityProviderDocument,
+  OidcDiscoveryDocument,
+  RoleMapping,
 } from './types.ts';
 
 export { DEFAULT_SESSION_POLICY } from './types.ts';
@@ -165,6 +172,16 @@ export {
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
 
+// Phase A3 — IdentityProvider entity wrappers.
+export {
+  IDENTITY_PROVIDER_ENTITY_TYPE,
+  IDENTITY_PROVIDER_LATEST_VERSION,
+  getIdentityProviderEntity,
+  putIdentityProviderEntity,
+  findActiveProviderByIssuer,
+  listIdentityProviders,
+} from './entities/identity-provider.ts';
+
 // AuthSession entity-store wrappers — surfaced for routes/middleware
 // that need direct access (e.g. principal middleware bearer-auth).
 export {
@@ -236,6 +253,33 @@ export {
   type OAuthRevokeCommand,
   type OAuthRevokeResult,
 } from './handlers/oauth-token-revoke.ts';
+// Phase A3 — federated OIDC handlers.
+export {
+  handleIdpConfigure,
+  type IdpConfigureCommand,
+  type IdpConfigureResult,
+} from './handlers/idp-configure.ts';
+export {
+  handleIdpActivate,
+  type IdpActivateCommand,
+  type IdpActivateResult,
+} from './handlers/idp-activate.ts';
+export {
+  handleIdpDisable,
+  type IdpDisableCommand,
+  type IdpDisableResult,
+} from './handlers/idp-disable.ts';
+export {
+  handleIdpRotateJwks,
+  type IdpRotateJwksCommand,
+  type IdpRotateJwksResult,
+} from './handlers/idp-rotate-jwks.ts';
+export {
+  handleJitProvision,
+  type JitClaims,
+  type JitProvisionCommand,
+  type JitProvisionResult,
+} from './handlers/jit-provision.ts';
 
 // Session lifetime helpers (Phase A2.4).
 export {

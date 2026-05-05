@@ -9,6 +9,7 @@ export { PostgresCustomDomainStore } from './custom-domain-store.ts';
 export { PostgresEntityStore } from './entity-store.ts';
 export { PostgresRelationStore } from './relation-store.ts';
 export { PostgresEntityTypeRegistry } from './entity-type-registry.ts';
+export { PostgresPolicyStore } from './policy-store.ts';
 export {
   PostgresTenantDbProvider,
   type TenantDbProvider,

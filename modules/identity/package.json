@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "jose": "^5.10.0",
     "postgres": "^3.4.5",
     "vitest": "^4.1.5"
   }

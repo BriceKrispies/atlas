@@ -26,6 +26,7 @@ import {
   parseApiKeyBearer,
   getApiKeyEntity,
   getSessionEntity,
+  findActiveProviderByIssuer,
   findOAuthTokensByLookup,
   hashSecret,
   lookupOf,
@@ -35,8 +36,10 @@ import {
   touchSessionLastSeen,
   type ApiKeyDocument,
   type AuthSessionDocument,
+  type IdentityProviderDocument,
   type OAuthAccessTokenDocument,
 } from '@atlas/identity';
+import { JwksCache } from './jwks-cache.ts';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
 import { errorResponse } from './errors.ts';
@@ -95,6 +98,32 @@ function parseDebugPrincipal(
   const tenantId = parts.length === 3 ? (parts[2] ?? '') : defaultTenantId;
   if (!isValidTenantId(tenantId)) return null;
   return { principalId: id, tenantId };
+}
+
+/**
+ * Process-wide JWKS cache. One instance shared across all requests —
+ * the cache is keyed by (tenantId, idpId), so cross-tenant entries
+ * coexist without collision. See `jwks-cache.ts`.
+ */
+const jwksCache = new JwksCache();
+
+/**
+ * Decode a JWT's `iss` claim WITHOUT verifying the signature. We need
+ * the issuer to find the right IdP before we can verify. Standard
+ * pattern — the verify step still rejects if the iss doesn't match
+ * the IdP's stored issuer, so this can't be exploited.
+ */
+function jwtUnverifiedIssuer(token: string): string | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1]!, 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
+    return typeof payload['iss'] === 'string' ? (payload['iss'] as string) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -426,49 +455,122 @@ export function principalMiddleware(state: AppState) {
         correlationId,
       );
     }
-    if (!state.jwks) {
-      return errorResponse(
-        c,
-        'PRINCIPAL_INVALID',
-        'Server has no JWKS configured',
-        401,
-        correlationId,
-      );
+    // Phase A3: per-tenant IDP-driven JWT validation.
+    //
+    // Resolution order:
+    //   1. Read the JWT's `iss` claim (UNVERIFIED) to pick the right
+    //      IdentityProvider.
+    //   2. Look up an active IDP in the request tenant whose
+    //      `issuer` matches.
+    //   3. Verify the JWT against THAT IDP's JWKS, with
+    //      audience=idp.audience.
+    //   4. If no IDP matches AND the deployment has a global
+    //      `OIDC_ISSUER_URL` configured (legacy path), fall back to
+    //      that — keeps existing single-tenant deployments working
+    //      during the per-tenant rollout.
+    //
+    // `iss` mismatch with the IDP row OR JWKS verification failure
+    // both surface as PRINCIPAL_INVALID/401 (Rust parity).
+    const claimedIssuer = jwtUnverifiedIssuer(token);
+    let claims: Record<string, unknown> | null = null;
+    let resolvedAudience: string | undefined;
+    let resolvedTenantId: string | null = null;
+
+    if (claimedIssuer && hostTenantId) {
+      try {
+        const sql = await ensureTenantMigrated(state, hostTenantId);
+        const entities = new PostgresEntityStore(sql);
+        const idp: IdentityProviderDocument | null =
+          await findActiveProviderByIssuer(entities, hostTenantId, claimedIssuer);
+        if (idp && idp.jwksUri) {
+          resolvedTenantId = hostTenantId;
+          resolvedAudience = idp.audience;
+          const jwks = jwksCache.resolve(hostTenantId, idp.idpId, idp.jwksUri);
+          try {
+            const { payload } = await jwtVerify(token, jwks, {
+              audience: idp.audience,
+              issuer: idp.issuer,
+            });
+            claims = payload as Record<string, unknown>;
+          } catch (e) {
+            // On `kid` miss, force one refetch (rate-limited inside
+            // the cache) and retry. Other failures bubble out.
+            const errStr = (e as Error).message;
+            if (errStr.includes('kid') || errStr.includes('no applicable key')) {
+              const refetched = jwksCache.resolve(
+                hostTenantId,
+                idp.idpId,
+                idp.jwksUri,
+                { forceRefetch: true },
+              );
+              try {
+                const { payload } = await jwtVerify(token, refetched, {
+                  audience: idp.audience,
+                  issuer: idp.issuer,
+                });
+                claims = payload as Record<string, unknown>;
+              } catch {
+                return errorResponse(
+                  c,
+                  'PRINCIPAL_INVALID',
+                  `JWT verification failed after JWKS refresh: ${errStr}`,
+                  401,
+                  correlationId,
+                );
+              }
+            } else {
+              return errorResponse(
+                c,
+                'PRINCIPAL_INVALID',
+                `JWT verification failed: ${errStr}`,
+                401,
+                correlationId,
+              );
+            }
+          }
+        }
+      } catch {
+        // Tenant resolution / DB error — fall through to global JWKS.
+      }
     }
 
-    // Verify the JWT against the configured JWKS. Both `iss` and `aud`
-    // are enforced (Rust ingress counterpart sets both via
-    // `Validation::set_issuer` + `set_audience` in
-    // `crates/ingress/src/authn.rs::validate_jwt_token`). When the
-    // issuer is unset (test-auth pathway with no OIDC backend) we still
-    // refuse to verify — a JWKS without an authoritative issuer would
-    // accept any token signed by any provider whose JWKS happens to be
-    // cached at our URL.
-    if (!state.config.oidc.issuerUrl) {
-      return errorResponse(
-        c,
-        'PRINCIPAL_INVALID',
-        'Server has no OIDC issuer configured',
-        401,
-        correlationId,
-      );
+    // Legacy fallback: global JWKS configured at boot via
+    // `OIDC_ISSUER_URL` + `OIDC_JWKS_URL`. Only used when no
+    // per-tenant IDP matched the JWT issuer. Pre-A3 single-tenant
+    // deployments rely on this; deployments that have moved every
+    // tenant to a per-tenant IDP can leave the global config unset
+    // and reject any JWT whose `iss` doesn't match a configured IDP.
+    if (!claims) {
+      if (!state.jwks || !state.config.oidc.issuerUrl) {
+        return errorResponse(
+          c,
+          'PRINCIPAL_INVALID',
+          claimedIssuer
+            ? `no IdentityProvider for issuer ${claimedIssuer}`
+            : 'Token missing iss claim',
+          401,
+          correlationId,
+        );
+      }
+      try {
+        const { payload } = await jwtVerify(token, state.jwks, {
+          audience: state.config.oidc.audience,
+          issuer: state.config.oidc.issuerUrl,
+        });
+        claims = payload as Record<string, unknown>;
+        resolvedAudience = state.config.oidc.audience;
+      } catch (e) {
+        return errorResponse(
+          c,
+          'PRINCIPAL_INVALID',
+          `JWT verification failed: ${(e as Error).message}`,
+          401,
+          correlationId,
+        );
+      }
     }
-    let claims: Record<string, unknown>;
-    try {
-      const { payload } = await jwtVerify(token, state.jwks, {
-        audience: state.config.oidc.audience,
-        issuer: state.config.oidc.issuerUrl,
-      });
-      claims = payload as Record<string, unknown>;
-    } catch (e) {
-      return errorResponse(
-        c,
-        'PRINCIPAL_INVALID',
-        `JWT verification failed: ${(e as Error).message}`,
-        401,
-        correlationId,
-      );
-    }
+    void resolvedAudience;
+    void resolvedTenantId;
 
     const sub = typeof claims['sub'] === 'string' ? claims['sub'] : '';
     if (!sub) {

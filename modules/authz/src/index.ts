@@ -23,4 +23,3 @@ export {
   composeRegistries,
 } from './handlers/registry.ts';
 export { AuthzError, codes as authzErrorCodes } from './errors.ts';
-export { PostgresPolicyStore } from './postgres-policy-store.ts';

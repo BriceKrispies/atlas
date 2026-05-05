@@ -13,6 +13,7 @@ import {
   PostgresProjectionStore,
   PostgresSearchEngine,
   PostgresCatalogStateStore,
+  PostgresPolicyStore,
 } from '@atlas/adapter-node';
 import {
   policyEvaluatedEvent,
@@ -24,7 +25,6 @@ import {
   type CatalogQueryDeps,
 } from '@atlas/catalog';
 import {
-  PostgresPolicyStore,
   authzHandlerRegistry,
   composeRegistries,
 } from '@atlas/authz';

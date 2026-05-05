@@ -23,6 +23,7 @@ import type {
 import type {
   ApiKeyDocument,
   AuthSessionDocument,
+  IdentityProviderDocument,
   InviteTokenDocument,
   MembershipDocument,
   OAuthAccessTokenDocument,
@@ -36,6 +37,7 @@ import { putSessionEntity } from './entities/auth-session.ts';
 import { putApiKeyEntity } from './entities/api-key.ts';
 import { putServicePrincipalEntity } from './entities/service-principal.ts';
 import { putOAuthTokenEntity } from './entities/oauth-token.ts';
+import { putIdentityProviderEntity } from './entities/identity-provider.ts';
 import {
   linkInviteToUser,
   linkMembershipToUser,
@@ -74,6 +76,8 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.SessionEnded',
   // SessionAnomaly is emitted but carries no document — see below.
   'Identity.SessionAnomaly',
+  // Phase A3.7 — group-claim → role reconciliation on JWT login.
+  'Identity.MembershipRolesChanged',
   // Phase A2.7-A2.9 — service credentials.
   'Identity.ApiKeyCreated',
   'Identity.ApiKeyRotated',
@@ -83,6 +87,11 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.ServicePrincipalDisabled',
   'Identity.OAuthTokenIssued',
   'Identity.OAuthTokenRevoked',
+  // Phase A3 — federated OIDC.
+  'Identity.IdentityProviderConfigured',
+  'Identity.IdentityProviderActivated',
+  'Identity.IdentityProviderDisabled',
+  'Identity.IdentityProviderRotatedJwks',
 ]);
 
 export async function dispatchIdentityEvent(
@@ -107,6 +116,7 @@ export async function dispatchIdentityEvent(
     | ApiKeyDocument
     | ServicePrincipalDocument
     | OAuthAccessTokenDocument
+    | IdentityProviderDocument
     | undefined;
   if (!document) return;
 
@@ -124,6 +134,10 @@ export async function dispatchIdentityEvent(
     const m = document as MembershipDocument;
     await putMembershipEntity(ctx.entities, m);
     await linkMembershipToUser(ctx.relations, m.tenantId, m.userId);
+  } else if (envelope.eventType === 'Identity.MembershipRolesChanged') {
+    // A3.7: roles reconciled from JWT group claim. Just upsert the
+    // merged document; the relation is unchanged.
+    await putMembershipEntity(ctx.entities, document as MembershipDocument);
   } else if (envelope.eventType === 'Identity.InviteIssued') {
     await putInviteTokenEntity(ctx.entities, document as InviteTokenDocument);
   } else if (envelope.eventType === 'Identity.InviteAccepted') {
@@ -161,6 +175,13 @@ export async function dispatchIdentityEvent(
         document as OAuthAccessTokenDocument,
       );
     }
+  } else if (envelope.eventType.startsWith('Identity.IdentityProvider')) {
+    // All four IDP events (Configured / Activated / Disabled /
+    // RotatedJwks) carry a merged IdentityProviderDocument. Persist.
+    await putIdentityProviderEntity(
+      ctx.entities,
+      document as IdentityProviderDocument,
+    );
   }
 }
 

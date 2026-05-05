@@ -139,7 +139,8 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(pnpm install *)",
       "Bash(pnpm --filter @atlas/identity test)",
-      "Bash(pnpm remove *)"
+      "Bash(pnpm remove *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

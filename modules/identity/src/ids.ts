@@ -78,3 +78,11 @@ export function newServicePrincipalId(): string {
 export function newOAuthTokenId(): string {
   return `ot-${token()}`;
 }
+
+/**
+ * IdentityProvider ids — per-tenant. Substrate's PK includes
+ * `tenantId`, so collisions across tenants are fine.
+ */
+export function newIdentityProviderId(): string {
+  return `idp-${token()}`;
+}
