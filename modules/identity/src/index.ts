@@ -224,6 +224,67 @@ export {
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
 
+// Phase A7 — Risk engine.
+export {
+  defaultRiskScorer,
+  fixedRiskScorer,
+  decideFromScore,
+  type DefaultScorerOptions,
+  type RiskDecision,
+} from './risk/scorer.ts';
+
+// Phase A7 — Break-glass grants.
+export {
+  BREAK_GLASS_GRANT_ENTITY_TYPE,
+  BREAK_GLASS_GRANT_LATEST_VERSION,
+  getBreakGlassGrantEntity,
+  putBreakGlassGrantEntity,
+  listActiveGrantsForPrincipal,
+  listGrantsForTenant,
+} from './entities/break-glass-grant.ts';
+export {
+  handleBreakGlassIssue,
+  handleBreakGlassApprove,
+  handleBreakGlassDeny,
+  handleBreakGlassAction,
+  handleBreakGlassRevoke,
+  resolveActiveGrants,
+  BREAK_GLASS_RETENTION_TAG,
+  type BreakGlassIssueCommand,
+  type BreakGlassIssueResult,
+  type BreakGlassApproveCommand,
+  type BreakGlassApproveResult,
+  type BreakGlassDenyCommand,
+  type BreakGlassDenyResult,
+  type BreakGlassActionCommand,
+  type BreakGlassActionResult,
+  type BreakGlassRevokeCommand,
+  type BreakGlassRevokeResult,
+} from './handlers/break-glass.ts';
+
+// Phase A7 — Impersonation.
+export {
+  IMPERSONATION_SESSION_ENTITY_TYPE,
+  IMPERSONATION_SESSION_LATEST_VERSION,
+  getImpersonationSessionEntity,
+  putImpersonationSessionEntity,
+  findImpersonationByLookup,
+  listActiveImpersonationsForTenant,
+} from './entities/impersonation-session.ts';
+export {
+  handleImpersonationStart,
+  handleImpersonationAction,
+  handleImpersonationEnd,
+  resolveImpersonationToken,
+  IMPERSONATION_RETENTION_TAG,
+  type ImpersonationStartCommand,
+  type ImpersonationStartResult,
+  type ImpersonationActionCommand,
+  type ImpersonationActionResult,
+  type ImpersonationEndCommand,
+  type ImpersonationEndResult,
+} from './handlers/impersonation.ts';
+
 // Phase A6 — SAML SP signing keys.
 export {
   SAML_SP_KEY_ENTITY_TYPE,
