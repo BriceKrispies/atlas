@@ -97,3 +97,17 @@ export function newAuditExportConfigId(): string {
 export function newAuditExportRunId(): string {
   return `audexrun-${token()}`;
 }
+
+/** Phase A5 — MFA factors, recovery codes, bypass tokens. */
+export function newAuthFactorId(): string {
+  return `fct-${token()}`;
+}
+export function newRecoveryCodeId(): string {
+  return `rec-${token()}`;
+}
+export function newRecoveryBatchId(): string {
+  return `recbatch-${token()}`;
+}
+export function newMfaBypassId(): string {
+  return `mfabp-${token()}`;
+}

@@ -23,11 +23,13 @@ import type {
 import type {
   ApiKeyDocument,
   AuditExportConfigDocument,
+  AuthFactorDocument,
   AuthSessionDocument,
   IdentityProviderDocument,
   InviteTokenDocument,
   MembershipDocument,
   OAuthAccessTokenDocument,
+  RecoveryCodeDocument,
   ScimTokenDocument,
   ServicePrincipalDocument,
   UserDocument,
@@ -42,6 +44,8 @@ import { putOAuthTokenEntity } from './entities/oauth-token.ts';
 import { putIdentityProviderEntity } from './entities/identity-provider.ts';
 import { putScimTokenEntity } from './entities/scim-token.ts';
 import { putAuditExportConfig } from './entities/audit-export-config.ts';
+import { putAuthFactorEntity } from './entities/auth-factor.ts';
+import { putRecoveryCodeEntity } from './entities/recovery-code.ts';
 import {
   linkInviteToUser,
   linkMembershipToUser,
@@ -104,6 +108,17 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.AuditExportConfigured',
   'Identity.AuditExportActivated',
   'Identity.AuditExportDisabled',
+  // Phase A5 — MFA stack.
+  'Identity.AuthFactorEnrolled',
+  'Identity.AuthFactorRevoked',
+  'Identity.MfaChallengeSucceeded',
+  'Identity.MfaAnomaly',
+  'Identity.MfaLockout',
+  'Identity.RecoveryCodesGenerated',
+  'Identity.RecoveryCodesRegenerated',
+  'Identity.RecoveryCodeConsumed',
+  'Identity.MfaBypassIssued',
+  'Identity.MfaBypassUsed',
 ]);
 
 export async function dispatchIdentityEvent(
@@ -131,6 +146,8 @@ export async function dispatchIdentityEvent(
     | IdentityProviderDocument
     | ScimTokenDocument
     | AuditExportConfigDocument
+    | AuthFactorDocument
+    | RecoveryCodeDocument
     | undefined;
   if (!document) return;
 
@@ -206,6 +223,26 @@ export async function dispatchIdentityEvent(
     await putAuditExportConfig(
       ctx.entities,
       document as AuditExportConfigDocument,
+    );
+  } else if (
+    envelope.eventType === 'Identity.AuthFactorEnrolled' ||
+    envelope.eventType === 'Identity.AuthFactorRevoked' ||
+    envelope.eventType === 'Identity.MfaChallengeSucceeded' ||
+    envelope.eventType === 'Identity.MfaAnomaly' ||
+    envelope.eventType === 'Identity.MfaLockout'
+  ) {
+    // All five factor-touching events carry the merged AuthFactor
+    // document. RecoveryCode + MfaBypass are separate entities; their
+    // dispatcher branches land below.
+    await putAuthFactorEntity(ctx.entities, document as AuthFactorDocument);
+  } else if (envelope.eventType === 'Identity.RecoveryCodeConsumed') {
+    // Per-code event with a single document. RecoveryCodesGenerated /
+    // Regenerated emit batch metadata (no `document`) — the handler
+    // eager-writes the per-code rows since we can't reconstruct them
+    // from the batch event alone.
+    await putRecoveryCodeEntity(
+      ctx.entities,
+      document as RecoveryCodeDocument,
     );
   }
 }

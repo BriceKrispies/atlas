@@ -25,6 +25,10 @@ export {
   newScimTokenId,
   newAuditExportConfigId,
   newAuditExportRunId,
+  newAuthFactorId,
+  newRecoveryCodeId,
+  newRecoveryBatchId,
+  newMfaBypassId,
 } from './ids.ts';
 
 export type {
@@ -61,7 +65,20 @@ export type {
   AuditExportConfigDocument,
   AuditExportRunStatus,
   AuditExportRunDocument,
+  // Phase A5 — MFA stack.
+  AuthFactorKind,
+  AuthFactorStatus,
+  AuthFactorDocument,
+  TotpFactorAttrs,
+  WebAuthnFactorAttrs,
+  RecoveryCodeStatus,
+  RecoveryCodeDocument,
+  MfaBypassStatus,
+  MfaBypassDocument,
+  IdentityPolicy,
 } from './types.ts';
+
+export { DEFAULT_IDENTITY_POLICY } from './types.ts';
 
 export { DEFAULT_SESSION_POLICY } from './types.ts';
 
@@ -184,6 +201,57 @@ export {
   listOwnSessions,
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
+
+// Phase A5.6 — RecoveryCode entity + handlers.
+export {
+  RECOVERY_CODE_ENTITY_TYPE,
+  RECOVERY_CODE_LATEST_VERSION,
+  getRecoveryCodeEntity,
+  putRecoveryCodeEntity,
+  listRecoveryCodesForUser,
+  findRecoveryCodesByLookup,
+} from './entities/recovery-code.ts';
+export {
+  handleGenerateRecoveryCodes,
+  handleRegenerateRecoveryCodes,
+  handleRedeemRecoveryCode,
+  type GenerateRecoveryCodesCommand,
+  type GenerateRecoveryCodesResult,
+  type RedeemRecoveryCodeCommand,
+  type RedeemRecoveryCodeResult,
+} from './handlers/recovery-code.ts';
+
+// Phase A5.3 — TOTP handlers + crypto.
+export {
+  handleTotpEnroll,
+  handleTotpChallenge,
+  type TotpEnrollBeginCommand,
+  type TotpEnrollBeginResult,
+  type TotpChallengeCommand,
+  type TotpChallengeResult,
+} from './handlers/totp.ts';
+export {
+  generateTotpSecret,
+  buildOtpauthUri,
+  base32Encode,
+  totpAt,
+  hotp,
+  verifyTotp,
+  encryptSecret,
+  decryptSecret,
+  encryptionKeyIdForTenant,
+} from './crypto/totp.ts';
+
+// Phase A5 — MFA AuthFactor wrappers.
+export {
+  AUTH_FACTOR_ENTITY_TYPE,
+  AUTH_FACTOR_LATEST_VERSION,
+  getAuthFactorEntity,
+  putAuthFactorEntity,
+  listFactorsForUser,
+  listActiveFactorsForUserByKind,
+  findFactorByCredentialId,
+} from './entities/auth-factor.ts';
 
 // Phase A4.8 — Audit export config + handlers.
 export {

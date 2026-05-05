@@ -585,3 +585,143 @@ export interface AuditExportRunDocument {
   /** Failure detail when status='failed'. */
   failureReason?: string;
 }
+
+// ===================================================================
+// Phase A5 — MFA stack + passkey primary auth.
+// ===================================================================
+
+export type AuthFactorKind = 'totp' | 'webauthn_mfa' | 'passkey';
+
+export type AuthFactorStatus = 'active' | 'revoked' | 'locked';
+
+/** Per-kind attribute payloads. Discriminated by `AuthFactor.kind`. */
+export interface TotpFactorAttrs {
+  /** AES-256-GCM-encrypted TOTP secret. Plaintext never leaves crypto. */
+  encryptedSecret: string;
+  /** Identifier of the encryption key used (per-tenant KMS-derived). */
+  encryptionKeyId: string;
+  /** Issuer string for the otpauth URI (display only). */
+  issuer: string;
+  /** Account label for the otpauth URI (typically the email). */
+  accountLabel: string;
+  /** Last counter (= floor(unixTime / step)) at successful verify. */
+  lastUsedCounter?: number;
+  /** Consecutive failed-verify counter for per-factor lockout. */
+  failedAttempts?: number;
+}
+
+export interface WebAuthnFactorAttrs {
+  credentialId: string;
+  /** COSE-encoded public key, base64url. */
+  publicKey: string;
+  /** Last-known signCount; rejects assertions that don't increment. */
+  signCount: number;
+  /** AAGUID of the authenticator (debug + revocation by manufacturer). */
+  aaguid?: string;
+  /** Attestation format (`packed`, `fido-u2f`, `none`, etc). */
+  attestationFmt?: string;
+  /** True when the credential was created with `userVerification=required`. */
+  userVerification?: boolean;
+  /** Optional display label set by the user. */
+  label?: string;
+}
+
+/**
+ * Unified factor entity. `kind` discriminates the `attrs` payload —
+ * the dispatch + handlers branch on `kind` to coerce the right
+ * sub-type.
+ */
+export interface AuthFactorDocument {
+  factorId: string;
+  tenantId: string;
+  userId: string;
+  kind: AuthFactorKind;
+  /** Per-kind attrs. Carries the secret material / public key. */
+  attrs: TotpFactorAttrs | WebAuthnFactorAttrs;
+  status: AuthFactorStatus;
+  /** Operator-friendly label. */
+  name: string;
+  enrolledAt: string;
+  lastUsedAt?: string;
+  /** Set when status flips off `'active'`. */
+  endedAt?: string;
+  endReason?: 'admin_revoke' | 'user_revoke' | 'lockout';
+  /** ISO timestamp until which the factor is locked (per-factor lockout). */
+  lockedUntil?: string;
+}
+
+export type RecoveryCodeStatus = 'active' | 'consumed' | 'invalidated';
+
+/**
+ * One recovery code. We mint 10 per generation (RFC 6238-adjacent
+ * convention); each has independent status. Regenerate flips ALL
+ * existing codes for the user to `'invalidated'` and creates a fresh
+ * batch.
+ */
+export interface RecoveryCodeDocument {
+  codeId: string;
+  tenantId: string;
+  userId: string;
+  /** Argon2id hash of the plaintext code. */
+  codeHash: string;
+  /** SHA-256 prefix lookup (8 hex chars). */
+  codeLookup: string;
+  /** Generation batch id — all codes in the same batch share this. */
+  batchId: string;
+  status: RecoveryCodeStatus;
+  createdAt: string;
+  consumedAt?: string;
+  invalidatedAt?: string;
+}
+
+export type MfaBypassStatus = 'pending' | 'used' | 'expired' | 'revoked';
+
+/**
+ * Admin-issued one-shot bypass token. Skips MFA exactly once. 5-minute
+ * default TTL; revoked instantly on use.
+ */
+export interface MfaBypassDocument {
+  bypassId: string;
+  tenantId: string;
+  /** User this bypass was issued to. */
+  userId: string;
+  /** Admin who issued it. */
+  issuedBy: string;
+  /** Argon2id hash of the bypass secret. */
+  secretHash: string;
+  secretLookup: string;
+  status: MfaBypassStatus;
+  issuedAt: string;
+  expiresAt: string;
+  /** Set on use. */
+  usedAt?: string;
+}
+
+/**
+ * Tenant-wide identity policy. Stored on `tenants.identity_policy_json`.
+ * Distinct from `session_policy_json` (session lifetimes); merging
+ * later if the surface gets unwieldy.
+ */
+export interface IdentityPolicy {
+  /** When true, every user's auth ceremony requires a second factor. */
+  mfaRequired: boolean;
+  /**
+   * Acceptable WebAuthn attestation formats. `'none'` is permissive;
+   * `'packed' | 'fido-u2f'` enforce real attestation. Default ['none'].
+   */
+  webauthnAttestation: ReadonlyArray<'none' | 'packed' | 'fido-u2f'>;
+  /** Number of recovery codes generated per regen. Default 10. */
+  recoveryCodeCount: number;
+  /** Per-factor lockout threshold. Default 5. */
+  factorLockoutThreshold: number;
+  /** Per-factor lockout duration in minutes. Default 15. */
+  factorLockoutMinutes: number;
+}
+
+export const DEFAULT_IDENTITY_POLICY: IdentityPolicy = {
+  mfaRequired: false,
+  webauthnAttestation: ['none'],
+  recoveryCodeCount: 10,
+  factorLockoutThreshold: 5,
+  factorLockoutMinutes: 15,
+};
