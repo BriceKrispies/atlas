@@ -202,6 +202,18 @@ export interface AuthSessionDocument {
   /** Set when status flips off `'active'`. */
   endReason?: SessionEndReason;
   endedAt?: string;
+  /**
+   * Phase A7.7 — risk-based step-up gate.
+   *
+   * When the principal middleware computes a risk score above
+   * `tenant.riskPolicy.stepUpMfaThreshold`, requests are rejected with
+   * `RISK_STEP_UP_REQUIRED` UNLESS this timestamp is in the future. A
+   * successful MFA challenge resets it (default window: 5 minutes).
+   *
+   * Server-side ONLY — never exposed in any cookie / token / response
+   * payload (a client-side claim could be forged to bypass the gate).
+   */
+  riskAcknowledgedUntil?: string;
 }
 
 export type ApiKeyStatus = 'active' | 'revoked' | 'rotated';

@@ -24,6 +24,7 @@ import {
   putAuditExportConfig,
   putAuditExportRun,
 } from './entities/audit-export-config.ts';
+import { shouldExportEvent } from './audit-retention.ts';
 
 /**
  * Object-store uploader. Receives the JSON-Lines buffer + a
@@ -110,13 +111,12 @@ export async function runAuditExport(
   const fromSeqN = BigInt(fromCursor);
   const fresh = events
     .filter((e) => (e.seq ?? 0n) > fromSeqN)
-    .filter((e) => {
-      // Apply retention filter when set: only export events whose
-      // retentionTag is in the allow-list.
-      if (!config.retentionFilter || config.retentionFilter.length === 0) return true;
-      const tag = e.retentionTag ?? 'retention:1y';
-      return config.retentionFilter.includes(tag);
-    })
+    // Apply the platform retention floor + tenant filter. Floor tags
+    // (`retention:7y`, `retention:10y`) are ALWAYS included, even when
+    // the tenant has set a `retentionFilter` that would otherwise
+    // exclude them — tenants can lengthen retention but never shorten
+    // it. See `audit-retention.ts` for the full pen-test rationale.
+    .filter((e) => shouldExportEvent(e.retentionTag, config.retentionFilter))
     .slice(0, maxBatch);
 
   if (fresh.length === 0) {

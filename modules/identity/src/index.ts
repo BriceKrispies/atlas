@@ -232,6 +232,13 @@ export {
   type DefaultScorerOptions,
   type RiskDecision,
 } from './risk/scorer.ts';
+export {
+  evaluateRiskGate,
+  acknowledgeStepUp,
+  DEFAULT_RISK_ACK_WINDOW_SECONDS,
+  type RiskGateInput,
+  type RiskGateOutcome,
+} from './risk/step-up.ts';
 
 // Phase A7 — Break-glass grants.
 export {
@@ -261,6 +268,14 @@ export {
   type BreakGlassRevokeCommand,
   type BreakGlassRevokeResult,
 } from './handlers/break-glass.ts';
+
+// Phase A7 — Notifications dispatcher (impersonation + break-glass).
+export {
+  emitNotificationsForA7Event,
+  identityNotificationDispatcher,
+  type NotificationChannel,
+  type NotificationEmitOptions,
+} from './handlers/impersonation-notify.ts';
 
 // Phase A7 — Impersonation.
 export {
@@ -471,6 +486,14 @@ export {
   type Uploader,
   type AuditExportRunOptions,
 } from './audit-export.ts';
+
+// Phase A7 — Platform retention floor.
+export {
+  PLATFORM_RETENTION_FLOOR,
+  isPlatformFloorRetention,
+  shouldExportEvent,
+  effectiveRetentionDays,
+} from './audit-retention.ts';
 
 // Phase A4 — SCIM token wrappers + handlers.
 export {

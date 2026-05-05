@@ -34,6 +34,7 @@ import {
   verifyPassword,
   checkSessionLifetime,
   touchSessionLastSeen,
+  resolveImpersonationToken,
   type ApiKeyDocument,
   type AuthSessionDocument,
   type IdentityProviderDocument,
@@ -215,12 +216,50 @@ async function tryBearerSchemes(
     };
   }
 
-  // (b) AuthSession access token. Lookup by hash prefix; constant-time
+  // (b) Impersonation bearer: `imp-<impersonationId>.<secret>`.
+  //     Resolved against the TARGET tenant's entity store. The principal
+  //     becomes the IMPERSONATED user (so authz/RBAC/policy evaluation
+  //     runs as if the target was acting), but `attributes.impersonatedBy`
+  //     and `attributes.impersonationId` are stamped so audit events can
+  //     record the operator. `attributes.readonlyResourceTypes` propagates
+  //     the impersonation's mutation veto to the action dispatch.
+  //
+  //     SECURITY: uniform 401 on every failure path (malformed / not
+  //     found / hash mismatch / expired / revoked / ended) — no timing
+  //     or message side-channel for token enumeration.
+  if (token.startsWith('imp-')) {
+    const resolved = await resolveImpersonationToken(entities, tenantId, token);
+    if (!resolved.ok) {
+      errorResponse(
+        c,
+        'IMPERSONATION_NOT_FOUND',
+        'impersonation token invalid',
+        401,
+        correlationId,
+      );
+      return 'fail-with-error';
+    }
+    const doc = resolved.document;
+    return {
+      principalId: doc.targetUserId,
+      tenantId,
+      userId: doc.targetUserId,
+      attributes: {
+        impersonatedBy: doc.operatorId,
+        impersonationId: doc.impersonationId,
+        ...(doc.readonlyResourceTypes !== undefined
+          ? { readonlyResourceTypes: doc.readonlyResourceTypes }
+          : {}),
+      },
+    };
+  }
+
+  // (c) AuthSession access token. Lookup by hash prefix; constant-time
   // hash compare.
   const sessionPrincipal = await tryAccessToken(c, entities, tenantId, token);
   if (sessionPrincipal) return sessionPrincipal;
 
-  // (c) OAuth access token. Same opaque-token shape, different entity.
+  // (d) OAuth access token. Same opaque-token shape, different entity.
   const oauthPrincipal = await tryOAuthToken(entities, tenantId, token);
   if (oauthPrincipal) return oauthPrincipal;
 

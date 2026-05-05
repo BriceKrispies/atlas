@@ -25,6 +25,7 @@ import { contentPagesRoutes } from './routes/content-pages.ts';
 import { debugRoutes } from './routes/debug.ts';
 import { eventsRoutes } from './routes/events.ts';
 import { identityAuthedRoutes, identityRoutes } from './routes/identity.ts';
+import { identityA7Routes } from './routes/identity-a7.ts';
 import { identityIdpRoutes } from './routes/identity-idp.ts';
 import { mfaRoutes } from './routes/mfa.ts';
 import { oauthRoutes } from './routes/oauth.ts';
@@ -65,6 +66,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', eventsRoutes(state));
   authed.route('/', identityAuthedRoutes(state));
   authed.route('/', identityIdpRoutes(state));
+  authed.route('/', identityA7Routes(state));
   authed.route('/', mfaRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes(state));

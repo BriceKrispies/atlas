@@ -588,6 +588,90 @@ describe('audit-export.feature: end-to-end run', () => {
     expect(run.eventCount).toBe(0);
     expect(uploader.pushed.length).toBe(0);
   });
+
+  it('platform retention floor: 7y impersonation events bypass tenant filter', async () => {
+    // Pen-test scenario: tenant admin sets retentionFilter=['retention:1y']
+    // intending to drop impersonation audit (`retention:7y`) from their
+    // export bucket. The platform floor MUST override — those events
+    // ship regardless.
+    const f = fx();
+    await handleAuditExportConfigure(
+      {
+        tenantId: f.tenantId,
+        correlationId: 'c',
+        principalId: 'admin',
+        destination: {
+          kind: 's3',
+          bucket: 'b',
+          region: 'r',
+          accessKeyId: 'a',
+          secretAccessKey: 's',
+        },
+        cadence: 'daily',
+        retentionFilter: ['retention:1y'],
+      },
+      f.events,
+      f.entities,
+    );
+    await dispatchAll(f);
+    const cfgId = `audex:${f.tenantId}`;
+    await handleAuditExportActivate(
+      {
+        tenantId: f.tenantId,
+        correlationId: 'c2',
+        principalId: 'admin',
+        configId: cfgId,
+      },
+      f.events,
+      f.entities,
+    );
+    await dispatchAll(f);
+
+    // Seed a synthetic Authorization.ImpersonationStarted event with
+    // retentionTag='retention:7y'. Constructed directly rather than via
+    // the impersonation handler (which has its own entity prerequisites
+    // out of scope for this floor-enforcement test).
+    await f.events.append({
+      eventId: 'evt-imp-1',
+      eventType: 'Authorization.ImpersonationStarted',
+      schemaId: 'authorization.impersonation.started',
+      schemaVersion: 1,
+      occurredAt: new Date().toISOString(),
+      tenantId: f.tenantId,
+      correlationId: 'imp-c',
+      idempotencyKey: 'imp-1',
+      principalId: 'ops:operator',
+      retentionTag: 'retention:7y',
+      payload: {
+        impersonationId: 'imp_test',
+        operatorId: 'ops:operator',
+        targetUserId: 'usr_target',
+      },
+    });
+
+    const uploader = new InMemoryUploader();
+    const run = await exportTenantAudit(
+      f.tenantId,
+      cfgId,
+      uploader,
+      f.events,
+      f.entities,
+    );
+    expect(run.status).toBe('succeeded');
+    // The impersonation event ships even though the tenant filter
+    // would have excluded it. Other 1y events also ship (filter
+    // includes 1y), so we assert the floor event is in the bundle
+    // rather than counting strictly.
+    expect(uploader.pushed.length).toBe(1);
+    const body = uploader.pushed[0]!.body.toString('utf8');
+    expect(body).toContain('Authorization.ImpersonationStarted');
+    expect(body).toContain('retention:7y');
+    const lines = body.trim().split('\n');
+    const impLine = lines.find((l) => l.includes('ImpersonationStarted'));
+    expect(impLine).toBeDefined();
+    const parsed = JSON.parse(impLine!);
+    expect(parsed.retentionTag).toBe('retention:7y');
+  });
 });
 
 // =====================================================================
