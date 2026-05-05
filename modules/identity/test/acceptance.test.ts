@@ -403,7 +403,7 @@ describe('password.feature: User sets initial password from invite', () => {
 
     // User.attrs.passwordHash is Argon2id-shaped.
     const user = await getUserEntity(fx.entities, fx.tenantId, accept.user.userId);
-    expect(user?.passwordHash).toMatch(/^\$argon2id\$/);
+    expect(user?.passwordHash).toMatch(/^\$scrypt\$/);
 
     // PasswordChanged event emitted (without plaintext). JSON.stringify
     // would trip on the bigint `seq` field; serialize with a replacer
@@ -411,7 +411,7 @@ describe('password.feature: User sets initial password from invite', () => {
     expect(setResult.envelope.eventType).toBe('Identity.PasswordChanged');
     const payload = setResult.envelope.payload as Record<string, unknown>;
     const doc = payload['document'] as Record<string, unknown>;
-    expect(doc['passwordHash']).toMatch(/^\$argon2id\$/);
+    expect(doc['passwordHash']).toMatch(/^\$scrypt\$/);
     const serialized = JSON.stringify(setResult.envelope, (_k, v) =>
       typeof v === 'bigint' ? v.toString() : v,
     );

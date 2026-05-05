@@ -228,7 +228,7 @@ describe('Identity.User.SetPassword', () => {
     await dispatchAll(fx);
 
     const after = await getUserEntity(fx.entities, fx.tenantId, user.document.userId);
-    expect(after?.passwordHash).toMatch(/^\$argon2id\$/);
+    expect(after?.passwordHash).toMatch(/^\$scrypt\$/);
     expect(after?.lockedUntil).toBeUndefined();
     expect(after?.failedLoginCount).toBe(0);
   });

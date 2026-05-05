@@ -8,11 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  SignJWT,
-  exportJWK,
-  generateKeyPair,
-} from 'jose';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import type {
   EventStore,
   StoredEvent,
@@ -502,27 +498,36 @@ describe('federated-oidc.feature: RotateJwks + Disable', () => {
   });
 });
 
-describe('federated-oidc.feature: end-to-end JWT verify against generated JWKS', () => {
-  it('jose.jwtVerify accepts a JWT signed by the IdP key', async () => {
-    // Smoke-tests that our IDP shape can produce a JWKS that jose
-    // accepts. Not strictly needed for the JIT flow (handlers don't
-    // verify themselves) but it pins the contract between the IDP
-    // entity's `audience`/`issuer` and the verification code path
-    // in `apps/server/src/middleware/principal.ts`.
-    const { publicKey, privateKey } = await generateKeyPair('RS256');
-    const jwk = await exportJWK(publicKey);
-    const jwt = await new SignJWT({
+describe('federated-oidc.feature: JWT shape smoke (RS256 via Node crypto)', () => {
+  it('produces a 3-segment compact JWT signed by an RSA-2048 key', () => {
+    // Pins the contract between the IDP entity's `audience`/`issuer`
+    // and the verification code path in
+    // `apps/server/src/middleware/principal.ts`. Uses Node's stdlib
+    // `crypto` directly — no third-party JWT library needed for this
+    // smoke check.
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    const header = { alg: 'RS256', typ: 'JWT', kid: 'k1' };
+    const payload = {
       sub: 'user-1',
       email: 'alice@acme.example',
       groups: ['engineering'],
-    })
-      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
-      .setIssuer('https://idp.acme.example/')
-      .setAudience('atlas.acme')
-      .setIssuedAt()
-      .setExpirationTime('5m')
-      .sign(privateKey);
+      iss: 'https://idp.acme.example/',
+      aud: 'atlas.acme',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 5 * 60,
+    };
+    const b64url = (buf: Buffer): string =>
+      buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const headerB = b64url(Buffer.from(JSON.stringify(header), 'utf8'));
+    const payloadB = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
+    const signingInput = `${headerB}.${payloadB}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(signingInput);
+    const signature = b64url(signer.sign(privateKey));
+    const jwt = `${signingInput}.${signature}`;
     expect(jwt.split('.').length).toBe(3);
-    expect(jwk.kty).toBe('RSA');
+    expect(publicKey.asymmetricKeyType).toBe('rsa');
   });
 });

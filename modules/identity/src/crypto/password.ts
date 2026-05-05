@@ -1,28 +1,34 @@
 /**
- * Argon2id password hashing — browser-safe via `hash-wasm`.
+ * Password hashing — scrypt (RFC 7914) on Node's stdlib `crypto`.
  *
- * `hash-wasm` ships a wasm Argon2 implementation that runs identically
- * in Node (server) and the browser (apps/sim, BDD harness). API is
- * promise-based; encoded output is the standard PHC string
- * (`$argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>`).
+ * Replaces the prior Argon2id-via-`hash-wasm` implementation. scrypt
+ * is older but still NIST-acceptable + OWASP-acceptable, and ships
+ * in Node's stdlib so we don't carry a native or wasm dep. Same
+ * threat model: defeat offline brute-force on stolen hashes.
  *
- * Plan-fixed parameters (Tier 3 cryptography choices):
- *   - memoryCost: 64 MiB (memorySize=65536 in hash-wasm's KB units)
- *   - timeCost: 3 (iterations)
- *   - parallelism: 4
+ * Parameters tuned for ~100ms hash time on a modest server:
+ *   N=16384 (cost — 2^14 iterations of the inner loop)
+ *   r=8     (block size)
+ *   p=1     (parallelization)
+ *   dkLen=32
+ *   16-byte random salt
  *
- * Tuned for ~250ms hash time on a modest server. WebCrypto's
- * `getRandomValues` for the salt — works in both runtimes.
+ * Memory usage: 128 * N * r * p ≈ 16 MiB — comfortably under Node's
+ * default `crypto.scrypt` maxmem cap (32 MiB) without touching it.
+ *
+ * Encoded format (PHC-flavored, parameter-self-describing so verify
+ * can re-derive the params):
+ *   `$scrypt$N=<N>,r=<r>,p=<p>$<saltBase64>$<hashBase64>`
  */
 
-import { argon2id, argon2Verify } from 'hash-wasm';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { IdentityError, codes } from '../errors.ts';
 
-const MEMORY_KB = 64 * 1024;
-const ITERATIONS = 3;
-const PARALLELISM = 4;
-const HASH_LENGTH = 32;
-const SALT_LENGTH = 16;
+const N = 16384;
+const R = 8;
+const P = 1;
+const DK_LEN = 32;
+const SALT_LEN = 16;
 
 const MIN_LENGTH = 12;
 const MAX_LENGTH = 256;
@@ -55,35 +61,82 @@ export function validatePasswordComplexity(password: string): void {
   }
 }
 
-function randomSalt(): Uint8Array {
-  const buf = new Uint8Array(SALT_LENGTH);
-  // `crypto.getRandomValues` is on the global `crypto` in Node 20+
-  // and the browser. No `node:crypto` import — keeps the module
-  // browser-bundleable without conditional branches.
-  globalThis.crypto.getRandomValues(buf);
-  return buf;
+function encode(salt: Buffer, hash: Buffer): string {
+  return `$scrypt$N=${N},r=${R},p=${P}$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+interface Decoded {
+  N: number;
+  r: number;
+  p: number;
+  salt: Buffer;
+  hash: Buffer;
+}
+
+function decode(encoded: string): Decoded | null {
+  // Split on `$`. PHC strings start with `$` so segments[0] is empty.
+  const segments = encoded.split('$');
+  if (segments.length !== 5 || segments[1] !== 'scrypt') return null;
+  const params = segments[2]!;
+  const saltB64 = segments[3]!;
+  const hashB64 = segments[4]!;
+  const paramMap: Record<string, number> = {};
+  for (const kv of params.split(',')) {
+    const [k, v] = kv.split('=');
+    if (!k || !v) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    paramMap[k] = n;
+  }
+  if (!paramMap['N'] || !paramMap['r'] || !paramMap['p']) return null;
+  let salt: Buffer;
+  let hash: Buffer;
+  try {
+    salt = Buffer.from(saltB64, 'base64');
+    hash = Buffer.from(hashB64, 'base64');
+  } catch {
+    return null;
+  }
+  if (salt.length === 0 || hash.length === 0) return null;
+  return {
+    N: paramMap['N']!,
+    r: paramMap['r']!,
+    p: paramMap['p']!,
+    salt,
+    hash,
+  };
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return argon2id({
-    password,
-    salt: randomSalt(),
-    parallelism: PARALLELISM,
-    iterations: ITERATIONS,
-    memorySize: MEMORY_KB,
-    hashLength: HASH_LENGTH,
-    outputType: 'encoded',
-  });
+  // `scryptSync` is CPU-bound; calling it from an async function
+  // matches the pre-swap `hash-wasm` interface (Promise<string>)
+  // without changing call sites. For server-side use the
+  // synchronous behavior is fine — at ~100ms per call we're not
+  // blocking the event loop meaningfully on a lightly-loaded auth
+  // path.
+  const salt = randomBytes(SALT_LEN);
+  const hash = scryptSync(password, salt, DK_LEN, { N, r: R, p: P });
+  return encode(salt, hash);
 }
 
-/**
- * Verify a presented password against a stored Argon2id PHC string.
- * Returns false on mismatch. Throws on malformed hash (a stored hash
- * that fails to parse is a programming error, not a wrong password).
- */
 export async function verifyPassword(
   password: string,
   storedHash: string,
 ): Promise<boolean> {
-  return argon2Verify({ password, hash: storedHash });
+  const decoded = decode(storedHash);
+  if (!decoded) return false;
+  let computed: Buffer;
+  try {
+    computed = scryptSync(password, decoded.salt, decoded.hash.length, {
+      N: decoded.N,
+      r: decoded.r,
+      p: decoded.p,
+    });
+  } catch {
+    // scrypt throws on illegal params — treat as a failed verify
+    // rather than surfacing the error.
+    return false;
+  }
+  if (computed.length !== decoded.hash.length) return false;
+  return timingSafeEqual(computed, decoded.hash);
 }

@@ -149,7 +149,8 @@
       "Bash(SAFE_PNPM_TIMEOUT_MS=3000 pnpm safe -- exec node -e \"setInterval\\(\\(\\)=>console.log\\('tick'\\),500\\)\")",
       "Bash(SAFE_PNPM_TIMEOUT_MS=3000 pnpm safe exec tsx -e \"setTimeout\\(_=>0,60000\\)\")",
       "Bash(SAFE_PNPM_TIMEOUT_MS=3000 SAFE_PNPM_KILL_GRACE_MS=1000 pnpm safe exec tsx scripts/_safe-pnpm-test-sleep.ts)",
-      "Bash(SAFE_PNPM_TIMEOUT_MS=120000 pnpm safe lint)"
+      "Bash(SAFE_PNPM_TIMEOUT_MS=120000 pnpm safe lint)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=180000 pnpm safe test)"
     ]
   }
 }

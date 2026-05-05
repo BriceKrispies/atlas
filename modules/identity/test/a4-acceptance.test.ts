@@ -186,7 +186,7 @@ describe('scim.feature: ScimToken Enable + lookup', () => {
     await dispatchAll(f);
     expect(result.plaintextSecret.length).toBeGreaterThan(20);
     expect(result.document.status).toBe('active');
-    expect(result.document.secretHash).toMatch(/^\$argon2id\$/);
+    expect(result.document.secretHash).toMatch(/^\$scrypt\$/);
     expect(result.document.secretLookup).toBe(lookupOf(result.plaintextSecret));
     // Bucket lookup + verify roundtrip.
     const candidates = await findScimTokensByLookup(

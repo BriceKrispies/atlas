@@ -8,7 +8,7 @@ import type {
 } from '../types.ts';
 import { newEventId } from '../ids.ts';
 import { findUserByEmail } from '../entities/user.ts';
-import { verifyPassword } from '../crypto/password.ts';
+import { hashPassword, verifyPassword } from '../crypto/password.ts';
 import { hashSecret } from '../crypto/secret-hash.ts';
 import { handleSessionIssue } from './session-issue.ts';
 
@@ -83,8 +83,17 @@ const LOCKOUT_DURATION_SECONDS = 15 * 60;
  * vs "password-wrong" through the hash duration noise floor — not
  * through a clear DB-only branch.
  */
-const DUMMY_ARGON2_HASH =
-  '$argon2id$v=19$m=65536,t=3,p=4$Zml4ZWRzYWx0Zml4ZWRzYWx0$0qjQjvNIVkMfnk1c7H3bPEtBwOrYCkAOVB2u6tLjK/8';
+// Lazily computed once per process — a valid scrypt PHC string against
+// a fixed unknowable input. Used as the verify target on no-such-user
+// so timing leaks at most "user-doesn't-exist" through the hash
+// duration noise floor, not through a clear DB-only branch.
+let DUMMY_HASH: string | null = null;
+async function dummyHash(): Promise<string> {
+  if (DUMMY_HASH === null) {
+    DUMMY_HASH = await hashPassword('never-matched-dummy-password-aaaa');
+  }
+  return DUMMY_HASH;
+}
 
 export async function handlePasswordLogin(
   cmd: PasswordLoginCommand,
@@ -117,7 +126,7 @@ export async function handlePasswordLogin(
   const hashToVerify =
     user && user.passwordHash && rejectReason === null
       ? user.passwordHash
-      : DUMMY_ARGON2_HASH;
+      : await dummyHash();
   const passwordOk = await verifyPassword(cmd.password, hashToVerify);
 
   // Decide on the final reject reason.
