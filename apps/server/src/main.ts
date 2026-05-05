@@ -28,6 +28,7 @@ import { identityAuthedRoutes, identityRoutes } from './routes/identity.ts';
 import { identityIdpRoutes } from './routes/identity-idp.ts';
 import { mfaRoutes } from './routes/mfa.ts';
 import { oauthRoutes } from './routes/oauth.ts';
+import { samlRoutes } from './routes/saml.ts';
 import { scimRoutes } from './routes/scim.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
@@ -50,6 +51,9 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // SCIM 2.0 — public mount because auth is the SCIM bearer token,
   // not a JWT. The scim middleware self-validates the bearer.
   app.route('/', scimRoutes(state));
+  // SAML 2.0 — public mount; ACS callback verifies the IdP's
+  // signature inline (no JWT/cookie path).
+  app.route('/', samlRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();

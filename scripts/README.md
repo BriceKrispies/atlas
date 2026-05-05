@@ -2,6 +2,26 @@
 
 Helper scripts for development and operations.
 
+## Bounded pnpm runner — `safe-pnpm.ts`
+
+Wraps any `pnpm` invocation with a wallclock timeout so a hung script
+(file-watcher leak, unflushed stdout, deadlocked child) terminates with
+exit code 124 instead of blocking forever.
+
+```bash
+pnpm safe test                              # 5 min default
+SAFE_PNPM_TIMEOUT_MS=60000 pnpm safe lint   # 60s
+SAFE_PNPM_TIMEOUT_MS=600000 pnpm safe bdd   # 10 min for slow suites
+```
+
+On timeout the wrapper sends SIGTERM to the whole process tree, waits
+`SAFE_PNPM_KILL_GRACE_MS` (default 5s), then SIGKILLs anything still alive.
+Forwards SIGINT/SIGTERM from the parent shell. On Windows it uses
+`taskkill /T` to reach grandchildren that vanilla `kill()` won't.
+
+Use this for any pnpm command an agent or CI runs unattended. Direct
+`pnpm <script>` is fine for interactive use.
+
 ## Log Inspection
 
 Quick helpers to inspect container logs without opening the Dozzle web UI.

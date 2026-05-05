@@ -12,7 +12,16 @@ import { fileURLToPath } from 'node:url';
 // packages do at test time.
 const r = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
 
+// Pin the project root to the config-file directory so glob patterns in
+// `test.include` (e.g. `modules/*/test/**`) always resolve from the repo
+// root, regardless of where vitest is invoked from. Without this,
+// `pnpm --filter @atlas/X test` (which cd's into the workspace package)
+// would resolve globs relative to that package and silently match zero
+// files — exiting with "No test files found".
+const ROOT = r('.');
+
 export default defineConfig({
+  root: ROOT,
   resolve: {
     alias: {
       '@atlas/platform-core/spec-validate': r('./packages/platform-core/src/spec-validate/index.ts'),

@@ -111,3 +111,12 @@ export function newRecoveryBatchId(): string {
 export function newMfaBypassId(): string {
   return `mfabp-${token()}`;
 }
+
+/** Phase A6 — SAML SP signing keys + replay records. */
+export function newSamlSpKeyId(): string {
+  return `samlk-${token()}`;
+}
+export function newSamlReplayRecordId(assertionId: string): string {
+  const safe = assertionId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+  return `samlrpl-${safe}`;
+}

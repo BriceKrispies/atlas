@@ -29,6 +29,8 @@ export {
   newRecoveryCodeId,
   newRecoveryBatchId,
   newMfaBypassId,
+  newSamlSpKeyId,
+  newSamlReplayRecordId,
 } from './ids.ts';
 
 export type {
@@ -76,6 +78,12 @@ export type {
   MfaBypassStatus,
   MfaBypassDocument,
   IdentityPolicy,
+  // Phase A6 — SAML.
+  SamlNameIdFormat,
+  SamlAttributeMappings,
+  SamlSpKeyStatus,
+  SamlSpKeyDocument,
+  SamlAssertionReplayDocument,
 } from './types.ts';
 
 export { DEFAULT_IDENTITY_POLICY } from './types.ts';
@@ -201,6 +209,50 @@ export {
   listOwnSessions,
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
+
+// Phase A6 — SAML SP signing keys.
+export {
+  SAML_SP_KEY_ENTITY_TYPE,
+  SAML_SP_KEY_LATEST_VERSION,
+  getSamlSpKeyEntity,
+  putSamlSpKeyEntity,
+  findActiveSamlSpKey,
+  listMetadataSamlSpKeys,
+} from './entities/saml-sp-key.ts';
+export {
+  handleSamlSpKeyGenerate,
+  handleSamlSpKeyRotate,
+  type SamlSpKeyGenerateCommand,
+  type SamlSpKeyGenerateResult,
+  type SamlSpKeyRotateCommand,
+  type SamlSpKeyRotateResult,
+} from './handlers/saml-sp-key.ts';
+export { generateSamlSpKey, type GeneratedSpKey } from './saml/sp-key.ts';
+export {
+  parseIdpMetadata,
+  DEFAULT_SAML_ATTRIBUTE_MAPPINGS,
+  type ParsedIdpMetadata,
+} from './saml/metadata-parser.ts';
+export {
+  buildAuthnRequest,
+  type BuildAuthnRequestOptions,
+  type BuiltAuthnRequest,
+} from './saml/authn-request.ts';
+export {
+  verifySamlResponse,
+  type VerifyOptions,
+  type VerifiedAssertion,
+} from './saml/verify.ts';
+export {
+  recordSeenAssertion,
+  SAML_ASSERTION_REPLAY_ENTITY_TYPE,
+  SAML_ASSERTION_REPLAY_LATEST_VERSION,
+} from './entities/saml-assertion-replay.ts';
+export {
+  handleSamlAcs,
+  type SamlAcsCommand,
+  type SamlAcsResult,
+} from './handlers/saml-acs.ts';
 
 // Phase A5.7 — MFA challenge flow.
 export {

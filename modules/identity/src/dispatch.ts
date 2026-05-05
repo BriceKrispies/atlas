@@ -31,6 +31,7 @@ import type {
   MfaBypassDocument,
   OAuthAccessTokenDocument,
   RecoveryCodeDocument,
+  SamlSpKeyDocument,
   ScimTokenDocument,
   ServicePrincipalDocument,
   UserDocument,
@@ -48,6 +49,7 @@ import { putAuditExportConfig } from './entities/audit-export-config.ts';
 import { putAuthFactorEntity } from './entities/auth-factor.ts';
 import { putMfaBypassEntity } from './entities/mfa-bypass.ts';
 import { putRecoveryCodeEntity } from './entities/recovery-code.ts';
+import { putSamlSpKeyEntity } from './entities/saml-sp-key.ts';
 import {
   linkInviteToUser,
   linkMembershipToUser,
@@ -123,6 +125,9 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.RecoveryCodeConsumed',
   'Identity.MfaBypassIssued',
   'Identity.MfaBypassUsed',
+  // Phase A6 — SAML SP key lifecycle.
+  'Identity.SamlSpKeyGenerated',
+  'Identity.SamlSpKeyRotated',
 ]);
 
 export async function dispatchIdentityEvent(
@@ -153,6 +158,7 @@ export async function dispatchIdentityEvent(
     | AuthFactorDocument
     | RecoveryCodeDocument
     | MfaBypassDocument
+    | SamlSpKeyDocument
     | undefined;
   if (!document) return;
 
@@ -255,6 +261,11 @@ export async function dispatchIdentityEvent(
     envelope.eventType === 'Identity.MfaBypassUsed'
   ) {
     await putMfaBypassEntity(ctx.entities, document as MfaBypassDocument);
+  } else if (
+    envelope.eventType === 'Identity.SamlSpKeyGenerated' ||
+    envelope.eventType === 'Identity.SamlSpKeyRotated'
+  ) {
+    await putSamlSpKeyEntity(ctx.entities, document as SamlSpKeyDocument);
   }
 }
 

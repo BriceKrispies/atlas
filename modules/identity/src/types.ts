@@ -482,6 +482,29 @@ export interface IdentityProviderDocument {
    * layer to stay under the bounded-refetch-rate cap on `kid`-miss.
    */
   jwksFetchedAt?: string;
+  // ----- Phase A6 — SAML 2.0 fields (only meaningful when kind=saml) ---
+  /**
+   * SAML IdP entityID. The unique SAML identifier from the IdP's
+   * metadata; used as the audience source on AuthnRequest issuer
+   * + the IdP-side check on the assertion's Issuer element.
+   */
+  samlEntityId?: string;
+  /** Single-Sign-On URL the SP redirects to (HTTP-Redirect or HTTP-POST). */
+  samlSsoUrl?: string;
+  /** Optional Single-Logout URL. Phase A6 ships SP-initiated only — SLO is post-A6. */
+  samlSloUrl?: string;
+  /** PEM-encoded IdP signing cert. The verify path pins to this. */
+  samlIdpCert?: string;
+  /** NameID format the IdP issues. */
+  samlNameIdFormat?: SamlNameIdFormat;
+  /** Mapping from SAML attributes to Atlas concepts. */
+  samlAttributeMappings?: SamlAttributeMappings;
+  /**
+   * SP entityID for AuthnRequest issuer. Defaults to
+   * `https://<host>/sso/saml/<tenantId>` — overridable per-tenant
+   * for IdPs that need a static value.
+   */
+  samlSpEntityId?: string;
 }
 
 // ===================================================================
@@ -736,3 +759,47 @@ export const DEFAULT_IDENTITY_POLICY: IdentityPolicy = {
   factorLockoutThreshold: 5,
   factorLockoutMinutes: 15,
 };
+
+// ===================================================================
+// Phase A6 — SAML 2.0 federation.
+// ===================================================================
+
+export type SamlNameIdFormat =
+  | 'emailAddress'
+  | 'persistent'
+  | 'transient'
+  | 'unspecified';
+
+export interface SamlAttributeMappings {
+  email: string;
+  givenName?: string;
+  familyName?: string;
+  groups?: string;
+}
+
+export type SamlSpKeyStatus = 'active' | 'rotated' | 'revoked';
+
+export interface SamlSpKeyDocument {
+  keyId: string;
+  tenantId: string;
+  encryptedPrivateKey: string;
+  encryptionKeyId: string;
+  publicCertPem: string;
+  keyLength: number;
+  status: SamlSpKeyStatus;
+  issuedAt: string;
+  expiresAt?: string;
+  rotatedFromKeyId?: string;
+  rotatedToKeyId?: string;
+  rotationOverlapUntil?: string;
+  endedAt?: string;
+}
+
+export interface SamlAssertionReplayDocument {
+  recordId: string;
+  tenantId: string;
+  idpId: string;
+  assertionId: string;
+  expiresAt: string;
+  recordedAt: string;
+}
