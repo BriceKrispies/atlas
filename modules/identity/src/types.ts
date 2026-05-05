@@ -112,7 +112,18 @@ export interface InviteTokenDocument {
 // Phase A2 — Sessions, API keys, service principals, OAuth tokens.
 // ===================================================================
 
-export type AuthSessionStatus = 'active' | 'expired' | 'revoked' | 'evicted';
+export type AuthSessionStatus =
+  | 'active'
+  | 'expired'
+  | 'revoked'
+  | 'evicted'
+  /**
+   * Phase A5.7 — primary auth succeeded but the user must satisfy
+   * an MFA challenge before the session is fully usable.
+   * `Identity.MfaChallenge.Submit` flips the status to `'active'`
+   * on a successful challenge.
+   */
+  | 'mfa_pending';
 
 /**
  * Reason a session ended. Set when status flips off `'active'`. Used

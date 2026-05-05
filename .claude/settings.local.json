@@ -140,7 +140,10 @@
       "Bash(pnpm install *)",
       "Bash(pnpm --filter @atlas/identity test)",
       "Bash(pnpm remove *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "Bash(timeout 15 pnpm --filter @atlas/authz test --reporter=dot)",
+      "Bash(echo \"---exit=$?---\")",
+      "Bash(timeout 30 pnpm --filter @atlas/authz test --run)"
     ]
   }
 }

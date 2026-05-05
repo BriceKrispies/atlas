@@ -202,6 +202,65 @@ export {
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
 
+// Phase A5.7 — MFA challenge flow.
+export {
+  handleMfaChallengeSubmit,
+  type MfaChallengeMethod,
+  type MfaChallengeSubmitCommand,
+  type MfaChallengeSubmitResult,
+} from './handlers/mfa-challenge.ts';
+
+// Phase A5.8 — last-factor protection on Revoke.
+export {
+  handleFactorRevoke,
+  type FactorRevokeCommand,
+  type FactorRevokeResult,
+} from './handlers/factor-revoke.ts';
+
+// Phase A5.9 — MFA bypass tokens.
+export {
+  MFA_BYPASS_ENTITY_TYPE,
+  MFA_BYPASS_LATEST_VERSION,
+  getMfaBypassEntity,
+  putMfaBypassEntity,
+  findMfaBypassesByLookup,
+} from './entities/mfa-bypass.ts';
+export {
+  handleMfaBypassIssue,
+  handleMfaBypassUse,
+  type MfaBypassIssueCommand,
+  type MfaBypassIssueResult,
+  type MfaBypassUseCommand,
+  type MfaBypassUseResult,
+} from './handlers/mfa-bypass.ts';
+
+// Phase A5.4 + A5.5 — WebAuthn (2FA + passkey) handlers + ephemeral challenge entity.
+export {
+  WEBAUTHN_CHALLENGE_ENTITY_TYPE,
+  WEBAUTHN_CHALLENGE_LATEST_VERSION,
+  getWebAuthnChallenge,
+  putWebAuthnChallenge,
+  deleteWebAuthnChallenge,
+  type WebAuthnChallengeDocument,
+  type WebAuthnChallengeKind,
+} from './entities/webauthn-challenge.ts';
+export {
+  handleWebAuthnRegisterBegin,
+  handleWebAuthnRegisterFinish,
+  type WebAuthnRegisterBeginCommand,
+  type WebAuthnRegisterBeginResult,
+  type WebAuthnRegisterFinishCommand,
+  type WebAuthnRegisterFinishResult,
+} from './handlers/webauthn-register.ts';
+export {
+  handleWebAuthnAssertBegin,
+  handleWebAuthnAssertFinish,
+  type WebAuthnAssertBeginCommand,
+  type WebAuthnAssertBeginResult,
+  type WebAuthnAssertFinishCommand,
+  type WebAuthnAssertFinishResult,
+} from './handlers/webauthn-assert.ts';
+
 // Phase A5.6 — RecoveryCode entity + handlers.
 export {
   RECOVERY_CODE_ENTITY_TYPE,

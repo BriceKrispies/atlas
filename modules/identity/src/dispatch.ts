@@ -28,6 +28,7 @@ import type {
   IdentityProviderDocument,
   InviteTokenDocument,
   MembershipDocument,
+  MfaBypassDocument,
   OAuthAccessTokenDocument,
   RecoveryCodeDocument,
   ScimTokenDocument,
@@ -45,6 +46,7 @@ import { putIdentityProviderEntity } from './entities/identity-provider.ts';
 import { putScimTokenEntity } from './entities/scim-token.ts';
 import { putAuditExportConfig } from './entities/audit-export-config.ts';
 import { putAuthFactorEntity } from './entities/auth-factor.ts';
+import { putMfaBypassEntity } from './entities/mfa-bypass.ts';
 import { putRecoveryCodeEntity } from './entities/recovery-code.ts';
 import {
   linkInviteToUser,
@@ -108,6 +110,8 @@ const HANDLED_EVENT_TYPES = new Set([
   'Identity.AuditExportConfigured',
   'Identity.AuditExportActivated',
   'Identity.AuditExportDisabled',
+  // Phase A5.7 — session MFA promotion event.
+  'Identity.SessionMfaSatisfied',
   // Phase A5 — MFA stack.
   'Identity.AuthFactorEnrolled',
   'Identity.AuthFactorRevoked',
@@ -148,6 +152,7 @@ export async function dispatchIdentityEvent(
     | AuditExportConfigDocument
     | AuthFactorDocument
     | RecoveryCodeDocument
+    | MfaBypassDocument
     | undefined;
   if (!document) return;
 
@@ -185,9 +190,10 @@ export async function dispatchIdentityEvent(
   } else if (
     envelope.eventType === 'Identity.SessionIssued' ||
     envelope.eventType === 'Identity.SessionRefreshed' ||
-    envelope.eventType === 'Identity.SessionEnded'
+    envelope.eventType === 'Identity.SessionEnded' ||
+    envelope.eventType === 'Identity.SessionMfaSatisfied'
   ) {
-    // All three carry the merged AuthSession document; the dispatcher
+    // All four carry the merged AuthSession document; the dispatcher
     // just persists. Status discrimination lives at the audit layer.
     await putSessionEntity(ctx.entities, document as AuthSessionDocument);
   } else if (A2_KEY_EVENTS.has(envelope.eventType)) {
@@ -244,6 +250,11 @@ export async function dispatchIdentityEvent(
       ctx.entities,
       document as RecoveryCodeDocument,
     );
+  } else if (
+    envelope.eventType === 'Identity.MfaBypassIssued' ||
+    envelope.eventType === 'Identity.MfaBypassUsed'
+  ) {
+    await putMfaBypassEntity(ctx.entities, document as MfaBypassDocument);
   }
 }
 
