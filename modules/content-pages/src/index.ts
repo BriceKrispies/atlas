@@ -82,4 +82,3 @@ export type {
   ContentPagesDispatchContextV2,
   ContentPagesQueryDepsV2,
 } from './entities/contracts.ts';
-export { seedContentPagesEntityTypes } from './entities/seed.ts';

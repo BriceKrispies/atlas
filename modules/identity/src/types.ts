@@ -803,3 +803,210 @@ export interface SamlAssertionReplayDocument {
   expiresAt: string;
   recordedAt: string;
 }
+
+// ===================================================================
+// Phase A7 — Risk engine + impersonation + break-glass.
+// ===================================================================
+
+export type ImpersonationStatus = 'active' | 'ended' | 'expired' | 'revoked';
+
+export type ImpersonationEndReason =
+  | 'operator_ended'
+  | 'auto_expired'
+  | 'tenant_revoked'
+  | 'platform_revoked';
+
+/**
+ * ImpersonationSession — operator-as-tenant access for support workflows.
+ *
+ * An ops engineer (a "platform principal") assumes a target user's identity
+ * within a tenant for a bounded window. The session is tracked as an entity
+ * so every action emitted while it is active can carry `impersonatedBy` on
+ * the audit envelope. Token shape is the same opaque-secret/hash pair we use
+ * elsewhere (`<impersonationId>.<secret>` over the wire; SHA-256 hash at
+ * rest, prefix lookup for O(1) resolution).
+ *
+ * Audit retention: every emitted event carries `retention:7y` (per Phase A7
+ * platform policy — tenants can lengthen but not shorten).
+ */
+export interface ImpersonationSessionDocument {
+  impersonationId: string;
+  /** Target tenant (the customer being supported). */
+  tenantId: string;
+  /**
+   * Operator's principal id. Often `ops:<userId>` — a platform-tenant user
+   * with the `PlatformSupport` role. Carried verbatim onto every event
+   * emitted under the impersonation as `impersonatedBy`.
+   */
+  operatorId: string;
+  /** UserId being impersonated within the target tenant. */
+  targetUserId: string;
+  /** Free-form justification (required, non-empty). */
+  reason: string;
+  /**
+   * Ticket / incident URL. Required — every impersonation must reference
+   * the support context that motivated it.
+   */
+  ticketUrl: string;
+  /** Window cap in minutes. Sessions older than this are auto-expired. */
+  maxDurationMin: number;
+  /** SHA-256 of the opaque impersonation token's secret half. */
+  tokenHash: string;
+  /** Lookup prefix (first 8 hex chars of `tokenHash`). */
+  tokenLookup: string;
+  status: ImpersonationStatus;
+  issuedAt: string;
+  expiresAt: string;
+  endedAt?: string;
+  endReason?: ImpersonationEndReason;
+  /** Set when status flips to `'revoked'` — the principal who revoked. */
+  revokedBy?: string;
+  /**
+   * Resource types this impersonation is forbidden from mutating, derived
+   * at issue from tenant policy. The middleware refuses
+   * write-actions on resources whose entityType matches any entry here.
+   */
+  readonlyResourceTypes?: ReadonlyArray<string>;
+}
+
+export type BreakGlassStatus =
+  | 'pending_approval'
+  | 'active'
+  | 'expired'
+  | 'revoked'
+  | 'denied';
+
+export type BreakGlassEndReason =
+  | 'auto_expired'
+  | 'tenant_revoked'
+  | 'platform_revoked'
+  | 'denied_by_approver';
+
+/**
+ * BreakGlassGrant — time-bound emergency role grant.
+ *
+ * Issued by a platform operator during an incident; activated only after a
+ * second operator approves (4-eyes). Self-approval forbidden — the
+ * issuer and approver must differ. Auto-expires after `maxDurationMin`;
+ * tenant admins can revoke in flight.
+ *
+ * Scope shape: `grantedRoles` is the role set added to the recipient's
+ * principal during the active window. `resourceTypeAllowList` (when set)
+ * narrows the grant — actions on entity types outside the list are
+ * denied even within the active window.
+ *
+ * Audit retention: every emitted event carries `retention:10y` (the
+ * strictest tier — tenants cannot shorten).
+ */
+export interface BreakGlassGrantDocument {
+  grantId: string;
+  tenantId: string;
+  /** Operator who issued the grant. */
+  issuedBy: string;
+  /**
+   * Principal id receiving the grant. Often the issuer themselves
+   * (operator self-grants are common during incident response — the 4-eyes
+   * approver is the safety check).
+   */
+  grantedTo: string;
+  /**
+   * Roles granted while `status='active'`. Composed onto the recipient's
+   * Principal.roles by the principal middleware.
+   */
+  grantedRoles: ReadonlyArray<string>;
+  /**
+   * Optional resource-type allow-list. When set, the grant only applies
+   * to actions whose target resource type is in the list. Empty/unset
+   * means "applies to every action under the granted roles."
+   */
+  resourceTypeAllowList?: ReadonlyArray<string>;
+  /** Free-form justification. Required, non-empty. */
+  justification: string;
+  /** Incident URL. Required. */
+  incidentUrl: string;
+  /** Window cap in minutes. */
+  maxDurationMin: number;
+  /**
+   * Whether the grant requires a second-approver (4-eyes). Defaults true
+   * for production tenants — the issuing handler reads tenant policy.
+   */
+  requireApproval: boolean;
+  status: BreakGlassStatus;
+  issuedAt: string;
+  /**
+   * Wall-clock at which the grant auto-expires. Populated at activation;
+   * before approval it's the would-be expiry assuming immediate approval.
+   */
+  expiresAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  endedAt?: string;
+  endReason?: BreakGlassEndReason;
+  revokedBy?: string;
+}
+
+/**
+ * Risk-engine signals for one auth ceremony / authenticated request.
+ * The scorer reduces these to a single `score ∈ [0, 1]`. Default
+ * thresholds: `score > 0.7` triggers step-up MFA.
+ */
+export interface RiskSignals {
+  /** Caller IP (v4 or v6 string). */
+  ip?: string;
+  /**
+   * Coarse geo classification — country code or `'unknown'`. The scorer
+   * matches this against the user's recent geo set; mismatch raises score.
+   */
+  geo?: string;
+  /** UA category — `'browser' | 'mobile' | 'cli' | 'unknown'`. */
+  uaClass?: 'browser' | 'mobile' | 'cli' | 'unknown';
+  /** Hour-of-day (0-23) in UTC. Outliers vs user pattern raise score. */
+  hourUtc?: number;
+  /**
+   * Recent failure rate for this user — fraction of last N login
+   * attempts that were rejected. 0 = clean; 1 = every attempt failed.
+   */
+  recentFailureRate?: number;
+}
+
+/**
+ * Risk-engine output. Bounded `[0, 1]`; the policy layer translates
+ * thresholds to step-up requirements.
+ */
+export interface RiskScore {
+  score: number;
+  signals: RiskSignals;
+  /**
+   * Per-signal contributions, for explainability + audit.
+   * Sum need not equal `score` (the scorer can reweight or clamp).
+   */
+  contributions: Readonly<Record<string, number>>;
+}
+
+/**
+ * Pluggable risk scorer. Apps wire a default impl in `bootstrap`; tests
+ * inject a deterministic stub. Returning `score=0` is a no-signal vote.
+ */
+export type RiskScorer = (signals: RiskSignals) => RiskScore;
+
+/**
+ * Per-tenant risk policy. Stored on `tenants.identity_policy_json`
+ * alongside the MFA fields; defaults below.
+ */
+export interface RiskPolicy {
+  /**
+   * Score above which step-up MFA is required. Default 0.7.
+   * Set to 1.1 to disable step-up entirely.
+   */
+  stepUpMfaThreshold: number;
+  /**
+   * Score above which the request is hard-denied (step-up insufficient).
+   * Default 0.95. Set to 1.1 to disable.
+   */
+  hardDenyThreshold: number;
+}
+
+export const DEFAULT_RISK_POLICY: RiskPolicy = {
+  stepUpMfaThreshold: 0.7,
+  hardDenyThreshold: 0.95,
+};

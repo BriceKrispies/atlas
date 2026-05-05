@@ -1,11 +1,14 @@
 /**
- * Platform-default registry rows for the User, Membership, and
- * InviteToken entity types. Wired into the control-plane seed runner
- * (`adapters/node/src/migrations/seed.ts`).
+ * Platform-default registry rows for the identity entity types
+ * (User, Membership, InviteToken, AuthSession, ApiKey, ServicePrincipal,
+ * IdentityProvider, OAuthAccessToken).
+ *
+ * Lives in @atlas/adapter-node so the postgres.js dependency stays
+ * confined to the adapter package. Wired into the control-plane seed
+ * runner (`../migrations/seed.ts`).
  *
  * `tenant_id IS NULL` rows are platform defaults inherited by every
- * tenant; tenant-specific overrides shadow them at resolve time. Same
- * pattern as `seedContentPagesEntityTypes`.
+ * tenant; tenant-specific overrides shadow them at resolve time.
  *
  * Idempotent via ON CONFLICT DO NOTHING.
  */
@@ -14,35 +17,21 @@ import type postgres from 'postgres';
 import {
   USER_ENTITY_TYPE,
   USER_LATEST_VERSION,
-} from './user.ts';
-import {
   MEMBERSHIP_ENTITY_TYPE,
   MEMBERSHIP_LATEST_VERSION,
-} from './membership.ts';
-import {
   INVITE_TOKEN_ENTITY_TYPE,
   INVITE_TOKEN_LATEST_VERSION,
-} from './invite-token.ts';
-import {
   AUTH_SESSION_ENTITY_TYPE,
   AUTH_SESSION_LATEST_VERSION,
-} from './auth-session.ts';
-import {
   API_KEY_ENTITY_TYPE,
   API_KEY_LATEST_VERSION,
-} from './api-key.ts';
-import {
   SERVICE_PRINCIPAL_ENTITY_TYPE,
   SERVICE_PRINCIPAL_LATEST_VERSION,
-} from './service-principal.ts';
-import {
   IDENTITY_PROVIDER_ENTITY_TYPE,
   IDENTITY_PROVIDER_LATEST_VERSION,
-} from './identity-provider.ts';
-import {
   OAUTH_TOKEN_ENTITY_TYPE,
   OAUTH_TOKEN_LATEST_VERSION,
-} from './oauth-token.ts';
+} from '@atlas/identity';
 
 const USER_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -185,8 +174,6 @@ export async function seedIdentityEntityTypes(
   `;
 
   // ----- field_registry --------------------------------------------
-  // Only fields that participate in queries / display get rows. Full
-  // validation is handled by the JSON schemas above.
   await sql`
     INSERT INTO control_plane.field_registry
       (entity_type, tenant_id, field_path, data_type, label, is_required, origin)
@@ -223,9 +210,6 @@ export async function seedIdentityEntityTypes(
   `;
 
   // ----- index_registry --------------------------------------------
-  // User: unique on (email), unique on (primaryIdpSubject) when present.
-  // The materializer builds expression indexes on `attrs->>` paths gated
-  // by entity_type via the leading PK columns.
   await sql`
     INSERT INTO control_plane.index_registry
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
@@ -238,10 +222,6 @@ export async function seedIdentityEntityTypes(
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
-  // Membership: unique on (userId) per tenant; the deterministic
-  // entity_id (`m:<userId>`) plus the substrate's PK already enforce
-  // uniqueness. The named index below is for the query path
-  // (`listMembershipsForUser` cross-tenant — Phase A3+).
   await sql`
     INSERT INTO control_plane.index_registry
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
@@ -264,7 +244,6 @@ export async function seedIdentityEntityTypes(
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
-  // AuthSession field registry — only the queryable fields.
   await sql`
     INSERT INTO control_plane.field_registry
       (entity_type, tenant_id, field_path, data_type, label, is_required, origin)
@@ -279,10 +258,6 @@ export async function seedIdentityEntityTypes(
     ON CONFLICT (entity_type, tenant_id, field_path) DO NOTHING
   `;
 
-  // AuthSession indexes — userId for "list active sessions for user"
-  // (the concurrent-limit eviction path), refreshTokenLookup for the
-  // bucket-narrowing on cookie-less refresh, accessTokenLookup for the
-  // principal middleware bearer-auth path.
   await sql`
     INSERT INTO control_plane.index_registry
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
@@ -298,7 +273,6 @@ export async function seedIdentityEntityTypes(
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
-  // ApiKey + ServicePrincipal + OAuthAccessToken indexes (Phase A2.7-9).
   await sql`
     INSERT INTO control_plane.index_registry
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
@@ -325,10 +299,4 @@ export async function seedIdentityEntityTypes(
        ${sql.json(['kind'] as never)}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
-  // IdentityProvider lookup-by-issuer is the hot path on every JWT
-  // verification. The `(issuer, status)` composite materializes a
-  // partial index where status='active'. The named `issuer` index
-  // above + status filter at query time is sufficient for Phase A3
-  // throughput; if profiling flags it, add a partial expression
-  // index in a follow-up migration.
 }

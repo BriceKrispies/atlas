@@ -120,3 +120,11 @@ export function newSamlReplayRecordId(assertionId: string): string {
   const safe = assertionId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
   return `samlrpl-${safe}`;
 }
+
+/** Phase A7 — impersonation + break-glass. */
+export function newImpersonationId(): string {
+  return `imp-${token()}`;
+}
+export function newBreakGlassGrantId(): string {
+  return `bgg-${token()}`;
+}

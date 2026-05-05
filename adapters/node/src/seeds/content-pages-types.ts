@@ -1,32 +1,25 @@
 /**
  * Platform-default registry rows for the Page + PageRenderTree entity
- * types. Wired into the control-plane seed runner
- * (`adapters/node/src/migrations/seed.ts`).
+ * types. Lives in @atlas/adapter-node so the postgres.js dependency
+ * stays confined to the adapter package. Wired into the control-plane
+ * seed runner (`../migrations/seed.ts`).
  *
  * `tenant_id IS NULL` means "platform default, inherited by every
- * tenant." Phase F (tenant customization) writes non-NULL rows that
- * shadow these defaults per-tenant; the Phase A entity-type registry
- * resolves "tenant override > platform default" automatically.
+ * tenant." Tenant customization writes non-NULL rows that shadow these
+ * defaults per-tenant; the entity-type registry resolves "tenant
+ * override > platform default" automatically.
  *
- * Idempotent: every INSERT uses `ON CONFLICT DO NOTHING`. The seed
- * runs after migrations on each `runControlPlaneSeed` call.
+ * Idempotent: every INSERT uses `ON CONFLICT DO NOTHING`.
  */
 
 import type postgres from 'postgres';
 import {
   PAGE_ENTITY_TYPE,
   PAGE_LATEST_VERSION,
-} from './page.ts';
-import {
   PAGE_RENDER_TREE_ENTITY_TYPE,
   PAGE_RENDER_TREE_LATEST_VERSION,
-} from './page-render-tree.ts';
+} from '@atlas/content-pages';
 
-/**
- * JSON Schema (draft 2020-12 subset) for `Page.attrs`. Mirrors the
- * `PageDocument` TypeScript shape in `../types.ts`. Validation hooks
- * in EntityStore (Phase F) consume this to reject malformed writes.
- */
 const PAGE_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'content-pages.page.v1',
@@ -65,14 +58,6 @@ const PAGE_RENDER_TREE_JSON_SCHEMA = {
   },
 } as const;
 
-/**
- * Insert the platform-default registry rows for content-pages entities.
- *
- * Called from `runControlPlaneSeed` after the existing tenant + module
- * + schema-registry + policy seeds run. Order matters because the
- * field/index registry rows reference the entity type implicitly via
- * the `entity_type` column.
- */
 export async function seedContentPagesEntityTypes(
   sql: postgres.Sql,
 ): Promise<void> {
@@ -89,8 +74,6 @@ export async function seedContentPagesEntityTypes(
   `;
 
   // ----- field_registry --------------------------------------------
-  // Page fields. Only the queryable / display-relevant fields get
-  // entries; full validation is in the JSON schema above.
   await sql`
     INSERT INTO control_plane.field_registry
       (entity_type, tenant_id, field_path, data_type, label, is_required, origin)
@@ -105,8 +88,6 @@ export async function seedContentPagesEntityTypes(
     ON CONFLICT (entity_type, tenant_id, field_path) DO NOTHING
   `;
 
-  // PageRenderTree fields are mostly internal; only `pageId` is
-  // referenced by external readers.
   await sql`
     INSERT INTO control_plane.field_registry
       (entity_type, tenant_id, field_path, data_type, label, is_required, origin)
@@ -117,10 +98,6 @@ export async function seedContentPagesEntityTypes(
   `;
 
   // ----- index_registry --------------------------------------------
-  // Slug must be unique per tenant. The materializer builds an
-  // expression index `entities (tenant_id, entity_type, attrs->>'slug')`
-  // gated on entity_type='Page' implicitly via the leading columns.
-  // Status index supports list-by-status queries.
   await sql`
     INSERT INTO control_plane.index_registry
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)

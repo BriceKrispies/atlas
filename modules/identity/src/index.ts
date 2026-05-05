@@ -31,6 +31,8 @@ export {
   newMfaBypassId,
   newSamlSpKeyId,
   newSamlReplayRecordId,
+  newImpersonationId,
+  newBreakGlassGrantId,
 } from './ids.ts';
 
 export type {
@@ -84,11 +86,24 @@ export type {
   SamlSpKeyStatus,
   SamlSpKeyDocument,
   SamlAssertionReplayDocument,
+  // Phase A7 — risk + impersonation + break-glass.
+  ImpersonationStatus,
+  ImpersonationEndReason,
+  ImpersonationSessionDocument,
+  BreakGlassStatus,
+  BreakGlassEndReason,
+  BreakGlassGrantDocument,
+  RiskSignals,
+  RiskScore,
+  RiskScorer,
+  RiskPolicy,
 } from './types.ts';
 
 export { DEFAULT_IDENTITY_POLICY } from './types.ts';
 
 export { DEFAULT_SESSION_POLICY } from './types.ts';
+
+export { DEFAULT_RISK_POLICY } from './types.ts';
 
 export { IdentityError, codes as identityErrorCodes } from './errors.ts';
 
@@ -136,7 +151,6 @@ export type {
   SessionPolicyResolver,
 } from './entities/contracts.ts';
 
-export { seedIdentityEntityTypes } from './entities/seed.ts';
 
 // Handlers.
 export {

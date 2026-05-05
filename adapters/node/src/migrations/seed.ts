@@ -37,13 +37,11 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
-import { seedContentPagesEntityTypes } from '@atlas/content-pages';
-import {
-  seedIdentityEntityTypes,
-  buildRolePackBundle,
-} from '@atlas/identity';
+import { buildRolePackBundle } from '@atlas/identity';
 import { moduleManifests } from '@atlas/schemas';
 import type { ManifestAction } from '@atlas/adapter-policy-cedar';
+import { seedContentPagesEntityTypes } from '../seeds/content-pages-types.ts';
+import { seedIdentityEntityTypes } from '../seeds/identity-types.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // adapters/node/src/migrations/ -> repo root is four levels up.

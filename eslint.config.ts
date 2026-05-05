@@ -28,6 +28,11 @@ export default [
       '**/.vite/**',
       '**/test-results/**',
       'packages/schemas/src/generated/**',
+      // Stale agent worktrees (created by Claude Code's worktree isolation)
+      // — gitignored but ESLint walks the filesystem regardless. They hold
+      // pre-refactor copies of the codebase under different paths
+      // (`packages/adapters-node/...`) that fail current rules.
+      '.claude/**',
     ],
   },
   {
@@ -68,6 +73,47 @@ export default [
               group: ['../*-*/**', '../../*-*/**', '../../../*-*/**'],
               message:
                 'Cross-package relative imports are forbidden. Import via the @atlas/<pkg> alias.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // postgres.js (the one allowed third-party runtime dep) must stay
+    // confined to @atlas/adapter-node so swapping the storage backend
+    // is a single-package change. Apps wire the adapter via the
+    // `createNodeAdapters` factory in @atlas/adapter-node — they do
+    // not import `postgres` directly. Tests + dev scripts may use it
+    // freely. Anything else (modules, ports, packages, other adapters)
+    // is a port-boundary leak.
+    files: ['**/*.ts'],
+    ignores: [
+      'adapters/node/**',
+      'apps/server/src/bootstrap.ts',
+      'apps/projection-worker/**',
+      'scripts/**',
+      'tests/**',
+      // Cedar bundle-loader still queries control_plane.policies directly
+      // — the right architecture is for it to load bundles via a port
+      // implemented in adapter-node. Allowlisted with a TODO until that
+      // refactor lands.
+      'adapters/policy-cedar/src/bundle-loader.ts',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2023,
+      sourceType: 'module',
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['postgres'],
+              message:
+                'postgres.js is confined to @atlas/adapter-node. Use ports + the createNodeAdapters factory instead.',
             },
           ],
         },
