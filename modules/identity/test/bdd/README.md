@@ -6,7 +6,11 @@ canonical feature files under `specs/domains/identity/features/<x>/`.
 ## Layout
 
 ```
-runner.ts          Gherkin → vitest harness (StepRegistry + runFeature)
+runner.ts          Gherkin → vitest harness (StepRegistry + runFeature).
+                   Parses .feature files via @cucumber/gherkin (full
+                   Gherkin grammar — Feature/Background/Scenario,
+                   Scenario Outline + Examples, tables, doc strings,
+                   Rule blocks, i18n keywords, tags).
 world.ts           per-scenario in-memory adapters + state
 <feature>.steps.ts step bindings for that feature
 <feature>.bdd.test.ts entry-point that calls runFeature with the bindings

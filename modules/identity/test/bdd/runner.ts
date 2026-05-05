@@ -1,33 +1,28 @@
 /**
  * Tier 1 BDD runner — Gherkin → vitest.
  *
- * Parses `.feature` files with a minimal in-house line parser, filters
- * scenarios by tag, and emits one vitest `it()` per kept scenario.
+ * Parses `.feature` files with `@cucumber/gherkin` (the canonical
+ * Cucumber parser), filters scenarios by tag, and emits one vitest
+ * `it()` per kept scenario.
  *
- * Why a custom parser instead of `@cucumber/gherkin`: the cucumber
- * package is in node_modules transitively (via playwright-bdd) but
- * not a direct dep, so the TS compiler can't resolve its types. Rolling
- * our own (~50 LOC) avoids adding a dep AND keeps Gherkin support
- * narrowed to the subset we actually use here.
- *
- * Supported grammar:
- *   - Tags: `@word` (one or more on a single line, applies to the next
- *     Feature OR Scenario)
- *   - `Feature: <name>`
- *   - `Background:`
- *   - `Scenario: <name>`
- *   - Step lines: `Given|When|Then|And|But <text>` (And/But inherit the
- *     prior step kind)
- *   - `# comment` lines and blank lines are skipped
- *
- * NOT supported in this slice (would be a follow-up):
- *   - Scenario Outline / Examples / data tables
- *   - Doc strings (multi-line `"""..."""`)
- *   - Rule blocks
+ * Supported grammar (everything `@cucumber/gherkin@32` supports —
+ * Feature/Background/Scenario, Scenario Outline + Examples, data
+ * tables, doc strings, Rule blocks, i18n keywords, tags). The
+ * runner currently DRIVES a subset of that — Scenario Outline
+ * expansion + table/doc-string passthrough land as we hit features
+ * that need them. Step bindings only see the simple kind+text shape
+ * today.
  */
 
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'vitest';
+import {
+  AstBuilder,
+  GherkinClassicTokenMatcher,
+  Parser,
+} from '@cucumber/gherkin';
+import { IdGenerator } from '@cucumber/messages';
+import type * as messages from '@cucumber/messages';
 import type { BddWorld } from './world.ts';
 
 export type StepKind = 'Given' | 'When' | 'Then';
@@ -110,97 +105,72 @@ interface ParsedFeature {
   scenarios: ParsedScenario[];
 }
 
+/**
+ * Parse a `.feature` file into the runner's internal shape via
+ * `@cucumber/gherkin`. Cucumber's keyword field is whitespace-padded
+ * (e.g. `'Given '`), so we trim before classifying.
+ *
+ * `And` / `But` / `*` inherit the prior step's kind — Cucumber
+ * publishes those as their own keywords; we collapse them at parse
+ * time so step bindings can register against `Given/When/Then` only.
+ */
 function parseFeature(featurePath: string): ParsedFeature {
   const src = readFileSync(featurePath, 'utf8');
-  const lines = src.split(/\r?\n/);
-  let featureName = '';
-  const featureTags = new Set<string>();
-  const background: { kind: StepKind; text: string }[] = [];
+  const uuidFn = IdGenerator.uuid();
+  const parser = new Parser(
+    new AstBuilder(uuidFn),
+    new GherkinClassicTokenMatcher(),
+  );
+  const doc = parser.parse(src);
+  const feature = doc.feature;
+  if (!feature) throw new Error(`[bdd] no Feature in ${featurePath}`);
+
+  const featureTags = new Set<string>(
+    (feature.tags ?? []).map((t: messages.Tag) => t.name),
+  );
+  const background: ParsedFeature['background'] = [];
   const scenarios: ParsedScenario[] = [];
 
-  type Section = 'preface' | 'background' | 'scenario';
-  let section: Section = 'preface';
-  let pendingTags = new Set<string>();
-  let lastKind: StepKind = 'Given';
-  let currentScenario: ParsedScenario | null = null;
-
-  const finalizeScenario = (): void => {
-    if (currentScenario) scenarios.push(currentScenario);
-    currentScenario = null;
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (line === '' || line.startsWith('#')) continue;
-
-    // Tags line — accumulate; applies to next Feature/Scenario.
-    if (/^@/.test(line)) {
-      for (const tag of line.split(/\s+/)) {
-        if (tag.startsWith('@')) pendingTags.add(tag);
+  for (const child of feature.children ?? []) {
+    if (child.background) {
+      let lastKind: StepKind = 'Given';
+      for (const step of child.background.steps ?? []) {
+        const kind = normalizeKeyword(step.keyword, lastKind);
+        lastKind = kind;
+        background.push({ kind, text: step.text });
       }
-      continue;
-    }
-
-    const featureMatch = /^Feature:\s*(.+)$/.exec(line);
-    if (featureMatch) {
-      featureName = featureMatch[1]!;
-      for (const t of pendingTags) featureTags.add(t);
-      pendingTags = new Set();
-      section = 'preface';
-      lastKind = 'Given';
-      continue;
-    }
-
-    if (/^Background:\s*$/.test(line)) {
-      finalizeScenario();
-      section = 'background';
-      lastKind = 'Given';
-      continue;
-    }
-
-    const scenarioMatch = /^Scenario:\s*(.+)$/.exec(line);
-    if (scenarioMatch) {
-      finalizeScenario();
-      section = 'scenario';
-      lastKind = 'Given';
-      currentScenario = {
-        name: scenarioMatch[1]!,
-        tags: new Set(pendingTags),
-        steps: [],
-      };
-      pendingTags = new Set();
-      continue;
-    }
-
-    // Step line.
-    const stepMatch = /^(Given|When|Then|And|But|\*)\s+(.+)$/.exec(line);
-    if (stepMatch) {
-      const kw = stepMatch[1]!;
-      const text = stepMatch[2]!;
-      const kind: StepKind =
-        kw === 'Given' || kw === 'When' || kw === 'Then'
-          ? (kw as StepKind)
-          : lastKind;
-      lastKind = kind;
-      if (section === 'background') {
-        background.push({ kind, text });
-      } else if (section === 'scenario' && currentScenario) {
-        currentScenario.steps.push({ kind, text });
+    } else if (child.scenario) {
+      const sc = child.scenario;
+      const scTags = new Set<string>(
+        (sc.tags ?? []).map((t: messages.Tag) => t.name),
+      );
+      let lastKind: StepKind = 'Given';
+      const steps: ParsedScenario['steps'] = [];
+      for (const step of sc.steps ?? []) {
+        const kind = normalizeKeyword(step.keyword, lastKind);
+        lastKind = kind;
+        steps.push({ kind, text: step.text });
       }
-      continue;
+      scenarios.push({ name: sc.name, tags: scTags, steps });
     }
-
-    // Tables / doc strings / Rule / Scenario Outline currently unsupported.
-    // Skip silently — the spike doesn't drive any scenarios that need them.
+    // Rule blocks not surfaced yet — child.rule path would handle them.
   }
-  finalizeScenario();
 
   return {
-    name: featureName,
+    name: feature.name,
     tags: featureTags,
     background,
     scenarios,
   };
+}
+
+function normalizeKeyword(keyword: string, prev: StepKind): StepKind {
+  const k = keyword.trim();
+  if (k === 'Given') return 'Given';
+  if (k === 'When') return 'When';
+  if (k === 'Then') return 'Then';
+  // And / But / * inherit the prior step's kind.
+  return prev;
 }
 
 export interface RunFeatureOptions {
