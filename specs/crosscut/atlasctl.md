@@ -2,12 +2,14 @@
 
 This spec defines the architectural constraints and invariants for `atlasctl`, the operator/controller client for the Atlas platform.
 
-**(Planned)** — The TypeScript `atlasctl` binary does not exist yet. The
-legacy Rust prototype that previously lived under `crates/atlasctl/` was
-deleted on 2026-05-04 alongside the rest of the Rust prototype. This
-spec defines the contract that the eventual TypeScript implementation
-must satisfy. The development scaffolding tool that was at `tools/cli/`
-(`atlas` command) was deleted in the same sweep.
+**Status:** Planned, phased implementation. The TypeScript `atlasctl`
+binary does not exist yet. The legacy Rust prototype at
+`crates/atlasctl/` was deleted on 2026-05-04 alongside the rest of the
+Rust prototype; the development scaffolding tool at `tools/cli/`
+(`atlas` command) was deleted in the same sweep. Implementation scope
+is broken into phases — see [Phased Implementation](#phased-implementation)
+below. The Phase A target is `apps/atlasctl/` (TypeScript, Node,
+commander).
 
 ## Purpose
 
@@ -55,6 +57,50 @@ The client eliminates the need for ad-hoc scripts or direct database queries, en
 
 1. **Ingress** — For tenant-scoped operations (intent submission, queries)
 2. **Control Plane API** — For platform-level operations (tenant listing, module discovery, policy inspection)
+
+## Phased Implementation
+
+Implementation lands in three phases. Each phase scopes only commands whose server-side support exists or ships with the phase. Half-implemented commands that depend on fictional endpoints are not allowed.
+
+### Phase A — Foundation (current scope)
+
+Commands that target endpoints that exist in `apps/server` today.
+
+| Command | Server endpoint(s) | Notes |
+|---------|--------------------|-------|
+| `atlasctl --version` | none (client-only) | Displays client version + schema-contract version + build metadata. No server handshake in Phase A. |
+| `atlasctl health` | `GET /health` | Ingress reachability. |
+| `atlasctl intents validate <file>` | none (local AJV) | Validates locally against `event_envelope.schema.json` + the action-specific intent schema in `specs/schemas/contracts/`. |
+| `atlasctl intents submit <file\|stdin>` | `POST /api/v1/intents` | Returns 202 with correlationId. Full ingress pipeline (authn, tenant resolution, schema, idempotency, authz, dispatch). |
+
+Phase A also wires:
+
+- Global flags: `--json`, `--quiet`, `--api-key`, `--token`, `--correlation-id`, `--strict`, `--force`
+- Auth precedence: command-line flags → environment (`ATLAS_API_KEY`, `ATLAS_TOKEN`) → config file (`~/.atlasctl/config.yaml`)
+- mTLS *client-side scaffolding* — credential type discriminator, config block, custom `https.Agent` construction. Server-side mTLS support is out of scope; the seam is wired so Phase B/C can exercise it without rework.
+- Single default configuration profile. Multi-profile support is Phase B.
+
+### Phase B — Discovery (deferred)
+
+Adds commands that need control-plane discovery endpoints not present today. Each command in Phase B requires its server endpoint to land first.
+
+- `atlasctl tenants list`
+- `atlasctl modules list`, `actions list`, `schemas list`, `policies list`
+- `atlasctl policies show <id>`
+- Configuration profiles for multiple environments (`--profile <name>` / `ATLAS_PROFILE`)
+- Server version/capabilities endpoint + handshake (the server-side counterpart to Phase A's client-only `--version`)
+- Single-file compiled binary distribution (esbuild bundle with shebang)
+
+### Phase C — Tracing & Authz Inspection (deferred)
+
+Adds commands that need new ingress / control-plane surfaces.
+
+- `atlasctl trace <correlationId>` — needs a correlation-filtered events query
+- `atlasctl authz explain <intent>` — needs an explain endpoint
+- `atlasctl authz check <intent>` — needs a dry-run endpoint
+- `atlasctl policies evaluate <id>` — needs policy dry-run
+
+The decision of whether `authz explain/check` is an ingress operation or a control-plane operation is part of Phase C's design work.
 
 ## Invariants
 
@@ -175,11 +221,13 @@ Error output MUST include:
 
 ### Credential Types
 
-| Type | Use Case |
-|------|----------|
-| API Key | Service-to-service, automation |
-| OIDC Token | User-initiated operations |
-| mTLS (future) | High-security environments |
+| Type | Use Case | Phase |
+|------|----------|-------|
+| API Key | Service-to-service, automation | A |
+| OIDC Token | User-initiated operations | A |
+| mTLS | High-security environments | A (client-side scaffolding only); server-side support is deferred |
+
+Phase A wires the mTLS credential type (config block accepting `cert`, `key`, optional `ca` paths) and constructs a custom `https.Agent` when selected. The seam is real but cannot be exercised end-to-end until server-side mTLS support lands. This is intentional — wiring the seam now avoids reshaping `auth.ts` and `client.ts` later.
 
 ### Authorization Scope
 
@@ -187,15 +235,16 @@ Error output MUST include:
 
 ## API Surface Expectations
 
-`atlasctl` is expected to support the following categories of operations. Specific endpoints/paths are defined by the ingress and control plane API specifications.
+`atlasctl` is expected to support the following categories of operations. Endpoint paths for Phase A are concrete; Phase B/C paths are defined when those phases ship.
 
-### Health and Status
+### Health and Status — Phase A
 
-- Query ingress health/readiness endpoints
-- Query control plane health/readiness endpoints
+- Query ingress health endpoint (`GET /health`)
 - Display aggregate service status
 
-### Discovery
+Aggregate control-plane health is part of Phase B.
+
+### Discovery — Phase B
 
 | Operation | Description |
 |-----------|-------------|
@@ -205,14 +254,16 @@ Error output MUST include:
 | List schemas | Enumerate schema registry entries |
 | List policies | Enumerate policy bundles (if authorized) |
 
-### Intent Operations
+Each operation requires a corresponding server-side discovery endpoint that does not exist today. Phase B is gated on those endpoints landing first.
 
-| Operation | Description |
-|-----------|-------------|
-| Submit intent | Submit an intent envelope to ingress |
-| Validate intent | Validate intent payload locally before submission |
+### Intent Operations — Phase A
 
-### Tracing and Debugging
+| Operation | Endpoint | Description |
+|-----------|----------|-------------|
+| Submit intent | `POST /api/v1/intents` | Submit an intent envelope to ingress. Returns 202 + correlationId. |
+| Validate intent | none (local) | AJV validation against `specs/schemas/contracts/event_envelope.schema.json` plus the action-specific intent schema before submission. |
+
+### Tracing and Debugging — Phase C
 
 | Operation | Description |
 |-----------|-------------|
@@ -220,33 +271,37 @@ Error output MUST include:
 | Authorization explain | Request authorization decision explanation |
 | Authorization check | Dry-run authorization check without execution |
 
-### Policy Inspection (if authorized)
+These commands need new ingress / control-plane surfaces. Phase C must define those endpoints first.
 
-| Operation | Description |
-|-----------|-------------|
-| Show policy | Display policy bundle details |
-| Evaluate policy (dry-run) | Test policy evaluation without side effects |
+### Policy Inspection (if authorized) — Phase B/C
+
+| Operation | Phase | Description |
+|-----------|-------|-------------|
+| Show policy | B | Display policy bundle details (read endpoint exists for listing; show is a small extension) |
+| Evaluate policy (dry-run) | C | Test policy evaluation without side effects (needs new endpoint) |
 
 ## Compatibility and Versioning
 
-### Version Handshake
+### Version Handshake — Phase B
 
 `atlasctl` MUST verify compatibility with the server before performing operations:
 
-1. Query server version/capabilities endpoint (TODO: endpoint to be defined)
+1. Query server version/capabilities endpoint (Phase B; endpoint contract is part of Phase B's design)
 2. Compare server version against client's known compatibility range
 3. Warn if server version is outside known-compatible range
 4. Optionally allow `--force` to proceed despite version mismatch
 
-### Version Display
+In Phase A, no server handshake is performed; `--version` is client-only.
+
+### Version Display — Phase A
 
 `atlasctl --version` MUST display:
 
 - Client version
-- Schema/contract version compatibility
+- Schema/contract version compatibility (the version of `@atlas/schemas` it was built against)
 - Build metadata (commit hash, build date)
 
-### Deprecation Handling
+### Deprecation Handling — Phase B
 
 When the server returns deprecation warnings:
 
@@ -254,18 +309,22 @@ When the server returns deprecation warnings:
 - Include in JSON output under `warnings` key
 - Continue operation unless `--strict` mode is enabled
 
+Server-side deprecation header conventions are part of Phase B's design (no deprecation surface exists today).
+
 ## Cross-References
 
 - [Architecture](../architecture.md) — Platform architecture and invariants
-- [Authentication](authn.md) — AuthN model and providers
-- [Authorization](authz.md) — AuthZ model and policy evaluation
+- [Authentication](../domains/identity/authn.md) — AuthN model and providers
+- [Authorization](../domains/authorization/authz.md) — AuthZ model and policy evaluation
 - [Errors](errors.md) — Error taxonomy and response format
 - [Events](events.md) — Event envelope schema
-- [Tenancy](tenancy.md) — Tenant context and isolation
+- [Tenancy](../domains/tenancy/tenancy.md) — Tenant context and isolation
 
 ## Open Questions
 
-- What is the specific control plane API endpoint structure for discovery operations?
-- Should `atlasctl` support configuration profiles for multiple environments?
-- What is the server version/capabilities endpoint format?
-- Should authorization explain/check be a control plane or ingress operation?
+Each remaining question is tagged with the phase that will resolve it.
+
+- **Phase B:** Specific control plane API endpoint structure for discovery operations.
+- **Phase B:** Server version/capabilities endpoint format.
+- **Phase B:** Configuration profile schema for multiple environments. Phase A ships single-profile support; profile selection (`--profile <name>` or `ATLAS_PROFILE`) is added in Phase B.
+- **Phase C:** Whether `authz explain/check` is an ingress or control-plane operation. Drives whether the dry-run lives next to the intent submission path or as a separate authz-only endpoint.
