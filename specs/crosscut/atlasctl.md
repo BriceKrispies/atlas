@@ -69,7 +69,7 @@ Commands that target endpoints that exist in `apps/server` today.
 | Command | Server endpoint(s) | Notes |
 |---------|--------------------|-------|
 | `atlasctl --version` | none (client-only) | Displays client version + schema-contract version + build metadata. No server handshake in Phase A. |
-| `atlasctl health` | `GET /health` | Ingress reachability. |
+| `atlasctl health` | `GET /healthz`, `GET /readyz` | Liveness + readiness. `/readyz` includes control-plane DB + action-registry checks. atlasctl reports both. |
 | `atlasctl intents validate <file>` | none (local AJV) | Validates locally against `event_envelope.schema.json` + the action-specific intent schema in `specs/schemas/contracts/`. |
 | `atlasctl intents submit <file\|stdin>` | `POST /api/v1/intents` | Returns 202 with correlationId. Full ingress pipeline (authn, tenant resolution, schema, idempotency, authz, dispatch). |
 
@@ -239,10 +239,10 @@ Phase A wires the mTLS credential type (config block accepting `cert`, `key`, op
 
 ### Health and Status — Phase A
 
-- Query ingress health endpoint (`GET /health`)
-- Display aggregate service status
+- Query ingress liveness (`GET /healthz`) and readiness (`GET /readyz`) endpoints
+- Display both. `/readyz` returns 200 with `{ status, checks }` when the control-plane DB is reachable and the action registry has actions loaded; 503 otherwise
 
-Aggregate control-plane health is part of Phase B.
+Aggregate control-plane API health (a separate process from ingress) is part of Phase B.
 
 ### Discovery — Phase B
 
