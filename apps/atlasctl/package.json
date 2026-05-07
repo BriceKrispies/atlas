@@ -1,0 +1,25 @@
+{
+  "name": "@atlas/atlasctl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atlas/schemas": "workspace:*",
+    "ajv": "^8.17.0",
+    "ajv-formats": "^3.0.1",
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.19.17",
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
+  }
+}

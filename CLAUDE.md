@@ -26,14 +26,112 @@ Pick the closest match and read its CLAUDE.md before working in that area.
 | Specifications — source of truth for behavior | [`specs/CLAUDE.md`](specs/CLAUDE.md) |
 | Containers / compose / dev infrastructure | [`infra/CLAUDE.md`](infra/CLAUDE.md) |
 
+## Agent Roster
+
+Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via the Agent tool's `subagent_type`. Use the closest match; agents reference the relevant CLAUDE.md / spec rather than duplicating it.
+
+**Governance / cross-cut**
+
+| Agent | When to delegate |
+|-------|------------------|
+| [`architect`](.claude/agents/architect.md) | Design reviews; any change touching I1–I12, P1–P6, hexagonal layering, ingress, authz precedence, cache invalidation, or tenant scoping |
+| [`spec-keeper`](.claude/agents/spec-keeper.md) | Scoping new capabilities, adding normative rules, lexicon changes, migrating legacy spec content into `specs/domains/<x>/` |
+
+**Platform owners (one per platform — spec/design authority, not implementer)**
+
+| Agent | Owns |
+|-------|------|
+| [`spine-owner`](.claude/agents/spine-owner.md) | identity, authorization, tenancy, organization, audit, observability, search |
+| [`content-owner`](.claude/agents/content-owner.md) | authoring, delivery, media, maps, catalog, widgets, forms, localization |
+| [`workflow-owner`](.claude/agents/workflow-owner.md) | automation, rules, scheduling, approvals, import-export |
+| [`engagement-owner`](.claude/agents/engagement-owner.md) | communications, notifications, analytics, experimentation, gamification |
+| [`extensibility-owner`](.claude/agents/extensibility-owner.md) | custom-schema, functions, quotas |
+| [`commerce-owner`](.claude/agents/commerce-owner.md) | billing |
+
+**Implementation devs**
+
+| Agent | When to delegate |
+|-------|------------------|
+| [`module-dev`](.claude/agents/module-dev.md) | New handlers/projections/queries/dispatchers in `/modules` + matching `apps/server` route wiring |
+| [`port-adapter-dev`](.claude/agents/port-adapter-dev.md) | Adding/changing a port; implementing in `adapter-node`, `adapter-idb`, `adapter-policy-cedar`, `adapter-policy-stub`; migrations + parity |
+| [`frontend-dev`](.claude/agents/frontend-dev.md) | Any UI work — components, surfaces, signals, design tokens, Vite app shells |
+
+**Quality**
+
+| Agent | When to delegate |
+|-------|------------------|
+| [`sdet`](.claude/agents/sdet.md) | Adversarial test review — finds untested branches, cache-tag gaps, projection rebuild gaps, surface-state assertion holes; pushes back on hard-to-test designs |
+
+**Typical flow for a new capability:** `spec-keeper` (scope) → relevant platform owner (design) → `module-dev` + `frontend-dev` + `port-adapter-dev` (implement) → `sdet` (adversarial review) → `architect` (invariant gate before merge).
+
+## Slice Workflow
+
+The protocol for using the agents above. **Slice = one capability** — exactly one `specs/domains/<domain>/capabilities/<name>/README.md`. Multiple capabilities = multiple slices.
+
+```
+Phase 0 — Scope
+  spec-keeper + relevant platform-owner
+  copy specs/_capability-template.md → specs/domains/<domain>/capabilities/<name>/README.md
+  Gate: spec lists invariants touched, surfaces, lexicon hits, file-by-file plan
+  ▸ User checkpoint: spec approved before any code
+
+Phase 1 — Implement (parallel where applicable)
+  module-dev        → handler + projection + query + dispatch test + cache tags + route
+  port-adapter-dev  → any new port + node/idb parity + migrations
+  frontend-dev      → surface + components + test-state reader
+  Gate: pnpm typecheck + pnpm test green; cache tags asserted; I12 dispatch test exists
+
+Phase 2 — Adversarial review (single pass, not ping-pong)
+  sdet → hunts cache-tag gaps, projection rebuild gaps, tenant-isolation holes,
+         surface-state assertion gaps, untested branches; writes missing tests
+         or files specific feedback
+  Gate: BDD scenarios cover the capability; surface states all asserted
+
+Phase 3 — Invariant gate (single pass)
+  architect → reviews against I1–I12, hexagonal layering, AtlasElement bar,
+              worker parity; reports violations with invariant ID + file:line
+  No override: invariant violation = back to Phase 1 or escalate to user
+
+Phase 4 — Optional security review
+  /security-review skill (when change touches authn/authz/tenant scope/secrets/PII)
+
+Phase 5 — User checkpoint → merge
+  Human breaks ties, decides edge cases, holds the merge button
+```
+
+### Anti-slop principles
+
+1. **Spec-first hard gate.** No code without a capability README at the canonical path.
+2. **Slice = one capability.** The spec defines scope; the LOC follows. Multiple capabilities = multiple slices.
+3. **Tool-checkable definition of done.** `pnpm typecheck` + `pnpm test` (with cache-tag and I12 assertions named in tests) + `pnpm bdd` for surfaces. Every "done" claim is verified by these.
+4. **Adversarial pass is mandatory and time-boxed.** SDET runs every slice; one pass; produces a green report or specific feedback. Not optional, not infinite.
+5. **Invariant gate is non-negotiable.** Architect rejects on I1–I12 violation; user is the only override.
+6. **User checkpoints at boundaries.** Spec approval before code; final approval before merge. Bypass and you're the one shipping the slop.
+
+### Mechanically-checked invariants every slice
+
+- Every emitted event includes `cacheInvalidationTags` with `Tenant:${tenantId}` (I10)
+- Every dispatcher has a `dispatch.ts` test rebuilding projections from synthetic events (I12)
+- `apps/server/src/middleware/state.ts` and `apps/projection-worker/src/tenant-loop.ts` stay mirrored
+- No adapter imports in `/modules`; no HTTP outside `apps/server` (I1, hexagonal)
+- Every new component extends `AtlasElement`; no Lit/React/Vue/bare HTMLElement
+
+### Orchestration notes
+
+- Main Claude orchestrates; subagents return one summary each — they don't talk peer-to-peer.
+- Phase 1 agents run in parallel when the slice spans backend + frontend + new port (single message, multiple Agent calls).
+- Phases 2 and 3 are single-pass. If feedback fires, the dev fixes once and re-runs Phase 1 gates. The user is the tiebreaker — no infinite review loops.
+
+The capability template lives at [`specs/_capability-template.md`](specs/_capability-template.md). Modeled on [`specs/domains/tenancy/capabilities/custom-domains/README.md`](specs/domains/tenancy/capabilities/custom-domains/README.md) — read that as the worked example.
+
 ## Top-level Layout
 
 ```
-adapters/   port implementations (idb, node-postgres, policy-cedar, policy-stub)
+adapters/   port implementations (idb, node, policy-cedar, policy-stub)
 ports/      @atlas/ports — port interfaces only
-modules/    domain logic (authz, catalog, content-pages)
+modules/    domain logic (authz, catalog, content-pages, identity)
 packages/   shared infra: core, design, widgets, ingress, schemas, …
-apps/       runnable units: server (Hono), admin, authoring, sandbox
+apps/       runnable units: server (Hono), admin, authoring, sandbox, projection-worker, sim
 tests/      bdd (Playwright + Gherkin)
 specs/      RFC-style specs and lexicon — the source of truth
 infra/      compose files, container runtime
@@ -41,7 +139,7 @@ infra/      compose files, container runtime
 
 ## Domain Map
 
-Atlas is structured as **26 business domains** grouped into **5 platforms**.
+Atlas is structured as **29 business domains** grouped into **6 platforms**.
 **Domains** are the agent-ownership unit — one agent owns a capability inside a
 domain end-to-end (spec → BDD → modules → adapters → UI). **Platforms** are a
 doc-level grouping for narrative; they are not a folder layer.
@@ -76,10 +174,13 @@ Each domain's spec home is `specs/domains/<domain>/`. BDD feature folders under
 | **Engagement** | analytics | [`specs/domains/analytics/`](specs/domains/analytics/) |
 | **Engagement** | experimentation | [`specs/domains/experimentation/`](specs/domains/experimentation/) |
 | **Engagement** | gamification | [`specs/domains/gamification/`](specs/domains/gamification/) |
+| **Extensibility** | custom-schema | [`specs/domains/custom-schema/`](specs/domains/custom-schema/) |
+| **Extensibility** | functions | [`specs/domains/functions/`](specs/domains/functions/) |
+| **Extensibility** | quotas | [`specs/domains/quotas/`](specs/domains/quotas/) |
 | **Commerce** | billing | [`specs/domains/billing/`](specs/domains/billing/) |
 
-Most stubs are TODO. Several point at legacy spec content under
-`specs/modules/*` or `specs/crosscut/*` that hasn't migrated yet — see
+Most stubs are TODO. Migrated content now lives under each `specs/domains/<x>/`;
+remaining system-wide material sits in `specs/crosscut/*` — see
 [`specs/CLAUDE.md`](specs/CLAUDE.md) for the legacy → canonical mapping.
 
 ## Capability Onboarding
@@ -103,13 +204,13 @@ before writing code. The whole stack converges on this list.
 | Frontend dev — authoring | `pnpm authoring` |
 | Frontend dev — sandbox | `pnpm sandbox` |
 | Server (apps/server) | `pnpm --filter @atlas/server dev` |
+| atlasctl (operator CLI) | `pnpm -w atlasctl <command> [flags]` |
 | Typecheck | `pnpm typecheck` |
 | Unit tests | `pnpm test` |
 | E2E (Playwright) | `pnpm test:e2e` |
 | BDD (Playwright + Gherkin) | `pnpm bdd` |
 | Lint | `pnpm lint` |
 | DB up (Postgres) | `make db-up` |
-| Spec validation | `make spec-check` |
 
 ## Non-Negotiable Invariants
 

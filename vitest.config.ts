@@ -63,6 +63,9 @@ export default defineConfig({
       // no Playwright specs to conflict with.
       'apps/projection-worker/test/**/*.test.ts',
       'apps/projection-worker/src/**/*.test.ts',
+      // apps/atlasctl is a node-only CLI — Vitest only, same pattern.
+      'apps/atlasctl/test/**/*.test.ts',
+      'apps/atlasctl/src/**/*.test.ts',
     ],
     exclude: [
       '**/node_modules/**',

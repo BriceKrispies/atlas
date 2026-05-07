@@ -32,6 +32,7 @@
     "domain:list": "tsx scripts/atlas-domain.ts list",
     "domain:disable": "tsx scripts/atlas-domain.ts disable",
     "tenant:add-admin": "tsx scripts/tenant-add-admin.ts",
+    "atlasctl": "tsx apps/atlasctl/src/main.ts",
     "safe": "tsx scripts/safe-pnpm.ts"
   },
   "pnpm": {

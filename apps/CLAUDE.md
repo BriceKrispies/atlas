@@ -10,10 +10,11 @@ UI shell.
 |-----|------|---------|----------|
 | **`server/`** — `@atlas/server` | Node + Hono | Production HTTP ingress; intents, catalog, authz, content-pages, events. **Read [`server/CLAUDE.md`](server/CLAUDE.md).** | 3000 |
 | **`projection-worker/`** — `@atlas/projection-worker` | Node | Polls event store, runs projections + cache invalidation | — |
+| **`atlasctl/`** — `@atlas/atlasctl` | Node CLI | Operator/controller HTTP client. Phase A: `--version`, `health`, `intents validate/submit`. Spec: [`specs/crosscut/atlasctl.md`](../specs/crosscut/atlasctl.md). Run via `pnpm -w atlasctl ...` (`-w` runs the script from the workspace root regardless of cwd). | — |
 | **`admin/`** — `@atlas/admin` | Vite SPA | Admin shell: pages list, authz policy editor | 5173 (or 5199 in `playwright.config.ts`) |
 | **`authoring/`** — `@atlas/authoring` | Vite SPA | Page-template editor, block editor, layout editor, gallery | 5181 |
 | **`sandbox/`** — `@atlas/sandbox` | Vite SPA | Specimen gallery + registry inspection for design / widgets | 5180 |
-| **`sim/`** — `@atlas/sim` | Node | Closed-loop in-process sim for parity tests | — |
+| **`sim/`** — `@atlas/sim` | Vite SPA | Browser-side closed-loop ingress harness over IndexedDB; powers BDD scenarios via `window.__atlas` | 5182 |
 
 How to tell at a glance:
 - **Server-side** apps have a Node entry in `package.json`'s `main`/`exports` and use Hono.
@@ -33,7 +34,7 @@ Brief — full detail in [`server/CLAUDE.md`](server/CLAUDE.md):
 
 ## Frontend Apps
 
-All three Vite apps follow the same shape:
+All four Vite apps (admin, authoring, sandbox, sim) follow the same shape:
 
 ```
 src/
@@ -55,15 +56,18 @@ Both design and widgets must be imported in `main.ts` so their
 | admin | `<admin-shell>` (`shell/AdminShell.ts`) | hardcoded module list, `data-route` dispatch |
 | authoring | `<atlas-authoring>` (`authoring-app.ts`) | `ROUTES[]` array + history pushState |
 | sandbox | `<atlas-sandbox>` (`sandbox-app.ts`) | registry-driven sidebar + tab bar |
+| sim | none (headless) | `src/main.ts` mounts `window.__atlas` surfaces; no shell — driven by BDD harness |
 
 ## Per-app Dependencies
 
 | App | `@atlas/*` deps |
 |-----|-----------------|
-| **server** | `adapter-node`, `adapter-policy-cedar`, `adapter-policy-stub`, `ports`, `platform-core`, `schemas`, `metrics`, `wasm-host`, `ingress`, `authz`, `catalog`, `content-pages` |
+| **server** | `adapter-node`, `adapter-policy-cedar`, `adapter-policy-stub`, `ports`, `platform-core`, `schemas`, `metrics`, `wasm-host`, `ingress`, `authz`, `catalog`, `content-pages`, `identity` |
+| **projection-worker** | `adapter-node`, `ports`, `platform-core`, `wasm-host`, `authz`, `catalog`, `content-pages` |
 | **admin** | `core`, `design`, `widgets`, `api-client`, `test-fixtures` |
-| **authoring** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `test-state`, `test-fixtures` |
-| **sandbox** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `test-fixtures` |
+| **authoring** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `bundle-standard`, `test-state`, `test-fixtures` |
+| **sandbox** | `core`, `design`, `widgets`, `widget-host`, `page-templates`, `bundle-standard`, `test-fixtures` |
+| **sim** | `adapter-idb`, `adapter-policy-stub`, `ports`, `platform-core`, `wasm-host`, `ingress`, `authz`, `catalog`, `content-pages` |
 
 ## Conventions
 
