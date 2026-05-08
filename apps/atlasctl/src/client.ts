@@ -66,6 +66,10 @@ export async function request(
     headers['X-Api-Key'] = client.credential.key;
   } else if (client.credential.kind === 'token') {
     headers['Authorization'] = `Bearer ${client.credential.token}`;
+  } else if (client.credential.kind === 'debug-principal') {
+    // Test-auth bypass: server accepts this only when TEST_AUTH_ENABLED=true.
+    // Production servers reject the header.
+    headers['X-Debug-Principal'] = client.credential.principalJson;
   }
   const init: RequestInit = {
     method: req.method ?? 'GET',

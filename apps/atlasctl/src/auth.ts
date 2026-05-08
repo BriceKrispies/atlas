@@ -5,16 +5,19 @@ export type Credential =
   | { kind: 'api-key'; key: string }
   | { kind: 'token'; token: string }
   | { kind: 'mtls'; cert: string; key: string; ca: string | undefined }
+  | { kind: 'debug-principal'; principalJson: string }
   | { kind: 'none' };
 
 export interface AuthFlags {
   apiKey?: string | undefined;
   token?: string | undefined;
+  debugPrincipal?: string | undefined;
 }
 
 export interface AuthEnv {
   ATLAS_API_KEY?: string | undefined;
   ATLAS_TOKEN?: string | undefined;
+  ATLAS_DEBUG_PRINCIPAL?: string | undefined;
 }
 
 export class AuthError extends Error {
@@ -29,20 +32,31 @@ export class AuthError extends Error {
  * Authentication and Authorization Requirements section of
  * specs/crosscut/atlasctl.md:
  *
- *   1. Command-line flags (--api-key, --token)
- *   2. Environment variables (ATLAS_API_KEY, ATLAS_TOKEN)
+ *   1. Command-line flags (--debug-principal, --api-key, --token)
+ *   2. Environment variables (ATLAS_DEBUG_PRINCIPAL, ATLAS_API_KEY, ATLAS_TOKEN)
  *   3. Configuration file (mtls > apiKey > token within the config)
+ *
+ * --debug-principal wins when set: it's the test-auth bypass for local
+ * dev (TEST_AUTH_ENABLED=true on the server). It carries a JSON-encoded
+ * Principal that the server's principal middleware accepts via the
+ * X-Debug-Principal header. NOT for production use.
  */
 export function resolveCredential(
   flags: AuthFlags,
   env: AuthEnv,
   config: ConfigFile,
 ): Credential {
+  if (flags.debugPrincipal !== undefined && flags.debugPrincipal !== '') {
+    return { kind: 'debug-principal', principalJson: flags.debugPrincipal };
+  }
   if (flags.apiKey !== undefined && flags.apiKey !== '') {
     return { kind: 'api-key', key: flags.apiKey };
   }
   if (flags.token !== undefined && flags.token !== '') {
     return { kind: 'token', token: flags.token };
+  }
+  if (env.ATLAS_DEBUG_PRINCIPAL !== undefined && env.ATLAS_DEBUG_PRINCIPAL !== '') {
+    return { kind: 'debug-principal', principalJson: env.ATLAS_DEBUG_PRINCIPAL };
   }
   if (env.ATLAS_API_KEY !== undefined && env.ATLAS_API_KEY !== '') {
     return { kind: 'api-key', key: env.ATLAS_API_KEY };

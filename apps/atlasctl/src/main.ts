@@ -24,6 +24,7 @@ interface GlobalOpts {
   quiet?: boolean;
   apiKey?: string;
   token?: string;
+  debugPrincipal?: string;
   correlationId?: string;
   strict?: boolean;
   force?: boolean;
@@ -35,10 +36,15 @@ function buildClient(opts: GlobalOpts): ClientOptions {
   const cfgPath = opts.config ?? defaultConfigPath();
   const config = loadConfig(cfgPath);
   const credential = resolveCredential(
-    { apiKey: opts.apiKey, token: opts.token },
+    {
+      apiKey: opts.apiKey,
+      token: opts.token,
+      debugPrincipal: opts.debugPrincipal,
+    },
     {
       ATLAS_API_KEY: process.env['ATLAS_API_KEY'],
       ATLAS_TOKEN: process.env['ATLAS_TOKEN'],
+      ATLAS_DEBUG_PRINCIPAL: process.env['ATLAS_DEBUG_PRINCIPAL'],
     },
     config,
   );
@@ -75,6 +81,10 @@ async function main(argv: string[]): Promise<number> {
     .option('--quiet', 'suppress non-essential output')
     .option('--api-key <key>', 'API key credential (overrides env + config)')
     .option('--token <token>', 'OIDC bearer token (overrides env + config)')
+    .option(
+      '--debug-principal <json>',
+      'JSON-encoded Principal for X-Debug-Principal header (test-auth bypass; server must have TEST_AUTH_ENABLED=true)',
+    )
     .option('--correlation-id <id>', 'use this correlationId instead of generating one')
     .option('--strict', 'treat server warnings as errors (Phase B; reserved in Phase A)')
     .option('--force', 'proceed despite version mismatch (Phase B; no-op in Phase A)')

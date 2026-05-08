@@ -47,6 +47,36 @@ describe('resolveCredential precedence', () => {
     expect(cred).toEqual({ kind: 'token', token: 'env-tok' });
   });
 
+  it('debug-principal flag wins over api-key flag', () => {
+    const cred = resolveCredential(
+      { debugPrincipal: '{"tenantId":"t1","principalId":"p1"}', apiKey: 'flag-key' },
+      {},
+      {},
+    );
+    expect(cred).toEqual({
+      kind: 'debug-principal',
+      principalJson: '{"tenantId":"t1","principalId":"p1"}',
+    });
+  });
+
+  it('debug-principal flag wins over env credentials', () => {
+    const cred = resolveCredential(
+      { debugPrincipal: '{"tenantId":"t1"}' },
+      { ATLAS_API_KEY: 'env-key', ATLAS_TOKEN: 'env-tok' },
+      {},
+    );
+    expect(cred).toEqual({ kind: 'debug-principal', principalJson: '{"tenantId":"t1"}' });
+  });
+
+  it('ATLAS_DEBUG_PRINCIPAL env wins over ATLAS_API_KEY', () => {
+    const cred = resolveCredential(
+      {},
+      { ATLAS_DEBUG_PRINCIPAL: '{"tenantId":"t1"}', ATLAS_API_KEY: 'env-key' },
+      {},
+    );
+    expect(cred).toEqual({ kind: 'debug-principal', principalJson: '{"tenantId":"t1"}' });
+  });
+
   it('throws AuthError when mtls cert path does not exist', () => {
     expect(() =>
       resolveCredential(
