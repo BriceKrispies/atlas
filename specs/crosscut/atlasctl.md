@@ -77,7 +77,7 @@ Phase A also wires:
 
 - Global flags: `--json`, `--quiet`, `--api-key`, `--token`, `--debug-principal`, `--correlation-id`, `--strict`, `--force`
 - Auth precedence: command-line flags → environment (`ATLAS_DEBUG_PRINCIPAL`, `ATLAS_API_KEY`, `ATLAS_TOKEN`) → config file (`~/.atlasctl/config.yaml`)
-- `--debug-principal <json>` — test-auth bypass. Sends `X-Debug-Principal: <json>` header. Only honored when the server has `TEST_AUTH_ENABLED=true`; production servers reject. This is the canonical local-dev auth path on this codebase and atlasctl supports it as a first-class flag.
+- `--debug-principal <value>` — test-auth bypass. Sends `X-Debug-Principal: <value>` header. Server format (per `apps/server/src/middleware/principal.ts`): `type:id[:tenantId]` where type ∈ {`user`, `service`, `anonymous`}; example: `user:tester:dev-tenant`. Only honored when the server has `TEST_AUTH_ENABLED=true`; production servers reject. This is the canonical local-dev auth path on this codebase and atlasctl supports it as a first-class flag.
 - mTLS *client-side scaffolding* — credential type discriminator, config block, custom `https.Agent` construction. Server-side mTLS support is out of scope; the seam is wired so Phase B/C can exercise it without rework.
 - Single default configuration profile. Multi-profile support is Phase B.
 

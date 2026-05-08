@@ -82,8 +82,8 @@ async function main(argv: string[]): Promise<number> {
     .option('--api-key <key>', 'API key credential (overrides env + config)')
     .option('--token <token>', 'OIDC bearer token (overrides env + config)')
     .option(
-      '--debug-principal <json>',
-      'JSON-encoded Principal for X-Debug-Principal header (test-auth bypass; server must have TEST_AUTH_ENABLED=true)',
+      '--debug-principal <value>',
+      'X-Debug-Principal value, format type:id[:tenantId] e.g. "user:tester:dev-tenant" (test-auth bypass; server must have TEST_AUTH_ENABLED=true)',
     )
     .option('--correlation-id <id>', 'use this correlationId instead of generating one')
     .option('--strict', 'treat server warnings as errors (Phase B; reserved in Phase A)')

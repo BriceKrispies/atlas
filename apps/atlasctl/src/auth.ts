@@ -5,7 +5,7 @@ export type Credential =
   | { kind: 'api-key'; key: string }
   | { kind: 'token'; token: string }
   | { kind: 'mtls'; cert: string; key: string; ca: string | undefined }
-  | { kind: 'debug-principal'; principalJson: string }
+  | { kind: 'debug-principal'; value: string }
   | { kind: 'none' };
 
 export interface AuthFlags {
@@ -37,9 +37,10 @@ export class AuthError extends Error {
  *   3. Configuration file (mtls > apiKey > token within the config)
  *
  * --debug-principal wins when set: it's the test-auth bypass for local
- * dev (TEST_AUTH_ENABLED=true on the server). It carries a JSON-encoded
- * Principal that the server's principal middleware accepts via the
- * X-Debug-Principal header. NOT for production use.
+ * dev (TEST_AUTH_ENABLED=true on the server). The value is sent as the
+ * X-Debug-Principal header verbatim. Server format (per
+ * apps/server/src/middleware/principal.ts): `type:id[:tenantId]` where
+ * type ∈ {user, service, anonymous}. NOT for production use.
  */
 export function resolveCredential(
   flags: AuthFlags,
@@ -47,7 +48,7 @@ export function resolveCredential(
   config: ConfigFile,
 ): Credential {
   if (flags.debugPrincipal !== undefined && flags.debugPrincipal !== '') {
-    return { kind: 'debug-principal', principalJson: flags.debugPrincipal };
+    return { kind: 'debug-principal', value: flags.debugPrincipal };
   }
   if (flags.apiKey !== undefined && flags.apiKey !== '') {
     return { kind: 'api-key', key: flags.apiKey };
@@ -56,7 +57,7 @@ export function resolveCredential(
     return { kind: 'token', token: flags.token };
   }
   if (env.ATLAS_DEBUG_PRINCIPAL !== undefined && env.ATLAS_DEBUG_PRINCIPAL !== '') {
-    return { kind: 'debug-principal', principalJson: env.ATLAS_DEBUG_PRINCIPAL };
+    return { kind: 'debug-principal', value: env.ATLAS_DEBUG_PRINCIPAL };
   }
   if (env.ATLAS_API_KEY !== undefined && env.ATLAS_API_KEY !== '') {
     return { kind: 'api-key', key: env.ATLAS_API_KEY };

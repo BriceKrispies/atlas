@@ -68,8 +68,8 @@ export async function request(
     headers['Authorization'] = `Bearer ${client.credential.token}`;
   } else if (client.credential.kind === 'debug-principal') {
     // Test-auth bypass: server accepts this only when TEST_AUTH_ENABLED=true.
-    // Production servers reject the header.
-    headers['X-Debug-Principal'] = client.credential.principalJson;
+    // Format is type:id[:tenantId] (e.g. "user:tester:dev-tenant"). Not JSON.
+    headers['X-Debug-Principal'] = client.credential.value;
   }
   const init: RequestInit = {
     method: req.method ?? 'GET',

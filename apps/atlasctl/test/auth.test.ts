@@ -49,32 +49,32 @@ describe('resolveCredential precedence', () => {
 
   it('debug-principal flag wins over api-key flag', () => {
     const cred = resolveCredential(
-      { debugPrincipal: '{"tenantId":"t1","principalId":"p1"}', apiKey: 'flag-key' },
+      { debugPrincipal: 'user:tester:dev-tenant', apiKey: 'flag-key' },
       {},
       {},
     );
     expect(cred).toEqual({
       kind: 'debug-principal',
-      principalJson: '{"tenantId":"t1","principalId":"p1"}',
+      value: 'user:tester:dev-tenant',
     });
   });
 
   it('debug-principal flag wins over env credentials', () => {
     const cred = resolveCredential(
-      { debugPrincipal: '{"tenantId":"t1"}' },
+      { debugPrincipal: 'user:tester' },
       { ATLAS_API_KEY: 'env-key', ATLAS_TOKEN: 'env-tok' },
       {},
     );
-    expect(cred).toEqual({ kind: 'debug-principal', principalJson: '{"tenantId":"t1"}' });
+    expect(cred).toEqual({ kind: 'debug-principal', value: 'user:tester' });
   });
 
   it('ATLAS_DEBUG_PRINCIPAL env wins over ATLAS_API_KEY', () => {
     const cred = resolveCredential(
       {},
-      { ATLAS_DEBUG_PRINCIPAL: '{"tenantId":"t1"}', ATLAS_API_KEY: 'env-key' },
+      { ATLAS_DEBUG_PRINCIPAL: 'user:tester', ATLAS_API_KEY: 'env-key' },
       {},
     );
-    expect(cred).toEqual({ kind: 'debug-principal', principalJson: '{"tenantId":"t1"}' });
+    expect(cred).toEqual({ kind: 'debug-principal', value: 'user:tester' });
   });
 
   it('throws AuthError when mtls cert path does not exist', () => {
