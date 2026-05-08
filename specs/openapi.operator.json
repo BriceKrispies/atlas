@@ -1,0 +1,198 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Atlas Operator API",
+    "version": "1.0.0",
+    "description": "Operator-facing HTTP API. Used by atlasctl and admin tooling. **Generated** from Atlas manifests + schemas + route annotations — see specs/crosscut/openapi.md.\n\nIncludes admin-only routes (`/admin/*`), debug routes (gated by `TEST_AUTH_ENABLED`), and operator-tagged actions. NOT for tenant integration.\n\nAuthentication adds `X-Debug-Principal` (test-auth bypass) on top of the standard tenant schemes. `X-Debug-Principal` is honored only when the server has `TEST_AUTH_ENABLED=true`; production servers reject the header.",
+    "x-atlas-build": {
+      "atlasVersion": "0.1.0",
+      "generatedAt": "2026-05-08T23:36:09.428Z",
+      "gitCommit": "3974b8a"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same-origin (default)."
+    }
+  ],
+  "tags": [],
+  "paths": {},
+  "components": {
+    "schemas": {
+      "ErrorEnvelope": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://atlas-platform.example.com/schemas/error-envelope.v1.json",
+        "title": "ErrorEnvelope",
+        "description": "Standard error response envelope for all Atlas API errors. See specs/crosscut/errors.md for failure semantics contract.",
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "correlationId",
+              "supportId"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code from error_taxonomy.json",
+                "pattern": "^[A-Z][A-Z0-9_]*$",
+                "examples": [
+                  "UNAUTHORIZED",
+                  "INVALID_IDEMPOTENCY_KEY",
+                  "IDEMPOTENCY_CONFLICT"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message safe for external display. MUST NOT contain internal details, stack traces, or sensitive information.",
+                "minLength": 1
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Request correlation ID for distributed tracing (INV-ERR-01)",
+                "minLength": 1
+              },
+              "supportId": {
+                "type": "string",
+                "description": "Opaque support identifier that maps to internal diagnostic records (INV-ERR-01). Used by support teams to locate detailed logs.",
+                "pattern": "^[a-f0-9-]+$"
+              }
+            }
+          }
+        },
+        "$comment": "This schema enforces INV-ERR-04 (Structured Response) from specs/crosscut/errors.md. All error responses from Atlas APIs MUST conform to this envelope."
+      },
+      "IntentAcceptedResponse": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "tenantId",
+          "principalId"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "The id of the event the handler emitted. Use this to track the action downstream."
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Echoed from the request envelope."
+          },
+          "principalId": {
+            "type": "string",
+            "description": "The principal that submitted the intent."
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed request — body shape, missing required fields, etc.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Authentication required or invalid credentials.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated but lacks required role / authz denied.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Idempotency conflict, version mismatch, or constraint violation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "PrincipalInvalid": {
+        "description": "Tenant scope mismatch, malformed test-auth header, or other principal error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "TransactionFailed": {
+        "description": "Internal error reaching downstream storage. Retry with the same idempotencyKey.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "OIDC bearer token from the configured IdP. See atlasctl.md auth precedence."
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "Service-to-service / atlasctl. Format: `atlas_<keyId>_<secret>`."
+      },
+      "oauth2ClientCredentials": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/oauth/token",
+            "scopes": {}
+          }
+        },
+        "description": "OAuth2 client-credentials grant. RFC 6749."
+      },
+      "debugPrincipal": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Debug-Principal",
+        "description": "DEV ONLY. Format: type:id[:tenantId] (type ∈ user|service|anonymous). Honored only when the server has TEST_AUTH_ENABLED=true."
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKeyAuth": []
+    }
+  ]
+}

@@ -1,0 +1,2458 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Atlas Tenant API",
+    "version": "1.0.0",
+    "description": "The HTTP API tenant developers integrate against. **Generated** from Atlas manifests + schemas — see specs/crosscut/openapi.md.\n\n## Multi-tenant\n\nAtlas paths do not include `:tenantId`. Tenant identity is implicit in the auth credential (JWT `iss`, API key tenant binding, OAuth client tenant). When you authenticate as a tenant, every operation resolves to that tenant automatically.\n\n## Correlation + idempotency\n\n**`X-Correlation-Id`** — optional request header; the server mints one if absent. The same id is echoed in the response and stamped on every log line and event downstream (Invariant I5). When you retry a request, send the same id so the entire flow correlates.\n\n**`idempotencyKey`** in the envelope — required for every write intent. Per-logical-operation, not per-HTTP-retry. Replays return the same `eventId` without re-executing the handler (Invariant I3).\n\n## Errors\n\nAll errors return the same envelope: `{ error: { code, message, correlationId, supportId } }`. The `code` is from a closed taxonomy (see specs/crosscut/errors.md). When escalating to support, paste the `supportId` — it joins request → root cause server-side.",
+    "x-atlas-build": {
+      "atlasVersion": "0.1.0",
+      "generatedAt": "2026-05-08T23:36:09.428Z",
+      "gitCommit": "3974b8a"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same-origin (default)."
+    }
+  ],
+  "tags": [
+    {
+      "name": "authz",
+      "description": "Authorization (Cedar policies)"
+    },
+    {
+      "name": "content-pages",
+      "description": "Content Pages"
+    },
+    {
+      "name": "structured-catalog",
+      "description": "Structured Catalog"
+    }
+  ],
+  "paths": {
+    "/api/v1/intents#authzPolicyList": {
+      "post": {
+        "tags": [
+          "authz"
+        ],
+        "operationId": "authzPolicyList",
+        "summary": "List Policy",
+        "description": "Submits the **Authz.Policy.List** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Authz.Policy.List\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_authzPolicyList"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#authzPolicyRead": {
+      "post": {
+        "tags": [
+          "authz"
+        ],
+        "operationId": "authzPolicyRead",
+        "summary": "Read Policy",
+        "description": "Submits the **Authz.Policy.Read** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Authz.Policy.Read\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_authzPolicyRead"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#authzPolicyCreate": {
+      "post": {
+        "tags": [
+          "authz"
+        ],
+        "operationId": "authzPolicyCreate",
+        "summary": "Create Policy",
+        "description": "Submits the **Authz.Policy.Create** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Authz.Policy.Create\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_authzPolicyCreate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#authzPolicyActivate": {
+      "post": {
+        "tags": [
+          "authz"
+        ],
+        "operationId": "authzPolicyActivate",
+        "summary": "Activate Policy",
+        "description": "Submits the **Authz.Policy.Activate** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Authz.Policy.Activate\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_authzPolicyActivate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#authzPolicyArchive": {
+      "post": {
+        "tags": [
+          "authz"
+        ],
+        "operationId": "authzPolicyArchive",
+        "summary": "Archive Policy",
+        "description": "Submits the **Authz.Policy.Archive** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Authz.Policy.Archive\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_authzPolicyArchive"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#contentPagesPageCreate": {
+      "post": {
+        "tags": [
+          "content-pages"
+        ],
+        "operationId": "contentPagesPageCreate",
+        "summary": "Create Page",
+        "description": "Submits the **ContentPages.Page.Create** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"ContentPages.Page.Create\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_contentPagesPageCreate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#contentPagesPageUpdate": {
+      "post": {
+        "tags": [
+          "content-pages"
+        ],
+        "operationId": "contentPagesPageUpdate",
+        "summary": "Update Page",
+        "description": "Submits the **ContentPages.Page.Update** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"ContentPages.Page.Update\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_contentPagesPageUpdate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#contentPagesPageDelete": {
+      "post": {
+        "tags": [
+          "content-pages"
+        ],
+        "operationId": "contentPagesPageDelete",
+        "summary": "Delete Page",
+        "description": "Submits the **ContentPages.Page.Delete** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"ContentPages.Page.Delete\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_contentPagesPageDelete"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#contentPagesPageRead": {
+      "post": {
+        "tags": [
+          "content-pages"
+        ],
+        "operationId": "contentPagesPageRead",
+        "summary": "Read Page",
+        "description": "Submits the **ContentPages.Page.Read** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"ContentPages.Page.Read\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_contentPagesPageRead"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#catalogSeedPackageApply": {
+      "post": {
+        "tags": [
+          "structured-catalog"
+        ],
+        "operationId": "catalogSeedPackageApply",
+        "summary": "Apply SeedPackage",
+        "description": "Submits the **Catalog.SeedPackage.Apply** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Catalog.SeedPackage.Apply\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_catalogSeedPackageApply"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#catalogFamilyPublish": {
+      "post": {
+        "tags": [
+          "structured-catalog"
+        ],
+        "operationId": "catalogFamilyPublish",
+        "summary": "Publish Family",
+        "description": "Submits the **Catalog.Family.Publish** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Catalog.Family.Publish\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_catalogFamilyPublish"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#catalogFamilyRead": {
+      "post": {
+        "tags": [
+          "structured-catalog"
+        ],
+        "operationId": "catalogFamilyRead",
+        "summary": "Read Family",
+        "description": "Submits the **Catalog.Family.Read** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Catalog.Family.Read\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `INFO`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_catalogFamilyRead"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#catalogFamilyArchive": {
+      "post": {
+        "tags": [
+          "structured-catalog"
+        ],
+        "operationId": "catalogFamilyArchive",
+        "summary": "Archive Family",
+        "description": "Submits the **Catalog.Family.Archive** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Catalog.Family.Archive\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_catalogFamilyArchive"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/intents#catalogFamilyDelete": {
+      "post": {
+        "tags": [
+          "structured-catalog"
+        ],
+        "operationId": "catalogFamilyDelete",
+        "summary": "Delete Family",
+        "description": "Submits the **Catalog.Family.Delete** intent through the canonical ingress pipeline.\n\nThe actual HTTP target is `POST /api/v1/intents` with `actionId: \"Catalog.Family.Delete\"` in the envelope. SDK codegen emits this as a distinct operation for ergonomic per-action methods; the server runtime sees a single endpoint.\n\nReturns **202 Accepted**: the handler emitted an event; downstream projections + cache invalidation run asynchronously per `WORKER_MODE`.\n\nAudit level: `SENSITIVE`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Envelope_catalogFamilyDelete"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "Optional flow id; minted server-side if absent. Preserved across retries; use the same id when retrying a failed request.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Intent accepted. The response body carries the eventId; downstream projections continue asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/TransactionFailed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorEnvelope": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://atlas-platform.example.com/schemas/error-envelope.v1.json",
+        "title": "ErrorEnvelope",
+        "description": "Standard error response envelope for all Atlas API errors. See specs/crosscut/errors.md for failure semantics contract.",
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "correlationId",
+              "supportId"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable error code from error_taxonomy.json",
+                "pattern": "^[A-Z][A-Z0-9_]*$",
+                "examples": [
+                  "UNAUTHORIZED",
+                  "INVALID_IDEMPOTENCY_KEY",
+                  "IDEMPOTENCY_CONFLICT"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message safe for external display. MUST NOT contain internal details, stack traces, or sensitive information.",
+                "minLength": 1
+              },
+              "correlationId": {
+                "type": "string",
+                "description": "Request correlation ID for distributed tracing (INV-ERR-01)",
+                "minLength": 1
+              },
+              "supportId": {
+                "type": "string",
+                "description": "Opaque support identifier that maps to internal diagnostic records (INV-ERR-01). Used by support teams to locate detailed logs.",
+                "pattern": "^[a-f0-9-]+$"
+              }
+            }
+          }
+        },
+        "$comment": "This schema enforces INV-ERR-04 (Structured Response) from specs/crosscut/errors.md. All error responses from Atlas APIs MUST conform to this envelope."
+      },
+      "IntentAcceptedResponse": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "tenantId",
+          "principalId"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "The id of the event the handler emitted. Use this to track the action downstream."
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Echoed from the request envelope."
+          },
+          "principalId": {
+            "type": "string",
+            "description": "The principal that submitted the intent."
+          }
+        }
+      },
+      "Envelope_authzPolicyList": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Authz.PolicyList",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "type": "object",
+            "description": "Action-specific payload shape (no bundled schema yet)."
+          }
+        }
+      },
+      "Envelope_authzPolicyRead": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Authz.PolicyRead",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "type": "object",
+            "description": "Action-specific payload shape (no bundled schema yet)."
+          }
+        }
+      },
+      "Envelope_authzPolicyCreate": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Authz.PolicyCreated",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "authz.policy.create.v1",
+            "title": "AuthzPolicyCreatePayload",
+            "description": "Payload schema for Authz.Policy.Create intents — saves a new draft Cedar policy bundle.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "resourceType",
+              "cedarText",
+              "schemaVersion"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "Authz.Policy.Create"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Policy"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cedarText": {
+                "type": "string",
+                "minLength": 1
+              },
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Envelope_authzPolicyActivate": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Authz.PolicyActivated",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "authz.policy.activate.v1",
+            "title": "AuthzPolicyActivatePayload",
+            "description": "Payload schema for Authz.Policy.Activate — promotes a draft to active and demotes the prior active in one transaction.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "resourceType",
+              "version"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "Authz.Policy.Activate"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Policy"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      },
+      "Envelope_authzPolicyArchive": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Authz.PolicyArchived",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "authz.policy.archive.v1",
+            "title": "AuthzPolicyArchivePayload",
+            "description": "Payload schema for Authz.Policy.Archive — flips status to archived; refused if it would leave the tenant policy-less.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "resourceType",
+              "version"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "Authz.Policy.Archive"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Policy"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      },
+      "Envelope_contentPagesPageCreate": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "ContentPages.PageCreated",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "content_pages.page.create.v1",
+            "title": "ContentPagesPageCreatePayload",
+            "description": "Payload schema for ContentPages.Page.Create intents. Mirrors page_create_intent_payload.v1 but is keyed under the actionIdToSchemaId convention so the runtime registry can resolve it.",
+            "type": "object",
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "ContentPages.Page.Create"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Page"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "content": {
+                "type": "string"
+              },
+              "authorId": {
+                "type": "string"
+              },
+              "templateId": {
+                "type": "string"
+              },
+              "templateVersion": {
+                "type": "string"
+              },
+              "pluginRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              }
+            },
+            "required": [
+              "actionId",
+              "resourceType",
+              "pageId",
+              "title",
+              "slug"
+            ]
+          }
+        }
+      },
+      "Envelope_contentPagesPageUpdate": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "ContentPages.PageUpdated",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "content_pages.page.update.v1",
+            "title": "ContentPagesPageUpdatePayload",
+            "description": "Payload schema for ContentPages.Page.Update intents.",
+            "type": "object",
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "ContentPages.Page.Update"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Page"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "content": {
+                "type": "string"
+              },
+              "templateId": {
+                "type": "string"
+              },
+              "templateVersion": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "published",
+                  "archived"
+                ]
+              }
+            },
+            "required": [
+              "actionId",
+              "resourceType",
+              "pageId"
+            ]
+          }
+        }
+      },
+      "Envelope_contentPagesPageDelete": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "ContentPages.PageDeleted",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "content_pages.page.delete.v1",
+            "title": "ContentPagesPageDeletePayload",
+            "description": "Payload schema for ContentPages.Page.Delete intents.",
+            "type": "object",
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "ContentPages.Page.Delete"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Page"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "actionId",
+              "resourceType",
+              "pageId"
+            ]
+          }
+        }
+      },
+      "Envelope_contentPagesPageRead": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "ContentPages.PageRead",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "content_pages.page.read.v1",
+            "title": "ContentPagesPageReadPayload",
+            "description": "Payload schema for ContentPages.Page.Read intents (currently unused — reads go through GET endpoints, but the schema is registered so the action can be exercised through the intent pipeline if needed).",
+            "type": "object",
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "ContentPages.Page.Read"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Page"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "actionId",
+              "resourceType",
+              "pageId"
+            ]
+          }
+        }
+      },
+      "Envelope_catalogSeedPackageApply": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Catalog.SeedPackageApplied",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "catalog.seed_package.apply.v1",
+            "title": "CatalogSeedPackageApplyPayload",
+            "description": "Payload schema for Catalog.SeedPackage.Apply intents",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "resourceType",
+              "seedPackageKey",
+              "seedPackageVersion",
+              "payload"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "Catalog.SeedPackage.Apply"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "SeedPackage"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "seedPackageKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "seedPackageVersion": {
+                "type": "string",
+                "minLength": 1
+              },
+              "payload": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "Envelope_catalogFamilyPublish": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Catalog.FamilyPublished",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "catalog.family.publish.v1",
+            "title": "CatalogFamilyPublishPayload",
+            "description": "Payload schema for Catalog.Family.Publish intents",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "resourceType",
+              "familyKey",
+              "familyRevisionNumber"
+            ],
+            "properties": {
+              "actionId": {
+                "type": "string",
+                "const": "Catalog.Family.Publish"
+              },
+              "resourceType": {
+                "type": "string",
+                "const": "Family"
+              },
+              "resourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "familyKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "familyRevisionNumber": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      },
+      "Envelope_catalogFamilyRead": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Catalog.FamilyRead",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "type": "object",
+            "description": "Action-specific payload shape (no bundled schema yet)."
+          }
+        }
+      },
+      "Envelope_catalogFamilyArchive": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Catalog.FamilyArchived",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "type": "object",
+            "description": "Action-specific payload shape (no bundled schema yet)."
+          }
+        }
+      },
+      "Envelope_catalogFamilyDelete": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "EventEnvelope",
+        "description": "Common envelope for all domain, UI intent, system, and audit events",
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "schemaId",
+          "schemaVersion",
+          "occurredAt",
+          "tenantId",
+          "correlationId",
+          "idempotencyKey",
+          "payload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "Unique event identifier (UUID recommended)",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "minLength": 1
+          },
+          "eventType": {
+            "type": "string",
+            "const": "Catalog.FamilyDeleted",
+            "description": "Discriminator. Must equal this value for this operation."
+          },
+          "schemaId": {
+            "type": "string",
+            "description": "Schema identifier for payload validation",
+            "pattern": "^[a-z0-9.]+$",
+            "minLength": 1
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "description": "Schema version number",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when event occurred",
+            "format": "date-time"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Tenant context for this event",
+            "minLength": 1
+          },
+          "principalId": {
+            "type": "string",
+            "description": "Principal who initiated this event (optional for system events)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID if applicable (optional)"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Request correlation ID for tracing",
+            "minLength": 1
+          },
+          "causationId": {
+            "type": "string",
+            "description": "ID of the causal event (optional)"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Deduplication key for idempotent processing",
+            "minLength": 1
+          },
+          "payload": {
+            "type": "object",
+            "description": "Action-specific payload shape (no bundled schema yet)."
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed request — body shape, missing required fields, etc.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Authentication required or invalid credentials.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated but lacks required role / authz denied.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Idempotency conflict, version mismatch, or constraint violation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "PrincipalInvalid": {
+        "description": "Tenant scope mismatch, malformed test-auth header, or other principal error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "TransactionFailed": {
+        "description": "Internal error reaching downstream storage. Retry with the same idempotencyKey.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "OIDC bearer token from the configured IdP. See atlasctl.md auth precedence."
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "Service-to-service / atlasctl. Format: `atlas_<keyId>_<secret>`."
+      },
+      "oauth2ClientCredentials": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/oauth/token",
+            "scopes": {}
+          }
+        },
+        "description": "OAuth2 client-credentials grant. RFC 6749."
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKeyAuth": []
+    }
+  ]
+}

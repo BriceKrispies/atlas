@@ -37,6 +37,7 @@
     "domain:disable": "tsx scripts/atlas-domain.ts disable",
     "tenant:add-admin": "tsx scripts/tenant-add-admin.ts",
     "atlasctl": "tsx apps/atlasctl/src/main.ts",
+    "sync-openapi": "tsx packages/openapi/scripts/sync-openapi.ts",
     "safe": "tsx scripts/safe-pnpm.ts"
   },
   "pnpm": {
