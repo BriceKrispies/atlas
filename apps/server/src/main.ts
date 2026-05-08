@@ -10,10 +10,22 @@
  *   - Boot failure → log + exit(1).
  *
  * Env contract: see `config.ts`.
+ *
+ * Logging: a LogPipeline + InMemoryLevelController are constructed before
+ * bootstrap so every line — including the very first "starting" line —
+ * goes through the structured pipeline per specs/crosscut/logging.md.
  */
 
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import {
+  ConsoleJsonSink,
+  InMemoryLevelController,
+  LogPipeline,
+  MemoryRingBufferSink,
+  createSystemContext,
+  registerForExitFlush,
+} from '@atlas/logging';
 import { loadConfig } from './config.ts';
 import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
 import { healthRoutes } from './routes/health.ts';
@@ -29,15 +41,22 @@ import { identityA7Routes } from './routes/identity-a7.ts';
 import { identityIdpRoutes } from './routes/identity-idp.ts';
 import { mfaRoutes } from './routes/mfa.ts';
 import { oauthRoutes } from './routes/oauth.ts';
+import { repositoryRoutes } from './routes/repositories.ts';
 import { samlRoutes } from './routes/saml.ts';
 import { scimRoutes } from './routes/scim.ts';
 import { signupRoutes } from './routes/signup.ts';
 import { tenantHomeRoutes } from './routes/tenant-home.ts';
 import { adminSignupRoutes } from './routes/admin-signups.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
+import { executionContextMiddleware } from './middleware/execution-context.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   const app = new Hono<{ Variables: ServerVariables }>();
+
+  // Build per-request AtlasExecutionContext FIRST so every downstream
+  // middleware + route can use c.var.ctx for logging. Anonymous-principal
+  // ctx is replaced by the principal middleware when auth resolves.
+  app.use('*', executionContextMiddleware(state));
 
   // Public routes — no authn.
   app.route('/', healthRoutes(state));
@@ -81,6 +100,9 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', identityA7Routes(state));
   authed.route('/', mfaRoutes(state));
   authed.route('/', adminSignupRoutes(state));
+  // Code platform / `repository` domain — read-side surface for the
+  // `upload-tarball` capability. Writes flow through `intentRoutes`.
+  authed.route('/', repositoryRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes(state));
   }
@@ -91,17 +113,50 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  console.log(
-    `[server] starting @atlas/server (port=${config.port}, tenant=${config.tenantId}, ` +
-      `testAuth=${config.testAuth.enabled}, RUST_LOG=${config.rustLog})`,
+
+  // Logging pipeline — built FIRST so every boot log goes through
+  // structured channels per specs/crosscut/logging.md. Two sinks:
+  // ConsoleJsonSink (stdout) and MemoryRingBufferSink (in-memory ring
+  // for atlasctl logging inspect <correlationId>; PR 3).
+  const levelController = new InMemoryLevelController('info');
+  const logPipeline = new LogPipeline(
+    [new ConsoleJsonSink(), new MemoryRingBufferSink({ capacity: 5000 })],
+    levelController,
   );
+  registerForExitFlush(logPipeline);
+
+  const bootCtx = createSystemContext({
+    pipeline: logPipeline,
+    environment: config.environment,
+    moduleId: '@atlas/server',
+  });
+
+  bootCtx.logger.info('starting @atlas/server', {
+    event: 'Server.Boot.Starting',
+    properties: {
+      port: config.port,
+      tenant: config.tenantId,
+      environment: config.environment,
+      testAuth: config.testAuth.enabled,
+      rustLog: config.rustLog,
+      workerMode: config.workerMode,
+      policyEngine: config.policyEngine,
+    },
+  });
 
   let state: AppState;
   try {
-    state = await bootstrap(config);
-    console.log('[server] bootstrap complete');
+    state = await bootstrap(config, { logPipeline, levelController, bootCtx });
+    bootCtx.logger.info('bootstrap complete', { event: 'Server.Boot.Complete' });
   } catch (e) {
-    console.error('[server] bootstrap failed:', (e as Error).message);
+    bootCtx.logger.fatal('bootstrap failed', {
+      event: 'Server.Boot.Failed',
+      error: {
+        code: 'BOOT_FAILED',
+        message: (e as Error).message,
+        ...(e instanceof Error && e.stack !== undefined ? { stack: e.stack } : {}),
+      },
+    });
     process.exit(1);
   }
 
@@ -110,12 +165,18 @@ async function main(): Promise<void> {
   const server = serve(
     { fetch: app.fetch, port: config.port, hostname: '0.0.0.0' },
     (info) => {
-      console.log(`[server] listening on http://${info.address}:${info.port}`);
+      bootCtx.logger.info('listening', {
+        event: 'Server.Boot.Listening',
+        properties: { address: info.address, port: info.port },
+      });
     },
   );
 
   const stop = async (signal: string): Promise<void> => {
-    console.log(`[server] received ${signal}, shutting down`);
+    bootCtx.logger.info('shutdown received', {
+      event: 'Server.Shutdown.Received',
+      properties: { signal },
+    });
     // 1. Stop accepting new connections, drain in-flight requests. Awaiting
     //    `server.close` is required — fire-and-forget would let the pool
     //    teardown below race a request that is mid-`postgres.Sql` query.
@@ -124,7 +185,13 @@ async function main(): Promise<void> {
         server.close((err) => (err ? reject(err) : resolve()));
       });
     } catch (e) {
-      console.error(`[server] error while closing http server: ${(e as Error).message}`);
+      bootCtx.logger.error('http server close error', {
+        event: 'Server.Shutdown.CloseError',
+        error: {
+          code: 'HTTP_CLOSE_FAILED',
+          message: (e as Error).message,
+        },
+      });
     }
     // 2. Tear down tenant pools, then the control-plane pool. See
     //    `bootstrap.shutdown` — order matters because tenant-DB lookups

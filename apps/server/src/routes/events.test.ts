@@ -19,6 +19,12 @@ import { ServerEventBroadcast } from '../events/broadcast.ts';
 import { serverEventDispatcher } from '../events/dispatcher.ts';
 import { eventsRoutes } from './events.ts';
 import { principalMiddleware, type ServerVariables } from '../middleware/principal.ts';
+import { executionContextMiddleware } from '../middleware/execution-context.ts';
+import {
+  CollectorSink,
+  InMemoryLevelController,
+  LogPipeline,
+} from '@atlas/logging';
 import type { EventEnvelope } from '@atlas/platform-core';
 
 function makeState(broadcast: ServerEventBroadcast): AppState {
@@ -29,10 +35,15 @@ function makeState(broadcast: ServerEventBroadcast): AppState {
     testAuth: { enabled: true, debugEndpoints: false },
     tenantId: 'default-tenant',
     rustLog: '',
+    environment: 'test' as const,
     policyEngine: 'stub' as const,
   };
+  const levelController = new InMemoryLevelController('debug');
+  const logPipeline = new LogPipeline([new CollectorSink()], levelController);
   return {
     config,
+    logPipeline,
+    levelController,
     controlPlaneSql: null as never,
     tenantDb: null as never,
     controlPlaneRegistry: null as never,
@@ -46,6 +57,7 @@ function makeState(broadcast: ServerEventBroadcast): AppState {
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   const app = new Hono<{ Variables: ServerVariables }>();
+  app.use('*', executionContextMiddleware(state));
   app.use('*', principalMiddleware(state));
   app.route('/', eventsRoutes(state));
   return app;

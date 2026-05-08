@@ -24,6 +24,8 @@ import {
   PostgresEntityStore,
   PostgresEntityTypeRegistry,
   PostgresRelationStore,
+  PostgresRepositoryRevisionStore,
+  PostgresRepositoryStore,
   PostgresSignupRequestStore,
   PostgresTenantDbProvider,
   PostgresTenantStore,
@@ -39,6 +41,8 @@ import type {
   EntityTypeRegistry,
   Mailer,
   RelationStore,
+  RepositoryRevisionStore,
+  RepositoryStore,
   SignupRequestStore,
   TenantStore,
 } from '@atlas/ports';
@@ -58,11 +62,27 @@ import {
 import type { ModuleManifest } from '@atlas/adapter-policy-cedar';
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
+import type { AtlasExecutionContext } from '@atlas/platform-core';
+import type { LevelController, LogPipeline } from '@atlas/logging';
 import type { AppConfig } from './config.ts';
 import { ServerEventBroadcast } from './events/broadcast.ts';
 
 export interface AppState {
   readonly config: AppConfig;
+  /**
+   * Process-wide logging pipeline. Sinks: ConsoleJsonSink (stdout) +
+   * MemoryRingBufferSink (in-memory ring for atlasctl inspection — see
+   * specs/crosscut/logging.md and PR 3 for atlasctl logging commands).
+   * Per-request loggers come from `c.var.ctx.logger`, never from a
+   * direct factory call. Built in main.ts before bootstrap; passed in.
+   */
+  readonly logPipeline: LogPipeline;
+  /**
+   * Runtime log-level controller. Resolution precedence:
+   * correlation > tenant > module > global > default. Mutated by atlasctl
+   * via the admin/logging routes (PR 3).
+   */
+  readonly levelController: LevelController;
   readonly controlPlaneSql: postgres.Sql;
   readonly tenantDb: PostgresTenantDbProvider;
   readonly controlPlaneRegistry: PostgresControlPlaneRegistry;
@@ -139,7 +159,18 @@ export interface AppState {
   readonly emailLog: EmailLogStore;
 }
 
-export async function bootstrap(config: AppConfig): Promise<AppState> {
+export interface BootstrapDeps {
+  /** Built before bootstrap by main.ts so the very first boot log has structure. */
+  readonly logPipeline: LogPipeline;
+  readonly levelController: LevelController;
+  /** System ctx for boot-time logs. */
+  readonly bootCtx: AtlasExecutionContext;
+}
+
+export async function bootstrap(
+  config: AppConfig,
+  deps: BootstrapDeps,
+): Promise<AppState> {
   const controlPlaneSql = postgres(config.controlPlaneDbUrl, { max: 5 });
 
   // Probe the connection up front — fail loud at boot rather than mid-request.
@@ -244,10 +275,15 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
       mailer = new StdoutEventMailer(controlPlaneSql);
       break;
   }
-  console.log(`mailer driver: ${config.mailerMode}`);
+  deps.bootCtx.logger.info('mailer driver selected', {
+    event: 'Server.Boot.MailerSelected',
+    properties: { driver: config.mailerMode },
+  });
 
   return {
     config,
+    logPipeline: deps.logPipeline,
+    levelController: deps.levelController,
     controlPlaneSql,
     tenantDb,
     controlPlaneRegistry,
@@ -289,6 +325,25 @@ export function entityStoreFor(sql: postgres.Sql, state: AppState): EntityStore 
 
 export function relationStoreFor(sql: postgres.Sql): RelationStore {
   return new PostgresRelationStore(sql);
+}
+
+/**
+ * Per-tenant `RepositoryStore` — Code platform / `repository` domain.
+ *
+ * Constructed per-request the same way `entityStoreFor` /
+ * `relationStoreFor` are (cheap closures over the per-tenant `Sql`).
+ * Bytes flow through `repositoryRevisionStoreFor` — split per-port so
+ * the bytes side can migrate to object storage without disturbing the
+ * metadata surface.
+ */
+export function repositoryStoreFor(sql: postgres.Sql): RepositoryStore {
+  return new PostgresRepositoryStore(sql);
+}
+
+export function repositoryRevisionStoreFor(
+  sql: postgres.Sql,
+): RepositoryRevisionStore {
+  return new PostgresRepositoryRevisionStore(sql);
 }
 
 /**
@@ -354,5 +409,8 @@ export async function ensureTenantMigrated(
  */
 export async function shutdown(state: AppState): Promise<void> {
   await state.tenantDb.close();
+  // Release SMTP transport pool (no-op for stdout/noop drivers since
+  // `close` is optional on the port).
+  await state.mailer.close?.();
   await state.controlPlaneSql.end({ timeout: 5 });
 }

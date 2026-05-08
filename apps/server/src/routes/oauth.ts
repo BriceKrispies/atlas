@@ -166,7 +166,17 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
         }
         return errorResponse(c, e.code, e.message, e.status, correlationId);
       }
-      console.error('[oauth.token] unmapped', { correlationId, error: e });
+      c.get('ctx').logger.error('oauth token unmapped error', {
+        event: 'OAuth.Token.UnmappedError',
+        error:
+          e instanceof Error
+            ? {
+                code: 'UNMAPPED_ERROR',
+                message: e.message,
+                ...(e.stack !== undefined ? { stack: e.stack } : {}),
+              }
+            : { code: 'UNMAPPED_ERROR', message: String(e) },
+      });
       return oauthError(c, 'server_error', 'internal failure', 500);
     }
   });

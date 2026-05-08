@@ -202,9 +202,16 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         }
         return errorResponse(c, e.code, e.message, e.status, correlationId);
       }
-      console.error('[identity.invite.accept] unmapped', {
-        correlationId,
-        error: e instanceof Error ? { message: e.message, stack: e.stack } : e,
+      c.get('ctx').logger.error('identity invite-accept unmapped error', {
+        event: 'Identity.InviteAccept.UnmappedError',
+        error:
+          e instanceof Error
+            ? {
+                code: 'UNMAPPED_ERROR',
+                message: e.message,
+                ...(e.stack !== undefined ? { stack: e.stack } : {}),
+              }
+            : { code: 'UNMAPPED_ERROR', message: String(e) },
       });
       return errorResponse(c, 'TRANSACTION_FAILED', 'Internal failure', 500, correlationId);
     }
@@ -298,7 +305,17 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         );
         return errorResponse(c, e.code, e.message, e.status, correlationId);
       }
-      console.error('[identity.session.refresh] unmapped', { correlationId, error: e });
+      c.get('ctx').logger.error('identity session-refresh unmapped error', {
+        event: 'Identity.SessionRefresh.UnmappedError',
+        error:
+          e instanceof Error
+            ? {
+                code: 'UNMAPPED_ERROR',
+                message: e.message,
+                ...(e.stack !== undefined ? { stack: e.stack } : {}),
+              }
+            : { code: 'UNMAPPED_ERROR', message: String(e) },
+      });
       return errorResponse(c, 'TRANSACTION_FAILED', 'Internal failure', 500, correlationId);
     }
   });

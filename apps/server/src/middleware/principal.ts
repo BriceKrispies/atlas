@@ -8,9 +8,14 @@
  * 1. `Authorization: Bearer <jwt>` → verified against the OIDC JWKS via
  *    `jose`, audience-checked, principalId from `sub`, tenantId from the
  *    `tenant_id` claim if present, falling back to the configured default.
- * 2. `X-Debug-Principal: type:id[:tenantId]` → only honoured when
- *    `TEST_AUTH_ENABLED=true`. Bypasses verification entirely. Same parsing
- *    rules as the Rust test-auth helper.
+ * 2. `X-Debug-Principal: type:id[:tenantId[:role1,role2,...]]` → only
+ *    honoured when `TEST_AUTH_ENABLED=true`. Bypasses verification
+ *    entirely. The optional fourth segment is a comma-separated list of
+ *    role slugs hydrated onto `Principal.roles` so dev/test flows can
+ *    drive role-gated routes (e.g. the admin signup queue) without going
+ *    through the full Membership lookup. Existing 2- and 3-segment values
+ *    keep working — they parse to a principal with an empty roles array.
+ *    Same base parsing rules as the Rust test-auth helper.
  *
  * On failure: 401 with the structured error envelope. Other errors propagate
  * to the central error mapper.
@@ -18,7 +23,8 @@
 
 import type { Context, Next } from 'hono';
 import { jwtVerify } from 'jose';
-import type { Principal } from '@atlas/platform-core';
+import type { AtlasExecutionContext, Principal } from '@atlas/platform-core';
+import { createRootContext } from '@atlas/logging';
 import {
   PostgresEntityStore,
 } from '@atlas/adapter-node';
@@ -77,6 +83,16 @@ export interface ServerVariables {
   principal: Principal;
   correlationId: string;
   /**
+   * AtlasExecutionContext for the request. Set by executionContextMiddleware
+   * before any downstream middleware runs. Replaced by principalMiddleware
+   * once a real principal is resolved (correlationId is preserved across
+   * the swap; tenantId is allowed to change on the swap because tenantId
+   * is immutable across a SINGLE context's `.with*()` lineage, not across
+   * boundary transitions). All log emission in the request path uses
+   * `c.var.ctx.logger.<level>(...)`.
+   */
+  ctx: AtlasExecutionContext;
+  /**
    * Tenant id resolved from the request Host header against the
    * `custom_domains` table. `null` when the host is not registered
    * (the common case — most requests come in via subdomain). When set,
@@ -86,19 +102,53 @@ export interface ServerVariables {
   hostTenantId: string | null;
 }
 
+/**
+ * Build a fresh root context after a real principal is resolved. Preserves
+ * correlationId from the previous (anonymous) context so log lines from
+ * before / after auth join cleanly. Replaces `c.var.ctx`.
+ */
+function upgradeContextWithPrincipal(
+  c: Context<{ Variables: ServerVariables }>,
+  state: AppState,
+  principal: Principal,
+): void {
+  const prior = c.get('ctx');
+  const ctxInput: Parameters<typeof createRootContext>[0] = {
+    pipeline: state.logPipeline,
+    tenantId: principal.tenantId,
+    principalId: principal.principalId,
+    environment: state.config.environment,
+    incomingCorrelationId: prior.correlationId,
+  };
+  if (prior.requestId !== undefined) ctxInput.requestId = prior.requestId;
+  const upgraded = createRootContext(ctxInput);
+  c.set('ctx', upgraded);
+}
+
 function parseDebugPrincipal(
   raw: string,
   defaultTenantId: string,
 ): Principal | null {
   const parts = raw.split(':');
-  if (parts.length !== 2 && parts.length !== 3) return null;
+  if (parts.length < 2 || parts.length > 4) return null;
   const typeStr = parts[0]?.toLowerCase() ?? '';
   if (!VALID_DEBUG_TYPES.has(typeStr)) return null;
   const id = parts[1] ?? '';
   if (!id) return null;
-  const tenantId = parts.length === 3 ? (parts[2] ?? '') : defaultTenantId;
+  const tenantId = parts.length >= 3 ? (parts[2] ?? '') : defaultTenantId;
   if (!isValidTenantId(tenantId)) return null;
-  return { principalId: id, tenantId };
+  // Optional 4th segment: comma-separated role slugs. Empty string and
+  // missing segment both yield an empty roles array. Empty entries
+  // (e.g. trailing comma) are filtered so `:admin,` parses cleanly.
+  let roles: string[] = [];
+  if (parts.length === 4) {
+    const roleSegment = parts[3] ?? '';
+    roles = roleSegment
+      .split(',')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+  }
+  return { principalId: id, tenantId, roles };
 }
 
 /**
@@ -398,12 +448,14 @@ export function principalMiddleware(state: AppState) {
                   } catch {
                     // ignore
                   }
-                  c.set('principal', {
+                  const sessionPrincipal: Principal = {
                     principalId: session.userId,
                     tenantId,
                     userId: session.userId,
                     attributes: { sessionId: session.sessionId },
-                  });
+                  };
+                  c.set('principal', sessionPrincipal);
+                  upgradeContextWithPrincipal(c, state, sessionPrincipal);
                   await next();
                   return;
                 }
@@ -446,6 +498,7 @@ export function principalMiddleware(state: AppState) {
           );
         }
         c.set('principal', debug);
+        upgradeContextWithPrincipal(c, state, debug);
         await next();
         return;
       }
@@ -464,6 +517,7 @@ export function principalMiddleware(state: AppState) {
     if (bearerPrincipal === 'fail-with-error') return; // already responded
     if (bearerPrincipal) {
       c.set('principal', bearerPrincipal);
+      upgradeContextWithPrincipal(c, state, bearerPrincipal);
       await next();
       return;
     }
@@ -647,7 +701,9 @@ export function principalMiddleware(state: AppState) {
         correlationId,
       );
     }
-    c.set('principal', { principalId: sub, tenantId: candidateTenant });
+    const jwtPrincipal: Principal = { principalId: sub, tenantId: candidateTenant };
+    c.set('principal', jwtPrincipal);
+    upgradeContextWithPrincipal(c, state, jwtPrincipal);
     await next();
     return;
   };

@@ -16,6 +16,7 @@
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { IngressError } from '@atlas/platform-core';
+import type { AtlasExecutionContext } from '@atlas/platform-core';
 import { IdentityError } from '@atlas/identity';
 
 /**
@@ -139,10 +140,23 @@ export function mapError(
   );
   // Log the raw error server-side so operators can join request → root cause
   // via the supportId without exposing internal text to the client.
-  console.error('[ingress] unmapped error', {
-    correlationId,
-    supportId: envelope.error.supportId,
-    error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
-  });
+  // Per specs/crosscut/logging.md: ctx.logger pairs the log line's
+  // correlationId+supportId with the user-facing error envelope.
+  const ctx = (c.get as (k: 'ctx') => AtlasExecutionContext | undefined)('ctx');
+  const errorObj =
+    e instanceof Error
+      ? {
+          code: 'UNMAPPED_ERROR',
+          message: e.message,
+          ...(e.stack !== undefined ? { stack: e.stack } : {}),
+        }
+      : { code: 'UNMAPPED_ERROR', message: String(e) };
+  if (ctx !== undefined) {
+    ctx.logger.error('unmapped error reaching the boundary', {
+      event: 'Ingress.UnmappedError',
+      error: errorObj,
+      properties: { supportId: envelope.error.supportId },
+    });
+  }
   return c.json(envelope, 500 as ContentfulStatusCode);
 }

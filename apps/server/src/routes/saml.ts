@@ -202,7 +202,17 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
       if (e instanceof IdentityError) {
         return errorResponse(c, e.code, e.message, e.status, correlationId);
       }
-      console.error('[saml.acs] unmapped', { correlationId, error: e });
+      c.get('ctx').logger.error('saml acs unmapped error', {
+        event: 'Saml.Acs.UnmappedError',
+        error:
+          e instanceof Error
+            ? {
+                code: 'UNMAPPED_ERROR',
+                message: e.message,
+                ...(e.stack !== undefined ? { stack: e.stack } : {}),
+              }
+            : { code: 'UNMAPPED_ERROR', message: String(e) },
+      });
       return errorResponse(c, 'TRANSACTION_FAILED', 'Internal failure', 500, correlationId);
     }
   });

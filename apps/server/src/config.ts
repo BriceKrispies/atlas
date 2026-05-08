@@ -18,6 +18,7 @@
  * - WORKER_MODE                       `inline` | `async` (default `inline`)
  */
 
+import type { AtlasEnvironment } from '@atlas/platform-core';
 import {
   envBool,
   envOr,
@@ -62,6 +63,11 @@ export interface AppConfig {
   testAuth: TestAuthConfig;
   tenantId: string;
   rustLog: string;
+  /**
+   * Atlas environment for log/audit emission. Read from ATLAS_ENVIRONMENT
+   * (preferred), falling back to NODE_ENV, defaulting to 'development'.
+   */
+  environment: AtlasEnvironment;
   /**
    * Which `PolicyEngine` adapter to wire at boot.
    *
@@ -130,6 +136,22 @@ export interface SmtpConfig {
   port: number;
   /** RFC-5322 From address used for every outbound message. */
   from: string;
+}
+
+function inferEnvironment(): AtlasEnvironment {
+  const explicit = process.env['ATLAS_ENVIRONMENT'];
+  if (
+    explicit === 'development' ||
+    explicit === 'staging' ||
+    explicit === 'production' ||
+    explicit === 'test'
+  ) {
+    return explicit;
+  }
+  const nodeEnv = process.env['NODE_ENV'];
+  if (nodeEnv === 'production') return 'production';
+  if (nodeEnv === 'test') return 'test';
+  return 'development';
 }
 
 export function loadConfig(): AppConfig {
@@ -240,6 +262,7 @@ export function loadConfig(): AppConfig {
     testAuth: { enabled: testAuthEnabled, debugEndpoints },
     tenantId,
     rustLog,
+    environment: inferEnvironment(),
     policyEngine,
     workerMode,
     insecureCookies,

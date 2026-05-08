@@ -40,6 +40,10 @@ import {
   getMembershipEntity,
   type IdentityQueryDeps,
 } from '@atlas/identity';
+import {
+  repositoryDispatcher,
+  repositoryHandlerRegistry,
+} from '@atlas/repository';
 import { policyCacheDispatcher } from '@atlas/adapter-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapter-policy-cedar';
 import type {
@@ -49,10 +53,13 @@ import type {
 import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import type { PolicyEngine } from '@atlas/ports';
 import type { Principal } from '@atlas/platform-core';
+import { createSystemContext } from '@atlas/logging';
 import {
   ensureTenantMigrated,
   entityStoreFor,
   relationStoreFor,
+  repositoryRevisionStoreFor,
+  repositoryStoreFor,
   type AppState,
 } from '../bootstrap.ts';
 import { serverEventDispatcher } from '../events/dispatcher.ts';
@@ -75,24 +82,30 @@ let asyncDispatchSkipLogged = false;
  * the first time it's invoked process-wide.
  */
 function buildAsyncNoopDispatch(
+  state: AppState,
   tenantId: string,
   correlationId: string,
 ): EventDispatcher {
   return async (envelope) => {
     if (!asyncDispatchSkipLogged) {
       asyncDispatchSkipLogged = true;
-      console.log(
-        JSON.stringify({
-          event: 'worker.dispatch.skipped',
+      const ctx = createSystemContext({
+        pipeline: state.logPipeline,
+        environment: state.config.environment,
+        tenantId,
+        moduleId: '@atlas/server',
+        correlationId,
+      });
+      ctx.logger.info('worker dispatch skipped (async mode)', {
+        event: 'Worker.Dispatch.Skipped',
+        properties: {
           mode: 'async',
           reason:
             'WORKER_MODE=async — inline dispatch is a no-op; projection-worker drains the event store',
-          tenantId,
-          correlationId,
           firstEventType: envelope.eventType,
           firstEventId: envelope.eventId,
-        }),
-      );
+        },
+      });
     }
   };
 }
@@ -141,6 +154,11 @@ export async function buildRequestBundle(
   // rest of this bundle. Dispatcher + query deps share these instances.
   const entities = entityStoreFor(sql, state);
   const relations = relationStoreFor(sql);
+  // Code platform / `repository` domain. Metadata + bytes split per-port
+  // so the bytes side can migrate to object-storage later without
+  // disturbing the metadata surface.
+  const repositories = repositoryStoreFor(sql);
+  const revisions = repositoryRevisionStoreFor(sql);
 
   // Identity enrichment — resolve User by JWT subject, Membership by
   // (tenantId, userId), then layer roles + attributes onto the
@@ -156,12 +174,33 @@ export async function buildRequestBundle(
   const enrichedPrincipal = await enrichPrincipal(principal, entities);
 
   const policyStore = new PostgresPolicyStore(state.controlPlaneSql);
-  const handlers = composeRegistries(
+  const baseHandlers = composeRegistries(
     catalogHandlerRegistry(),
     authzHandlerRegistry(policyStore),
     contentPagesHandlerRegistry(entities),
     identityHandlerRegistry(entities),
+    repositoryHandlerRegistry(),
   );
+  // The repository handlers expect `repositories` + `repositoryRevisions`
+  // on the `IntentHandlerContext`, which the canonical
+  // `IntentHandlerContext` shape (in `@atlas/ports`) does not currently
+  // carry. The handler registry header (modules/repository/src/handlers/
+  // index.ts) calls this out as a wiring-layer responsibility — narrow
+  // the gap here by wrapping the resolved handler so the per-request
+  // stores are injected onto the context before dispatch.
+  const handlers: typeof baseHandlers = {
+    get(actionId: string) {
+      const inner = baseHandlers.get(actionId);
+      if (!inner) return undefined;
+      if (!actionId.startsWith('Repository.')) return inner;
+      return {
+        async handle(ctx, envelope) {
+          const extended = { ...ctx, repositories, revisions };
+          return inner.handle(extended, envelope);
+        },
+      };
+    },
+  };
 
   // Cedar-engine bundle-cache invalidation for `Tenant:{tenantId}` tags
   // emitted by activate / archive. Wiring is lazy: only the cedar engine
@@ -207,6 +246,11 @@ export async function buildRequestBundle(
       ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
     }),
     identityDispatcher({ entities, relations, cache }),
+    // Code / repository — projection rebuilds for `Repository.Created`
+    // and `Repository.Uploaded`. Runs after identity (per-domain
+    // ordering) and BEFORE `cacheTagDispatcher` so the cache-tag
+    // dispatcher can pick up tags emitted by repository projections.
+    repositoryDispatcher({ repositories, revisions, cache }),
     cacheTagDispatcher(cache),
     policyBundle ? policyCacheDispatcher(policyBundle) : null,
     // Fan freshly-dispatched events out to SSE/WS subscribers. Runs
@@ -219,7 +263,7 @@ export async function buildRequestBundle(
 
   const dispatch: EventDispatcher =
     state.config.workerMode === 'async'
-      ? buildAsyncNoopDispatch(principal.tenantId, correlationId)
+      ? buildAsyncNoopDispatch(state, principal.tenantId, correlationId)
       : inlineDispatch;
 
   const ingress: IngressState = {
