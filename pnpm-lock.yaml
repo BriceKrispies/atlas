@@ -276,6 +276,9 @@ importers:
       '@atlas/content-pages':
         specifier: workspace:*
         version: link:../../modules/content-pages
+      '@atlas/identity':
+        specifier: workspace:*
+        version: link:../../modules/identity
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../../packages/platform-core
@@ -593,6 +596,19 @@ importers:
       '@atlas/ports':
         specifier: workspace:*
         version: link:../../ports
+
+  packages/logging:
+    dependencies:
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../platform-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.17
+        version: 22.19.17
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(vite@6.4.2(@types/node@22.19.17)(jiti@2.6.1)(tsx@4.21.0))
 
   packages/metrics:
     devDependencies:

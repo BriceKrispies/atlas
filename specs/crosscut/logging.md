@@ -4,7 +4,21 @@ Every log line emitted from Atlas production code (apps, modules, adapters, pack
 
 The contract exists so logs are **machine-grepable, low-cardinality, and useful in incident response**. Sloppy logs (free-form strings, missing correlationId, swallowed errors) cost more during an outage than they save during development. They are not allowed.
 
-This contract will be audited periodically by the [`observability-architect`](../../.claude/agents/observability-architect.md) agent (when it lands) reviewing the last week of commits. Findings link back to specific clauses below.
+This contract is audited by the [`observability-architect`](../../.claude/agents/observability-architect.md) agent reviewing the last week of commits. Findings link back to specific clauses below.
+
+## How logs are emitted — context-first
+
+Logs in Atlas are emitted via `ctx.logger.<level>(message, fields?)` where `ctx` is an [`AtlasExecutionContext`](execution-context.md). There is no top-level `createLogger` factory — by design. The context carries every reserved field (correlationId, tenantId, principalId, etc.) and stamps them automatically; callers do NOT pass these on every log call.
+
+Build a context at every boundary:
+
+- HTTP request: `createRootContext({ pipeline, tenantId, principalId, environment, incomingCorrelationId, requestId })`
+- Worker / event handler: `createRootContext({ ..., incomingCorrelationId: envelope.correlationId, causationId: envelope.eventId })`
+- Scheduled / system work: `createSystemContext({ pipeline, environment, ... })`
+
+Inheritance is immutable: `ctx.withModule('catalog').withAction('Catalog.Seed.Apply').withResource('SeedPackage', 'pkg-42')` returns a new context. correlationId / traceId / tenantId are immutable across `.with*()` calls — they identify the whole flow.
+
+Implementation lives in [`@atlas/logging`](../../packages/logging/). Type contracts live in [`@atlas/platform-core`](../../packages/platform-core/) so domain code can reference them without a logging-package dep.
 
 ## Format
 
@@ -51,8 +65,21 @@ Every log line MUST carry these fields:
 - **`info`** — normal operations the operator should see. Low-to-moderate cardinality. Examples: "request received", "deploy started", "deploy completed", "tenant signup", "module dispatched event". One per business action; not one per code branch.
 - **`warn`** — degraded but recoverable state. Action may be needed soon but the system is still functioning. Examples: "cache miss falling back to DB", "retry triggered", "deprecated API used", "config field missing, using default". Always with a `cause`.
 - **`error`** — handler failure, unhandled exception, dependency unreachable, contract violation. The user-facing operation has failed or is at risk of failing. Always with `cause` AND `error.code`. Stack trace included when the source is an unhandled exception.
+- **`fatal`** — unrecoverable; the process is about to exit. Reserved for boot failure, OOM detection, control-plane DB unreachable at startup. `ctx.logger.fatal(...)` forces a **synchronous flush of every sink before returning**, so the line cannot be lost on imminent process death. Bypasses level filtering — fatal always emits regardless of overrides.
 
-A log line's level is a **promise to the operator** about how alarmed to be. Inflating warns into errors trains the operator to ignore errors; inflating errors into warns hides real failures.
+A log line's level is a **promise to the operator** about how alarmed to be. Inflating warns into errors trains the operator to ignore errors; inflating errors into warns hides real failures. `fatal` is for "this process is dying" — every other case is `error`.
+
+## Level overrides — runtime control
+
+The active level is resolved per emission via a `LevelController`. Precedence (highest to lowest):
+
+1. **correlation override** — `setCorrelation(id, level)` flips a single flow's verbosity for live debugging
+2. **tenant override** — `setTenant(id, level)` debugs one tenant without polluting others
+3. **module override** — `setModule(id, level)` (e.g. catalog noisier than identity)
+4. **global level** — process-wide
+5. **default** — compile-time fallback
+
+`InMemoryLevelController` ships in `@atlas/logging`. The interface is portable; future ports back overrides with the control plane (so atlasctl operators can adjust without restarts).
 
 ## Event taxonomy
 
@@ -93,13 +120,21 @@ One canonical event name per (Domain, Verb, Outcome) tuple. Don't introduce vari
 
 ## Tooling
 
-Atlas does not yet have a canonical logger; this is a known gap. The implementation PR for this contract should land:
+The canonical logger ships in [`@atlas/logging`](../../packages/logging/) — context-first, zero runtime deps, non-blocking via setImmediate-batched async drain. Type contracts (Logger, LogEvent, LogLevel, AtlasExecutionContext) live in [`@atlas/platform-core`](../../packages/platform-core/) so domain code can reference them without a logging-package dep.
 
-- A `@atlas/logging` package (new, lightweight) exporting a structured logger with one method per level. Output: line-delimited JSON to stdout.
-- An ESLint rule (or grep guard wired into CI) that fails on `console.log` / `console.error` in production paths (`apps/server/src/`, `modules/`, `adapters/`, `packages/` excluding test files).
-- A migration plan for the existing pretty-printed `console.log`s in `apps/server/src/main.ts` and elsewhere — they're contract violations today and need to be replaced.
+Sinks shipping in `@atlas/logging`:
 
-Until the logger lands, **new code MUST be written as if the logger exists** — i.e., emit structured objects via a TODO-marked stand-in, not free-form `console.log`. The observability-architect agent will flag any new free-form logs added after this contract lands.
+- `ConsoleJsonSink` — production stdout sink with overflow policy (drop oldest debug first; never drop warn/error/fatal; tracked drop counts; throttled overflow meta-log).
+- `MemoryRingBufferSink` — bounded ring (default 5000 events) for atlasctl inspection by correlationId.
+- `CollectorSink` — synchronous, unbounded; tests only.
+
+Still needed (separate slices):
+
+- Wire `apps/server` and `apps/projection-worker` to the new package. Until that lands, existing `console.log` calls in those apps remain contract violations — flagged by `observability-architect`, migration is follow-up work.
+- An ESLint rule (or CI grep guard) that fails on `console.log` / `console.error` in production paths (`apps/server/src/`, `modules/`, `adapters/`, `packages/` excluding test files).
+- atlasctl operator commands for runtime level control (`atlasctl logging set --module identity debug`).
+
+New code in any package MUST use `ctx.logger.*(...)` — the observability-architect agent will flag direct `console.*` usage in production paths.
 
 ## Happy / sad path examples
 
@@ -132,12 +167,22 @@ Until the logger lands, **new code MUST be written as if the logger exists** —
 | `{"level":"info","msg":"failed: " + err.message}` (no error caught structurally) | Free-form interpolation; no `cause`, no `error.code`. |
 | `try { ... } catch (e) { /* ignore */ }` | Silent swallow. |
 
+## Audit vs logging — they are different streams
+
+Operational logging (this contract) is **not audit logging**. They serve different consumers and have different durability / compliance demands:
+
+- **Operational logs** — stdout JSON, observability-architect-audited, used by operators during incidents. Best-effort delivery; debug/info may be dropped under buffer pressure. Stored / shipped per ops policy.
+- **Audit events** — durable, compliance-grade record of who did what to which resource. Stored in the event store (or a dedicated audit table). Never dropped. Cryptographic-integrity-friendly. See [`events.md`](events.md) and [`specs/domains/audit/`](../domains/audit/).
+
+Both share the `AtlasExecutionContext` (so the same correlationId / principalId / actionId / resourceId is on both streams) and the `Domain.Verb.Outcome` event-name taxonomy. They do NOT share a channel — operational logging never substitutes for audit and vice versa.
+
+If a piece of code needs to be remembered for compliance / forensics, it emits an audit event. If it needs to be observable by an operator, it emits a log. Most security-relevant actions emit both.
+
 ## Out of scope for this contract
 
 - **Log shipping.** Where logs go after stdout (Loki, ELK, vector.dev, journald) is an operational concern. Separate spec when ops design lands.
 - **Log retention / sampling.** Same — operational concern.
-- **Distributed tracing (OpenTelemetry).** Adjacent: `correlationId` is tracing-flavored but Atlas does not currently emit OTLP spans. Tracing gets its own contract when it lands.
-- **Audit events.** The structured business events that go to `audit_events` are a separate stream (see [`events.md`](events.md) and [`specs/domains/audit/`](../domains/audit/)). They share the event-name taxonomy with logs but their channel is the event store, not stdout.
+- **Distributed tracing (OpenTelemetry).** Adjacent: `correlationId` doubles as `traceId` today, and `spanId` is generated locally. Tracing gets its own contract when an OTLP adapter lands; the LogEvent schema fields are already shaped to receive real OTEL values.
 - **Metrics.** `@atlas/metrics` and Prometheus emissions are governed separately. The observability-architect's audit notes metric gaps where they obviously parallel logged events, but the metrics contract is its own document (forthcoming).
 
 ## Cross-references

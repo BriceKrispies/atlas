@@ -64,6 +64,16 @@ export {
   forbidInStrict,
 } from './env.ts';
 
+// Logging / execution-context primitives. Interfaces only — the
+// implementation lives in @atlas/logging. Per specs/crosscut/logging.md.
+export type { LogLevel, LogEvent, LogEventError } from './log-event.ts';
+export type { Logger, LogFields } from './logger.ts';
+export type {
+  AtlasEnvironment,
+  AtlasExecutionContext,
+  AtlasExecutionContextPatch,
+} from './execution-context.ts';
+
 export type {
   ModuleManifest,
   ActionDeclaration,
