@@ -155,7 +155,7 @@ This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a de
 | **Spine** | audit | [`specs/domains/audit/`](specs/domains/audit/) |
 | **Spine** | observability | [`specs/domains/observability/`](specs/domains/observability/) |
 | **Spine** | search | [`specs/domains/search/`](specs/domains/search/) |
-| **Compute** | cluster | [`specs/domains/compute/cluster/`](specs/domains/compute/cluster/) *(stub, to be created)* |
+| **Compute** | cluster | [`specs/domains/compute/cluster/`](specs/domains/compute/cluster/) |
 | **Compute** | runtime | [`specs/domains/compute/runtime/`](specs/domains/compute/runtime/) *(stub, to be created)* |
 | **Compute** | image-build | [`specs/domains/compute/image-build/`](specs/domains/compute/image-build/) *(stub, to be created)* |
 | **Compute** | ingress | [`specs/domains/compute/ingress/`](specs/domains/compute/ingress/) *(stub, to be created)* |
