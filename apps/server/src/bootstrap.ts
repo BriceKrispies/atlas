@@ -63,7 +63,11 @@ import type { ModuleManifest } from '@atlas/adapter-policy-cedar';
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
-import type { LevelController, LogPipeline } from '@atlas/logging';
+import type {
+  LevelController,
+  LogPipeline,
+  MemoryRingBufferSink,
+} from '@atlas/logging';
 import type { AppConfig } from './config.ts';
 import { ServerEventBroadcast } from './events/broadcast.ts';
 
@@ -80,9 +84,16 @@ export interface AppState {
   /**
    * Runtime log-level controller. Resolution precedence:
    * correlation > tenant > module > global > default. Mutated by atlasctl
-   * via the admin/logging routes (PR 3).
+   * via the admin/logging routes.
    */
   readonly levelController: LevelController;
+  /**
+   * Bounded ring buffer of recent LogEvents, queryable by correlationId.
+   * Used by the admin/logging/correlation/:id/recent route for
+   * incident-time inspection. Lifetime: process. Lost on restart;
+   * persistent inspection is a future capability.
+   */
+  readonly inspectionSink: MemoryRingBufferSink;
   readonly controlPlaneSql: postgres.Sql;
   readonly tenantDb: PostgresTenantDbProvider;
   readonly controlPlaneRegistry: PostgresControlPlaneRegistry;
@@ -163,6 +174,8 @@ export interface BootstrapDeps {
   /** Built before bootstrap by main.ts so the very first boot log has structure. */
   readonly logPipeline: LogPipeline;
   readonly levelController: LevelController;
+  /** Typed reference to the in-pipeline ring buffer; used by admin-logging inspection. */
+  readonly inspectionSink: MemoryRingBufferSink;
   /** System ctx for boot-time logs. */
   readonly bootCtx: AtlasExecutionContext;
 }
@@ -284,6 +297,7 @@ export async function bootstrap(
     config,
     logPipeline: deps.logPipeline,
     levelController: deps.levelController,
+    inspectionSink: deps.inspectionSink,
     controlPlaneSql,
     tenantDb,
     controlPlaneRegistry,

@@ -18,6 +18,12 @@ import { runValidate } from './commands/intents/validate.ts';
 import { runSubmit } from './commands/intents/submit.ts';
 import { runPush } from './commands/push.ts';
 import { runRepoList, runRepoShow, runRepoDownload } from './commands/repo.ts';
+import {
+  runLoggingClear,
+  runLoggingInspect,
+  runLoggingLevels,
+  runLoggingSet,
+} from './commands/logging.ts';
 import type { OutputFlags } from './output.ts';
 import type { ClientOptions } from './client.ts';
 
@@ -247,8 +253,199 @@ async function main(argv: string[]): Promise<number> {
       },
     );
 
+  // Runtime logging-level control + inspection.
+  // See specs/crosscut/logging.md for override-precedence rules
+  // (correlation > tenant > module > global > default).
+  const logging = program
+    .command('logging')
+    .description('runtime log-level control and recent-event inspection');
+
+  logging
+    .command('levels')
+    .description('print the current logging levels (default + global + per-{module,tenant,correlation} overrides)')
+    .action(async () => {
+      try {
+        const client = buildClient(opts());
+        exitCode = await runLoggingLevels(client, flags(opts()));
+      } catch (e) {
+        printSetupError(e, flags(opts()).json);
+        exitCode = 2;
+      }
+    });
+
+  logging
+    .command('set <level>')
+    .description('set a logging level. Pass exactly one scope flag: --global, --module <id>, --tenant <id>, --correlation <id>')
+    .option('--global', 'set the process-wide global level')
+    .option('--module <id>', 'set the level for one module')
+    .option('--tenant <id>', 'set the level for one tenant')
+    .option('--correlation <id>', 'set the level for one correlationId (debug a single flow)')
+    .action(
+      async (
+        level: string,
+        scopeOpts: {
+          global?: boolean;
+          module?: string;
+          tenant?: string;
+          correlation?: string;
+        },
+      ) => {
+        const scope = pickScope(scopeOpts);
+        if (scope instanceof Error) {
+          process.stderr.write(`error: ${scope.message}\n`);
+          exitCode = 2;
+          return;
+        }
+        try {
+          const client = buildClient(opts());
+          const setOpts: {
+            scope: 'global' | 'module' | 'tenant' | 'correlation';
+            scopeId?: string;
+            level: string;
+          } = { scope: scope.scope, level };
+          if (scope.scopeId !== undefined) setOpts.scopeId = scope.scopeId;
+          exitCode = await runLoggingSet(client, setOpts, flags(opts()));
+        } catch (e) {
+          printSetupError(e, flags(opts()).json);
+          exitCode = 2;
+        }
+      },
+    );
+
+  logging
+    .command('clear')
+    .description('clear an override. Pass exactly one of --module <id>, --tenant <id>, --correlation <id> (global cannot be cleared)')
+    .option('--module <id>', 'clear the module override')
+    .option('--tenant <id>', 'clear the tenant override')
+    .option('--correlation <id>', 'clear the correlation override')
+    .action(
+      async (scopeOpts: {
+        module?: string;
+        tenant?: string;
+        correlation?: string;
+      }) => {
+        const scope = pickClearScope(scopeOpts);
+        if (scope instanceof Error) {
+          process.stderr.write(`error: ${scope.message}\n`);
+          exitCode = 2;
+          return;
+        }
+        try {
+          const client = buildClient(opts());
+          exitCode = await runLoggingClear(
+            client,
+            { scope: scope.scope, scopeId: scope.scopeId },
+            flags(opts()),
+          );
+        } catch (e) {
+          printSetupError(e, flags(opts()).json);
+          exitCode = 2;
+        }
+      },
+    );
+
+  logging
+    .command('inspect <correlationId>')
+    .description('fetch recent log events for a correlationId from the in-memory ring buffer')
+    .option('--limit <n>', 'maximum number of events to return (default 200)')
+    .action(async (correlationId: string, inspectOpts: { limit?: string }) => {
+      let limit: number | undefined;
+      if (inspectOpts.limit !== undefined) {
+        const parsed = Number.parseInt(inspectOpts.limit, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          process.stderr.write(`error: invalid --limit value\n`);
+          exitCode = 2;
+          return;
+        }
+        limit = parsed;
+      }
+      try {
+        const client = buildClient(opts());
+        const inspectArgs: { correlationId: string; limit?: number } = {
+          correlationId,
+        };
+        if (limit !== undefined) inspectArgs.limit = limit;
+        exitCode = await runLoggingInspect(client, inspectArgs, flags(opts()));
+      } catch (e) {
+        printSetupError(e, flags(opts()).json);
+        exitCode = 2;
+      }
+    });
+
   await program.parseAsync(argv);
   return exitCode;
+}
+
+interface PickedScope {
+  scope: 'global' | 'module' | 'tenant' | 'correlation';
+  scopeId?: string;
+}
+
+function pickScope(o: {
+  global?: boolean;
+  module?: string;
+  tenant?: string;
+  correlation?: string;
+}): PickedScope | Error {
+  const candidates = [
+    ['global', o.global === true ? '' : null],
+    ['module', o.module ?? null],
+    ['tenant', o.tenant ?? null],
+    ['correlation', o.correlation ?? null],
+  ] as const;
+  const set = candidates.filter(([, v]) => v !== null);
+  if (set.length === 0) {
+    return new Error(
+      'one of --global, --module <id>, --tenant <id>, --correlation <id> is required',
+    );
+  }
+  if (set.length > 1) {
+    return new Error(
+      'exactly one of --global, --module, --tenant, --correlation may be set',
+    );
+  }
+  const [name, value] = set[0]!;
+  const result: PickedScope = { scope: name };
+  if (name !== 'global') {
+    if (value === null || value === '') {
+      return new Error(`--${name} requires an id`);
+    }
+    result.scopeId = value;
+  }
+  return result;
+}
+
+interface PickedClearScope {
+  scope: 'module' | 'tenant' | 'correlation';
+  scopeId: string;
+}
+
+function pickClearScope(o: {
+  module?: string;
+  tenant?: string;
+  correlation?: string;
+}): PickedClearScope | Error {
+  const candidates = [
+    ['module', o.module ?? null],
+    ['tenant', o.tenant ?? null],
+    ['correlation', o.correlation ?? null],
+  ] as const;
+  const set = candidates.filter(([, v]) => v !== null);
+  if (set.length === 0) {
+    return new Error(
+      'one of --module <id>, --tenant <id>, --correlation <id> is required',
+    );
+  }
+  if (set.length > 1) {
+    return new Error(
+      'exactly one of --module, --tenant, --correlation may be set',
+    );
+  }
+  const [name, value] = set[0]!;
+  if (value === null || value === '') {
+    return new Error(`--${name} requires an id`);
+  }
+  return { scope: name, scopeId: value };
 }
 
 function tenantFromDebugPrincipal(value: string | undefined): string | undefined {

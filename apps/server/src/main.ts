@@ -47,6 +47,7 @@ import { scimRoutes } from './routes/scim.ts';
 import { signupRoutes } from './routes/signup.ts';
 import { tenantHomeRoutes } from './routes/tenant-home.ts';
 import { adminSignupRoutes } from './routes/admin-signups.ts';
+import { adminLoggingRoutes } from './routes/admin-logging.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 import { executionContextMiddleware } from './middleware/execution-context.ts';
 
@@ -100,6 +101,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', identityA7Routes(state));
   authed.route('/', mfaRoutes(state));
   authed.route('/', adminSignupRoutes(state));
+  authed.route('/', adminLoggingRoutes(state));
   // Code platform / `repository` domain — read-side surface for the
   // `upload-tarball` capability. Writes flow through `intentRoutes`.
   authed.route('/', repositoryRoutes(state));
@@ -117,10 +119,13 @@ async function main(): Promise<void> {
   // Logging pipeline — built FIRST so every boot log goes through
   // structured channels per specs/crosscut/logging.md. Two sinks:
   // ConsoleJsonSink (stdout) and MemoryRingBufferSink (in-memory ring
-  // for atlasctl logging inspect <correlationId>; PR 3).
+  // for atlasctl logging inspect <correlationId>). Keep a typed
+  // reference to the ring so the admin-logging route can query it
+  // without iterating pipeline.sinks.
   const levelController = new InMemoryLevelController('info');
+  const inspectionSink = new MemoryRingBufferSink({ capacity: 5000 });
   const logPipeline = new LogPipeline(
-    [new ConsoleJsonSink(), new MemoryRingBufferSink({ capacity: 5000 })],
+    [new ConsoleJsonSink(), inspectionSink],
     levelController,
   );
   registerForExitFlush(logPipeline);
@@ -146,7 +151,12 @@ async function main(): Promise<void> {
 
   let state: AppState;
   try {
-    state = await bootstrap(config, { logPipeline, levelController, bootCtx });
+    state = await bootstrap(config, {
+      logPipeline,
+      levelController,
+      inspectionSink,
+      bootCtx,
+    });
     bootCtx.logger.info('bootstrap complete', { event: 'Server.Boot.Complete' });
   } catch (e) {
     bootCtx.logger.fatal('bootstrap failed', {
