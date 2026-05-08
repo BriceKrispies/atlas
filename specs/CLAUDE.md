@@ -43,6 +43,7 @@ Any spec content under retired-domain directories should be considered legacy no
 - `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
 - `crosscut/errors.md` — error taxonomy (referenced by every domain).
 - `crosscut/events.md` — event vocabulary (referenced by every domain).
+- `crosscut/logging.md` — logging contract (structured JSON, mandatory fields, levels, redaction). Audited by the `observability-architect` agent.
 
 The legacy `specs/modules/` folder is gone — all content has migrated.
 
