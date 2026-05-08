@@ -48,6 +48,7 @@ import { signupRoutes } from './routes/signup.ts';
 import { tenantHomeRoutes } from './routes/tenant-home.ts';
 import { adminSignupRoutes } from './routes/admin-signups.ts';
 import { adminLoggingRoutes } from './routes/admin-logging.ts';
+import { tenantDocsRoutes, operatorDocsRoutes } from './routes/docs.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 import { executionContextMiddleware } from './middleware/execution-context.ts';
 
@@ -86,6 +87,9 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // back to a "not registered" page for unknown hosts (including the
   // bare `localhost` apex). Mounted last so route order doesn't
   // collide with /signup or /api/v1/...
+  // Public OpenAPI tenant spec + Scalar UI at /docs.
+  // The operator counterpart is admin-gated below.
+  app.route('/', tenantDocsRoutes(state));
   app.route('/', tenantHomeRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
@@ -102,6 +106,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', mfaRoutes(state));
   authed.route('/', adminSignupRoutes(state));
   authed.route('/', adminLoggingRoutes(state));
+  authed.route('/', operatorDocsRoutes(state));
   // Code platform / `repository` domain — read-side surface for the
   // `upload-tarball` capability. Writes flow through `intentRoutes`.
   authed.route('/', repositoryRoutes(state));
