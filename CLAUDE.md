@@ -62,6 +62,7 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 | Agent | When to delegate |
 |-------|------------------|
 | [`sdet`](.claude/agents/sdet.md) | Adversarial test review — finds untested branches, cache-tag gaps, projection rebuild gaps, surface-state assertion holes; pushes back on hard-to-test designs |
+| [`observability-architect`](.claude/agents/observability-architect.md) | Adversarial logging / instrumentation audit. Reads recent commits (default last 7 days), enforces [`specs/crosscut/logging.md`](specs/crosscut/logging.md), produces findings keyed to contract clauses. Read-only; doesn't fix. Invoke periodically or on-demand. |
 
 **Typical flow for a new capability:** `spec-keeper` (scope) → relevant platform owner (design) → `module-dev` + `frontend-dev` + `port-adapter-dev` (implement) → `sdet` (adversarial review) → `architect` (invariant gate before merge).
 
