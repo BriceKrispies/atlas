@@ -19,7 +19,11 @@ implemented by an `/adapters/*` package.
 | `SearchEngine` | `search-engine.ts` | Tenant-isolated full-text index/query (I7) |
 | `ControlPlaneRegistry` | `control-plane-registry.ts` | Action schemas + validation registry |
 | `CatalogStateStore` | `catalog-state-store.ts` | Durable tenant seed-package state |
-| `RenderTreeStore` | `render-tree-store.ts` | Write-through page render-tree store |
+| `CustomDomainStore` | `custom-domain-store.ts` | Tenant custom-domain bindings |
+| `EntityStore` | `entity-store.ts` | Generic typed-entity persistence |
+| `EntityTypeRegistry` | `entity-type-registry.ts` | Registered entity types + schemas |
+| `RelationStore` | `relation-store.ts` | Typed relations between entities |
+| `WorkerSource` | `worker-source.ts` | Event/work feed for projection workers |
 | `HandlerRegistry` | `handler-registry.ts` | Intent-handler dispatch registry |
 | `PolicyEngine` | `policy-engine.ts` | Authorization decisions (permit/deny, I4) |
 | `EventDispatcher` | `dispatcher.ts` | Event-handling composition closure (see [`specs/lifecycle.md`](../specs/lifecycle.md) for usage in context) |
@@ -31,7 +35,7 @@ the port a feature depends on.
 ### Helpers exported alongside types
 
 - `composeDispatchers(...dispatchers)` — fan a single event to many handlers
-- `cacheTagDispatcher(cache)` — turn `cacheInvalidationTags` into purges (Invariant I10). Wired in `apps/server/src/middleware/state.ts:118`; full flow in [`specs/lifecycle.md`](../specs/lifecycle.md).
+- `cacheTagDispatcher(cache)` — turn `cacheInvalidationTags` into purges (Invariant I10). Wired in `apps/server/src/middleware/state.ts`; full flow in [`specs/lifecycle.md`](../specs/lifecycle.md).
 - `InMemoryAnalyticsStore` — concrete impl, fine for tests/dev only
 
 ## Conventions
@@ -45,11 +49,13 @@ the port a feature depends on.
 
 | Port | Implemented by | Consumed by |
 |------|----------------|-------------|
-| EventStore, Cache, ProjectionStore, SearchEngine, ControlPlaneRegistry, CatalogStateStore, RenderTreeStore | `@atlas/adapter-node` (Postgres), `@atlas/adapter-idb` (IndexedDB) | `apps/server`, `modules/*` |
+| EventStore, Cache, ProjectionStore, SearchEngine, CatalogStateStore, EntityStore, RelationStore, WorkerSource | `@atlas/adapter-node` (Postgres), `@atlas/adapter-idb` (IndexedDB) | `apps/server`, `modules/*` |
+| ControlPlaneRegistry | `@atlas/adapter-node` (Postgres); in-memory fallback in `@atlas/adapter-idb` | `apps/server`, `modules/*` |
+| CustomDomainStore, EntityTypeRegistry | `@atlas/adapter-node` (Postgres) | `apps/server`, `modules/*` |
 | PolicyEngine | `@atlas/adapter-policy-cedar`, `@atlas/adapter-policy-stub` | `apps/server` (bootstrap), `packages/ingress` |
 | WasmHost | `@atlas/wasm-host` (browser + node) | `modules/content-pages`, `apps/server` |
 | HandlerRegistry, EventDispatcher | composed in modules and wired in apps | `apps/server`, `packages/ingress` |
-| AnalyticsStore | InMemory (in-port) + Postgres in `@atlas/adapter-node` | `apps/server` |
+| AnalyticsStore | `InMemoryAnalyticsStore` exported from `@atlas/ports` (no adapter-backed impl yet) | `apps/server` |
 
 For adapter details see [`adapters/CLAUDE.md`](../adapters/CLAUDE.md).
 

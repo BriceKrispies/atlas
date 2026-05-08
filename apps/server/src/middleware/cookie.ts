@@ -69,18 +69,33 @@ export interface BuildSessionCookieOptions {
    * true (production HTTPS).
    */
   secure?: boolean;
+  /**
+   * Optional `Domain=` attribute. In dev the signup-confirm flow sets
+   * `.localhost` so a cookie minted on `localhost:3000` survives the
+   * redirect to `<slug>.localhost:3000`. Omitted → host-only cookie.
+   *
+   * SameSite has to be relaxed when crossing host boundaries: the 303
+   * from `/signup/confirm` to `<slug>.<apex>/` is a cross-origin
+   * navigation that `SameSite=Strict` would block. We use
+   * `SameSite=Lax` whenever a Domain is set, which still defends the
+   * common CSRF surface (POST + non-GET) but lets the redirect carry
+   * the cookie.
+   */
+  domain?: string;
 }
 
 export function buildSessionCookie(opts: BuildSessionCookieOptions): string {
   const maxAge = opts.maxAgeSeconds ?? DEFAULT_MAX_AGE_SECONDS;
   const secure = opts.secure ?? true;
+  const sameSite = opts.domain ? 'Lax' : 'Strict';
   const parts = [
     `${COOKIE_NAME}=${opts.payload}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Strict',
+    `SameSite=${sameSite}`,
     `Max-Age=${maxAge}`,
   ];
+  if (opts.domain) parts.push(`Domain=${opts.domain}`);
   if (secure) parts.push('Secure');
   return parts.join('; ');
 }

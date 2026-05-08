@@ -20,17 +20,27 @@ import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import {
   PostgresControlPlaneRegistry,
   PostgresCustomDomainStore,
+  PostgresEmailLogStore,
   PostgresEntityStore,
   PostgresEntityTypeRegistry,
   PostgresRelationStore,
+  PostgresSignupRequestStore,
   PostgresTenantDbProvider,
+  PostgresTenantStore,
+  SmtpMailer,
+  StdoutEventMailer,
+  parseTenantConnectionUrl,
   runMigrations,
 } from '@atlas/adapter-node';
 import type {
   CustomDomainStore,
+  EmailLogStore,
   EntityStore,
   EntityTypeRegistry,
+  Mailer,
   RelationStore,
+  SignupRequestStore,
+  TenantStore,
 } from '@atlas/ports';
 import { reconcileEntityIndexes, UpcasterRegistry } from '@atlas/platform-core';
 import { TenantHostCache } from './middleware/tenant-resolution.ts';
@@ -116,6 +126,17 @@ export interface AppState {
    * binary has the same limitation today.
    */
   readonly serverEvents: ServerEventBroadcast;
+  /**
+   * First-vertical-slice surfaces. `signupRequests` and `tenants` are
+   * control-plane-scoped writers used by the public signup → admin
+   * approval flow (`routes/signup.ts`, `routes/admin-signups.ts`).
+   * `mailer` dispatches the magic-link email; `emailLog` is the read
+   * side that the in-app mailbox panel will tail in PR4/PR5.
+   */
+  readonly signupRequests: SignupRequestStore;
+  readonly tenants: TenantStore;
+  readonly mailer: Mailer;
+  readonly emailLog: EmailLogStore;
 }
 
 export async function bootstrap(config: AppConfig): Promise<AppState> {
@@ -127,7 +148,14 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
   // Apply control-plane schema migrations. Idempotent; re-runs are no-ops.
   await runMigrations(controlPlaneSql, 'control-plane');
 
-  const tenantDb = new PostgresTenantDbProvider(controlPlaneSql);
+  // In dev/sim every tenant shares the control-plane physical DB —
+  // tenant isolation is enforced at the `tenant_id` column level on
+  // the substrate tables (entities, relations, events). Production
+  // wiring populates per-tenant `db_*` columns and leaves the
+  // fallback unset so a missing column throws.
+  const tenantDb = new PostgresTenantDbProvider(controlPlaneSql, {
+    defaultConnectionInfo: parseTenantConnectionUrl(config.controlPlaneDbUrl),
+  });
   const controlPlaneRegistry = new PostgresControlPlaneRegistry(controlPlaneSql);
   const customDomains = new PostgresCustomDomainStore(controlPlaneSql);
   const customDomainCache = new TenantHostCache();
@@ -185,6 +213,39 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
   // semantics are equivalent across runtimes.
   const serverEvents = new ServerEventBroadcast(256);
 
+  // First-vertical-slice surfaces (signup → approve → magic link).
+  const signupRequests = new PostgresSignupRequestStore(controlPlaneSql);
+  const tenants = new PostgresTenantStore(controlPlaneSql);
+  const emailLog = new PostgresEmailLogStore(controlPlaneSql);
+  let mailer: Mailer;
+  switch (config.mailerMode) {
+    case 'noop':
+      mailer = {
+        send: async () => ({
+          messageId: 'noop',
+          sentAt: new Date().toISOString(),
+        }),
+      };
+      break;
+    case 'smtp': {
+      // `mailerMode === 'smtp'` is gated by config-loader to require
+      // host/port/from; the null check below mirrors that guarantee.
+      const smtp = config.smtp;
+      if (!smtp) {
+        throw new Error(
+          'mailerMode=smtp but no smtp config — config loader contract broken',
+        );
+      }
+      mailer = new SmtpMailer(controlPlaneSql, smtp);
+      break;
+    }
+    case 'stdout':
+    default:
+      mailer = new StdoutEventMailer(controlPlaneSql);
+      break;
+  }
+  console.log(`mailer driver: ${config.mailerMode}`);
+
   return {
     config,
     controlPlaneSql,
@@ -199,6 +260,10 @@ export async function bootstrap(config: AppConfig): Promise<AppState> {
     policyEngine,
     wasmHost,
     serverEvents,
+    signupRequests,
+    tenants,
+    mailer,
+    emailLog,
   };
 }
 

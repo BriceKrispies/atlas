@@ -17,11 +17,13 @@
     "@atlas/ports": "workspace:*",
     "@atlas/schemas": "workspace:*",
     "ajv": "^8.17.0",
+    "nodemailer": "^8.0.7",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
     "@atlas/contract-tests": "workspace:*",
     "@types/node": "^22.19.17",
+    "@types/nodemailer": "^8.0.0",
     "vitest": "^4.1.5"
   }
 }

@@ -11,7 +11,7 @@
  * instead of stamping envelope fields by hand.
  */
 
-import { backend } from './index.ts';
+import { backend } from './runtime.ts';
 
 export type PolicyStatus = 'draft' | 'active' | 'archived';
 

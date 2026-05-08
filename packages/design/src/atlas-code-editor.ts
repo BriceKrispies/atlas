@@ -1,4 +1,5 @@
 import { AtlasElement } from '@atlas/core';
+import type { CodeEditorController, CodeEditorModule } from './atlas-code-editor-types.ts';
 
 /**
  * <atlas-code-editor> — Monaco-backed code editor.
@@ -85,21 +86,12 @@ declare global {
   }
 }
 
-/**
- * Shape the impl module must export. Keeping this here (instead of in
- * the impl) means `atlas-code-editor-impl.ts` can be fully tree-shaken
- * out of any consumer that doesn't instantiate the element.
- */
-export interface CodeEditorController {
-  getValue(): string;
-  setValue(next: string): void;
-  applyAttribute(name: string, value: string | null): void;
-  dispose(): void;
-}
-
-interface CodeEditorModule {
-  mount(host: AtlasCodeEditor): CodeEditorController;
-}
+// Type contracts (CodeEditorController, CodeEditorModule) live in
+// ./atlas-code-editor-types.ts so the impl can import them without
+// pulling this file in statically. Re-exported here for backward
+// compatibility with anything that imports CodeEditorController from
+// '@atlas/design/atlas-code-editor.ts'.
+export type { CodeEditorController } from './atlas-code-editor-types.ts';
 
 let implPromise: Promise<CodeEditorModule> | null = null;
 

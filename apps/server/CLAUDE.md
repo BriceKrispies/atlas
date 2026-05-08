@@ -15,17 +15,31 @@ src/
     correlation.ts     correlationId in/out (Invariant I5)
     errors.ts          error → HTTP response with taxonomy code
     state.ts           composes module handler registries + dispatchers per request
+    cookie.ts          cookie parsing/signing helpers
+    csrf.ts            CSRF token issue + verify (cookie-bound flows)
+    jwks-cache.ts      OIDC JWKS fetch + cache
+    role-check.ts      role guard helper for routes
+    scim-auth.ts       SCIM bearer-token auth (separate from JWT principal)
+    tenant-resolution.ts  resolves tenantId for public/cookie flows
   routes/
     health.ts          liveness/readiness; public
-    intents.ts         POST intents → handlers (authz, catalog, content-pages)
+    metrics.ts         Prometheus scrape endpoint; public
+    intents.ts         POST intents → handlers (authz, catalog, content-pages, identity)
     catalog.ts         catalog read endpoints (taxonomies, families, variants, search)
     authz.ts           policy listing
     content-pages.ts   page list, get, render-tree
     events.ts          event queries / SSE broadcast
-    debug.ts           dev-only helpers; gated by TEST_AUTH_ENABLED
+    identity.ts        public identity routes (e.g. invite-accept; token IS auth)
+    identity-a7.ts     identity A7 phase routes (impersonation / break-glass / risk)
+    identity-idp.ts    IdP-side identity wiring
+    mfa.ts             multi-factor enrolment + challenge
+    oauth.ts           OAuth 2.0 endpoints (public; auth via client credentials)
+    saml.ts            SAML 2.0 endpoints (public; ACS verifies IdP signature)
+    scim.ts            SCIM 2.0 endpoints (public mount; bearer self-validates)
+    debug.ts           dev-only helpers; gated by TEST_AUTH_ENABLED + DEBUG_AUTH_ENDPOINT_ENABLED
   events/
     broadcast.ts       SSE / push channel
-    dispatcher.ts      composes module dispatchers
+    dispatcher.ts      `serverEventDispatcher` — fans events to SSE subscribers
 ```
 
 ## Request Lifecycle (summary)
@@ -38,19 +52,20 @@ inside this app:
 - **Query** (GET `/...`): `routes/<name>.ts` → tenant-scoped bundle → `evaluateRead` (when applicable) → module query function → `ProjectionStore.get(tenant-scoped key)` → JSON.
 
 The dispatcher chain is assembled per-request in
-`src/middleware/state.ts:118-134`:
+`src/middleware/state.ts` (search for `composeDispatchers`):
 
 ```
 catalogDispatcher
   → contentPagesDispatcher
+  → identityDispatcher
   → cacheTagDispatcher(cache)         ← invalidates by event.cacheInvalidationTags
-  → policyCacheDispatcher (cedar)     ← conditional
+  → policyCacheDispatcher (cedar)     ← conditional (only when engine is cedar)
   → serverEventDispatcher(broadcast)  ← SSE fanout, runs last
 ```
 
 The chain runs in one of two places depending on `WORKER_MODE`:
 
-- `WORKER_MODE=inline` (default) — `apps/server/src/middleware/state.ts:161` builds the chain and `state.dispatch` runs it synchronously in-request before 202 returns
+- `WORKER_MODE=inline` (default) — `state.ts` builds the chain and `state.dispatch` runs it synchronously in-request before 202 returns
 - `WORKER_MODE=async` — `state.dispatch` is a no-op; the projection-worker (`apps/projection-worker/`) drains the event store and runs the same chain composition out-of-band
 
 Both modes use the **same composition** — when adding a dispatcher,
@@ -65,8 +80,8 @@ Full design + migration phases: [`specs/worker.md`](../../specs/worker.md).
 1. `main.ts` calls `loadConfig()` → typed `AppConfig`
 2. `bootstrap.ts` runs: Postgres pools, migration runner, JWKS remote, adapter instantiation (node + policy-cedar/stub), `AppState` assembled
 3. `main.ts` builds the Hono app:
-   - Public group: `/health`, `/metrics` (no auth)
-   - Authed group: `app.use('*', principalMiddleware(state))` then route registrations
+   - Public group (no `principalMiddleware`): `health`, `metrics`, `identity` (invite-accept — token IS the auth), `oauth` (client_id/secret on body), `scim` (SCIM bearer self-validates), `saml` (ACS verifies IdP signature)
+   - Authed group: `app.use('*', principalMiddleware(state))` then `intents`, `catalog`, `authz`, `content-pages`, `events`, `identity-authed`, `identity-idp`, `identity-a7`, `mfa` (and `debug` when `testAuth.enabled` + `debugEndpoints`)
 4. SIGINT / SIGTERM → graceful shutdown, drain pools
 
 ## Routes
@@ -97,8 +112,10 @@ downstream handlers can read it without re-parsing.
 ## Per-request Module Wiring
 
 `middleware/state.ts` composes the handler registries and dispatchers for the
-three modules (authz, catalog, content-pages) into a single per-request
-context. Tenant-scoped adapter instances come from
+four modules (authz, catalog, content-pages, identity) into a single per-request
+context. The principal is also enriched here (roles + ABAC attributes from
+`User`/`Membership` lookups against the per-tenant entity store) before being
+threaded into `IngressState`. Tenant-scoped adapter instances come from
 `@atlas/adapter-node`'s `TenantDbProvider` (LRU pool, resolves a `tenantId` to a
 Postgres pool).
 
@@ -106,12 +123,15 @@ Postgres pool).
 
 | Var | Purpose |
 |-----|---------|
-| `CONTROL_PLANE_DB_URL` | Postgres for the control plane |
-| `OIDC_ISSUER_URL` / `OIDC_JWKS_URL` | OIDC JWT validation |
+| `CONTROL_PLANE_DB_URL` | Postgres for the control plane (required) |
+| `OIDC_ISSUER_URL` / `OIDC_JWKS_URL` / `OIDC_AUDIENCE` | OIDC JWT validation; the full triplet is required in strict mode (test-auth OFF). In test-auth mode `OIDC_AUDIENCE` defaults to `account`. |
 | `TEST_AUTH_ENABLED` | When `true`, allow `X-Debug-Principal`. **Never in prod.** |
-| `TENANT_ID` | Forbidden in `strict` mode; dev-only convenience |
-| `INGRESS_PORT` | HTTP port (default 3000) |
-| `POLICY_ENGINE` | `cedar` or `stub` (selects which `PolicyEngine` adapter is wired) |
+| `DEBUG_AUTH_ENDPOINT_ENABLED` | Gates `/debug/*` routes (in addition to `TEST_AUTH_ENABLED`). |
+| `TENANT_ID` | Forbidden in strict mode; dev-only fallback (`dev-tenant`). |
+| `INGRESS_PORT` (or `PORT`) | HTTP port (default 3000) |
+| `POLICY_ENGINE` | `cedar` or `stub` — default `stub` |
+| `WORKER_MODE` | `inline` (default) or `async` — see dispatcher chain section + [`specs/worker.md`](../../specs/worker.md) |
+| `RUST_LOG` | Logged on boot for parity with the legacy ingress (no-op otherwise) |
 
 `config.ts` is the source of truth — `loadConfig()` is the only sanctioned
 reader.

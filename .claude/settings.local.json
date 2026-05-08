@@ -150,7 +150,20 @@
       "Bash(SAFE_PNPM_TIMEOUT_MS=3000 pnpm safe exec tsx -e \"setTimeout\\(_=>0,60000\\)\")",
       "Bash(SAFE_PNPM_TIMEOUT_MS=3000 SAFE_PNPM_KILL_GRACE_MS=1000 pnpm safe exec tsx scripts/_safe-pnpm-test-sleep.ts)",
       "Bash(SAFE_PNPM_TIMEOUT_MS=120000 pnpm safe lint)",
-      "Bash(SAFE_PNPM_TIMEOUT_MS=180000 pnpm safe test)"
+      "Bash(SAFE_PNPM_TIMEOUT_MS=180000 pnpm safe test)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=120000 pnpm safe test)",
+      "Bash(pnpm --filter @atlas/server test --pool=threads)",
+      "Bash(pnpm --filter @atlas/server test --pool=threads -t \"without principal\")",
+      "Bash(pnpm --filter @atlas/server test --pool=threads -t \"by non-operator\")",
+      "Bash(pnpm --filter @atlas/server test --pool=threads identity-a7)",
+      "Bash(BDD_TAGS=@phase-a1,@phase-a2 pnpm vitest run modules/identity/test/bdd --pool=threads --reporter=verbose)",
+      "Bash(git *)",
+      "Bash(pnpm safe *)",
+      "Bash(make db-status *)",
+      "Bash(CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane TEST_AUTH_ENABLED=true INSECURE_COOKIES=true COOKIE_DOMAIN=.localhost TENANT_APEX=localhost MAILER_MODE=stdout INGRESS_PORT=3000 pnpm *)",
+      "Bash(make db-reset *)",
+      "Bash(pnpm deps:check *)",
+      "Bash(pnpm smtp:up)"
     ]
   }
 }

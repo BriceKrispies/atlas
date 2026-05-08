@@ -9,8 +9,8 @@ adapter packages directly — apps wire concrete adapters at boot.
 
 | Adapter | Package | Implements | Use |
 |---------|---------|------------|-----|
-| **`node/`** | `@atlas/adapter-node` | EventStore, Cache, ProjectionStore, SearchEngine, ControlPlaneRegistry, CatalogStateStore, RenderTreeStore, AnalyticsStore | Production server (Postgres-backed, multi-tenant) |
-| **`idb/`** | `@atlas/adapter-idb` | EventStore, Cache, ProjectionStore, SearchEngine, ControlPlaneRegistry, CatalogStateStore, RenderTreeStore | Browser / sim runtime (IndexedDB) |
+| **`node/`** | `@atlas/adapter-node` | EventStore, Cache, ProjectionStore, SearchEngine, ControlPlaneRegistry, CatalogStateStore, CustomDomainStore, EntityStore, EntityTypeRegistry, RelationStore, WorkerSource, PolicyStore | Production server (Postgres-backed, multi-tenant) |
+| **`idb/`** | `@atlas/adapter-idb` | EventStore, Cache, ProjectionStore, SearchEngine, CatalogStateStore, EntityStore, RelationStore, WorkerSource (+ in-memory ControlPlaneRegistry) | Browser / sim runtime (IndexedDB) |
 | **`policy-cedar/`** | `@atlas/adapter-policy-cedar` | PolicyEngine | Cedar policy engine — production authz |
 | **`policy-stub/`** | `@atlas/adapter-policy-stub` | PolicyEngine | Allow-all stub for tests + dev defaults |
 
@@ -23,7 +23,7 @@ adapter packages directly — apps wire concrete adapters at boot.
 - Entry: `src/index.ts` — exports every `Postgres*` class
 - Migrations: `src/migrations/runner.ts` (also exported via `./migrations` subpath)
 - Multi-tenancy: `src/tenant-db-provider.ts` — LRU pool, resolves tenant → connection
-- Per-port impls: `event-store.ts`, `cache.ts`, `projection-store.ts`, `search-engine.ts`, `control-plane-registry.ts`, `catalog-state-store.ts`, `render-tree-store.ts`
+- Per-port impls: `event-store.ts`, `cache.ts`, `projection-store.ts`, `search-engine.ts`, `control-plane-registry.ts`, `catalog-state-store.ts`, `custom-domain-store.ts`, `entity-store.ts`, `entity-type-registry.ts`, `relation-store.ts`, `worker-source.ts`, `policy-store.ts`
 - Migration files: `src/migrations/{control-plane,tenant}/*.sql`
 - Bootstrap: `src/migrations/seed.ts` seeds the control-plane
 
@@ -40,6 +40,7 @@ adapter packages directly — apps wire concrete adapters at boot.
 - Schema: `src/schema-generator.ts` (action manifest → Cedar schema)
 - Audit: `src/audit-emitter.ts` (decision logging)
 - Cache invalidation: `src/cache-invalidation.ts`
+- Entity-store helper: `src/entity-store.ts`
 - CLI: `bin/cedar-check.ts` — schema validation tool (`pnpm cedar:check`)
 
 ### `@atlas/adapter-policy-stub`

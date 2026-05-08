@@ -10,7 +10,7 @@ UI shell.
 |-----|------|---------|----------|
 | **`server/`** — `@atlas/server` | Node + Hono | Production HTTP ingress; intents, catalog, authz, content-pages, events. **Read [`server/CLAUDE.md`](server/CLAUDE.md).** | 3000 |
 | **`projection-worker/`** — `@atlas/projection-worker` | Node | Polls event store, runs projections + cache invalidation | — |
-| **`atlasctl/`** — `@atlas/atlasctl` | Node CLI | Operator/controller HTTP client. Phase A: `--version`, `health`, `intents validate/submit`. Spec: [`specs/crosscut/atlasctl.md`](../specs/crosscut/atlasctl.md). Run via `pnpm -w atlasctl ...` (`-w` runs the script from the workspace root regardless of cwd). | — |
+| **`atlasctl/`** — `@atlas/atlasctl` | Node CLI | Operator/controller HTTP client. Phase A: `--version`, `health`, `intents validate/submit`. Spec: [`specs/crosscut/atlasctl.md`](../specs/crosscut/atlasctl.md). Run via `pnpm atlasctl ...` from repo root (or `pnpm -w atlasctl ...` from a subdir). | — |
 | **`admin/`** — `@atlas/admin` | Vite SPA | Admin shell: pages list, authz policy editor | 5173 (or 5199 in `playwright.config.ts`) |
 | **`authoring/`** — `@atlas/authoring` | Vite SPA | Page-template editor, block editor, layout editor, gallery | 5181 |
 | **`sandbox/`** — `@atlas/sandbox` | Vite SPA | Specimen gallery + registry inspection for design / widgets | 5180 |

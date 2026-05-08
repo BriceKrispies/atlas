@@ -21,7 +21,7 @@ import { AtlasElement } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import '@atlas/design';
 import { CATEGORIES, type Category } from './registry/index.ts';
-import type { ResolvedSpecimen } from './sandbox-app.ts';
+import type { ResolvedSpecimen } from './specimen-types.ts';
 
 const styles = `
   :host {

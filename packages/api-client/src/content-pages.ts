@@ -10,7 +10,7 @@
  * mirrors the payload shape.
  */
 
-import { backend } from './index.ts';
+import { backend } from './runtime.ts';
 
 export type PageStatus = 'draft' | 'published' | 'archived';
 

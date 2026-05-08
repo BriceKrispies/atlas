@@ -8,6 +8,19 @@ import {
   type Category,
   type Status,
 } from './registry/index.ts';
+import type {
+  Specimen,
+  ResolvedSpecimen,
+  SpecimenVariant,
+  SpecimenConfigVariant,
+} from './specimen-types.ts';
+export type {
+  Specimen,
+  ResolvedSpecimen,
+  SpecimenVariant,
+  SpecimenConfigVariant,
+  SpecimenMountFn,
+} from './specimen-types.ts';
 import './sidebar.ts';
 import type { AtlasSandboxSidebar } from './sidebar.ts';
 // AtlasTabBar's class is registered side-effect via '@atlas/design'; the
@@ -21,48 +34,6 @@ import type { AtlasTabBar } from '@atlas/design/atlas-tab-bar.ts';
 // root ourselves. Without this, every page template renders as a plain
 // stacked block instead of its intended grid.
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
-
-export interface SpecimenVariant {
-  name: string;
-  html: string;
-  dark?: boolean;
-}
-
-export interface SpecimenConfigVariant {
-  name: string;
-  config: Record<string, unknown>;
-  isolation?: string;
-}
-
-export type SpecimenMountFn = (
-  demoEl: HTMLElement,
-  ctx: {
-    config: Record<string, unknown>;
-    isolation?: string;
-    onLog: (kind: string, payload: unknown) => void;
-  },
-) => (() => void) | void;
-
-export interface Specimen {
-  id: string;
-  name: string;
-  tag: string;
-  category?: Category;
-  subcategory?: string;
-  status?: Status;
-  tags?: readonly string[];
-  variants?: SpecimenVariant[];
-  states?: Record<string, string>;
-  mount?: SpecimenMountFn;
-  configVariants?: SpecimenConfigVariant[];
-}
-
-export interface ResolvedSpecimen extends Specimen {
-  category: Category;
-  subcategory?: string;
-  status: Status;
-  tags: readonly string[];
-}
 
 type PreviewTab = 'preview' | 'props' | 'source' | 'notes';
 

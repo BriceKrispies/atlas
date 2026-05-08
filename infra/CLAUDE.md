@@ -13,8 +13,13 @@ All `make` targets use `$(CONTAINER_RUNTIME)-compose` automatically.
 | `compose/compose.control-plane.yml` | Postgres DB (host port 15433) | `make db-up` / `make db-down` |
 | `compose/compose.keycloak.yml` | Keycloak IdP (port 8081) | `make keycloak-up` / `make keycloak-down` |
 | `compose/compose.observability.yml` | Prometheus + Grafana + Loki | `make obs-up` / `make obs-down` |
-| `compose/compose.dev.yml` | Local dev (combined services) | — |
-| `compose/docker-compose.itest.yml` | Full integration test stack | `make itest-up` / `make itest-down` |
+| `compose/compose.dev.yml` | Local dev: ingress + Keycloak on a shared network for OIDC/OAuth2 | — |
+| `compose/compose.itest-infra.yml` | Hybrid itest infra (Postgres + Keycloak only); Atlas services run as host processes | — |
+| `compose/docker-compose.itest.yml` | Full integration test stack (containerised; Rust-era) | `make itest-up` / `make itest-down` |
+
+Compose support files live alongside: `compose/config/`, `compose/keycloak/`,
+`compose/pg_hba.conf`, `compose/pgadmin-pgpass`, `compose/pgadmin-servers.json`,
+`compose/postgres-fatal-monitor.sh`, and `compose/docker-bake.itest.hcl`.
 
 ## Dockerfiles
 
@@ -52,7 +57,7 @@ the rationale.
 | `../scripts/itest-lifecycle.sh` | Integration test stack management |
 | `../scripts/db-lifecycle.sh` | Database lifecycle operations |
 | `../scripts/wait-for-healthy.sh` | Container health polling |
-| `../scripts/logs.sh` | Container log viewer (`bash scripts/logs.sh [service]`) |
+| `../scripts/logs.sh` / `../scripts/logs.ps1` | Container log viewer (`bash scripts/logs.sh [service]` or PowerShell variant on Windows) |
 
 ## DB Connection
 

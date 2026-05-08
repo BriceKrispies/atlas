@@ -9,9 +9,22 @@
  *
  * See `specs/domains/tenancy/capabilities/custom-domains/README.md` for
  * the broader context.
+ *
+ * `platform-core` is foundational and must not depend on `@atlas/ports`
+ * (ports depend on platform-core). The `PrimaryCustomDomainLookup` type
+ * below is the minimal structural shape this helper needs — any
+ * `CustomDomainStore` from `@atlas/ports` satisfies it via structural
+ * typing, so callers pass their store directly with no adapter.
  */
 
-import type { CustomDomainStore } from '@atlas/ports';
+/**
+ * Minimal lookup surface needed to resolve a tenant's primary custom
+ * domain. Structural — `CustomDomainStore` (from `@atlas/ports`) and any
+ * test double with the same `getPrimary` shape both satisfy it.
+ */
+export interface PrimaryCustomDomainLookup {
+  getPrimary(tenantId: string): Promise<{ hostname: string } | null>;
+}
 
 /**
  * Normalize a hostname for storage and lookup. Lowercase + strip any
@@ -47,7 +60,7 @@ export function normalizeHost(host: string): string {
  */
 export async function tenantBaseUrl(
   tenantId: string,
-  store: CustomDomainStore,
+  store: PrimaryCustomDomainLookup,
   fallbackBase: string,
 ): Promise<string> {
   const primary = await store.getPrimary(tenantId);

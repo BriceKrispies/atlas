@@ -24,7 +24,7 @@ export type { HtmlValue };
 
 // component.ts
 export { AtlasElement, AtlasSurface };
-export type { SurfaceState, SurfaceLoadingConfig, SurfaceEmptyConfig };
+export type { SurfaceState, SurfaceLoadingConfig, SurfaceEmptyConfig, SurfaceBackendAdapter };
 ```
 
 ## `AtlasElement`

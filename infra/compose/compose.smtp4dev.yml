@@ -1,0 +1,29 @@
+# smtp4dev — local SMTP server with a browsable web UI.
+#
+# Used by the public-signup capability to make magic-link emails
+# visible during dev + integration tests instead of being grep'd out
+# of stdout. apps/server is wired with MAILER_DRIVER=smtp +
+# SMTP_HOST=localhost SMTP_PORT=1025 to deliver here.
+#
+# Usage:
+#   podman compose -f infra/compose/compose.smtp4dev.yml up -d
+#
+# Access:
+#   SMTP listener: localhost:1025
+#   Web UI + API:  http://localhost:5080
+#   List API:      GET http://localhost:5080/api/Messages
+#
+# Spec: specs/domains/tenancy/capabilities/public-signup/README.md
+services:
+  smtp4dev:
+    image: rnwood/smtp4dev:v3
+    container_name: atlas-dev-smtp4dev
+    ports:
+      - "1025:25"
+      - "5080:80"
+    environment:
+      # Default smtp4dev settings are fine; pinning the relay to "off"
+      # so any adapter pointed here can never accidentally relay to a
+      # real recipient even if a misconfigured prod env crept in.
+      ServerOptions__RelaySmtpServer: ""
+    restart: unless-stopped

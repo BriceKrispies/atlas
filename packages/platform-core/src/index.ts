@@ -43,6 +43,7 @@ export type {
 } from './control-plane-db.ts';
 
 export { normalizeHost, tenantBaseUrl } from './tenant-urls.ts';
+export type { PrimaryCustomDomainLookup } from './tenant-urls.ts';
 
 export { UpcasterRegistry, upcastToLatest } from './upcaster.ts';
 export type { Upcaster } from './upcaster.ts';

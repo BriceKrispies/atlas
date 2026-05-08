@@ -10,8 +10,13 @@ export { PostgresEntityStore } from './entity-store.ts';
 export { PostgresRelationStore } from './relation-store.ts';
 export { PostgresEntityTypeRegistry } from './entity-type-registry.ts';
 export { PostgresPolicyStore } from './policy-store.ts';
+export { StdoutEventMailer, PostgresEmailLogStore } from './mailer-stdout.ts';
+export { SmtpMailer } from './mailer-smtp.ts';
+export { PostgresSignupRequestStore } from './signup-request-store.ts';
+export { PostgresTenantStore } from './tenant-store.ts';
 export {
   PostgresTenantDbProvider,
+  parseTenantConnectionUrl,
   type TenantDbProvider,
 } from './tenant-db-provider.ts';
 export { runMigrations, type MigrationKind, type MigrationRunResult } from './migrations/runner.ts';

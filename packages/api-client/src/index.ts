@@ -5,17 +5,12 @@
  * - 'mock' (default) — in-memory data, no backend needed
  * - 'http' — calls the real ingress API
  *
- * Components import from here, never from mock/ or http/ directly.
+ * Components import from here, never from mock/ or http/ directly. The
+ * `backend` singleton itself lives in `./runtime.ts` so submodules
+ * (`authz.ts`, `content-pages.ts`) can pull it in without a barrel cycle.
  */
 
-import { mockBackend } from './mock/index.ts';
-import { httpBackend } from './http/index.ts';
-import type { Backend } from './backend.ts';
-
-const backendType: string = import.meta.env.VITE_BACKEND ?? 'mock';
-
-export const backend: Backend =
-  backendType === 'http' ? httpBackend : mockBackend;
+export { backend } from './runtime.ts';
 
 export type {
   Backend,

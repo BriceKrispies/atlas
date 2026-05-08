@@ -12,7 +12,7 @@ import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 
-import type { AtlasCodeEditor, CodeEditorController } from './atlas-code-editor.ts';
+import type { CodeEditorController } from './atlas-code-editor-types.ts';
 
 // Monaco reads `self.MonacoEnvironment.getWorker` each time it spawns a
 // worker. Configure it exactly once — subsequent editor instances pick
@@ -145,7 +145,7 @@ function getOverflowWidgetsNode(): HTMLElement {
   return el;
 }
 
-export function mount(host: AtlasCodeEditor): CodeEditorController {
+export function mount(host: HTMLElement): CodeEditorController {
   configureEnvironment();
 
   // Monaco needs a block-level container with explicit height. The

@@ -78,6 +78,58 @@ export interface AppConfig {
    * consumer of new events. See {@link WorkerMode}.
    */
   workerMode: WorkerMode;
+  /**
+   * Drop the `Secure` flag from cookies the server emits. **Dev only** —
+   * Vite SPAs run on plain http://localhost:<port> and browsers refuse
+   * `Secure` cookies on plain HTTP. Read from `INSECURE_COOKIES`.
+   */
+  insecureCookies: boolean;
+  /**
+   * Domain attribute on session cookies. Set to `.localhost` so a
+   * cookie minted on `localhost:3000` (during /signup/confirm) survives
+   * the redirect to `<slug>.localhost:3000`. Empty string = host-only.
+   * Read from `COOKIE_DOMAIN`.
+   */
+  cookieDomain: string;
+  /**
+   * Apex domain for tenant subdomains (e.g. `localhost` in dev means
+   * `<slug>.localhost`). Read from `TENANT_APEX`.
+   */
+  tenantApex: string;
+  /**
+   * Origin for the parent-domain pages (signup form, /signup/confirm,
+   * /play). Read from `PUBLIC_BASE_URL`. Default
+   * `http://localhost:<port>`.
+   */
+  publicBaseUrl: string;
+  /**
+   * Build the canonical origin URL for a given tenant. The default
+   * implementation uses `<slug>.<tenantApex>:<port>` over http; prod
+   * deployments override the scheme/port via environment.
+   */
+  tenantBaseUrl: (tenantId: string) => string;
+  /**
+   * Outbound mailer adapter. `stdout` writes to stdout + the
+   * `control_plane.email_log` table (dev/sim default). `noop`
+   * silently drops sends. `smtp` hands the message to a real SMTP
+   * relay (e.g. `smtp4dev` for local dev) and ALSO mirrors to
+   * `email_log` for the in-app mailbox. Read from `MAILER_MODE`.
+   */
+  mailerMode: MailerMode;
+  /**
+   * SMTP transport configuration. Required when `mailerMode === 'smtp'`,
+   * ignored otherwise. Read from `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`.
+   */
+  smtp: SmtpConfig | null;
+}
+
+export type MailerMode = 'stdout' | 'noop' | 'smtp';
+
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  /** RFC-5322 From address used for every outbound message. */
+  from: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -134,6 +186,53 @@ export function loadConfig(): AppConfig {
   }
   const workerMode: WorkerMode = workerModeRaw;
 
+  const insecureCookies = envBool('INSECURE_COOKIES');
+  const cookieDomain = envOr('COOKIE_DOMAIN', '');
+  const tenantApex = envOr('TENANT_APEX', 'localhost');
+  const publicBaseUrl = envOr('PUBLIC_BASE_URL', `http://localhost:${portNum}`);
+
+  const mailerModeRaw = envOr('MAILER_MODE', 'stdout');
+  if (
+    mailerModeRaw !== 'stdout' &&
+    mailerModeRaw !== 'noop' &&
+    mailerModeRaw !== 'smtp'
+  ) {
+    throw new Error(
+      `invalid MAILER_MODE: ${mailerModeRaw} (expected 'stdout', 'noop', or 'smtp')`,
+    );
+  }
+  const mailerMode: MailerMode = mailerModeRaw;
+
+  // SMTP transport config — required only when MAILER_MODE=smtp. Read
+  // unconditionally (so a misconfigured value fails loud at boot rather
+  // than at first send), then enforced as required for the smtp branch.
+  const smtpHost = envOr('SMTP_HOST', '');
+  const smtpPortRaw = envOr('SMTP_PORT', '');
+  const smtpFrom = envOr('SMTP_FROM', '');
+  let smtp: SmtpConfig | null = null;
+  if (mailerMode === 'smtp') {
+    if (!smtpHost || !smtpPortRaw || !smtpFrom) {
+      throw new Error(
+        `MAILER_MODE=smtp requires SMTP_HOST, SMTP_PORT, and SMTP_FROM to be set`,
+      );
+    }
+    const smtpPort = Number.parseInt(smtpPortRaw, 10);
+    if (!Number.isFinite(smtpPort) || smtpPort <= 0) {
+      throw new Error(`invalid SMTP_PORT: ${smtpPortRaw}`);
+    }
+    smtp = { host: smtpHost, port: smtpPort, from: smtpFrom };
+  }
+
+  // The tenant origin builder. Defaults to <slug>.<apex>:<port> over
+  // http (the local-dev shape). Production wiring sets `TENANT_APEX`
+  // to the apex domain and the scheme/port via override.
+  const tenantBaseUrl = (slug: string): string => {
+    if (tenantApex === 'localhost') {
+      return `http://${slug}.${tenantApex}:${portNum}`;
+    }
+    return `https://${slug}.${tenantApex}`;
+  };
+
   return {
     port: portNum,
     controlPlaneDbUrl,
@@ -143,5 +242,12 @@ export function loadConfig(): AppConfig {
     rustLog,
     policyEngine,
     workerMode,
+    insecureCookies,
+    cookieDomain,
+    tenantApex,
+    publicBaseUrl,
+    tenantBaseUrl,
+    mailerMode,
+    smtp,
   };
 }

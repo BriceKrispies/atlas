@@ -31,6 +31,9 @@ import { mfaRoutes } from './routes/mfa.ts';
 import { oauthRoutes } from './routes/oauth.ts';
 import { samlRoutes } from './routes/saml.ts';
 import { scimRoutes } from './routes/scim.ts';
+import { signupRoutes } from './routes/signup.ts';
+import { tenantHomeRoutes } from './routes/tenant-home.ts';
+import { adminSignupRoutes } from './routes/admin-signups.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -55,6 +58,15 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   // SAML 2.0 — public mount; ACS callback verifies the IdP's
   // signature inline (no JWT/cookie path).
   app.route('/', samlRoutes(state));
+  // Public signup form, submit endpoint, and magic-link confirm —
+  // anonymous; the signup intent is allowed without a principal.
+  app.route('/', signupRoutes(state));
+  // Tenant-home GET / — public; serves a minimal welcome HTML when
+  // the request Host resolves to a registered custom-domain. Falls
+  // back to a "not registered" page for unknown hosts (including the
+  // bare `localhost` apex). Mounted last so route order doesn't
+  // collide with /signup or /api/v1/...
+  app.route('/', tenantHomeRoutes(state));
 
   // Authenticated routes — principal middleware first, then route group.
   const authed = new Hono<{ Variables: ServerVariables }>();
@@ -68,6 +80,7 @@ function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
   authed.route('/', identityIdpRoutes(state));
   authed.route('/', identityA7Routes(state));
   authed.route('/', mfaRoutes(state));
+  authed.route('/', adminSignupRoutes(state));
   if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
     authed.route('/', debugRoutes(state));
   }

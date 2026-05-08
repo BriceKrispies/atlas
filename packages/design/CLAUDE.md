@@ -6,7 +6,7 @@ compose these.
 
 ## Layout
 
-Flat. One file per component, under `src/atlas-*.ts` (~98 components today).
+Flat. One file per component, under `src/atlas-*.ts` (~90 components today).
 No folder-per-component, no barrel grouping. The file name = the tag name = the
 class name.
 
@@ -14,8 +14,8 @@ class name.
 src/
   atlas-button.ts            <atlas-button>     class AtlasButton
   atlas-dialog.ts            <atlas-dialog>     class AtlasDialog
-  atlas-data-grid.ts         <atlas-data-grid>  class AtlasDataGrid
-  ...                                            (~98 files)
+  atlas-table.ts             <atlas-table>      class AtlasTable
+  ...                                            (~90 files)
   tokens.css                 design tokens (colors, spacing, type, shadows)
   elements.css               global Light-DOM element baseline
   shared-styles.ts           adoptAtlasStyles(shadowRoot) helper

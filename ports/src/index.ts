@@ -9,6 +9,26 @@ export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry
 export type { CatalogStateStore, CatalogStateRecord } from './catalog-state-store.ts';
 export type { CustomDomainStore, CustomDomain } from './custom-domain-store.ts';
 export type {
+  Mailer,
+  EmailMessage,
+  MailerSendResult,
+  EmailLogStore,
+  EmailLogEntry,
+  EmailLogQuery,
+} from './mailer.ts';
+export type {
+  SignupRequestStore,
+  SignupRequest,
+  SignupRequestStatus,
+  CreateSignupRequestInput,
+} from './signup-request-store.ts';
+export type {
+  TenantStore,
+  TenantRecord,
+  TenantStatus,
+  CreateTenantInput,
+} from './tenant-store.ts';
+export type {
   EntityStore,
   Entity,
   EntityStatus,

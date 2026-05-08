@@ -15,17 +15,17 @@ them. Modules depend on [`/ports`](../ports/CLAUDE.md) and `@atlas/platform-core
 | `authz/` | `@atlas/authz` | Policy CRUD (draft / active / archived), Cedar bundle integration |
 | `catalog/` | `@atlas/catalog` | Taxonomies, families, variants, attributes, search, seed-package import |
 | `content-pages/` | `@atlas/content-pages` | Page CRUD + render-tree projection |
+| `identity/` | `@atlas/identity` | Users, memberships, invites, sessions, MFA, SAML/OIDC, impersonation, break-glass, audit export, role packs |
 
-The 8 spec-only modules listed in `specs/` (tokens, comms, org, content,
-points, audit, import, badges) have no domain code yet — `specs/` is the source
-of truth until they land here.
+The remaining business domains listed in the root `specs/domains/` map have no
+domain code yet — `specs/` is the source of truth until they land here.
 
 ## Standard Module Skeleton
 
 ```
 modules/<name>/
   src/
-    index.ts            re-exports the public surface
+    index.ts            internal entry point — package consumers (apps, tests)
     types.ts            domain types (PageDocument, PolicySummary, …)
     errors.ts           <Module>Error class + error-code constants
     handlers/           one file per intent handler + a registry export
@@ -33,18 +33,27 @@ modules/<name>/
     queries/            read-side query functions
     queries.ts          (or queries/ folder when more than 2)
     dispatch.ts         event-to-projection wiring (EventDispatcher factory)
+    public/             OPTIONAL — curated surface for OTHER MODULES only
+      index.ts          re-exports the minimal API other modules may import
+                        (default to events/projections instead; only add
+                        files here when sync cross-module access is required)
 ```
 
-Not every module has every directory — `authz` has no projections, `catalog`
-adds `seed-types.ts` and `responses.ts`. But the shape is consistent.
+Not every module has every directory — `authz` and `identity` have no
+`projections/` folder (they project directly through entity wrappers),
+`catalog` adds `seed-types.ts` and `responses.ts`, `identity` adds
+top-level `crypto/`, `entities/`, `policies/`, `risk/`, `saml/`,
+`audit-export.ts`, `audit-retention.ts`, and `session-lifetime.ts`. But
+the shape is consistent.
 
 ## What Each Module Exports
 
 | Module | Public surface (from `src/index.ts`) |
 |--------|--------------------------------------|
-| **authz** | Types (`PolicyStatus`, `PolicySummary`, `PolicyDetail`, store interfaces), handlers (`handleCreatePolicy`, `handleActivatePolicy`, `handleArchivePolicy`), `authzHandlerRegistry`, `composeRegistries`, `PostgresPolicyStore`, `AuthzError` |
+| **authz** | Types (`PolicyStatus`, `PolicySummary`, `PolicyDetail`, `PolicyStore` interface), handlers (`handleCreatePolicy`, `handleActivatePolicy`, `handleArchivePolicy`), `authzHandlerRegistry`, `composeRegistries`, `AuthzError` (`PolicyStore` is implemented in `@atlas/adapter-node`, not exported from this module) |
 | **catalog** | ID helpers, seed types (`SeedPayload`, `SeedFamily`, …), response types, handlers (`handleSeedPackageApply`, `handleFamilyPublish`, `catalogHandlerRegistry`), projections (`rebuildTaxonomyNavigation`, …), queries (`queryTaxonomyNodes`, `searchCatalog`, …), `catalogDispatcher`, `CatalogError` |
 | **content-pages** | ID helpers, types (`PageDocument`, `RenderNode`, `RenderTree`, `PageStatus`), handlers (`handlePageCreate/Update/Delete`, `contentPagesHandlerRegistry`), projections (`buildRenderTree`, `rebuildRenderTree`, `upsertPageInList`, …), queries (`listPages`, `getPage`, `getRenderTree`), `contentPagesDispatcher`, `ContentPagesError` |
+| **identity** | ID helpers, entity types + wrappers (User, Membership, InviteToken, AuthSession, ApiKey, ServicePrincipal, OAuthToken, IdentityProvider, ScimToken, AuditExportConfig/Run, AuthFactor + TOTP/WebAuthn/RecoveryCode/MfaBypass, SamlSpKey + replay, ImpersonationSession, BreakGlassGrant), handlers (user/membership/invite/password/session/api-key/service-principal/oauth/idp/jit/saml/totp/webauthn/recovery/mfa-bypass/scim-token/audit-export/impersonation/break-glass), `identityHandlerRegistry`, queries (`getUser`, `listMemberships`, `getSession`, …), risk + step-up helpers, audit-export pipeline, retention helpers, crypto helpers (`hashPassword`, `generateSecret`, TOTP), role-pack policy builders, `identityDispatcher`, `IdentityError` |
 
 ## How modules participate in the request lifecycle
 
@@ -60,7 +69,7 @@ Inside the request:
 - Events are appended to the `EventStore`, which is the worker's durable feed.
 - The dispatcher chain — each module dispatcher rebuilding its projections, then `cacheTagDispatcher(cache)` clearing entries by tag, then SSE broadcast — runs against those events.
 
-**The chain runs in one of two places** depending on `WORKER_MODE`: inline (default) in `apps/server/src/middleware/state.ts`, or async in `apps/projection-worker/src/tenant-loop.ts`. The composition is identical — when adding or modifying a module dispatcher, update both locations. Full design: [`specs/worker.md`](../specs/worker.md).
+**The chain runs in one of two places** depending on `WORKER_MODE`: inline (default) in `apps/server/src/middleware/state.ts`, or async in `apps/projection-worker/src/tenant-loop.ts`. The two compositions are intentionally mirrored — when adding or modifying a module dispatcher, update both locations. (As of this writing the worker mirrors catalog + content-pages but not identity; verify the worker's chain when adding identity-driven projections.) Full design: [`specs/worker.md`](../specs/worker.md).
 
 ## Cache invalidation contract
 
@@ -91,6 +100,7 @@ asserting `envelope.cacheInvalidationTags` for every test case.
 - **Payload validation helpers.** Tiny readers (`readString`, `readNumber`, `readOptionalString`) are duplicated per module — keep them; do not abstract.
 - **Query façades.** When a module exposes more than a handful of read paths, a `query-router.ts` (or top-level `queries.ts`) bundles a `QueryDeps` type. Apps build that bundle per request, including tenant-scoped adapters.
 - **No I/O imports.** Modules import only from `@atlas/ports`, `@atlas/platform-core`, and standard libs. Reaching for an adapter package from inside a module is a bug.
+- **No cross-module imports.** A module under `/modules` may not import another module's internals. Cross-domain reads go through events/projections (I12). When sync access is genuinely unavoidable, the producing module exposes a curated surface in `src/public/index.ts` and the consumer imports `from '@atlas/<other>/public'`. Enforced by `pnpm deps:check` (dep-cruiser, `no-cross-module-internals`). A grep for `'@atlas/<x>/public'` then lists every consumer of `<x>` — useful the day you extract it as a service.
 - **Seed schemas.** `seed-types.ts` (catalog) defines bulk-import shapes shared with the schema validator. Keep these in lock-step with `packages/schemas`.
 
 ## Dependency Map
@@ -100,6 +110,7 @@ asserting `envelope.cacheInvalidationTags` for every test case.
 | authz | HandlerRegistry, IntentHandler, IntentHandlerContext | EventEnvelope, IntentEnvelope |
 | catalog | CatalogStateStore, ProjectionStore, SearchEngine, EventDispatcher, Cache | EventEnvelope, SearchDocument |
 | content-pages | ProjectionStore, RenderTreeStore, WasmHost, EventDispatcher, EventStore | EventEnvelope |
+| identity | EntityStore, RelationStore, EventStore, Cache, HandlerRegistry, IntentHandlerContext | EventEnvelope, IntentEnvelope (also depends on `@atlas/adapter-policy-cedar` for role-pack bundle building) |
 
 ## Consumers
 
@@ -108,7 +119,8 @@ asserting `envelope.cacheInvalidationTags` for every test case.
 - `routes/catalog.ts` — catalog query endpoints
 - `routes/content-pages.ts` — page query endpoints
 - `routes/authz.ts` — policy listing
-- `middleware/state.ts` — composes all three handler registries + dispatchers
+- `routes/identity.ts`, `routes/identity-a7.ts`, `routes/identity-idp.ts`, `routes/mfa.ts`, `routes/oauth.ts`, `routes/saml.ts`, `routes/scim.ts` — identity-flow endpoints (most identity intents go through `routes/intents.ts`)
+- `middleware/state.ts` — composes all four module handler registries + dispatchers (the projection-worker's `tenant-loop.ts` mirrors only catalog + content-pages today)
 
 ## Adding a New Module
 
