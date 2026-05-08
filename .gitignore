@@ -1,5 +1,9 @@
 # IDE
-.claude/
+# .claude/ is mostly ignored, but project agents are tracked so the
+# Agent Roster (see CLAUDE.md) lives in version control alongside specs.
+.claude/*
+!.claude/agents/
+!.claude/settings.json
 .vscode/
 .idea/
 *.swp
@@ -39,3 +43,7 @@ packages/schemas/src/generated/
 
 # Itest local state
 .itest/
+
+# dependency-cruiser graph output
+deps.html
+deps.svg

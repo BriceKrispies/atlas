@@ -1,13 +1,15 @@
-# Enterprise Multi-Tenant CMS + Workflow Platform
+# Atlas — Multi-Tenant Developer Platform
 
 **Version:** 0.1.0
 **Architecture:** Hexagonal, Event-Driven, Policy-First AuthZ
-**Tenancy Model:** Database-per-Tenant
+**Tenancy Model:** Database-per-Tenant + Cluster-Namespace-per-Tenant (Phase 1+)
 **Timezone:** America/Chicago
 
 ## Purpose
 
-This platform provides a multi-tenant content management and workflow orchestration system designed for enterprise-scale operations. It enforces strict security boundaries through centralized authorization, maintains tenant isolation through dedicated databases, and supports horizontal scaling through event-driven architecture and cache-first design.
+Atlas is a self-hosted developer platform: a tenant signs up, pushes code, gets backend resources provisioned (compute, storage, DNS, secrets), and runs workflows on the platform. See [`vision.md`](vision.md) for the user-facing description and [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for how the domain layout was re-anchored from a CMS framing to this developer-platform framing.
+
+The platform enforces strict security boundaries through centralized authorization, maintains tenant isolation through dedicated databases (control-plane + per-tenant) and per-tenant cluster namespaces (Phase 1+), and supports horizontal scaling through event-driven architecture and cache-first design. Strategy is to **wrap existing tools as adapters** (k3s, kaniko, Caddy, Hetzner Cloud, Gitea, MinIO, etc.) and build the unified multi-tenant control plane that ties them together.
 
 ## Core Principles
 

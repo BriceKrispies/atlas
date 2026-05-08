@@ -4,62 +4,47 @@ Specs are the SOURCE OF TRUTH. Code implements specs, not the other way around. 
 
 ## Canonical Domain Index
 
-Specs are organized around the **26-domain × 5-platform** taxonomy
-(see root [`CLAUDE.md`](../CLAUDE.md) for the full table). Each domain's home
-is `specs/domains/<domain>/`. Most are stubs today; content lives in the legacy
-locations below until it migrates.
+Atlas's domains are grouped into **6 platforms + 1 parked-apps platform** (the developer-platform shape; see [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for how this differs from the prior CMS-flavored layout). Root [`CLAUDE.md`](../CLAUDE.md) has the full per-domain table; this file owns the spec-organisation conventions.
 
 | Platform | Domains |
 |----------|---------|
 | **Spine** | identity, authorization, tenancy, organization, audit, observability, search |
-| **Content** | authoring, delivery, media, maps, catalog, widgets, forms, localization |
-| **Workflow** | automation, rules, scheduling, approvals, import-export |
-| **Engagement** | communications, notifications, analytics, experimentation, gamification |
-| **Commerce** | billing |
+| **Compute** | cluster, runtime, image-build, ingress, dns *(net-new — wraps k3s, kaniko, Caddy, Hetzner Cloud)* |
+| **Storage** | object-storage, block-storage, secrets *(net-new — wraps MinIO / Hetzner Object Storage / sealed-secrets)* |
+| **Code** | repository, pipeline, artifact-registry *(net-new — wraps Gitea + a registry)* |
+| **Workflow** | triggers, scheduling, jobs, function-runner, approvals, import-export *(reshape — same names where retained, content rewritten for "run user code")* |
+| **Commerce** | billing, quotas, metering, plans *(quotas + metering moved here from old Extensibility; both load-bearing)* |
+| **First-party apps** *(parked)* | cms (catalog + content-pages + authoring + page-templates) |
 
-When writing or updating a spec, the canonical home is `specs/domains/<x>/`.
-If existing content lives under `specs/modules/<old>/` or `specs/crosscut/<x>.md`,
-either move it (preferred when the domain is being actively scoped) or
-cross-reference it from the new home (the current default).
+The Compute / Storage / Code platforms and several Workflow domains are **net-new and currently unspecified** — capability specs land via the slice workflow as Phase 1 of the project plan begins. Domain stub directories are created lazily when a domain's first capability is scoped, not pre-emptively.
 
-### Migrated Content (history of legacy → canonical moves)
+When writing or updating a spec, the canonical home is `specs/domains/<x>/` (or `specs/domains/<platform>/<domain>/` for the newly-carved Compute / Storage / Code platforms — these nest under their platform dir for clarity).
 
-All legacy content with a clean domain mapping has been moved into
-`specs/domains/<x>/` (history preserved via `git mv`). For locality, files
-are placed at the domain root or in a subfolder named after the legacy module:
+### Migrated Content (legacy CMS-shape → parked / retained)
 
-| Canonical domain | Migrated content |
-|------------------|------------------|
-| identity | `./authn.md`, `./identity.md`, `./tokens/` |
-| authorization | `./authz.md`, `./security.md`, `./authz-module/` |
-| tenancy | `./tenancy.md` |
-| organization | `./org/` |
-| audit | `./audit/` |
-| catalog | `./structured-catalog/` |
-| widgets | `./widgets.md`, `./ui.md` |
-| communications | `./comms/` |
-| import-export | `./import/` |
-| authoring | `./content-pages/`, `./content-pages.json`, `./page-templates.md` |
-| media | `./storage.md`, `./content/` (incl. announcements — see split note below) |
-| gamification | `./badges/`, `./points/` |
+The 2026-05-08 domain re-anchor changed several mappings. Per [`decisions/0002`](decisions/0002-developer-platform-domain-map.md), the table below records the disposition of every domain that existed in the prior 29-domain map:
 
-The other 14 domains have no spec content yet — their `README.md` is a stub.
+| Prior domain | Disposition under the new map |
+|--------------|--------------------------------|
+| identity, authorization, tenancy, organization, audit, observability, search | **Kept** under Spine (unchanged) |
+| catalog, widgets, authoring, content-pages, page-templates | **Parked** as first-party CMS app (`apps/cms/` once moved). Spec content stays at `specs/domains/<x>/` for now; the CMS-app PR moves it later. |
+| delivery, media, maps, forms, localization | **Retired** — no on-path use in dev-platform vision; their `specs/domains/<x>/` directories are pending deletion in a follow-up cleanup PR. |
+| automation, rules | **Retired** — replaced by the new Workflow domains (triggers, jobs, function-runner). |
+| scheduling, approvals, import-export | **Kept** under Workflow (unchanged location). |
+| communications, notifications, analytics, experimentation, gamification | **Retired** — Engagement platform is gone. Notifications about deployments / workflow runs may return as a new domain under Spine if needed. |
+| custom-schema, functions | **Retired from core** — Extensibility platform is gone. Tenant-defined entity types and tenant-defined functions are not on the dev-platform path today. |
+| quotas | **Moved** to Commerce platform — load-bearing, paired with billing + metering. |
+| billing | **Kept** under Commerce. |
 
-### Remaining Orphans
+Any spec content under retired-domain directories should be considered legacy notes only — not active. Cleanup PRs will `git rm` them once we're confident nothing references them.
 
-After migration, these still sit at their legacy paths:
+### Remaining crosscut
 
-- `crosscut/atlasctl.md` — operator CLI spec (system-wide / tooling, no domain home)
-- `crosscut/errors.md` — error taxonomy (system-wide cross-cut)
-- `crosscut/events.md` — event vocabulary (system-wide cross-cut)
+- `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
+- `crosscut/errors.md` — error taxonomy (referenced by every domain).
+- `crosscut/events.md` — event vocabulary (referenced by every domain).
 
 The legacy `specs/modules/` folder is gone — all content has migrated.
-
-### Known split candidate
-
-`specs/domains/media/content/` contains BOTH Media Library *and* Announcements
-Widget specs (came from the legacy `modules/content/` folder). Announcements
-needs its own domain or to be folded under another — flagged for a future split.
 
 ## When to Read Which Spec
 
@@ -78,9 +63,8 @@ needs its own domain or to be folded under another — flagged for a future spli
 ### Remaining Crosscut + Module Files
 
 > Most legacy content has migrated into `specs/domains/<x>/` (see "Migrated
-> Content" above). What's left in `crosscut/` and `modules/` is system-wide
-> material with no single domain home, plus orphan modules that don't fit the
-> 25-domain map.
+> Content" above). The legacy `specs/modules/` folder is gone; what remains
+> in `crosscut/` is system-wide material with no single domain home.
 
 | Path | Why it's still here |
 |------|---------------------|
@@ -117,13 +101,13 @@ See `WEB.md` (at the repo root) for the TypeScript stack routing, or jump direct
 Golden test fixtures. Naming: `<kind>__<expect>__<name>.json`
 - Kinds: `event_envelope`, `module_manifest`, `search_documents`, `analytics_events`
 - Expectations: `valid`, `invalid`
-- Validate: `make spec-check`
+- Validate: `pnpm test` (fixtures are exercised by unit tests)
 
 ## Adding / Modifying Specs
 
 | Task | Where |
 |------|-------|
-| New feature module | Create `modules/<name>/` with `README.md`, `surfaces.md`, `events.md` |
+| New domain capability | Create `domains/<domain>/capabilities/<capability>/README.md` |
 | New cross-cutting concern | Create `crosscut/<concern>.md` |
 | New JSON schema | `schemas/contracts/<name>.schema.json` |
 | New golden fixture | `fixtures/<kind>__<expect>__<name>.json` |

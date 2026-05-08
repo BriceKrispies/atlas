@@ -1,12 +1,12 @@
 # Atlas Platform
 
-Multi-tenant CMS + workflow platform. **TypeScript** (Node + browser).
-Hexagonal architecture: ports define the surface, adapters implement them, modules
-hold domain logic, packages are shared infrastructure, apps wire it all together.
+Self-hosted multi-tenant **developer platform**. A tenant signs up, pushes code, gets backend resources provisioned (compute, storage, DNS, secrets), and runs workflows on the platform. **TypeScript** (Node + browser). Hexagonal architecture: ports define the surface, adapters implement them, modules hold domain logic, packages are shared infrastructure, apps wire it all together.
 
-A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`,
-and `/tests/blackbox` has been removed. Some specs still reference Rust paths
-as historical context — treat those as legacy notes, not active code locations.
+See [`specs/vision.md`](specs/vision.md) for the user-facing vision and [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for how the domain map was re-anchored from a CMS-flavored shape to this developer-platform shape on 2026-05-08.
+
+A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`, and `/tests/blackbox` has been removed. Some specs still reference Rust paths as historical context — treat those as legacy notes, not active code locations.
+
+Strategy is to **wrap existing tools as adapters** (k3s, kaniko, Caddy, Hetzner Cloud, Gitea, MinIO, etc.) — Atlas's value-add is the developer UX + the multi-tenant glue + unified audit + a single CLI (`atlasctl`).
 
 ## Agent Routing — Where to Go
 
@@ -42,11 +42,12 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 | Agent | Owns |
 |-------|------|
 | [`spine-owner`](.claude/agents/spine-owner.md) | identity, authorization, tenancy, organization, audit, observability, search |
-| [`content-owner`](.claude/agents/content-owner.md) | authoring, delivery, media, maps, catalog, widgets, forms, localization |
-| [`workflow-owner`](.claude/agents/workflow-owner.md) | automation, rules, scheduling, approvals, import-export |
-| [`engagement-owner`](.claude/agents/engagement-owner.md) | communications, notifications, analytics, experimentation, gamification |
-| [`extensibility-owner`](.claude/agents/extensibility-owner.md) | custom-schema, functions, quotas |
-| [`commerce-owner`](.claude/agents/commerce-owner.md) | billing |
+| [`compute-owner`](.claude/agents/compute-owner.md) | cluster, runtime, image-build, ingress, dns |
+| [`storage-owner`](.claude/agents/storage-owner.md) | object-storage, block-storage, secrets |
+| [`code-owner`](.claude/agents/code-owner.md) | repository, pipeline, artifact-registry |
+| [`workflow-owner`](.claude/agents/workflow-owner.md) | triggers, scheduling, jobs, function-runner, approvals |
+| [`commerce-owner`](.claude/agents/commerce-owner.md) | billing, quotas, metering, plans |
+| [`first-party-apps-owner`](.claude/agents/first-party-apps-owner.md) | parked CMS (`apps/cms/`) and any future first-party tenant-installable apps |
 
 **Implementation devs**
 
@@ -139,13 +140,11 @@ infra/      compose files, container runtime
 
 ## Domain Map
 
-Atlas is structured as **29 business domains** grouped into **6 platforms**.
-**Domains** are the agent-ownership unit — one agent owns a capability inside a
-domain end-to-end (spec → BDD → modules → adapters → UI). **Platforms** are a
-doc-level grouping for narrative; they are not a folder layer.
+Atlas is structured as **6 platforms + 1 parked-apps platform**, each containing several **domains**. Domains are the agent-ownership unit — one agent (or platform owner) owns a capability inside a domain end-to-end (spec → BDD → modules → adapters → UI). Platforms are a doc-level grouping for narrative; they are not a folder layer.
 
-Each domain's spec home is `specs/domains/<domain>/`. BDD feature folders under
-`tests/bdd/features/<domain>/` are created lazily — only when a scenario exists.
+Each domain's spec home is `specs/domains/<domain>/`. BDD feature folders under `tests/bdd/features/<domain>/` are created lazily — only when a scenario exists.
+
+This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a developer-platform shape. See [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for the prior layout, what was retired, and why.
 
 | Platform | Domain | Spec home |
 |----------|--------|-----------|
@@ -156,32 +155,34 @@ Each domain's spec home is `specs/domains/<domain>/`. BDD feature folders under
 | **Spine** | audit | [`specs/domains/audit/`](specs/domains/audit/) |
 | **Spine** | observability | [`specs/domains/observability/`](specs/domains/observability/) |
 | **Spine** | search | [`specs/domains/search/`](specs/domains/search/) |
-| **Content** | authoring | [`specs/domains/authoring/`](specs/domains/authoring/) |
-| **Content** | delivery | [`specs/domains/delivery/`](specs/domains/delivery/) |
-| **Content** | media | [`specs/domains/media/`](specs/domains/media/) |
-| **Content** | maps | [`specs/domains/maps/`](specs/domains/maps/) |
-| **Content** | catalog | [`specs/domains/catalog/`](specs/domains/catalog/) |
-| **Content** | widgets | [`specs/domains/widgets/`](specs/domains/widgets/) |
-| **Content** | forms | [`specs/domains/forms/`](specs/domains/forms/) |
-| **Content** | localization | [`specs/domains/localization/`](specs/domains/localization/) |
-| **Workflow** | automation | [`specs/domains/automation/`](specs/domains/automation/) |
-| **Workflow** | rules | [`specs/domains/rules/`](specs/domains/rules/) |
+| **Compute** | cluster | [`specs/domains/compute/cluster/`](specs/domains/compute/cluster/) *(stub, to be created)* |
+| **Compute** | runtime | [`specs/domains/compute/runtime/`](specs/domains/compute/runtime/) *(stub, to be created)* |
+| **Compute** | image-build | [`specs/domains/compute/image-build/`](specs/domains/compute/image-build/) *(stub, to be created)* |
+| **Compute** | ingress | [`specs/domains/compute/ingress/`](specs/domains/compute/ingress/) *(stub, to be created)* |
+| **Compute** | dns | [`specs/domains/compute/dns/`](specs/domains/compute/dns/) *(stub, to be created)* |
+| **Storage** | object-storage | [`specs/domains/storage/object-storage/`](specs/domains/storage/object-storage/) *(stub, to be created)* |
+| **Storage** | block-storage | [`specs/domains/storage/block-storage/`](specs/domains/storage/block-storage/) *(stub, to be created)* |
+| **Storage** | secrets | [`specs/domains/storage/secrets/`](specs/domains/storage/secrets/) *(stub, to be created)* |
+| **Code** | repository | [`specs/domains/code/repository/`](specs/domains/code/repository/) *(stub, to be created)* |
+| **Code** | pipeline | [`specs/domains/code/pipeline/`](specs/domains/code/pipeline/) *(stub, to be created)* |
+| **Code** | artifact-registry | [`specs/domains/code/artifact-registry/`](specs/domains/code/artifact-registry/) *(stub, to be created)* |
+| **Workflow** | triggers | [`specs/domains/workflow/triggers/`](specs/domains/workflow/triggers/) *(stub, to be created)* |
 | **Workflow** | scheduling | [`specs/domains/scheduling/`](specs/domains/scheduling/) |
+| **Workflow** | jobs | [`specs/domains/workflow/jobs/`](specs/domains/workflow/jobs/) *(stub, to be created)* |
+| **Workflow** | function-runner | [`specs/domains/workflow/function-runner/`](specs/domains/workflow/function-runner/) *(stub, to be created)* |
 | **Workflow** | approvals | [`specs/domains/approvals/`](specs/domains/approvals/) |
 | **Workflow** | import-export | [`specs/domains/import-export/`](specs/domains/import-export/) |
-| **Engagement** | communications | [`specs/domains/communications/`](specs/domains/communications/) |
-| **Engagement** | notifications | [`specs/domains/notifications/`](specs/domains/notifications/) |
-| **Engagement** | analytics | [`specs/domains/analytics/`](specs/domains/analytics/) |
-| **Engagement** | experimentation | [`specs/domains/experimentation/`](specs/domains/experimentation/) |
-| **Engagement** | gamification | [`specs/domains/gamification/`](specs/domains/gamification/) |
-| **Extensibility** | custom-schema | [`specs/domains/custom-schema/`](specs/domains/custom-schema/) |
-| **Extensibility** | functions | [`specs/domains/functions/`](specs/domains/functions/) |
-| **Extensibility** | quotas | [`specs/domains/quotas/`](specs/domains/quotas/) |
 | **Commerce** | billing | [`specs/domains/billing/`](specs/domains/billing/) |
+| **Commerce** | quotas | [`specs/domains/quotas/`](specs/domains/quotas/) |
+| **Commerce** | metering | [`specs/domains/commerce/metering/`](specs/domains/commerce/metering/) *(stub, to be created)* |
+| **Commerce** | plans | [`specs/domains/commerce/plans/`](specs/domains/commerce/plans/) *(stub, to be created)* |
+| **First-party apps** *(parked)* | cms | `apps/cms/` once moved (currently `modules/content-pages/`, `modules/catalog/`, `apps/authoring/`, `packages/page-templates/`, `packages/bundles/standard/`) |
 
-Most stubs are TODO. Migrated content now lives under each `specs/domains/<x>/`;
-remaining system-wide material sits in `specs/crosscut/*` — see
-[`specs/CLAUDE.md`](specs/CLAUDE.md) for the legacy → canonical mapping.
+The Compute / Storage / Code platforms and the new Workflow domains are **net-new and currently unspecified** — capability specs land in subsequent PRs per the slice workflow. Phase 1 of the project plan starts with `compute/cluster` (stand up k3s on Hetzner) and `compute/image-build` (kaniko in-cluster).
+
+Domain stub directories under `specs/domains/` are created lazily as their first capability is scoped — no need to land empty `README.md` placeholders ahead of work.
+
+The directory layout under `specs/domains/` will reorganise as new domains land — Compute / Storage / Code domains nest under their platform dir (e.g. `specs/domains/compute/cluster/`) for clarity, since they're newly carved.
 
 ## Capability Onboarding
 
@@ -204,7 +205,7 @@ before writing code. The whole stack converges on this list.
 | Frontend dev — authoring | `pnpm authoring` |
 | Frontend dev — sandbox | `pnpm sandbox` |
 | Server (apps/server) | `pnpm --filter @atlas/server dev` |
-| atlasctl (operator CLI) | `pnpm -w atlasctl <command> [flags]` |
+| atlasctl (operator CLI) | `pnpm atlasctl <command> [flags]` |
 | Typecheck | `pnpm typecheck` |
 | Unit tests | `pnpm test` |
 | E2E (Playwright) | `pnpm test:e2e` |
@@ -236,10 +237,11 @@ Architectural laws — violating any is a bug. Full definitions in `specs/archit
 
 ### Enforcement bars
 
-These two rules are non-negotiable. They show up in nearly every code review:
+These rules are non-negotiable. They show up in nearly every code review:
 
 - **`AtlasElement` is the only base class for UI elements.** Bare `HTMLElement`, framework components (Lit/React/Vue), or wrapper classes are not allowed in Atlas frontend code. New components belong in [`packages/design/`](packages/design/CLAUDE.md).
 - **`apps/server` is the only HTTP boundary.** Every other app (admin, authoring, sandbox) is a *client* of it. No other package or app may expose HTTP endpoints (Invariant **I1**). The full request flow is traced in [`specs/lifecycle.md`](specs/lifecycle.md).
+- **Modules under `/modules` may not import each other directly.** Cross-domain reads use events/projections (Invariant **I12**). The escape hatch for unavoidable sync access is `modules/<x>/src/public/` — anything outside that path is forbidden by `pnpm deps:check`. Run `pnpm deps:graph` to render the current dependency graph as `deps.html`.
 
 ## Gotchas
 
