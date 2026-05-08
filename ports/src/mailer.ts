@@ -38,6 +38,12 @@ export interface MailerSendResult {
 
 export interface Mailer {
   send(msg: EmailMessage): Promise<MailerSendResult>;
+  /**
+   * Optional. Called by apps during graceful shutdown to release transport
+   * resources (SMTP connection pools, etc). Adapters that don't hold
+   * long-lived resources can omit.
+   */
+  close?(): Promise<void>;
 }
 
 /** Read-side surface for the in-app mailbox panel. */

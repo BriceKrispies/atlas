@@ -164,7 +164,7 @@ This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a de
 | **Storage** | object-storage | [`specs/domains/storage/object-storage/`](specs/domains/storage/object-storage/) *(stub, to be created)* |
 | **Storage** | block-storage | [`specs/domains/storage/block-storage/`](specs/domains/storage/block-storage/) *(stub, to be created)* |
 | **Storage** | secrets | [`specs/domains/storage/secrets/`](specs/domains/storage/secrets/) *(stub, to be created)* |
-| **Code** | repository | [`specs/domains/code/repository/`](specs/domains/code/repository/) *(stub, to be created)* |
+| **Code** | repository | [`specs/domains/code/repository/`](specs/domains/code/repository/) |
 | **Code** | pipeline | [`specs/domains/code/pipeline/`](specs/domains/code/pipeline/) *(stub, to be created)* |
 | **Code** | artifact-registry | [`specs/domains/code/artifact-registry/`](specs/domains/code/artifact-registry/) *(stub, to be created)* |
 | **Workflow** | triggers | [`specs/domains/workflow/triggers/`](specs/domains/workflow/triggers/) *(stub, to be created)* |
@@ -179,7 +179,7 @@ This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a de
 | **Commerce** | plans | [`specs/domains/commerce/plans/`](specs/domains/commerce/plans/) *(stub, to be created)* |
 | **First-party apps** *(parked)* | cms | `apps/cms/` once moved (currently `modules/content-pages/`, `modules/catalog/`, `apps/authoring/`, `packages/page-templates/`, `packages/bundles/standard/`) |
 
-The Compute / Storage / Code platforms and the new Workflow domains are **net-new and currently unspecified** — capability specs land in subsequent PRs per the slice workflow. Phase 1 of the project plan starts with `compute/cluster` (stand up k3s on Hetzner) and `compute/image-build` (kaniko in-cluster).
+The remaining Compute / Storage / Code platform stubs and the new Workflow domains are **net-new and currently unspecified** — capability specs land in subsequent PRs per the slice workflow. Phase 1 of the project plan starts with `compute/cluster` (stand up k3s on Hetzner), `compute/image-build` (kaniko in-cluster), and `code/repository` (the upload-tarball foundation Phase 1 depends on).
 
 Domain stub directories under `specs/domains/` are created lazily as their first capability is scoped — no need to land empty `README.md` placeholders ahead of work.
 

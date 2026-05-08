@@ -16,6 +16,8 @@ import { runVersion } from './commands/version.ts';
 import { runHealth } from './commands/health.ts';
 import { runValidate } from './commands/intents/validate.ts';
 import { runSubmit } from './commands/intents/submit.ts';
+import { runPush } from './commands/push.ts';
+import { runRepoList, runRepoShow, runRepoDownload } from './commands/repo.ts';
 import type { OutputFlags } from './output.ts';
 import type { ClientOptions } from './client.ts';
 
@@ -30,6 +32,8 @@ interface GlobalOpts {
   force?: boolean;
   endpoint?: string;
   config?: string;
+  tenant?: string;
+  debug?: boolean;
 }
 
 function buildClient(opts: GlobalOpts): ClientOptions {
@@ -90,6 +94,8 @@ async function main(argv: string[]): Promise<number> {
     .option('--force', 'proceed despite version mismatch (Phase B; no-op in Phase A)')
     .option('--endpoint <url>', 'ingress endpoint (default http://localhost:3000)')
     .option('--config <path>', `config file (default ${defaultConfigPath()})`)
+    .option('--tenant <id>', 'tenantId to stamp on synthesized intent envelopes (push). Falls back to ATLAS_TENANT_ID env or the third component of --debug-principal.')
+    .option('--debug', 'print per-step correlationIds to stderr')
     .helpOption('-h, --help', 'display help');
 
   let exitCode = 0;
@@ -141,8 +147,116 @@ async function main(argv: string[]): Promise<number> {
       }
     });
 
+  program
+    .command('push <dir>')
+    .description(
+      'tar.gz a directory and push it as a Repository revision (Repository.Create + Repository.Upload)',
+    )
+    .option('--repo <slug>', 'repository slug (default: directory basename)')
+    .option('--name <name>', 'human-readable name (default: slug)')
+    .option('--description <description>', 'optional description')
+    .action(
+      async (
+        dir: string,
+        cmdOpts: {
+          repo?: string;
+          name?: string;
+          description?: string;
+        },
+      ) => {
+        try {
+          const g = opts();
+          const client = buildClient(g);
+          const tenantId =
+            g.tenant ??
+            process.env['ATLAS_TENANT_ID'] ??
+            tenantFromDebugPrincipal(
+              g.debugPrincipal ?? process.env['ATLAS_DEBUG_PRINCIPAL'],
+            ) ??
+            undefined;
+          exitCode = await runPush(
+            client,
+            {
+              dir,
+              repoSlug: cmdOpts.repo,
+              name: cmdOpts.name,
+              description: cmdOpts.description,
+              tenantId,
+              debug: g.debug === true,
+            },
+            flags(g),
+          );
+        } catch (e) {
+          printSetupError(e, flags(opts()).json);
+          exitCode = 2;
+        }
+      },
+    );
+
+  const repo = program.command('repo').description('repository read commands');
+
+  repo
+    .command('list')
+    .description('list repositories visible to this principal (GET /api/v1/repositories)')
+    .action(async () => {
+      try {
+        const client = buildClient(opts());
+        exitCode = await runRepoList(client, flags(opts()));
+      } catch (e) {
+        printSetupError(e, flags(opts()).json);
+        exitCode = 2;
+      }
+    });
+
+  repo
+    .command('show <slug>')
+    .description('show repository detail (GET /api/v1/repositories/:repoId)')
+    .action(async (slug: string) => {
+      try {
+        const client = buildClient(opts());
+        exitCode = await runRepoShow(client, slug, flags(opts()));
+      } catch (e) {
+        printSetupError(e, flags(opts()).json);
+        exitCode = 2;
+      }
+    });
+
+  repo
+    .command('download <slug>')
+    .description('download a revision tarball to disk')
+    .option('--revision <id>', 'revision id (default: latest)')
+    .option('--out <path>', 'output path or directory (default: <slug>-<revisionId>.tar.gz in cwd)')
+    .action(
+      async (
+        slug: string,
+        cmdOpts: { revision?: string; out?: string },
+      ) => {
+        try {
+          const client = buildClient(opts());
+          exitCode = await runRepoDownload(
+            client,
+            slug,
+            cmdOpts.revision,
+            cmdOpts.out,
+            flags(opts()),
+          );
+        } catch (e) {
+          printSetupError(e, flags(opts()).json);
+          exitCode = 2;
+        }
+      },
+    );
+
   await program.parseAsync(argv);
   return exitCode;
+}
+
+function tenantFromDebugPrincipal(value: string | undefined): string | undefined {
+  if (value === undefined || value === '') return undefined;
+  // Format: type:id[:tenantId] — see specs/crosscut/atlasctl.md.
+  const parts = value.split(':');
+  if (parts.length >= 3 && parts[2] !== '') return parts[2];
+  return undefined;
 }
 
 function printSetupError(e: unknown, asJson: boolean): void {

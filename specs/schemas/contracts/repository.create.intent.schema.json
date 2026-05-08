@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repository.create.intent.v1",
+  "title": "RepositoryCreateIntentPayload",
+  "description": "Payload schema for Repository.Create intents. A signed-in tenant mints a new tenant-scoped Repository identified by a kebab-case slug. Idempotent on (tenantId, repoSlug).",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "Repository.Create" },
+    "resourceType": { "type": "string", "const": "Repository" },
+    "resourceId": { "type": ["string", "null"] },
+    "repoSlug": {
+      "type": "string",
+      "description": "Tenant-unique kebab-case slug (e.g. hello-world).",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "required": ["actionId", "resourceType", "repoSlug", "name"]
+}

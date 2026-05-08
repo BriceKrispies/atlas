@@ -13,8 +13,10 @@
  *                               http://<slug>.<apex>:<port>/
  *
  * The HTML pages are inline templates — no Vite SPA, no design-package
- * build step required for PR1. PR3 swaps them for `<atlas-signup-form>`
- * and `<atlas-tenant-home>` web components.
+ * build step required for this slice. SPA-shell replacement is deferred
+ * to a future slice (see
+ * `specs/domains/tenancy/capabilities/public-signup/README.md`
+ * "NOT in Scope").
  */
 
 import { Hono } from 'hono';
@@ -80,9 +82,11 @@ const SIGNUP_FORM_HTML = `<!DOCTYPE html>
   h1 { font-size: 1.5rem; margin: 0 0 1rem; }
   p { color: #555; }
   label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
-  input { width: 100%; box-sizing: border-box; padding: .55rem .65rem; font: inherit; border: 1px solid #ccc; border-radius: 6px; }
-  button { margin-top: 1.25rem; padding: .6rem 1rem; font: inherit; font-weight: 600; background: #111; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
-  button:hover { background: #333; }
+  input { width: 100%; box-sizing: border-box; padding: .55rem .65rem; font: inherit; border: 1px solid #ccc; border-radius: 6px; min-height: 44px; }
+  button { margin-top: 1.25rem; padding: .6rem 1rem; font: inherit; font-weight: 600; background: #111; color: #fff; border: 0; border-radius: 6px; cursor: pointer; min-height: 44px; }
+  @media (hover: hover) {
+    button:hover { background: #333; }
+  }
   .hint { font-size: 12px; color: #777; margin-top: .25rem; }
   .error { color: #b00; margin-top: 1rem; padding: .5rem .75rem; background: #fee; border-radius: 6px; display: none; }
   .ok { color: #050; margin-top: 1rem; padding: .5rem .75rem; background: #efe; border-radius: 6px; display: none; }
@@ -92,16 +96,16 @@ const SIGNUP_FORM_HTML = `<!DOCTYPE html>
   <h1>Sign up for Atlas</h1>
   <p>Pick a tenant slug for your organization. Once an admin approves, you'll get a magic-link email to sign in at <code>&lt;slug&gt;.localhost</code>.</p>
   <form id="f">
-    <label>Organization name</label>
-    <input id="organizationName" required maxlength="200">
-    <label>Tenant slug</label>
-    <input id="tenantSlug" required pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" maxlength="63">
+    <label for="organizationName">Organization name</label>
+    <input id="organizationName" data-testid="public-signup.organization-name" required maxlength="200">
+    <label for="tenantSlug">Tenant slug</label>
+    <input id="tenantSlug" data-testid="public-signup.tenant-slug" required pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" maxlength="63">
     <div class="hint">Lowercase letters, digits, hyphens. 1–63 chars. Becomes <code>&lt;slug&gt;.localhost</code>.</div>
-    <label>Email</label>
-    <input id="email" type="email" required>
-    <button type="submit">Submit</button>
-    <div class="error" id="err"></div>
-    <div class="ok" id="ok"></div>
+    <label for="email">Email</label>
+    <input id="email" data-testid="public-signup.email" type="email" required>
+    <button type="submit" data-testid="public-signup.submit">Submit</button>
+    <div class="error" id="err" data-testid="public-signup.error" role="alert" aria-live="polite"></div>
+    <div class="ok" id="ok" data-testid="public-signup.success" role="alert" aria-live="polite"></div>
   </form>
 <script>
 const f = document.getElementById('f');
@@ -145,8 +149,10 @@ function confirmHtml(token: string, tenantId: string, email: string): string {
 <style>
   body { font: 14px/1.4 system-ui, sans-serif; max-width: 520px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
   h1 { font-size: 1.5rem; }
-  button { padding: .6rem 1rem; font: inherit; font-weight: 600; background: #111; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
-  button:hover { background: #333; }
+  button { padding: .6rem 1rem; font: inherit; font-weight: 600; background: #111; color: #fff; border: 0; border-radius: 6px; cursor: pointer; min-height: 44px; }
+  @media (hover: hover) {
+    button:hover { background: #333; }
+  }
   .error { color: #b00; margin-top: 1rem; padding: .5rem .75rem; background: #fee; border-radius: 6px; display: none; }
 </style>
 </head>
@@ -157,8 +163,8 @@ function confirmHtml(token: string, tenantId: string, email: string): string {
     <input type="hidden" id="token" value="${escapeHtml(token)}">
     <input type="hidden" id="tenantId" value="${escapeHtml(tenantId)}">
     <input type="hidden" id="email" value="${escapeHtml(email)}">
-    <button type="submit">Sign in</button>
-    <div class="error" id="err"></div>
+    <button type="submit" data-testid="public-signup-confirm.submit">Sign in</button>
+    <div class="error" id="err" role="alert" aria-live="polite"></div>
   </form>
 <script>
 const f = document.getElementById('f');
@@ -175,23 +181,23 @@ f.addEventListener('submit', async (e) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    redirect: 'follow',
     credentials: 'include',
   });
-  if (res.redirected) {
-    window.location.href = res.url;
-    return;
-  }
+  const j = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
     err.textContent = (j.error && j.error.message) || 'Confirmation failed.';
     err.style.display = 'block';
     return;
   }
-  // Fallback: server returned 200 with a Location header that fetch
-  // didn't auto-follow. Pull it from the JSON body.
-  const j = await res.json().catch(() => ({}));
-  if (j.redirect) window.location.href = j.redirect;
+  // Server returns 200 + { redirect } on success. Navigate the browser
+  // ourselves so the new session cookie is sent on the GET to the
+  // tenant's apex URL.
+  if (j.redirect) {
+    window.location.href = j.redirect;
+    return;
+  }
+  err.textContent = 'Confirmation failed.';
+  err.style.display = 'block';
 });
 </script>
 </body>
@@ -332,10 +338,14 @@ export function signupRoutes(state: AppState): Hono<{ Variables: ServerVariables
       }
 
       const redirect = state.config.tenantBaseUrl(tenantId);
-      // 303 forces the next request to be GET regardless of original
-      // verb — exactly what we want after the POST.
-      return c.body(JSON.stringify({ redirect }), 303 as 200, {
-        Location: redirect,
+      // Return 200 with the redirect target in the body. The client
+      // navigates with `window.location.href` so the new session
+      // cookie is attached to the follow-up GET. We previously sent
+      // 303 + Location, but cross-origin auto-follow is opaque in
+      // some browsers (res.redirected/url are unreliable) and 303 is
+      // outside `res.ok`, so the form's error branch fired instead
+      // of the redirect.
+      return c.body(JSON.stringify({ redirect }), 200, {
         'Content-Type': 'application/json; charset=utf-8',
       });
     } catch (e) {

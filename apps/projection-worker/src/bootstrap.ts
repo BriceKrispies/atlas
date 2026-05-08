@@ -16,6 +16,8 @@ import {
   PostgresRelationStore,
   PostgresProjectionStore,
   PostgresCache,
+  PostgresRepositoryRevisionStore,
+  PostgresRepositoryStore,
   PostgresWorkerSource,
   PostgresCatalogStateStore,
   PostgresSearchEngine,
@@ -27,6 +29,8 @@ import type {
   ProjectionStore,
   Cache,
   RelationStore,
+  RepositoryRevisionStore,
+  RepositoryStore,
   WorkerSource,
   CatalogStateStore,
   SearchEngine,
@@ -43,6 +47,8 @@ export interface PerTenantAdapters {
   workerSource: WorkerSource;
   catalogState: CatalogStateStore;
   search: SearchEngine;
+  repositories: RepositoryStore;
+  revisions: RepositoryRevisionStore;
 }
 
 export interface WorkerAppState {
@@ -80,6 +86,8 @@ export async function bootstrap(config: WorkerConfig): Promise<WorkerAppState> {
         workerSource: new PostgresWorkerSource(sql, config.moduleId),
         catalogState: new PostgresCatalogStateStore(sql),
         search: new PostgresSearchEngine(sql),
+        repositories: new PostgresRepositoryStore(sql),
+        revisions: new PostgresRepositoryRevisionStore(sql),
       };
     },
   };

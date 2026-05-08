@@ -137,4 +137,22 @@ export class SmtpMailer implements Mailer {
 
     return { messageId, sentAt };
   }
+
+  /**
+   * Release the pooled SMTP transport. Wrapped so a misbehaving relay
+   * can't block process shutdown — log and move on.
+   */
+  async close(): Promise<void> {
+    try {
+      this.transport.close();
+    } catch (e) {
+      console.log(
+        JSON.stringify({
+          event: 'mailer.close.error',
+          driver: 'smtp',
+          error: (e as Error).message,
+        }),
+      );
+    }
+  }
 }

@@ -10,10 +10,17 @@
  *   GET  /api/v1/admin/signups            → list (filter ?status=pending)
  *   POST /api/v1/admin/signups/:id/approve
  *   POST /api/v1/admin/signups/:id/deny
+ *
+ * I2 posture: fail-closed. Even with `TEST_AUTH_ENABLED=true` the route
+ * still requires `principal.roles` to include `admin`. The dev/test
+ * workflow is to send `X-Debug-Principal: user:<id>:<tenantId>:admin`
+ * so the principal carries the admin role; see
+ * `apps/server/src/middleware/principal.ts` for the header format.
  */
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { PostgresEventStore } from '@atlas/adapter-node';
 import {
   handleSignupApprove,
   handleSignupDeny,
@@ -35,10 +42,26 @@ function readString(v: unknown): string | null {
 }
 
 function requireAdmin(
-  state: AppState,
+  _state: AppState,
   c: AppCtx,
   correlationId: string,
 ): Response | null {
+  // Fail-closed admin gate (Invariant I2). The earlier PR1 implementation
+  // short-circuited to allow when `TEST_AUTH_ENABLED=true`, which meant
+  // any authenticated principal — including JWTs minted by an unrelated
+  // IdP or arbitrary `X-Debug-Principal` headers — could approve signups
+  // and provision tenants. That's a real authorization hole on any
+  // prod-shaped instance that happens to have test-auth still on.
+  //
+  // The new contract: principal must exist AND `principal.roles` must
+  // include `admin`. In `TEST_AUTH_ENABLED=true` mode, dev/test flows
+  // get an admin principal by sending
+  //   X-Debug-Principal: user:<id>:<tenantId>:admin
+  // (4-segment form, see `middleware/principal.ts`). In strict mode the
+  // role is hydrated from the principal's `Membership` row.
+  //
+  // Full I2 policy gating (Cedar `Tenancy.Signup.Approve`) lands when
+  // these routes are folded into the standard `submitIntent` pipeline.
   const principal = c.get('principal');
   if (!principal) {
     return errorResponse(
@@ -49,12 +72,6 @@ function requireAdmin(
       correlationId,
     );
   }
-  // PR1 dev shortcut: in TEST_AUTH_ENABLED mode any authenticated
-  // principal can drive the admin queue. Role-based RBAC + Cedar
-  // policy gating land when these routes get folded into the
-  // standard `submitIntent` pipeline. Production deployments must
-  // run with `TEST_AUTH_ENABLED=false`.
-  if (state.config.testAuth.enabled) return null;
   const roles = principal.roles ?? [];
   if (!roles.includes('admin')) {
     return errorResponse(
@@ -130,6 +147,26 @@ export function adminSignupRoutes(
           },
           issueInvite: (input) =>
             issueInviteForTenant(state, input),
+          revokeOutstandingInvites: async (_input) => {
+            // TODO: identity module does not yet expose an
+            // `Identity.Invite.Revoke` handler. Until it does, this
+            // callback is a no-op and prior magic-link tokens remain
+            // valid until their TTL (~7 days). The choreography in
+            // `handleSignupApprove` already calls this hook before
+            // re-minting on retry, so wiring real revoke is a single
+            // adapter-store update once the handler lands. Tracked
+            // as follow-up debt against the I3 idempotency claim in
+            // specs/domains/tenancy/capabilities/public-signup/README.md.
+            void _input;
+          },
+          appendEvent: async (envelope) => {
+            // Per-tenant event store — built lazily because tenant SQL
+            // is only resolvable after `ensureTenantProvisioned`. Same
+            // pattern as `issueInviteForTenant`.
+            const sql = await ensureTenantMigrated(state, envelope.tenantId);
+            const eventStore = new PostgresEventStore(sql);
+            await eventStore.append(envelope);
+          },
           buildMagicLinkUrl: (input) => {
             // Magic link points back at the *parent* origin so the
             // POST /signup/confirm response can set a Domain=.<apex>

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repository.upload.intent.v1",
+  "title": "RepositoryUploadIntentPayload",
+  "description": "Payload schema for Repository.Upload intents. Each accepted intent mints exactly one Revision under the named Repository. Phase 1 caps the gzipped tarball at 10 MB (10485760 bytes); the byteCount maximum here is the schema-level enforcement of UPLOAD_TOO_LARGE.",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "Repository.Upload" },
+    "resourceType": { "type": "string", "const": "Repository" },
+    "resourceId": { "type": ["string", "null"] },
+    "repoId": {
+      "type": "string",
+      "description": "Target Repository identifier (UUID-shaped).",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "byteCount": {
+      "type": "integer",
+      "description": "Decoded length of the tarball in bytes; hard cap is 10 MB compressed.",
+      "minimum": 1,
+      "maximum": 10485760
+    },
+    "contentHash": {
+      "type": "string",
+      "description": "SHA-256 of the tarball bytes, lowercase hex.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bytesBase64": {
+      "type": "string",
+      "description": "Base64-encoded tarball bytes (application/gzip).",
+      "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+      "minLength": 1
+    }
+  },
+  "required": ["actionId", "resourceType", "repoId", "byteCount", "contentHash", "bytesBase64"]
+}

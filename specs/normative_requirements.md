@@ -720,7 +720,37 @@ These requirements define validation the compiler MUST perform on input artifact
 
 ---
 
-## 3.10 Error Taxonomy Structure
+## 3.10 Mailer Adapter Parity
+
+### REQ-MAILER-001
+
+**Statement:** All `Mailer` adapters MUST persist `correlationId` to `control_plane.email_log.correlation_id`.
+
+**Source:** `architecture.md#I5`, `ports/src/mailer.ts`
+
+**Evidence:** I5 requires correlationId propagation through every observable surface; email is one such surface
+
+**Test Hook:** Inspect `control_plane.email_log` after Mailer dispatch; correlation_id column matches request correlationId
+
+**Severity:** ERROR
+
+---
+
+### REQ-MAILER-002
+
+**Statement:** All `Mailer` adapters MUST write rows to `control_plane.email_log` with the same column shape (`message_id, to_address, subject, body, tenant_id, correlation_id, sent_at, tags`) so the read-side `EmailLogStore` works regardless of which driver is wired.
+
+**Source:** `ports/src/mailer.ts`, `control_plane.email_log` schema
+
+**Evidence:** Cross-adapter parity is non-negotiable; `EmailLogStore` reads must be driver-agnostic
+
+**Test Hook:** Each adapter's integration test verifies all eight columns are populated with the documented types
+
+**Severity:** ERROR
+
+---
+
+## 3.11 Error Taxonomy Structure
 
 ### REQ-ERROR-001
 

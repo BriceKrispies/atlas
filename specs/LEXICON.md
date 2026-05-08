@@ -270,6 +270,91 @@ Every entry includes:
 - **Rules**:
   - Must not block command latency (async write acceptable).
 
+### InviteToken
+- **Kind**: Noun
+- **Meaning**: A single-use bearer credential bound to a tenant + email, valid until expiry, redeemed via `Identity.Invite.Accept`. Owned by identity.
+- **Shape**:
+  - `tokenId`
+  - `tenantId`
+  - `email`
+  - `expiresAt`
+  - `consumedAt?`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Must be redeemable exactly once.
+
+### MagicLink
+- **Kind**: Noun
+- **Meaning**: A URL embedding an `InviteToken` that, when visited, signs the user in. Constructed by the route layer; the magic-link is the authentication factor on `/signup/confirm`.
+- **Shape**:
+  - URL with embedded `InviteToken`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Authentication factor for `/signup/confirm`; not a long-lived session.
+
+### Mailer
+- **Kind**: Noun
+- **Meaning**: Outbound email port (`ports/src/mailer.ts`). Adapters: `StdoutEventMailer` (dev/sim), `SmtpMailer` (smtp4dev / production SMTP).
+- **Shape**:
+  - `Mailer::send(Message) -> Result`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - All adapters MUST persist `correlationId` and write to `control_plane.email_log` with the same column shape (see MAILER-001, MAILER-002).
+
+### SignupRequest
+- **Kind**: Noun
+- **Meaning**: A public visitor's intent to provision a tenant; row in `control_plane.signup_requests`; states `pending | approved | denied`; uniquely keyed by `(email, tenantSlug)`. Owned by tenancy.
+- **Shape**:
+  - `signupRequestId`
+  - `email`
+  - `tenantSlug`
+  - `state` (`pending | approved | denied`)
+  - `createdAt`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - `(email, tenantSlug)` is unique.
+
+### Repository
+- **Kind**: Noun
+- **Meaning**: A tenant-scoped, named container for source revisions. Owned by code/repository.
+- **Shape**:
+  - `repoId` (UUID-shaped)
+  - `repoSlug` (tenant-unique, kebab-case, e.g. `hello-world`)
+  - `name`
+  - `description?`
+- **Touches**: PIPE-CMD-001, PIPE-QRY-001, INV-CACHE-001
+- **Rules**:
+  - Strictly tenant-scoped — no row spans tenants.
+  - `repoSlug` is unique within a tenant.
+
+### Revision
+- **Kind**: Noun
+- **Meaning**: An immutable snapshot of source bytes at a point in time. Each `Repository.Uploaded` event mints exactly one Revision. Owned by code/repository.
+- **Shape**:
+  - `revisionId`
+  - `repoId`
+  - `byteCount`
+  - `contentHash` (sha256, hex)
+  - `pushedAt`
+  - `pushedBy`
+  - `correlationId`
+- **Touches**: INV-DERIVED-001, PIPE-CMD-001, PIPE-QRY-001
+- **Rules**:
+  - Append-only; revisions are never mutated or deleted in-place (Phase 1).
+  - Bytes round-trip identically — `contentHash` must match the stored bytes.
+
+### Tarball
+- **Kind**: Noun
+- **Meaning**: A gzipped tar archive (`application/gzip`) containing a source tree. The single ingest format Phase 1 of the code platform supports; Phase 3's git transport produces the same Revision entity from a different ingest path.
+- **Shape**:
+  - bytes (gzipped tar)
+  - `byteCount` (compressed length, ≤ 10 MB in Phase 1)
+  - `contentHash` (sha256, hex)
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Hard cap of 10 MB compressed in Phase 1; over-cap uploads reject at schema validation with `UPLOAD_TOO_LARGE`.
+  - Wire format is base64-in-JSON on the `Repository.Upload` intent; streaming/object-storage upload is a future slice.
+
 ---
 
 ## UI Composition Nouns
@@ -442,6 +527,22 @@ Every entry includes:
 - **Touches**: PIPE-CMD-001, PIPE-QRY-001
 - **Rules**:
   - Must not block critical latency (async permitted).
+
+### approveSignup
+- **Kind**: Verb
+- **Meaning**: Admin-driven transition of a `SignupRequest` from `pending` to `approved`, choreographing tenant-create + custom-domain register + tenant-DB provision + invite-issue + mail-send.
+- **Signature**: `(SignupRequestId, Principal) -> DomainEvent[]`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Only allowed from state `pending`; idempotent on repeat invocation.
+
+### issueInvite
+- **Kind**: Verb
+- **Meaning**: Mint a fresh `InviteToken` in a tenant's per-tenant DB and dispatch the `Identity.InviteIssued` event.
+- **Signature**: `(TenantId, email) -> InviteToken`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Token must be single-use and time-bound.
 
 ---
 

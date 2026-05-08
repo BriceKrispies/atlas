@@ -43,6 +43,12 @@ export type {
 } from './relation-store.ts';
 export type { EntityTypeRegistry } from './entity-type-registry.ts';
 export type {
+  RepositoryStore,
+  RepositoryRevisionStore,
+  RepositoryRecord,
+  RevisionRecord,
+} from './repository-store.ts';
+export type {
   HandlerRegistry,
   IntentHandler,
   IntentHandlerContext,

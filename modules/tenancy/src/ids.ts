@@ -11,6 +11,15 @@ export function newSignupRequestId(): string {
   return `signup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Mint a tenancy-scoped event id. Mirrors the prefix convention used by
+ * the identity module's `newEventId` so events written across modules
+ * remain visually consistent in event-store dumps.
+ */
+export function newEventId(): string {
+  return `event-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**

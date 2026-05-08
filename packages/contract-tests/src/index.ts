@@ -17,3 +17,8 @@ export {
   type WasmHostFactory,
   type WasmHostFactoryArg,
 } from './wasm-host.ts';
+export {
+  runRepositoryStoreContract,
+  type RepositoryStoreFactoryOptions,
+  type RepositoryStoreFactoryResult,
+} from './repository-store.ts';

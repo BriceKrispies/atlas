@@ -14,11 +14,13 @@
     "ajv": "^8.17.0",
     "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "tar": "^7.4.3"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.17",
+    "@types/tar": "^6.1.13",
     "tsx": "^4.21.0",
     "vitest": "^4.1.5"
   }

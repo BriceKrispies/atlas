@@ -15,8 +15,10 @@
     "@atlas/authz": "workspace:*",
     "@atlas/catalog": "workspace:*",
     "@atlas/content-pages": "workspace:*",
+    "@atlas/identity": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",
+    "@atlas/repository": "workspace:*",
     "@atlas/wasm-host": "workspace:*",
     "postgres": "^3.4.5"
   },

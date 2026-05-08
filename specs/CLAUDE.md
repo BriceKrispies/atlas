@@ -16,7 +16,7 @@ Atlas's domains are grouped into **6 platforms + 1 parked-apps platform** (the d
 | **Commerce** | billing, quotas, metering, plans *(quotas + metering moved here from old Extensibility; both load-bearing)* |
 | **First-party apps** *(parked)* | cms (catalog + content-pages + authoring + page-templates) |
 
-The Compute / Storage / Code platforms and several Workflow domains are **net-new and currently unspecified** — capability specs land via the slice workflow as Phase 1 of the project plan begins. Domain stub directories are created lazily when a domain's first capability is scoped, not pre-emptively.
+Most Compute / Storage / Code platform domains and several Workflow domains are **net-new and currently unspecified** — capability specs land via the slice workflow as Phase 1 of the project plan begins. Domain stub directories are created lazily when a domain's first capability is scoped, not pre-emptively. The Code platform's `repository` domain has its first capability scoped (`upload-tarball`) — see [`domains/code/repository/capabilities/upload-tarball/README.md`](domains/code/repository/capabilities/upload-tarball/README.md).
 
 When writing or updating a spec, the canonical home is `specs/domains/<x>/` (or `specs/domains/<platform>/<domain>/` for the newly-carved Compute / Storage / Code platforms — these nest under their platform dir for clarity).
 

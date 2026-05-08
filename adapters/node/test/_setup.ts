@@ -53,8 +53,10 @@ export async function freshSql(): Promise<postgres.Sql> {
       cache_entries,
       projections,
       catalog_search_documents,
-      catalog_state
-    RESTART IDENTITY
+      catalog_state,
+      repository_revisions,
+      repositories
+    RESTART IDENTITY CASCADE
   `);
   return sql;
 }

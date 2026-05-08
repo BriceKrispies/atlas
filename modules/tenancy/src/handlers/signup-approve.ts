@@ -8,20 +8,30 @@
  *   3. Register the custom domain `<slug>.<apex>`.
  *   4. Provision the tenant DB + run migrations (route-supplied
  *      callback; modules don't construct adapters).
- *   5. Mint the magic-link invite via the route-supplied
+ *   5. Revoke any outstanding magic-link invites for this signup's
+ *      email (route-supplied). On a retry after a previous attempt
+ *      had already minted a token, this step makes "the previous
+ *      token is unused" actually true — the prior InviteToken is
+ *      neutered before we mint a fresh one. (I3 idempotency fix.)
+ *   6. Mint the magic-link invite via the route-supplied
  *      `issueInvite` callback (which wraps `Identity.Invite.Issue`
  *      against the new tenant's per-tenant adapters).
- *   6. Compose the email body around the magic link and dispatch via
+ *   7. Compose the email body around the magic link and dispatch via
  *      `Mailer`.
- *   7. Flip the signup row to `approved`.
+ *   8. Flip the signup row to `approved`.
+ *   9. Emit `Tenancy.SignupApproved` to the per-tenant EventStore so
+ *      the audit log + cache-invalidation chain fire. The event tags
+ *      `Tenant:${tenantId}` and `Signup:${signupId}` so any cached
+ *      pending-signup queries are purged (Invariant I10).
  *
  * If step 2 or 3 was already done by a previous attempt (e.g. a crash
  * between provisioning and mailing), retrying is safe: tenant.create
  * is wrapped in an existence check, customDomains.add throws on the
- * duplicate-hostname index which we catch + tolerate, and the magic-
- * link mint is purely additive (a fresh InviteToken per call).
+ * duplicate-hostname index which we catch + tolerate, and step 5
+ * revokes any prior magic-link invite before step 6 mints a new one.
  */
 
+import type { EventEnvelope } from '@atlas/platform-core';
 import type {
   CustomDomainStore,
   Mailer,
@@ -29,10 +39,14 @@ import type {
   TenantStore,
 } from '@atlas/ports';
 import { TenancyError, codes } from '../errors.ts';
-import { tenantHostnameFor } from '../ids.ts';
-import type {
-  SignupApproveCommand,
-  SignupApproveResult,
+import { newEventId, tenantHostnameFor } from '../ids.ts';
+import {
+  TENANCY_SIGNUP_APPROVED_EVENT_TYPE,
+  TENANCY_SIGNUP_APPROVED_SCHEMA_ID,
+  TENANCY_SIGNUP_APPROVED_SCHEMA_VERSION,
+  type SignupApproveCommand,
+  type SignupApproveResult,
+  type TenancySignupApprovedPayload,
 } from '../types.ts';
 
 export interface SignupApproveDeps {
@@ -40,6 +54,15 @@ export interface SignupApproveDeps {
   tenants: TenantStore;
   customDomains: CustomDomainStore;
   mailer: Mailer;
+  /**
+   * Append the `Tenancy.SignupApproved` audit event into the
+   * newly-provisioned tenant's event store. Implemented as a callback
+   * (rather than a `EventStore` instance) because the per-tenant SQL
+   * pool is only resolvable after `ensureTenantProvisioned` runs —
+   * the route can't construct a real `EventStore` upfront. The callback
+   * pattern matches `issueInvite` for the same reason.
+   */
+  appendEvent: (envelope: EventEnvelope) => Promise<void>;
   /**
    * Apex domain for the tenant's hostname (e.g. `localhost` in dev so
    * tenants land on `acme.localhost:3000`). Production deployments pass
@@ -51,6 +74,25 @@ export interface SignupApproveDeps {
    * `state.migratedTenants`). Provided by the route layer.
    */
   ensureTenantProvisioned: (tenantId: string) => Promise<void>;
+  /**
+   * Revoke any outstanding magic-link InviteTokens for this email in
+   * the new tenant before a fresh one is minted. Without this, a
+   * crash between `issueInvite` and `markApproved` would leave the
+   * previous token live for its full TTL (~7d) — the user would end
+   * up with multiple valid magic links from the same approval flow,
+   * which contradicts the "previous token is unused" line in the
+   * capability spec. The callback is supplied by the route layer
+   * (which knows how to enumerate the per-tenant invite-token store
+   * and flip outstanding rows to `revoked`).
+   *
+   * MUST be idempotent: on first approval no invites exist and the
+   * callback is a no-op.
+   */
+  revokeOutstandingInvites: (input: {
+    tenantId: string;
+    email: string;
+    correlationId: string;
+  }) => Promise<void>;
   /**
    * Mint a magic-link invite for the new tenant's admin. Wraps
    * `Identity.Invite.Issue` against the per-tenant event store +
@@ -144,14 +186,25 @@ export async function handleSignupApprove(
   // adapters from inside the module.
   await deps.ensureTenantProvisioned(tenantId);
 
-  // 4. Mint the magic-link invite in the tenant's per-tenant DB.
+  // 4. Revoke any outstanding magic-link invites for this email.
+  // First-time approval: no-op. Retry after a prior crash between
+  // mint and markApproved: the prior token is invalidated here so a
+  // fresh mint below does not leave two live magic links to the same
+  // mailbox. (I3 idempotency fix.)
+  await deps.revokeOutstandingInvites({
+    tenantId,
+    email: signup.email,
+    correlationId: cmd.correlationId,
+  });
+
+  // 5. Mint the magic-link invite in the tenant's per-tenant DB.
   const { plaintextToken } = await deps.issueInvite({
     tenantId,
     email: signup.email,
     correlationId: cmd.correlationId,
   });
 
-  // 5. Compose + send the email.
+  // 6. Compose + send the email.
   const magicLinkUrl = deps.buildMagicLinkUrl({
     tenantId,
     hostname,
@@ -174,11 +227,50 @@ export async function handleSignupApprove(
     tags: ['magic-link', 'signup-approved'],
   });
 
-  // 6. Flip the signup row to approved. Done last so a crash before
-  // mail-dispatch doesn't strand an "approved" row whose email never
-  // went out.
-  const approved = await deps.signupRequests.markApproved(cmd.signupId, tenantId);
+  // 7. Flip the signup row to approved. Done after the mail-dispatch
+  // so a crash before send doesn't strand an "approved" row whose
+  // email never went out.
+  const approved = await deps.signupRequests.markApproved(
+    cmd.signupId,
+    tenantId,
+  );
 
+  // 8. Emit the audit event into the new tenant's event store so the
+  // dispatcher chain runs (cache invalidation + SSE fanout). The
+  // magic-link plaintext is NEVER on the payload — secrets stay out
+  // of event history (mirrors the rule in `events.md`).
+  const occurredAt = new Date().toISOString();
+  const payload: TenancySignupApprovedPayload = {
+    signupId: approved.signupId,
+    tenantId,
+    hostname,
+    email: signup.email,
+    principalId: cmd.principalId,
+    organizationName: signup.organizationName,
+  };
+  const envelope: EventEnvelope = {
+    eventId: newEventId(),
+    eventType: TENANCY_SIGNUP_APPROVED_EVENT_TYPE,
+    schemaId: TENANCY_SIGNUP_APPROVED_SCHEMA_ID,
+    schemaVersion: TENANCY_SIGNUP_APPROVED_SCHEMA_VERSION,
+    occurredAt,
+    tenantId,
+    correlationId: cmd.correlationId,
+    idempotencyKey: `tenancy.signup.approve.${approved.signupId}`,
+    causationId: null,
+    principalId: cmd.principalId,
+    userId: null,
+    cacheInvalidationTags: [
+      `Tenant:${tenantId}`,
+      `Signup:${approved.signupId}`,
+    ],
+    payload,
+  };
+  await deps.appendEvent(envelope);
+
+  // Structured log line stays — useful for grep-ability in dev /
+  // staging stdout streaming. The audit-of-record now lives on the
+  // event envelope above; the line below is informational only.
   console.log(
     JSON.stringify({
       event: 'tenancy.signup.approved',

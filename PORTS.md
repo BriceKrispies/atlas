@@ -22,11 +22,13 @@ failed" / "connection refused" head-scratching during dev.
 
 | Host port | Container port | Service | Compose / config | Override env |
 |-----------|----------------|---------|------------------|--------------|
+| **1025** | 25 | smtp4dev SMTP listener (dev `MAILER_MODE=smtp`) | `infra/compose/compose.smtp4dev.yml` | (in compose) |
 | **3000** | 3000 | `apps/server` (Hono ingress) | `apps/server/src/config.ts` | `INGRESS_PORT` |
 | **5199** | — | `apps/admin` Vite dev | `playwright.config.ts`, `scripts/dev-async.ts` | (positional `--port`) |
 | **5181** | — | `apps/authoring` Vite dev | `playwright.config.ts` | (positional `--port`) |
 | **5180** | — | `apps/sandbox` Vite dev | (sandbox config) | (positional `--port`) |
 | **5182** | — | `apps/sim` Vite dev (BDD) | `playwright.bdd.config.ts` | (positional `--port`) |
+| **5080** | 80 | smtp4dev web UI + REST API (browse sent mail at `http://localhost:5080`) | `infra/compose/compose.smtp4dev.yml` | (in compose) |
 | **15433** | 5432 | Postgres (control plane) | `infra/compose/compose.control-plane.yml` | `POSTGRES_PORT` / `DB_PORT` |
 | **8081** | 8080 | Keycloak admin | `infra/compose/compose.keycloak.yml` | (in compose) |
 | **3001** | 3000 | Grafana | `infra/compose/compose.observability.yml` | (in compose) |

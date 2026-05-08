@@ -27,6 +27,7 @@ These are load-bearing — read their CLAUDE.md before editing.
 | `platform-core/` — `@atlas/platform-core` | Server-side domain primitives: cache-key builders, singleflight, control-plane DB types, env config, validation |
 | `wasm-host/` — `@atlas/wasm-host` | WASM plugin sandbox (16 MB cap, 5 s timeout); browser + node-worker adapters |
 | `metrics/` — `@atlas/metrics` | Telemetry event shapes + helpers (`atlas-metrics`, `guardrail`) |
+| `logging/` — `@atlas/logging` | Structured-JSON logger. Non-blocking hot path (setImmediate-batched async drain to stdout); zero runtime deps; runtime-adjustable level. Enforces [`specs/crosscut/logging.md`](../specs/crosscut/logging.md). |
 | `test-state/` — `@atlas/test-state` | Dev-mode test API: surfaces register state readers; Playwright reads via `window.__atlasTest` |
 | `test-fixtures/` — `@atlas/test-fixtures` | Playwright + Axe accessibility helpers |
 | `contract-tests/` — `@atlas/contract-tests` | Vitest contract suites for ports — both `node` and `idb` adapters run these |

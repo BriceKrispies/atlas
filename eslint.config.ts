@@ -121,6 +121,37 @@ export default [
     },
   },
   {
+    // nodemailer is the SMTP transport for SmtpMailer; confined to
+    // @atlas/adapter-node so swapping the mailer driver is a
+    // single-package change. Modules and apps reach for it through
+    // the Mailer port (constructed via createMailer in bootstrap).
+    files: ['**/*.ts'],
+    ignores: [
+      'adapters/node/**',
+      'tests/**',
+      'scripts/**',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2023,
+      sourceType: 'module',
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['nodemailer'],
+              message:
+                'nodemailer is confined to @atlas/adapter-node. Apps must reach SMTP through the Mailer port (constructed via createMailer in bootstrap).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Ports define the seam between domain modules and adapters; they MUST
     // depend only on `@atlas/platform-core` and themselves. Importing a
     // concrete adapter or a domain module from a port would create a cycle.

@@ -6,6 +6,8 @@ export { PostgresSearchEngine } from './search-engine.ts';
 export { PostgresControlPlaneRegistry } from './control-plane-registry.ts';
 export { PostgresCatalogStateStore } from './catalog-state-store.ts';
 export { PostgresCustomDomainStore } from './custom-domain-store.ts';
+export { PostgresRepositoryStore } from './repository-store.ts';
+export { PostgresRepositoryRevisionStore } from './repository-revision-store.ts';
 export { PostgresEntityStore } from './entity-store.ts';
 export { PostgresRelationStore } from './relation-store.ts';
 export { PostgresEntityTypeRegistry } from './entity-type-registry.ts';

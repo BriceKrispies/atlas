@@ -37,6 +37,13 @@ export type {
   SignupApproveResult,
   SignupDenyCommand,
   SignupDenyResult,
+  TenancySignupApprovedPayload,
+} from './types.ts';
+
+export {
+  TENANCY_SIGNUP_APPROVED_EVENT_TYPE,
+  TENANCY_SIGNUP_APPROVED_SCHEMA_ID,
+  TENANCY_SIGNUP_APPROVED_SCHEMA_VERSION,
 } from './types.ts';
 
 export {

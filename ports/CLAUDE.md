@@ -27,6 +27,7 @@ implemented by an `/adapters/*` package.
 | `HandlerRegistry` | `handler-registry.ts` | Intent-handler dispatch registry |
 | `PolicyEngine` | `policy-engine.ts` | Authorization decisions (permit/deny, I4) |
 | `EventDispatcher` | `dispatcher.ts` | Event-handling composition closure (see [`specs/lifecycle.md`](../specs/lifecycle.md) for usage in context) |
+| `Mailer` | `mailer.ts` | Outbound email delivery (magic links, notifications) |
 | `WasmHost` / `WasmPluginLoader` | `wasm-host.ts` | Sandboxed plugin execution |
 
 The full surface is re-exported from `src/index.ts`. Read it first when picking
@@ -55,6 +56,7 @@ the port a feature depends on.
 | PolicyEngine | `@atlas/adapter-policy-cedar`, `@atlas/adapter-policy-stub` | `apps/server` (bootstrap), `packages/ingress` |
 | WasmHost | `@atlas/wasm-host` (browser + node) | `modules/content-pages`, `apps/server` |
 | HandlerRegistry, EventDispatcher | composed in modules and wired in apps | `apps/server`, `packages/ingress` |
+| Mailer | `@atlas/adapter-node` (StdoutEventMailer for dev/sim, SmtpMailer for SMTP relay). **Server-only** — no IDB counterpart (sim doesn't send mail). | `apps/server` (signup-approve, future identity flows) |
 | AnalyticsStore | `InMemoryAnalyticsStore` exported from `@atlas/ports` (no adapter-backed impl yet) | `apps/server` |
 
 For adapter details see [`adapters/CLAUDE.md`](../adapters/CLAUDE.md).

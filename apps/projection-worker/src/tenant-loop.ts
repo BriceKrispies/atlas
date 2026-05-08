@@ -4,8 +4,9 @@
  * Discovers active tenants from the control plane on a configurable
  * interval, opens one `WorkerSource.subscribe` per newly-seen tenant,
  * runs the canonical dispatcher chain
- * (catalog + content-pages + cacheTagDispatcher) for each event, and
- * advances the per-(module, tenant) cursor via `sub.ack(seq)` on success.
+ * (catalog + content-pages + identity + cacheTagDispatcher) for each
+ * event, and advances the per-(module, tenant) cursor via
+ * `sub.ack(seq)` on success.
  *
  * Phase 2 (shadow mode): writes go through `wrapShadow` from `./diff.ts`
  * so the live KV is never mutated; divergence is logged.
@@ -23,6 +24,8 @@ import {
 } from '@atlas/ports';
 import { catalogDispatcher } from '@atlas/catalog';
 import { contentPagesDispatcher } from '@atlas/content-pages';
+import { identityDispatcher } from '@atlas/identity';
+import { repositoryDispatcher } from '@atlas/repository';
 import type { WorkerAppState, PerTenantAdapters } from './bootstrap.ts';
 import { wrapShadow } from './diff.ts';
 
@@ -288,6 +291,19 @@ function buildDispatcherChain(
       entities: adapters.entities,
       relations: adapters.relations,
       cache: shadow.cache,
+    }),
+    identityDispatcher({
+      entities: adapters.entities,
+      relations: adapters.relations,
+      cache: shadow.cache,
+    }),
+    // Code / repository — projection rebuilds for `Repository.Created`
+    // and `Repository.Uploaded`. Mirrors the inline chain in
+    // `apps/server/src/middleware/state.ts`; runs BEFORE
+    // `cacheTagDispatcher` so emitted tags are picked up.
+    repositoryDispatcher({
+      repositories: adapters.repositories,
+      revisions: adapters.revisions,
     }),
     cacheTagDispatcher(shadow.cache),
   );

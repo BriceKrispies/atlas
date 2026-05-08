@@ -1,5 +1,8 @@
 # smtp4dev — local SMTP server with a browsable web UI.
 #
+# Requires the `atlas-dev` network to exist. Created by `compose.dev.yml`
+# or via `podman network create atlas-dev`.
+#
 # Used by the public-signup capability to make magic-link emails
 # visible during dev + integration tests instead of being grep'd out
 # of stdout. apps/server is wired with MAILER_DRIVER=smtp +
@@ -27,3 +30,10 @@ services:
       # real recipient even if a misconfigured prod env crept in.
       ServerOptions__RelaySmtpServer: ""
     restart: unless-stopped
+    networks:
+      - atlas-dev
+
+networks:
+  atlas-dev:
+    external: true
+    name: atlas-dev

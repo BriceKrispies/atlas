@@ -163,7 +163,25 @@
       "Bash(CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane TEST_AUTH_ENABLED=true INSECURE_COOKIES=true COOKIE_DOMAIN=.localhost TENANT_APEX=localhost MAILER_MODE=stdout INGRESS_PORT=3000 pnpm *)",
       "Bash(make db-reset *)",
       "Bash(pnpm deps:check *)",
-      "Bash(pnpm smtp:up)"
+      "Bash(pnpm smtp:up)",
+      "Bash(pnpm --filter @atlas/projection-worker test)",
+      "Bash(pnpm --filter @atlas/adapter-node test)",
+      "Bash(pnpm --filter @atlas/server test)",
+      "Bash(npx vitest *)",
+      "Bash(pnpm -F @atlas/tenancy -F @atlas/adapter-node test)",
+      "Bash(Get-ChildItem -Path \"C:\\\\dev\\\\atlas\\\\modules\" -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\dev\\\\atlas\\\\infra\\\\compose\" -File | Where-Object { $_.Extension -eq '.yml' -or $_.Extension -eq '.yaml' } | Select-Object -ExpandProperty Name)",
+      "Bash(pnpm --filter @atlas/logging typecheck)",
+      "Bash(pnpm --filter @atlas/server typecheck)",
+      "Bash(pnpm -F @atlas/contract-tests test)",
+      "Bash(pnpm -F @atlas/repository test)",
+      "Bash(pnpm --filter @atlas/atlasctl test)",
+      "Bash(pnpm -F @atlas/adapter-node test)",
+      "PowerShell(pnpm *)",
+      "Bash(awk NR==167 *)",
+      "Bash(pnpm --filter @atlas/projection-worker typecheck)",
+      "Bash(pnpm --filter @atlas/server test execution-context)"
     ]
   }
 }
