@@ -34,10 +34,6 @@ interface TenantConnectionInfo {
   password: string;
 }
 
-function connectionString(info: TenantConnectionInfo): string {
-  return `postgres://${info.user}:${info.password}@${info.host}:${info.port}/${info.name}`;
-}
-
 interface PostgresTenantDbProviderOptions {
   /** Maximum number of cached per-tenant pools before LRU eviction. */
   cap?: number;
@@ -49,6 +45,59 @@ interface PostgresTenantDbProviderOptions {
    * tests that want to point every tenant at the same physical DB.
    */
   resolveConnection?: (tenantId: string) => Promise<TenantConnectionInfo | null>;
+  /**
+   * Fallback connection info used when a `control_plane.tenants` row
+   * exists but its `db_*` columns are NULL. Dev/sim deployments share
+   * one physical DB across tenants (the control-plane DB), and tenant
+   * isolation lives at the `tenant_id` column level on the substrate
+   * tables — so production-style per-tenant connection info isn't
+   * required. When unset, NULL `db_*` columns still throw, preserving
+   * the strict production behaviour.
+   */
+  defaultConnectionInfo?: TenantConnectionInfo;
+}
+
+/** Parse a `postgres://user:pass@host:port/dbname` URL into TenantConnectionInfo. */
+export function parseTenantConnectionUrl(url: string): TenantConnectionInfo {
+  const u = new URL(url);
+  if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') {
+    throw new Error(`expected postgres:// URL, got ${u.protocol}`);
+  }
+  const port = u.port ? Number.parseInt(u.port, 10) : 5432;
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`invalid port in tenant DB url: ${u.port}`);
+  }
+  const dbname = u.pathname.replace(/^\//, '');
+  if (!dbname) throw new Error(`tenant DB url is missing the database name: ${url}`);
+  return {
+    host: u.hostname,
+    port,
+    name: dbname,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+  };
+}
+
+/**
+ * Open a postgres pool from a TenantConnectionInfo using postgres.js's
+ * config-object form. Avoids the URL round-trip via `connectionString()`
+ * which has caused `password authentication failed` regressions when the
+ * URL parser interpretation differs between consumers (see
+ * docs/incidents/2026-05-08-tenant-db-auth-failure.md). Prefer this over
+ * passing a connection string.
+ */
+function openPostgresFromInfo(
+  info: TenantConnectionInfo,
+  max: number,
+): postgres.Sql {
+  return postgres({
+    host: info.host,
+    port: info.port,
+    database: info.name,
+    user: info.user,
+    password: info.password,
+    max,
+  });
 }
 
 class TenantPoolCache {
@@ -118,6 +167,7 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
   private readonly resolveOverride?: (
     tenantId: string,
   ) => Promise<TenantConnectionInfo | null>;
+  private readonly defaultConnectionInfo?: TenantConnectionInfo;
   // Dedup concurrent first-time `getPool` calls per tenant so we don't
   // spin up N pools and discard N-1 (TOCTOU race in the previous
   // implementation).
@@ -132,6 +182,9 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     this.poolMax = opts.poolMax ?? DEFAULT_POOL_MAX;
     if (opts.resolveConnection) {
       this.resolveOverride = opts.resolveConnection;
+    }
+    if (opts.defaultConnectionInfo) {
+      this.defaultConnectionInfo = opts.defaultConnectionInfo;
     }
   }
 
@@ -154,7 +207,7 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     if (!info) {
       throw new Error(`tenant ${tenantId}: not found in control_plane.tenants`);
     }
-    const pool = postgres(connectionString(info), { max: this.poolMax });
+    const pool = openPostgresFromInfo(info, this.poolMax);
 
     // Defensive re-check: even with `inFlight`, another path could have
     // populated the cache (e.g. if `getPool` was called from inside a
@@ -202,6 +255,13 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
       row.db_user == null ||
       row.db_password == null
     ) {
+      // Dev/sim path — fall back to the shared connection info if the
+      // operator opted into it at boot. Production deployments leave
+      // `defaultConnectionInfo` unset, which preserves the original
+      // strict throw.
+      if (this.defaultConnectionInfo) {
+        return this.defaultConnectionInfo;
+      }
       throw new Error(
         `tenant ${tenantId} is missing one of {db_host, db_port, db_name, db_user, db_password}`,
       );
