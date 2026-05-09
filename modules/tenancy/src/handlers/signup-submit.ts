@@ -13,6 +13,7 @@
  * the structured "signup.submitted" log line are the audit trail.
  */
 
+import type { Logger } from '@atlas/platform-core';
 import type { SignupRequestStore } from '@atlas/ports';
 import { TenancyError, codes } from '../errors.ts';
 import {
@@ -28,6 +29,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface SignupSubmitDeps {
   signupRequests: SignupRequestStore;
+  logger?: Logger;
 }
 
 export async function handleSignupSubmit(
@@ -69,17 +71,16 @@ export async function handleSignupSubmit(
   // differs from the one we just minted.
   const preexisting = created.signupId !== signupId;
 
-  console.log(
-    JSON.stringify({
-      event: 'tenancy.signup.submitted',
+  deps.logger?.info('Signup submitted', {
+    event: 'tenancy.signup.submitted',
+    properties: {
       signupId: created.signupId,
       email,
       tenantSlug,
       organizationName,
       preexisting,
-      correlationId: cmd.correlationId,
-    }),
-  );
+    },
+  });
 
   return { signup: created, preexisting };
 }

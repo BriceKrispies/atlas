@@ -12,7 +12,7 @@
  * plugin output (`pluginRef`).
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
 import type {
   Cache,
   EntityStore,
@@ -43,6 +43,12 @@ export interface ContentPagesDispatchContext {
    * unset, pages with `pluginRef` still render the default tree.
    */
   wasmHost?: WasmHost;
+  /**
+   * Optional logger for projection-time diagnostics (e.g. WASM plugin
+   * failures during render-tree build). When unset, those events
+   * silently fall back to the default tree.
+   */
+  logger?: Logger;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -66,7 +72,7 @@ export async function dispatchContentPagesEvent(
     const doc = payload['document'] as PageDocument | undefined;
     if (!doc) return;
     await putPageEntity(ctx.entities, doc);
-    const tree = await buildRenderTree(doc, ctx.wasmHost);
+    const tree = await buildRenderTree(doc, ctx.wasmHost, ctx.logger);
     await putRenderTreeEntity(
       ctx.entities,
       doc.tenantId,

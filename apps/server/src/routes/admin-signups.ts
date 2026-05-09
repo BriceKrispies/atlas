@@ -180,6 +180,7 @@ export function adminSignupRoutes(
             url.searchParams.set('email', input.acceptedEmail);
             return url.toString();
           },
+          logger: c.get('ctx').logger,
         },
       );
       return c.json(
@@ -241,7 +242,7 @@ export function adminSignupRoutes(
           principalId: principal!.principalId,
           correlationId,
         },
-        { signupRequests: state.signupRequests },
+        { signupRequests: state.signupRequests, logger: c.get('ctx').logger },
       );
       return c.json(
         {

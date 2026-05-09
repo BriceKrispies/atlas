@@ -9,6 +9,7 @@
  * Plugin-driven trees are only as deterministic as the plugin.
  */
 
+import type { Logger } from '@atlas/platform-core';
 import type { WasmHost } from '@atlas/ports';
 import type { PageDocument, RenderTree } from './types.ts';
 
@@ -50,6 +51,7 @@ export function defaultRenderTree(title: string, slug: string): RenderTree {
 export async function buildRenderTree(
   doc: PageDocument,
   wasmHost?: WasmHost,
+  logger?: Logger,
 ): Promise<RenderTree> {
   if (!doc.pluginRef || !wasmHost) {
     return defaultRenderTree(doc.title, doc.slug);
@@ -69,9 +71,11 @@ export async function buildRenderTree(
     });
     return out as RenderTree;
   } catch (e) {
-    console.warn(
-      `[render-tree] plugin '${doc.pluginRef}' for page ${doc.pageId} failed: ${(e as Error).message}; using default tree`,
-    );
+    logger?.warn('Render-tree plugin failed; using default tree', {
+      event: 'content-pages.render-tree.plugin-failed',
+      error: { code: 'RENDER_TREE_PLUGIN_FAILED', message: (e as Error).message },
+      properties: { pluginRef: doc.pluginRef, pageId: doc.pageId },
+    });
     return defaultRenderTree(doc.title, doc.slug);
   }
 }

@@ -31,7 +31,7 @@
  * revokes any prior magic-link invite before step 6 mints a new one.
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
 import type {
   CustomDomainStore,
   Mailer,
@@ -115,6 +115,7 @@ export interface SignupApproveDeps {
     presentedToken: string;
     acceptedEmail: string;
   }) => string;
+  logger?: Logger;
 }
 
 export async function handleSignupApprove(
@@ -268,20 +269,19 @@ export async function handleSignupApprove(
   };
   await deps.appendEvent(envelope);
 
-  // Structured log line stays — useful for grep-ability in dev /
-  // staging stdout streaming. The audit-of-record now lives on the
-  // event envelope above; the line below is informational only.
-  console.log(
-    JSON.stringify({
-      event: 'tenancy.signup.approved',
+  // Structured log — useful for grep-ability in dev / staging stdout
+  // streaming. The audit-of-record lives on the event envelope above;
+  // this line is informational only.
+  deps.logger?.info('Signup approved', {
+    event: 'tenancy.signup.approved',
+    properties: {
       signupId: approved.signupId,
       tenantId,
       hostname,
       email: signup.email,
       principalId: cmd.principalId,
-      correlationId: cmd.correlationId,
-    }),
-  );
+    },
+  });
 
   return {
     signup: approved,

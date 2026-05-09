@@ -234,7 +234,7 @@ export function signupRoutes(state: AppState): Hono<{ Variables: ServerVariables
     try {
       const result = await handleSignupSubmit(
         { email, tenantSlug, organizationName, correlationId },
-        { signupRequests: state.signupRequests },
+        { signupRequests: state.signupRequests, logger: c.get('ctx').logger },
       );
       return c.json(
         {

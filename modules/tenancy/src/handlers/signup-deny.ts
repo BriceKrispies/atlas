@@ -6,12 +6,14 @@
  * (Production wiring would dispatch a templated rejection mail here.)
  */
 
+import type { Logger } from '@atlas/platform-core';
 import type { SignupRequestStore } from '@atlas/ports';
 import { TenancyError, codes } from '../errors.ts';
 import type { SignupDenyCommand, SignupDenyResult } from '../types.ts';
 
 export interface SignupDenyDeps {
   signupRequests: SignupRequestStore;
+  logger?: Logger;
 }
 
 export async function handleSignupDeny(
@@ -44,15 +46,14 @@ export async function handleSignupDeny(
 
   const signup = await deps.signupRequests.markDenied(cmd.signupId, reason);
 
-  console.log(
-    JSON.stringify({
-      event: 'tenancy.signup.denied',
+  deps.logger?.info('Signup denied', {
+    event: 'tenancy.signup.denied',
+    properties: {
       signupId: signup.signupId,
       reason,
       principalId: cmd.principalId,
-      correlationId: cmd.correlationId,
-    }),
-  );
+    },
+  });
 
   return { signup };
 }
