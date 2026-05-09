@@ -20,6 +20,7 @@
  * key for document-layer intents (add/remove/update); the two surfaces are
  * distinct on purpose.
  */
+import { emitTelemetry } from '@atlas/core';
 import type { PageDocument, PageStore, WidgetInstance } from '@atlas/page-templates';
 import { makeCommit, type CommitRecord } from '@atlas/test-state';
 import { HistoryStack, wrapStoreWithHistory, type WrappedPageStore } from './history.ts';
@@ -738,7 +739,18 @@ export class PageEditorController {
       try {
         fn(snap);
       } catch (err) {
-        console.error('[page-editor-state] listener threw', err);
+        // Structured failure event (replaces console.error). One bad
+        // subscriber must not break the others; we surface the failure
+        // through the frontend telemetry pipeline instead of bypassing
+        // the logging contract.
+        emitTelemetry({
+          eventName: 'Atlas.Listener.Threw',
+          surfaceId: this.surfaceId,
+          source: 'authoring.page-editor.state',
+          pageId: this.pageId,
+          'error.code': (err as { code?: string })?.code ?? 'unknown',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
   }

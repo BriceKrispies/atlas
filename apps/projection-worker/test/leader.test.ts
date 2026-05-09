@@ -15,10 +15,29 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 import postgres from 'postgres';
+import {
+  CollectorSink,
+  InMemoryLevelController,
+  LogPipeline,
+  createSystemContext,
+} from '@atlas/logging';
 import { acquireLeadership } from '../src/leader.ts';
 
 const TEST_DB_URL = process.env['TEST_TENANT_DB_URL'];
 const HAS_DB = typeof TEST_DB_URL === 'string' && TEST_DB_URL.length > 0;
+
+/** Build a throwaway execution context for the leader-test calls. */
+function testCtx() {
+  const pipeline = new LogPipeline(
+    [new CollectorSink()],
+    new InMemoryLevelController('debug'),
+  );
+  return createSystemContext({
+    pipeline,
+    environment: 'test',
+    moduleId: '@atlas/projection-worker',
+  });
+}
 
 if (HAS_DB) {
   const pools: postgres.Sql[] = [];
@@ -41,7 +60,7 @@ if (HAS_DB) {
       const moduleId = `leader-test-acquire-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const sql = newPool();
 
-      const leadership = await acquireLeadership(sql, moduleId);
+      const leadership = await acquireLeadership(testCtx(), sql, moduleId);
       // Releasing must not throw and must be idempotent.
       await leadership.release();
       await leadership.release();
@@ -52,11 +71,11 @@ if (HAS_DB) {
       const sqlA = newPool();
       const sqlB = newPool();
 
-      const leadershipA = await acquireLeadership(sqlA, moduleId);
+      const leadershipA = await acquireLeadership(testCtx(), sqlA, moduleId);
 
       // B must NOT be able to acquire while A holds the lock.
       let bAcquired = false;
-      const bPromise = acquireLeadership(sqlB, moduleId).then((l) => {
+      const bPromise = acquireLeadership(testCtx(), sqlB, moduleId).then((l) => {
         bAcquired = true;
         return l;
       });

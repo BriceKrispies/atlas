@@ -121,7 +121,15 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'identity.invite-accept',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(
         c,
         'NOT_FOUND',
@@ -251,7 +259,15 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'identity.session-refresh',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
     }
     const eventStore = new PostgresEventStore(sql);
@@ -337,7 +353,15 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, principal.tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId: principal.tenantId,
+          route: 'identity.session-logout',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
     }
     const eventStore = new PostgresEventStore(sql);

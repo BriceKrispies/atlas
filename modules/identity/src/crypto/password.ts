@@ -73,37 +73,61 @@ interface Decoded {
   hash: Buffer;
 }
 
-function decode(encoded: string): Decoded | null {
+/**
+ * Tagged decode result. `ok=false` carries a `reason` (machine-readable)
+ * + optional `cause` (preserves the underlying Error). Callers can
+ * surface this through their own logger / IdentityError without the
+ * leaf utility taking a logger of its own — keeps the crypto module
+ * port-surface-free.
+ */
+export type DecodeResult =
+  | { ok: true; value: Decoded }
+  | { ok: false; reason: string; cause?: unknown };
+
+function decode(encoded: string): DecodeResult {
   // Split on `$`. PHC strings start with `$` so segments[0] is empty.
   const segments = encoded.split('$');
-  if (segments.length !== 5 || segments[1] !== 'scrypt') return null;
+  if (segments.length !== 5 || segments[1] !== 'scrypt') {
+    return { ok: false, reason: 'malformed_phc_envelope' };
+  }
   const params = segments[2]!;
   const saltB64 = segments[3]!;
   const hashB64 = segments[4]!;
   const paramMap: Record<string, number> = {};
   for (const kv of params.split(',')) {
     const [k, v] = kv.split('=');
-    if (!k || !v) return null;
+    if (!k || !v) return { ok: false, reason: 'malformed_param_kv' };
     const n = Number(v);
-    if (!Number.isFinite(n) || n <= 0) return null;
+    if (!Number.isFinite(n) || n <= 0) {
+      return { ok: false, reason: 'param_out_of_range' };
+    }
     paramMap[k] = n;
   }
-  if (!paramMap['N'] || !paramMap['r'] || !paramMap['p']) return null;
+  if (!paramMap['N'] || !paramMap['r'] || !paramMap['p']) {
+    return { ok: false, reason: 'missing_required_params' };
+  }
   let salt: Buffer;
   let hash: Buffer;
   try {
     salt = Buffer.from(saltB64, 'base64');
     hash = Buffer.from(hashB64, 'base64');
-  } catch {
-    return null;
+  } catch (e) {
+    // Preserve the underlying Buffer.from failure for callers that
+    // want to log it. We don't take a logger here — a tagged result
+    // keeps the leaf utility port-surface-free per the convention.
+    return { ok: false, reason: 'base64_decode_failed', cause: e };
   }
-  if (salt.length === 0 || hash.length === 0) return null;
+  if (salt.length === 0) return { ok: false, reason: 'empty_salt' };
+  if (hash.length === 0) return { ok: false, reason: 'empty_hash' };
   return {
-    N: paramMap['N']!,
-    r: paramMap['r']!,
-    p: paramMap['p']!,
-    salt,
-    hash,
+    ok: true,
+    value: {
+      N: paramMap['N']!,
+      r: paramMap['r']!,
+      p: paramMap['p']!,
+      salt,
+      hash,
+    },
   };
 }
 
@@ -123,20 +147,47 @@ export async function verifyPassword(
   password: string,
   storedHash: string,
 ): Promise<boolean> {
+  const result = verifyPasswordDetailed(password, storedHash);
+  return result.then((r) => r.ok && r.matched);
+}
+
+/**
+ * Detailed variant — surfaces decode + scrypt failures as a tagged
+ * `reason` so callers can log without each call site re-implementing
+ * the introspection. The boolean-returning `verifyPassword` wrapper
+ * preserves the historical contract for hot-path code that doesn't
+ * care about the failure mode.
+ */
+export type VerifyPasswordResult =
+  | { ok: true; matched: boolean }
+  | { ok: false; reason: string; cause?: unknown };
+
+export async function verifyPasswordDetailed(
+  password: string,
+  storedHash: string,
+): Promise<VerifyPasswordResult> {
   const decoded = decode(storedHash);
-  if (!decoded) return false;
+  if (!decoded.ok) {
+    const out: VerifyPasswordResult = { ok: false, reason: decoded.reason };
+    if (decoded.cause !== undefined) (out as { cause?: unknown }).cause = decoded.cause;
+    return out;
+  }
+  const params = decoded.value;
   let computed: Buffer;
   try {
-    computed = scryptSync(password, decoded.salt, decoded.hash.length, {
-      N: decoded.N,
-      r: decoded.r,
-      p: decoded.p,
+    computed = scryptSync(password, params.salt, params.hash.length, {
+      N: params.N,
+      r: params.r,
+      p: params.p,
     });
-  } catch {
-    // scrypt throws on illegal params — treat as a failed verify
-    // rather than surfacing the error.
-    return false;
+  } catch (e) {
+    // scrypt throws on illegal params — surface as a tagged failure
+    // so the caller can decide whether to log + treat as a failed
+    // verify. We do NOT take a logger here on purpose; leaf utility.
+    return { ok: false, reason: 'scrypt_failed', cause: e };
   }
-  if (computed.length !== decoded.hash.length) return false;
-  return timingSafeEqual(computed, decoded.hash);
+  if (computed.length !== params.hash.length) {
+    return { ok: true, matched: false };
+  }
+  return { ok: true, matched: timingSafeEqual(computed, params.hash) };
 }

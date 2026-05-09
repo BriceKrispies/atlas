@@ -1,4 +1,4 @@
-import { AtlasElement, AtlasSurface } from '@atlas/core';
+import { AtlasElement, AtlasSurface, emitTelemetry } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import '@atlas/design';
@@ -355,7 +355,14 @@ export class AtlasSandbox extends AtlasSurface {
       try {
         fn();
       } catch (err) {
-        console.error('[sandbox] cleanup threw', err);
+        // Structured failure event (replaces console.error).
+        emitTelemetry({
+          eventName: 'Atlas.Listener.Threw',
+          surfaceId: 'sandbox',
+          source: 'sandbox.specimen-cleanup',
+          'error.code': (err as { code?: string })?.code ?? 'unknown',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
     this._activeCleanups = [];
@@ -776,10 +783,11 @@ export class AtlasSandbox extends AtlasSurface {
     // instead of throwing so the second registration is ignored but
     // doesn't break the page.
     if (AtlasSandbox.specimens.some((s) => s.id === spec.id)) {
-      console.warn(
-        '[sandbox] specimen "%s" already registered, ignoring duplicate',
-        spec.id,
-      );
+      emitTelemetry({
+        eventName: 'Atlas.Sandbox.DuplicateSpecimen',
+        source: 'sandbox.register',
+        specimenId: spec.id,
+      });
       return;
     }
     AtlasSandbox.specimens.push(resolve(spec));

@@ -4,6 +4,8 @@
  * capabilities declared in its manifest.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import { CapabilityDeniedError } from './errors.ts';
 import type {
   WidgetManifest,
@@ -36,8 +38,12 @@ export class CapabilityBridge {
     try {
       this._onTrace(event);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[widget-host] bridge onTrace threw', err);
+      emitTelemetry({
+        eventName: 'atlas.widget.bridge.onTrace.threw',
+        level: 'error',
+        source: 'widget-host.capabilities',
+        'error.message': (err as Error)?.message ?? String(err),
+      });
     }
   }
 

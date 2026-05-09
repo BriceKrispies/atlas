@@ -220,8 +220,17 @@ export function adminSignupRoutes(
     let body: Body = {};
     try {
       body = (await c.req.json()) as Body;
-    } catch {
+    } catch (e) {
       // Allow empty body — default reason.
+      c.get('ctx').logger.warn('admin signup deny body parse failed; using default reason', {
+        event: 'AdminSignup.Deny.BodyParseFailed',
+        properties: {
+          principalId: principal!.principalId,
+          tenantId: principal!.tenantId,
+          signupId,
+          cause: (e as Error).message,
+        },
+      });
     }
     const reason = readString(body.reason) ?? 'denied by admin';
     try {

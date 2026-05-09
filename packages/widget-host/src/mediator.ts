@@ -11,6 +11,8 @@
  * hear each other — there is no global bus.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import { UndeclaredTopicError } from './errors.ts';
 import type { WidgetManifest, MediatorTraceEvent } from './types.ts';
 
@@ -72,9 +74,14 @@ export class WidgetMediator {
     try {
       this._onTrace(event);
     } catch (err) {
-      // A broken trace hook must not bring down dispatch.
-      // eslint-disable-next-line no-console
-      console.error('[widget-host] mediator onTrace threw', err);
+      // A broken trace hook must not bring down dispatch. Route the
+      // failure through the telemetry pipeline.
+      emitTelemetry({
+        eventName: 'atlas.widget.mediator.onTrace.threw',
+        level: 'error',
+        source: 'widget-host.mediator',
+        'error.message': (err as Error)?.message ?? String(err),
+      });
     }
   }
 
@@ -138,19 +145,23 @@ export class WidgetMediator {
           Promise.resolve()
             .then(() => sub.handler(perSubscriber))
             .catch((err) => {
-              // eslint-disable-next-line no-console
-              console.error('[widget-host] subscriber threw', {
+              emitTelemetry({
+                eventName: 'atlas.widget.subscriber.threw',
+                level: 'error',
+                source: 'widget-host.mediator',
                 topic,
                 instanceId: sub.instanceId,
-                error: err,
+                'error.message': (err as Error)?.message ?? String(err),
               });
             });
         } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error('[widget-host] subscriber dispatch failed', {
+          emitTelemetry({
+            eventName: 'atlas.widget.subscriber.dispatchFailed',
+            level: 'error',
+            source: 'widget-host.mediator',
             topic,
             instanceId: sub.instanceId,
-            error: err,
+            'error.message': (err as Error)?.message ?? String(err),
           });
         }
       }

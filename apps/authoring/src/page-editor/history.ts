@@ -14,6 +14,7 @@
  * template switch, or reload).
  */
 
+import { emitTelemetry } from '@atlas/core';
 import type { PageDocument, PageStore } from '@atlas/page-templates';
 
 const DEFAULT_MAX_DEPTH = 100;
@@ -158,7 +159,19 @@ export function wrapStoreWithHistory(inner: PageStore, history: HistoryStack): W
       const subs = subscribers.get(pageId);
       if (subs && subs.size > 0) {
         for (const cb of subs) {
-          try { cb(doc); } catch (err) { console.error('[history] subscriber threw', err); }
+          try {
+            cb(doc);
+          } catch (err) {
+            // Replaces console.error: route the listener throw through
+            // the frontend telemetry pipeline so log shippers see it.
+            emitTelemetry({
+              eventName: 'Atlas.Listener.Threw',
+              source: 'authoring.page-editor.history',
+              pageId,
+              'error.code': (err as { code?: string })?.code ?? 'unknown',
+              'error.message': (err as Error)?.message ?? String(err),
+            });
+          }
         }
       }
     },

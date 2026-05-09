@@ -13,6 +13,13 @@
  * ...)` emits, so cross-runtime log queries stay portable:
  *   { event, kind, id, component, message, invariant?, expires?, ticket? }
  *
+ * Logging contract: `guardrail()` writes via `ctx.logger.warn(...)` per
+ * `specs/crosscut/logging.md`. The active logger is supplied either as
+ * an explicit argument or via the per-process registry (see
+ * `setGuardrailLogger`). Callers without a context can omit the
+ * argument; the registry default is a no-op so nothing crashes — the
+ * Prometheus counter still ticks, which is the load-bearing signal.
+ *
  * Build-time enforcement note: the Rust `mvp_shortcut!` macro emits
  * `compile_error!` in release builds when the `allow_mvp_shortcuts`
  * feature is off. There is no compile-time analogue in TypeScript —
@@ -59,14 +66,53 @@ interface GuardrailLogPayload {
 }
 
 /**
+ * Minimal structural shape of `@atlas/logging`'s Logger that we need —
+ * just `warn`. Kept structural so this module doesn't pull
+ * `@atlas/logging` as a hard dependency (which would create a layering
+ * inversion: `metrics` is a leaf used by `ingress` / `apps/server` /
+ * front-end shells).
+ */
+export interface GuardrailLogger {
+  warn(msg: string, fields?: Record<string, unknown>): void;
+}
+
+let _registryLogger: GuardrailLogger | null = null;
+
+/**
+ * Install a process-wide logger that `guardrail()` will use when no
+ * explicit logger argument is passed. Boundaries (apps/server boot,
+ * worker boot, front-end app boot) call this once with a logger
+ * derived from a real `AtlasExecutionContext`. Pass `null` to clear.
+ */
+export function setGuardrailLogger(logger: GuardrailLogger | null): void {
+  _registryLogger = logger;
+}
+
+/** Test helper — returns the currently-installed logger or null. */
+export function getGuardrailLogger(): GuardrailLogger | null {
+  return _registryLogger;
+}
+
+/**
  * Record a guardrail event. Bumps `guardrail_hits_total{kind, id,
- * component}` and emits a structured `console.warn` payload.
+ * component}` and writes a structured warn record via the supplied
+ * `logger` (or the process-registered one — see
+ * {@link setGuardrailLogger}). Replaces the previous `console.warn`
+ * shortcut, which bypassed the logging contract entirely.
  *
  * Optional fields (`invariant`, `expires`, `ticket`) are only
  * included in the log payload when provided — matches the Rust
  * macro's `$(, foo: $expr)?` opt-in semantics.
+ *
+ * If neither an explicit logger nor a registered one is available,
+ * the metric still ticks but the log line is dropped — guardrail()
+ * MUST NOT throw, since callers reach for it during shortcuts and
+ * we never want diagnostics to crash the hot path.
  */
-export function guardrail(opts: GuardrailOptions): void {
+export function guardrail(
+  opts: GuardrailOptions,
+  logger?: GuardrailLogger,
+): void {
   guardrailHitsTotal().inc({
     kind: opts.kind,
     id: opts.id,
@@ -84,17 +130,28 @@ export function guardrail(opts: GuardrailOptions): void {
   if (opts.expires !== undefined) payload.expires = opts.expires;
   if (opts.ticket !== undefined) payload.ticket = opts.ticket;
 
-  // Equivalent to Rust's `tracing::warn!(event="guardrail", ...)`.
-  // Structured single-arg JSON so log shippers can parse it.
-  console.warn(payload);
+  const sink = logger ?? _registryLogger;
+  if (sink) {
+    try {
+      // Per `specs/crosscut/logging.md`: structured warn record on the
+      // active context. Equivalent to Rust's
+      // `tracing::warn!(event="guardrail", ...)`.
+      sink.warn('guardrail', payload as unknown as Record<string, unknown>);
+    } catch {
+      // A broken logger must not crash a guardrail-emitting code path.
+    }
+  }
 }
 
 /**
  * Record a `kind: 'tech_debt'` guardrail. Convenience wrapper around
  * {@link guardrail} for marking known refactor-or-cleanup items.
  */
-export function techDebt(opts: Omit<GuardrailOptions, 'kind'>): void {
-  guardrail({ ...opts, kind: 'tech_debt' });
+export function techDebt(
+  opts: Omit<GuardrailOptions, 'kind'>,
+  logger?: GuardrailLogger,
+): void {
+  guardrail({ ...opts, kind: 'tech_debt' }, logger);
 }
 
 /**
@@ -107,6 +164,9 @@ export function techDebt(opts: Omit<GuardrailOptions, 'kind'>): void {
  * to Rust's `compile_error!`. Treat a leftover `mvpShortcut()` call
  * in production as a lint/review concern, not a build failure.
  */
-export function mvpShortcut(opts: Omit<GuardrailOptions, 'kind'>): void {
-  guardrail({ ...opts, kind: 'mvp_shortcut' });
+export function mvpShortcut(
+  opts: Omit<GuardrailOptions, 'kind'>,
+  logger?: GuardrailLogger,
+): void {
+  guardrail({ ...opts, kind: 'mvp_shortcut' }, logger);
 }

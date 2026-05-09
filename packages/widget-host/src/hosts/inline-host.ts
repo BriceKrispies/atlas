@@ -7,6 +7,8 @@
  * Sibling widgets are unaffected (INV-WIDGET-07).
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type {
   HostMountArgs,
   WidgetElementInstance,
@@ -48,8 +50,14 @@ export async function mount({
     try {
       element?.onUnmount?.();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[widget-host] inline onUnmount threw', err);
+      emitTelemetry({
+        eventName: 'atlas.widget.inline.onUnmount.threw',
+        level: 'error',
+        source: 'widget-host.inline-host',
+        widgetId: manifest.widgetId,
+        instanceId,
+        'error.message': (err as Error)?.message ?? String(err),
+      });
     }
     try {
       element?.remove();

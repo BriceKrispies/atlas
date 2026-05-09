@@ -18,6 +18,7 @@ import {
   activatePolicy,
   type PolicyDetail,
 } from '@atlas/api-client';
+import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 import { evaluateRequest, validateCedarText, warmupSimulator } from './simulator.ts';
 import type { SimulatorRequest, SimulatorResult } from './simulator.ts';
@@ -63,6 +64,7 @@ class PolicyEditorPage extends AtlasSurface {
     loadError: null,
   };
   private _validateTimer: number | null = null;
+  private _disposeTestState: (() => void) | null = null;
 
   /**
    * Imperative re-render — replaces children with the result of
@@ -196,6 +198,19 @@ class PolicyEditorPage extends AtlasSurface {
 
   override onMount(): void {
     this.emit('admin.authz.policy-editor.page-viewed', { version: this._state.version });
+
+    // Expose surface state to Playwright via `window.__atlasTest`.
+    this._disposeTestState = registerTestState(this.surfaceId, () => ({
+      state: this.getAttribute('data-state') ?? 'unknown',
+      version: this._state.version,
+      status: this._state.status,
+      saving: this._state.saving,
+      activating: this._state.activating,
+      validationErrorCount: this._state.validationErrors.length,
+      hasLoadError: this._state.loadError !== null,
+      hasSimulatorError: this._state.simulatorError !== null,
+    }));
+
     // Pre-warm cedar-wasm so the first Evaluate click is snappy. Failure
     // is non-fatal; the simulator surfaces errors when the user clicks.
     void warmupSimulator().catch(() => {
@@ -208,6 +223,10 @@ class PolicyEditorPage extends AtlasSurface {
     if (this._validateTimer !== null) {
       window.clearTimeout(this._validateTimer);
       this._validateTimer = null;
+    }
+    if (this._disposeTestState) {
+      this._disposeTestState();
+      this._disposeTestState = null;
     }
   }
 

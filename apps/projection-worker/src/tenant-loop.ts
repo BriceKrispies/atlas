@@ -13,9 +13,18 @@
  *
  * Phase 3 (live mode): the chain becomes authoritative — same composition,
  * just unwrapped projection / cache adapters.
+ *
+ * Logging: a base ctx is threaded in by main.ts; tenant-scoped contexts
+ * derive from it via `.with({ tenantId, ... })`, and every per-event
+ * dispatch is logged on a fresh root context that adopts the envelope's
+ * correlationId (so the worker leg of the flow joins the original write
+ * request in operator searches) and uses the eventId as causationId. See
+ * specs/crosscut/logging.md ¶ "Worker / event handler".
  */
 
 import type { EventEnvelope } from '@atlas/platform-core';
+import type { AtlasExecutionContext } from '@atlas/platform-core';
+import { createRootContext, type LogPipeline } from '@atlas/logging';
 import {
   cacheTagDispatcher,
   composeDispatchers,
@@ -28,8 +37,6 @@ import { identityDispatcher } from '@atlas/identity';
 import { repositoryDispatcher } from '@atlas/repository';
 import type { WorkerAppState, PerTenantAdapters } from './bootstrap.ts';
 import { wrapShadow } from './diff.ts';
-
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 /** Tracking record for an active tenant subscription. */
 interface TenantHandle {
@@ -44,14 +51,39 @@ const BACKOFF_CAP_MS = 30_000;
 const MAX_RETRIES_BEFORE_DEAD_LETTER = 5;
 
 /**
+ * Canonical, ordered list of the worker's dispatcher chain. Mirrors the
+ * inline chain in `apps/server/src/middleware/state.ts` (see
+ * `REQUEST_DISPATCHER_CHAIN_NAMES`) modulo the dispatchers the worker
+ * does NOT run today — `policy-cache` and `server-events`. Tests assert
+ * that the worker's list is a strict prefix-equivalent to the inline
+ * chain so I12 worker-mirror parity is mechanically checked.
+ */
+export const WORKER_DISPATCHER_CHAIN_NAMES: ReadonlyArray<string> = [
+  'catalog',
+  'content-pages',
+  'identity',
+  'repository',
+  'cache-tag',
+];
+
+/**
  * Runs the per-tenant subscription orchestration. Returns a stop function
  * that the caller awaits during shutdown — it closes every active
  * subscription, waits for in-flight chain runs to drain, and resolves.
  *
  * Throws on programmer errors (missing config, bad pool). Transient DB
  * errors during tenant discovery are logged and retried on the next tick.
+ *
+ * `baseCtx` is the worker-level execution context — typically derived
+ * from main.ts's bootCtx via `.withModule('@atlas/projection-worker')`.
+ * `logPipeline` is the same pipeline that backs `baseCtx.logger`, threaded
+ * separately because the Logger interface intentionally hides its sink
+ * wiring; per-event root contexts re-use it so every line lands on the
+ * same stdout / ring-buffer sinks.
  */
 export async function runTenantLoop(
+  baseCtx: AtlasExecutionContext,
+  logPipeline: LogPipeline,
   state: WorkerAppState,
 ): Promise<() => Promise<void>> {
   if (!state.config) {
@@ -67,14 +99,19 @@ export async function runTenantLoop(
   // Kick off discovery. A repeating timer drives re-scans; the initial
   // pass runs immediately so the first tenants come online without
   // waiting `tenantDiscoveryIntervalSeconds`.
-  await discoverAndStart(state, handles, () => stopped);
+  await discoverAndStart(baseCtx, logPipeline, state, handles, () => stopped);
 
   const intervalMs = state.config.tenantDiscoveryIntervalSeconds * 1000;
   const timer = setInterval(() => {
     if (stopped) return;
-    void discoverAndStart(state, handles, () => stopped).catch((err) => {
-      log('error', 'tenant discovery scheduled tick failed', {
-        error: errorMessage(err),
+    void discoverAndStart(baseCtx, logPipeline, state, handles, () => stopped).catch((err) => {
+      baseCtx.logger.error('tenant discovery scheduled tick failed', {
+        event: 'ProjectionWorker.TenantDiscovery.Failed',
+        error: {
+          code: 'TENANT_DISCOVERY_TICK_FAILED',
+          message: errorMessage(err),
+        },
+        properties: { cause: errorMessage(err) },
       });
     });
   }, intervalMs);
@@ -97,9 +134,9 @@ export async function runTenantLoop(
         try {
           await h.subscription.close();
         } catch (err) {
-          log('warn', 'subscription close failed', {
-            tenantId: h.tenantId,
-            error: errorMessage(err),
+          baseCtx.logger.warn('subscription close failed', {
+            event: 'ProjectionWorker.Subscription.CloseFailed',
+            properties: { tenantId: h.tenantId, cause: errorMessage(err) },
           });
         }
       }),
@@ -116,7 +153,10 @@ export async function runTenantLoop(
       }),
     ]);
 
-    log('info', 'tenant loop stopped', { tenants: snapshot.length });
+    baseCtx.logger.info('tenant loop stopped', {
+      event: 'ProjectionWorker.TenantLoop.Stopped',
+      properties: { tenants: snapshot.length },
+    });
   };
 }
 
@@ -129,6 +169,8 @@ export async function runTenantLoop(
  * gets a clean slate — the worker stays up.
  */
 async function discoverAndStart(
+  baseCtx: AtlasExecutionContext,
+  logPipeline: LogPipeline,
   state: WorkerAppState,
   handles: Map<string, TenantHandle>,
   isStopped: () => boolean,
@@ -141,8 +183,9 @@ async function discoverAndStart(
       SELECT tenant_id FROM control_plane.tenants WHERE status = 'active'
     `;
   } catch (err) {
-    log('warn', 'tenant discovery query failed; will retry', {
-      error: errorMessage(err),
+    baseCtx.logger.warn('tenant discovery query failed; will retry', {
+      event: 'ProjectionWorker.TenantDiscovery.QueryFailed',
+      properties: { cause: errorMessage(err) },
     });
     return;
   }
@@ -153,15 +196,25 @@ async function discoverAndStart(
     if (handles.has(tenantId)) continue;
 
     try {
-      const handle = await startTenantSubscription(state, tenantId, () => {
+      const handle = await startTenantSubscription(baseCtx, logPipeline, state, tenantId, () => {
         handles.delete(tenantId);
       });
       handles.set(tenantId, handle);
-      log('info', 'tenant subscription started', { tenantId });
+      baseCtx.logger.info('tenant subscription started', {
+        event: 'ProjectionWorker.Subscription.Started',
+        properties: { tenantId },
+      });
     } catch (err) {
-      log('error', 'failed to start tenant subscription', {
-        tenantId,
-        error: errorMessage(err),
+      baseCtx.logger.error('failed to start tenant subscription', {
+        event: 'ProjectionWorker.Subscription.StartFailed',
+        error: {
+          code: 'SUBSCRIPTION_START_FAILED',
+          message: errorMessage(err),
+          ...(err instanceof Error && err.stack !== undefined
+            ? { stack: err.stack }
+            : {}),
+        },
+        properties: { tenantId, cause: errorMessage(err) },
       });
     }
   }
@@ -173,6 +226,8 @@ async function discoverAndStart(
  * promise resolves when `events()` terminates.
  */
 async function startTenantSubscription(
+  baseCtx: AtlasExecutionContext,
+  logPipeline: LogPipeline,
   state: WorkerAppState,
   tenantId: string,
   onExit: () => void,
@@ -184,16 +239,26 @@ async function startTenantSubscription(
 
   const subscription = adapters.workerSource.subscribe(tenantId, afterSeq);
 
-  const loop = consumeTenantEvents(state, adapters, subscription)
+  const loop = consumeTenantEvents(baseCtx, logPipeline, adapters, subscription)
     .catch((err) => {
-      log('error', 'tenant loop terminated unexpectedly', {
-        tenantId,
-        error: errorMessage(err),
+      baseCtx.logger.error('tenant loop terminated unexpectedly', {
+        event: 'ProjectionWorker.TenantLoop.Terminated',
+        error: {
+          code: 'TENANT_LOOP_TERMINATED',
+          message: errorMessage(err),
+          ...(err instanceof Error && err.stack !== undefined
+            ? { stack: err.stack }
+            : {}),
+        },
+        properties: { tenantId, cause: errorMessage(err) },
       });
     })
     .finally(() => {
       onExit();
-      log('info', 'tenant subscription stopped', { tenantId });
+      baseCtx.logger.info('tenant subscription stopped', {
+        event: 'ProjectionWorker.Subscription.Stopped',
+        properties: { tenantId },
+      });
     });
 
   return { tenantId, subscription, loop };
@@ -220,26 +285,62 @@ async function readCursor(
 }
 
 /**
+ * Build a per-event execution context. The worker is the boundary at
+ * which an event re-enters the system, so we mint a fresh root context
+ * (not a `.with()` patch on the worker ctx) — adopting the envelope's
+ * correlationId joins this leg of the flow to the original write
+ * request in operator searches, and the eventId becomes the causationId
+ * per specs/crosscut/logging.md.
+ */
+function buildEventContext(
+  baseCtx: AtlasExecutionContext,
+  logPipeline: LogPipeline,
+  tenantId: string,
+  envelope: EventEnvelope,
+): AtlasExecutionContext {
+  return createRootContext({
+    pipeline: logPipeline,
+    tenantId,
+    principalId: envelope.principalId ?? 'system',
+    environment: baseCtx.environment,
+    incomingCorrelationId: envelope.correlationId,
+    causationId: envelope.eventId,
+    moduleId: '@atlas/projection-worker',
+    actionId: envelope.eventType,
+  });
+}
+
+/**
  * The actual per-tenant consumption loop. Pulls events from the
  * subscription, runs the dispatcher chain with retry+dead-letter
  * semantics, then acks. Exits cleanly when the subscription is closed.
  */
 async function consumeTenantEvents(
-  state: WorkerAppState,
+  baseCtx: AtlasExecutionContext,
+  logPipeline: LogPipeline,
   adapters: PerTenantAdapters,
   subscription: WorkerSubscription,
 ): Promise<void> {
   const dispatch = buildDispatcherChain(adapters);
 
   for await (const event of subscription.events()) {
-    const ok = await runWithRetry(adapters.tenantId, event, dispatch);
+    const eventCtx = buildEventContext(baseCtx, logPipeline, adapters.tenantId, event);
+    const ok = await runWithRetry(eventCtx, adapters.tenantId, event, dispatch);
     if (event.seq === undefined) {
       // Defensive — a `WorkerSource` event without a seq violates the
       // port contract. Log and skip; we can't ack without a cursor.
-      log('error', 'event missing seq; cannot ack', {
-        tenantId: adapters.tenantId,
-        eventId: event.eventId,
-        eventType: event.eventType,
+      eventCtx.logger.error('event missing seq; cannot ack', {
+        event: 'ProjectionWorker.Event.MissingSeq',
+        error: {
+          code: 'EVENT_MISSING_SEQ',
+          message: 'event has no seq; cannot advance cursor',
+        },
+        properties: {
+          tenantId: adapters.tenantId,
+          eventId: event.eventId,
+          eventType: event.eventType,
+          cause: 'WorkerSource port contract violation: event has no seq',
+        },
       });
       continue;
     }
@@ -250,10 +351,17 @@ async function consumeTenantEvents(
     try {
       await subscription.ack(event.seq);
     } catch (err) {
-      log('error', 'cursor ack failed', {
-        tenantId: adapters.tenantId,
-        seq: event.seq.toString(),
-        error: errorMessage(err),
+      eventCtx.logger.error('cursor ack failed', {
+        event: 'ProjectionWorker.Cursor.AckFailed',
+        error: {
+          code: 'CURSOR_ACK_FAILED',
+          message: errorMessage(err),
+        },
+        properties: {
+          tenantId: adapters.tenantId,
+          seq: event.seq.toString(),
+          cause: errorMessage(err),
+        },
       });
     }
   }
@@ -316,6 +424,7 @@ function buildDispatcherChain(
  * this event. Returns true on success.
  */
 async function runWithRetry(
+  eventCtx: AtlasExecutionContext,
   tenantId: string,
   event: EventEnvelope,
   dispatch: EventDispatcher,
@@ -330,21 +439,35 @@ async function runWithRetry(
       return true;
     } catch (err) {
       attempt += 1;
-      log('warn', 'dispatcher chain failed for event', {
-        tenantId,
-        eventId: event.eventId,
-        eventType: event.eventType,
-        seq: event.seq?.toString(),
-        attempt,
-        error: errorMessage(err),
-      });
-      if (attempt >= MAX_RETRIES_BEFORE_DEAD_LETTER) {
-        log('error', 'event dead-lettered after max retries; advancing cursor', {
+      eventCtx.logger.warn('dispatcher chain failed for event', {
+        event: 'ProjectionWorker.Dispatch.Failed',
+        properties: {
           tenantId,
           eventId: event.eventId,
           eventType: event.eventType,
           seq: event.seq?.toString(),
-          attempts: attempt,
+          attempt,
+          cause: errorMessage(err),
+        },
+      });
+      if (attempt >= MAX_RETRIES_BEFORE_DEAD_LETTER) {
+        eventCtx.logger.error('event dead-lettered after max retries; advancing cursor', {
+          event: 'ProjectionWorker.Dispatch.DeadLettered',
+          error: {
+            code: 'EVENT_DEAD_LETTERED',
+            message: errorMessage(err),
+            ...(err instanceof Error && err.stack !== undefined
+              ? { stack: err.stack }
+              : {}),
+          },
+          properties: {
+            tenantId,
+            eventId: event.eventId,
+            eventType: event.eventType,
+            seq: event.seq?.toString(),
+            attempts: attempt,
+            cause: `dispatcher chain failed ${attempt} times`,
+          },
         });
         return false;
       }
@@ -363,21 +486,4 @@ function sleep(ms: number): Promise<void> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function log(
-  level: LogLevel,
-  msg: string,
-  fields: Record<string, unknown> = {},
-): void {
-  // Mirror the format used in `main.ts` so log lines line up across
-  // the two files when grepped together.
-  console.log(
-    JSON.stringify({
-      level,
-      msg,
-      ts: new Date().toISOString(),
-      ...fields,
-    }),
-  );
 }

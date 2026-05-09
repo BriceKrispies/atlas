@@ -1,2 +1,0 @@
-
-C:\dev\atlas>  "C:\Program Files\nodejs\\node.exe"  "C:\Program Files\nodejs\\node_modules\corepack\dist\pnpm.js" -- exec node -e setInterval(()=,500)

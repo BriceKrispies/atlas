@@ -86,7 +86,11 @@ async function validateScimBearer(
   try {
     const sql = await ensureTenantMigrated(state, tenantId);
     entities = new PostgresEntityStore(sql);
-  } catch {
+  } catch (e) {
+    c.get('ctx').logger.warn('auth scheme failed; falling through', {
+      event: 'Identity.AuthScheme.Scim.Failed',
+      properties: { scheme: 'scim', tenantId, cause: (e as Error).message },
+    });
     return null;
   }
 

@@ -38,6 +38,7 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
   PostgresEntityStore,
   PostgresEventStore,
@@ -57,7 +58,7 @@ import {
 } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
-import { errorResponse } from '../middleware/errors.ts';
+import { errorEnvelope, errorResponse } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import {
   assertPlatformOperator,
@@ -145,24 +146,52 @@ function readTenantId(v: unknown): string | null {
 // ----------------------------------------------------------------------
 // Identity error → HTTP response. Inline mapping (not the global
 // `errors.ts` middleware) so we control which codes leak which detail.
+//
+// A7 is impersonation + break-glass: every failure MUST be paired with
+// the user-facing error envelope's `supportId` so an operator can join
+// the user-visible support id back to the structured log line. The
+// `verb` parameter names the action for the event taxonomy
+// (`Identity.<Verb>.Failed`).
 // ----------------------------------------------------------------------
 function handleIdentityError(
   c: AppCtx,
   e: unknown,
   correlationId: string,
+  verb: string,
 ): Response {
+  const ctx = (c.get as (k: 'ctx') => AppCtx['var']['ctx'] | undefined)('ctx');
   if (e instanceof IdentityError) {
-    return errorResponse(c, e.code, e.message, e.status, correlationId);
+    // Mint the envelope ourselves so the supportId we log matches the
+    // one returned to the caller — the audit contract pairs the log
+    // line with the user-facing supportId.
+    const envelope = errorEnvelope(e.code, e.message, correlationId);
+    ctx?.logger.error('identity A7 failure', {
+      event: `Identity.${verb}.Failed`,
+      error: {
+        code: e.code,
+        message: e.message,
+        ...(e.stack !== undefined ? { stack: e.stack } : {}),
+      },
+      properties: { supportId: envelope.error.supportId, status: e.status },
+    });
+    return c.json(envelope, e.status as ContentfulStatusCode);
   }
   // Generic 500 — never leak raw error message (could contain DB row
   // ids, stack frames, etc).
-  return errorResponse(
-    c,
-    'INTERNAL_ERROR',
-    'internal error',
-    500,
-    correlationId,
-  );
+  const envelope = errorEnvelope('INTERNAL_ERROR', 'internal error', correlationId);
+  ctx?.logger.error('identity A7 unmapped failure', {
+    event: `Identity.${verb}.Failed`,
+    error:
+      e instanceof Error
+        ? {
+            code: 'UNMAPPED_ERROR',
+            message: e.message,
+            ...(e.stack !== undefined ? { stack: e.stack } : {}),
+          }
+        : { code: 'UNMAPPED_ERROR', message: String(e) },
+    properties: { supportId: envelope.error.supportId },
+  });
+  return c.json(envelope, 500);
 }
 
 // ----------------------------------------------------------------------
@@ -260,7 +289,7 @@ export function identityA7Routes(
         201,
       );
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'ImpersonationStart');
     }
   });
 
@@ -311,7 +340,7 @@ export function identityA7Routes(
         endedAt: result.document.endedAt,
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'ImpersonationEnd');
     }
   });
 
@@ -360,7 +389,7 @@ export function identityA7Routes(
         revokedBy: result.document.revokedBy,
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'ImpersonationRevoke');
     }
   });
 
@@ -413,7 +442,7 @@ export function identityA7Routes(
         })),
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'ImpersonationList');
     }
   });
 
@@ -511,7 +540,7 @@ export function identityA7Routes(
         201,
       );
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'BreakGlassIssue');
     }
   });
 
@@ -560,7 +589,7 @@ export function identityA7Routes(
         expiresAt: result.document.expiresAt,
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'BreakGlassApprove');
     }
   });
 
@@ -606,7 +635,7 @@ export function identityA7Routes(
         status: result.document.status,
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'BreakGlassDeny');
     }
   });
 
@@ -653,7 +682,7 @@ export function identityA7Routes(
         revokedBy: result.document.revokedBy,
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'BreakGlassRevoke');
     }
   });
 
@@ -705,7 +734,7 @@ export function identityA7Routes(
         })),
       });
     } catch (e) {
-      return handleIdentityError(c, e, correlationId);
+      return handleIdentityError(c, e, correlationId, 'BreakGlassList');
     }
   });
 

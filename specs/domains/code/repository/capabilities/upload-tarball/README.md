@@ -23,6 +23,7 @@ That's all this slice does. Build, deploy, registry push — none of that. The s
 - **I9** — read-side cache keys for repository listings include `tenantId`. PUBLIC scope does not apply (no public read surface in this slice).
 - **I10** — `Repository.Created` carries `cacheInvalidationTags: ['Tenant:${tenantId}', 'Repository:${repoId}']`. `Repository.Uploaded` carries the same tags plus `Revision:${revisionId}`. Existing tenant-wide query caches purge correctly on push.
 - **I12** — repository + revision projections are rebuildable from the event stream. The handler test asserts `dispatch.ts` rebuilds an identical projection from a synthetic event sequence.
+- **I13** *(NEW per [ADR 0004](../../../../../decisions/0004-platform-invariants-for-multi-tenant-fabric.md))* — `enforceQuota` runs at ingress before `Repository.Create` and `Repository.Upload` dispatch, against the following quota dimensions (declared per-action in the module manifest): `repo-count` (cap on repositories per tenant), `repo-bytes-total` (cumulative compressed-tarball bytes across all revisions), `push-events-per-window` (rate-limit on `Repository.Upload` per tenant). Over-budget returns `QUOTA_EXCEEDED` before any bytes are written or any event is emitted. Compliance is **mandatory before public-instance shipping** per REQ-QUOTA-001 — without it, any tenant can fill the disk by repeated upload of 10 MB tarballs. The quota dimensions land in Commerce; this capability's contract is the call site.
 
 ## Lexicon
 

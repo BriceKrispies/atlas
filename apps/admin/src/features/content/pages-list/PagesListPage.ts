@@ -1,5 +1,6 @@
 import { AtlasSurface, html } from '@atlas/core';
 import { backend } from '@atlas/api-client';
+import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 import '@atlas/widgets';
 
@@ -131,8 +132,16 @@ class PagesListPage extends AtlasSurface {
     return table;
   }
 
+  private _disposeTestState: (() => void) | null = null;
+
   override onMount(): void {
     this.emit('admin.content.pages-list.page-viewed');
+
+    // Expose surface state to Playwright via `window.__atlasTest`.
+    this._disposeTestState = registerTestState(this.surfaceId, () => ({
+      state: this.getAttribute('data-state') ?? 'unknown',
+      rowCount: (this.data as readonly PageRow[] | null)?.length ?? 0,
+    }));
 
     // SSE refetch is now wired via `subscribesTo()` + the bound
     // backend adapter (see AtlasSurface in @atlas/core). No manual
@@ -141,6 +150,13 @@ class PagesListPage extends AtlasSurface {
     this.addEventListener('empty-action', () => {
       void this._createPage();
     });
+  }
+
+  override onUnmount(): void {
+    if (this._disposeTestState) {
+      this._disposeTestState();
+      this._disposeTestState = null;
+    }
   }
 
   async _createPage(): Promise<void> {

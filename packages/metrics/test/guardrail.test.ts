@@ -21,14 +21,37 @@ import {
   guardrailHitsTotal,
   resetRegistry,
   getRegistry,
+  setGuardrailLogger,
 } from '@atlas/metrics';
+
+interface LoggerCall {
+  msg: string;
+  fields: Record<string, unknown>;
+}
+
+interface SpyLogger {
+  warn(msg: string, fields?: Record<string, unknown>): void;
+  calls: LoggerCall[];
+}
+
+function makeLogger(): SpyLogger {
+  const calls: LoggerCall[] = [];
+  return {
+    warn(msg: string, fields?: Record<string, unknown>): void {
+      calls.push({ msg, fields: fields ?? {} });
+    },
+    calls,
+  };
+}
 
 beforeEach(() => {
   resetRegistry();
+  setGuardrailLogger(null);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setGuardrailLogger(null);
 });
 
 describe('guardrailHitsTotal counter', () => {
@@ -49,7 +72,6 @@ describe('guardrailHitsTotal counter', () => {
 
 describe('guardrail() helper', () => {
   test('increments counter with the supplied labels', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     guardrail({
       kind: 'perf_workaround',
       id: 'cache_invalidation_001',
@@ -65,20 +87,25 @@ describe('guardrail() helper', () => {
     expect(guardrailHitsTotal().get(labels)).toBe(1);
   });
 
-  test('emits a structured warn payload mirroring the Rust event', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    guardrail({
-      kind: 'tech_debt',
-      id: 'auth_error_handling_001',
-      component: 'auth',
-      message: 'sanitize internal error before exposing',
-      invariant: 'only on legacy endpoints',
-      expires: '2026-06-01',
-      ticket: 'JIRA-1234',
-    });
+  test('writes a structured warn record via the supplied logger', () => {
+    const logger = makeLogger();
+    guardrail(
+      {
+        kind: 'tech_debt',
+        id: 'auth_error_handling_001',
+        component: 'auth',
+        message: 'sanitize internal error before exposing',
+        invariant: 'only on legacy endpoints',
+        expires: '2026-06-01',
+        ticket: 'JIRA-1234',
+      },
+      logger,
+    );
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith({
+    expect(logger.calls).toHaveLength(1);
+    const [call] = logger.calls;
+    expect(call!.msg).toBe('guardrail');
+    expect(call!.fields).toEqual({
       event: 'guardrail',
       kind: 'tech_debt',
       id: 'auth_error_handling_001',
@@ -90,32 +117,66 @@ describe('guardrail() helper', () => {
     });
   });
 
-  test('omits optional fields from the warn payload when not supplied', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    guardrail({
-      kind: 'tech_debt',
-      id: 'minimal',
-      component: 'core',
-      message: 'no optional fields',
-    });
+  test('omits optional fields when not supplied', () => {
+    const logger = makeLogger();
+    guardrail(
+      {
+        kind: 'tech_debt',
+        id: 'minimal',
+        component: 'core',
+        message: 'no optional fields',
+      },
+      logger,
+    );
 
-    expect(warnSpy).toHaveBeenCalledWith({
+    expect(logger.calls).toHaveLength(1);
+    const fields = logger.calls[0]!.fields;
+    expect(fields).toEqual({
       event: 'guardrail',
       kind: 'tech_debt',
       id: 'minimal',
       component: 'core',
       message: 'no optional fields',
     });
-    const payload = warnSpy.mock.calls[0]![0] as Record<string, unknown>;
-    expect('invariant' in payload).toBe(false);
-    expect('expires' in payload).toBe(false);
-    expect('ticket' in payload).toBe(false);
+    expect('invariant' in fields).toBe(false);
+    expect('expires' in fields).toBe(false);
+    expect('ticket' in fields).toBe(false);
+  });
+
+  test('falls back to the registered process logger when no arg is passed', () => {
+    const logger = makeLogger();
+    setGuardrailLogger(logger);
+    guardrail({
+      kind: 'tech_debt',
+      id: 'registered',
+      component: 'core',
+      message: 'via registry',
+    });
+    expect(logger.calls).toHaveLength(1);
+    expect(logger.calls[0]!.msg).toBe('guardrail');
+  });
+
+  test('does not throw when no logger is available — counter still ticks', () => {
+    expect(() =>
+      guardrail({
+        kind: 'tech_debt',
+        id: 'no-logger',
+        component: 'core',
+        message: 'silent',
+      }),
+    ).not.toThrow();
+    expect(
+      guardrailHitsTotal().get({
+        kind: 'tech_debt',
+        id: 'no-logger',
+        component: 'core',
+      }),
+    ).toBe(1);
   });
 });
 
 describe('techDebt() / mvpShortcut() convenience wrappers', () => {
   test('techDebt sets kind = "tech_debt"', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     techDebt({
       id: 'n_plus_one_query_users',
       component: 'user_service',
@@ -134,7 +195,6 @@ describe('techDebt() / mvpShortcut() convenience wrappers', () => {
   });
 
   test('mvpShortcut sets kind = "mvp_shortcut" (runtime-only, no build break)', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     mvpShortcut({
       id: 'hardcoded_api_key',
       component: 'external_service',
@@ -151,7 +211,6 @@ describe('techDebt() / mvpShortcut() convenience wrappers', () => {
   });
 
   test('techDebt and mvpShortcut keep separate counter series', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     techDebt({ id: 'shared_id', component: 'svc', message: 'a' });
     mvpShortcut({ id: 'shared_id', component: 'svc', message: 'b' });
 
@@ -170,11 +229,19 @@ describe('techDebt() / mvpShortcut() convenience wrappers', () => {
       }),
     ).toBe(1);
   });
+
+  test('wrappers forward the explicit logger argument', () => {
+    const logger = makeLogger();
+    techDebt({ id: 'fwd', component: 'svc', message: 'x' }, logger);
+    mvpShortcut({ id: 'fwd', component: 'svc', message: 'x' }, logger);
+    expect(logger.calls).toHaveLength(2);
+    expect(logger.calls[0]!.fields['kind']).toBe('tech_debt');
+    expect(logger.calls[1]!.fields['kind']).toBe('mvp_shortcut');
+  });
 });
 
 describe('counter accumulation per (kind, id, component) tuple', () => {
   test('repeat calls with same labels add up', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (let i = 0; i < 5; i++) {
       techDebt({
         id: 'repeated',
@@ -192,7 +259,6 @@ describe('counter accumulation per (kind, id, component) tuple', () => {
   });
 
   test('different ids are tracked as distinct series', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     techDebt({ id: 'a', component: 'svc', message: 'x' });
     techDebt({ id: 'a', component: 'svc', message: 'x' });
     techDebt({ id: 'b', component: 'svc', message: 'y' });
@@ -203,7 +269,6 @@ describe('counter accumulation per (kind, id, component) tuple', () => {
   });
 
   test('different components are tracked as distinct series', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     techDebt({ id: 'shared', component: 'svc-a', message: 'x' });
     techDebt({ id: 'shared', component: 'svc-b', message: 'y' });
 
@@ -213,7 +278,6 @@ describe('counter accumulation per (kind, id, component) tuple', () => {
   });
 
   test('counter renders correctly via registry serialize()', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     techDebt({ id: 'render-test', component: 'core', message: 'x' });
     techDebt({ id: 'render-test', component: 'core', message: 'x' });
 

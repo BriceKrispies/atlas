@@ -37,6 +37,7 @@ import {
   type IdentityProviderDocument,
   type JitClaims,
 } from '../src/index.ts';
+import { assertEventTags } from './lib/fixtures.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
@@ -221,6 +222,11 @@ describe('federated-oidc.feature: Configure IdP', () => {
     await dispatchAll(f);
     expect(cfg.document.status).toBe('configured');
     expect(cfg.envelope.eventType).toBe('Identity.IdentityProviderConfigured');
+    // I10 — Configure tags Tenant + the IdP entity.
+    assertEventTags(cfg.envelope, [
+      `Tenant:${f.tenantId}`,
+      `IdentityProvider:${cfg.document.idpId}`,
+    ]);
     const act = await handleIdpActivate(
       {
         tenantId: f.tenantId,
@@ -463,6 +469,11 @@ describe('federated-oidc.feature: RotateJwks + Disable', () => {
     await dispatchAll(f);
     expect(result.envelope.eventType).toBe('Identity.IdentityProviderRotatedJwks');
     expect(result.document.jwksFetchedAt).toBeUndefined();
+    // I10 — RotateJwks invalidates the IdP + its JWKS cache by tag.
+    assertEventTags(result.envelope, [
+      `Tenant:${f.tenantId}`,
+      `IdentityProvider:${idp.idpId}`,
+    ]);
   });
 
   it('Disable flips status; Activate again restores it', async () => {

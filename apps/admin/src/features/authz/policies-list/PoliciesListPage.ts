@@ -5,6 +5,7 @@ import {
   archivePolicy,
   type PolicySummary,
 } from '@atlas/api-client';
+import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 
 interface ProjectionUpdatedEvent {
@@ -133,9 +134,18 @@ class PoliciesListPage extends AtlasSurface {
   }
 
   private _unsubscribe: (() => void) | null = null;
+  private _disposeTestState: (() => void) | null = null;
 
   override onMount(): void {
     this.emit('admin.authz.policies-list.page-viewed');
+
+    // Expose surface state to Playwright via `window.__atlasTest`.
+    // Pattern matches the page-editor shell: register on mount, dispose
+    // on unmount. Reader returns the externally-observable shape.
+    this._disposeTestState = registerTestState(this.surfaceId, () => ({
+      state: this.getAttribute('data-state') ?? 'unknown',
+      rowCount: (this.data as readonly PolicySummary[] | null)?.length ?? 0,
+    }));
 
     // Reload when a Policy projection event lands.
     // (No projection name yet for authz events — listening on
@@ -150,6 +160,10 @@ class PoliciesListPage extends AtlasSurface {
     if (this._unsubscribe) {
       this._unsubscribe();
       this._unsubscribe = null;
+    }
+    if (this._disposeTestState) {
+      this._disposeTestState();
+      this._disposeTestState = null;
     }
   }
 
@@ -170,9 +184,13 @@ class PoliciesListPage extends AtlasSurface {
     } catch (e) {
       // Surface a transient error inline; the surface stays in success
       // and the user can retry — no point flipping to error state for
-      // a single row's mutation.
-      // eslint-disable-next-line no-console
-      console.error('activate failed', e);
+      // a single row's mutation. Emit a structured failure so the
+      // telemetry pipeline picks it up instead of a bare console.error.
+      this.emit('Atlas.Action.Failed', {
+        event: 'Authz.PolicyActivate.Failed',
+        version,
+        cause: (e as Error)?.message ?? String(e),
+      });
     }
   }
 
@@ -182,8 +200,11 @@ class PoliciesListPage extends AtlasSurface {
       await archivePolicy(version);
       await this.reload();
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('archive failed', e);
+      this.emit('Atlas.Action.Failed', {
+        event: 'Authz.PolicyArchive.Failed',
+        version,
+        cause: (e as Error)?.message ?? String(e),
+      });
     }
   }
 

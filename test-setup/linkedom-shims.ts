@@ -107,6 +107,13 @@ if (!g[INSTALLED_KEY]) {
     if (!g.DocumentFragment) g.DocumentFragment = dom['DocumentFragment'];
     if (!g.customElements) g.customElements = dom['customElements'];
     if (!g.Node) g.Node = dom['Node'];
+    // NodeFilter — needed by `@atlas/core`'s html template tag for
+    // createTreeWalker. Linkedom doesn't always expose it; fall back
+    // to the documented bit-flag constants so .SHOW_ELEMENT (1) works.
+    if (!(g as { NodeFilter?: unknown }).NodeFilter) {
+      (g as { NodeFilter?: unknown }).NodeFilter =
+        dom['NodeFilter'] ?? { SHOW_ELEMENT: 1 };
+    }
     // Node 16+ installs its own globalThis.Event / CustomEvent that are
     // incompatible with linkedom's dispatchEvent (setting eventPhase etc.
     // throws on Node's read-only implementation). Always prefer linkedom's.

@@ -1,6 +1,7 @@
 import { AtlasSurface } from '@atlas/core';
 import '@atlas/design';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
+import { registerTestState } from '@atlas/test-state';
 
 interface ShellModule {
   readonly id: string;
@@ -145,6 +146,7 @@ class AdminShell extends AtlasSurface {
 
   private _onKey: ((e: KeyboardEvent) => void) | null = null;
   private _onHashChange: (() => void) | null = null;
+  private _disposeTestState: (() => void) | null = null;
 
   constructor() {
     super();
@@ -235,6 +237,10 @@ class AdminShell extends AtlasSurface {
       document.removeEventListener('keydown', this._onKey);
       this._onKey = null;
     }
+    if (this._disposeTestState) {
+      this._disposeTestState();
+      this._disposeTestState = null;
+    }
     super.disconnectedCallback();
   }
 
@@ -311,6 +317,13 @@ class AdminShell extends AtlasSurface {
 
   override onMount(): void {
     this.emit('admin.shell.page-viewed');
+
+    // Expose surface state to Playwright via `window.__atlasTest`.
+    this._disposeTestState = registerTestState(this.surfaceId, () => ({
+      state: this.getAttribute('data-state') ?? 'unknown',
+      route: window.location.hash || '',
+      navOpen: this.hasAttribute('data-nav-open'),
+    }));
   }
 }
 

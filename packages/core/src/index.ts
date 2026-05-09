@@ -9,3 +9,15 @@ export type {
   SurfaceEmptyConfig,
   SurfaceBackendAdapter,
 } from './component.ts';
+export {
+  setTelemetrySink,
+  getTelemetrySink,
+  emitTelemetry,
+  ConsoleJsonSink,
+  BeaconHttpSink,
+} from './telemetry-pipeline.ts';
+export type {
+  TelemetrySink,
+  TelemetryEvent,
+  BeaconHttpSinkOptions,
+} from './telemetry-pipeline.ts';

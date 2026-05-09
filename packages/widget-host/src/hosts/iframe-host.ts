@@ -16,6 +16,8 @@
  * the inline/shadow hosts for parity.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import { BOOT_SCRIPT } from '../iframe-runtime/boot.ts';
 import { createPostMessageTransport } from '../transport/postmessage.ts';
 import type { HostMountArgs } from '../types.ts';
@@ -93,9 +95,16 @@ export async function mount({
         // A widget publishing an undeclared topic throws inside its
         // own frame at request time; the iframe's publish is
         // fire-and-forget, so any mediator-side rejection surfaces
-        // here. Log for debugging but don't cascade.
-        // eslint-disable-next-line no-console
-        console.error('[iframe-host] publish from widget failed', err);
+        // here. Route through telemetry so log shippers see it.
+        emitTelemetry({
+          eventName: 'atlas.widget.iframe.publish.threw',
+          level: 'error',
+          source: 'widget-host.iframe-host',
+          widgetId: manifest.widgetId,
+          instanceId,
+          topic,
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     },
     onCapabilityInvoke: async ({ id, capability, payload }): Promise<void> => {
@@ -119,6 +128,22 @@ export async function mount({
           error,
         });
       }
+    },
+    // Forward iframe-side log records onto the parent's telemetry
+    // pipeline. tenantId + widgetId + instanceId are stamped here so
+    // log shippers can attribute tenant-code observability.
+    onLog: ({ level, args }): void => {
+      emitTelemetry({
+        eventName: 'atlas.widget.log',
+        level,
+        source: 'widget-host.iframe-runtime',
+        widgetId: manifest.widgetId,
+        instanceId,
+        tenantId: context.tenantId,
+        correlationId: context.correlationId,
+        message: args.join(' '),
+        args,
+      });
     },
   });
 

@@ -187,7 +187,10 @@ const jwksCache = new JwksCache();
  * pattern — the verify step still rejects if the iss doesn't match
  * the IdP's stored issuer, so this can't be exploited.
  */
-function jwtUnverifiedIssuer(token: string): string | null {
+function jwtUnverifiedIssuer(
+  token: string,
+  ctx?: AtlasExecutionContext,
+): string | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
@@ -195,7 +198,15 @@ function jwtUnverifiedIssuer(token: string): string | null {
       Buffer.from(parts[1]!, 'base64url').toString('utf8'),
     ) as Record<string, unknown>;
     return typeof payload['iss'] === 'string' ? (payload['iss'] as string) : null;
-  } catch {
+  } catch (e) {
+    ctx?.logger.warn('auth scheme failed; falling through', {
+      event: 'Identity.AuthScheme.Jwt.Failed',
+      properties: {
+        scheme: 'jwt',
+        stage: 'unverified-issuer-decode',
+        cause: (e as Error).message,
+      },
+    });
     return null;
   }
 }
@@ -242,8 +253,12 @@ async function tryBearerSchemes(
   try {
     const sql = await ensureTenantMigrated(state, tenantId);
     entities = new PostgresEntityStore(sql);
-  } catch {
+  } catch (e) {
     // Tenant unknown / migration error — treat as JWT-fallback.
+    c.get('ctx').logger.warn('tenant migrate failed; falling through to JWT', {
+      event: 'Tenancy.EnsureMigrated.Failed',
+      properties: { tenantId, scheme: 'bearer', cause: (e as Error).message },
+    });
     return null;
   }
 
@@ -370,10 +385,16 @@ async function tryAccessToken(
     // active. Best-effort: a failure here doesn't block the request.
     try {
       await touchSessionLastSeen(entities, session);
-    } catch {
-      // Swallow — see comment.
+    } catch (e) {
+      c.get('ctx').logger.warn('session lastSeenAt touch failed; continuing', {
+        event: 'Identity.AuthScheme.Session.TouchFailed',
+        properties: {
+          scheme: 'session',
+          sessionId: session.sessionId,
+          cause: (e as Error).message,
+        },
+      });
     }
-    void c; // reserved for future surfacing
     return {
       principalId: session.userId,
       tenantId,
@@ -468,8 +489,15 @@ export function principalMiddleware(state: AppState) {
                   // Best-effort touch — same pattern as bearer path.
                   try {
                     await touchSessionLastSeen(entities, session);
-                  } catch {
-                    // ignore
+                  } catch (e) {
+                    c.get('ctx').logger.warn('session lastSeenAt touch failed; continuing', {
+                      event: 'Identity.AuthScheme.Cookie.TouchFailed',
+                      properties: {
+                        scheme: 'cookie',
+                        sessionId: session.sessionId,
+                        cause: (e as Error).message,
+                      },
+                    });
                   }
                   const sessionPrincipal: Principal = {
                     principalId: session.userId,
@@ -484,8 +512,16 @@ export function principalMiddleware(state: AppState) {
                 }
               }
             }
-          } catch {
+          } catch (e) {
             // tenant resolution / DB error — fall through to other schemes.
+            c.get('ctx').logger.warn('auth scheme failed; falling through', {
+              event: 'Identity.AuthScheme.Cookie.Failed',
+              properties: {
+                scheme: 'cookie',
+                tenantId,
+                cause: (e as Error).message,
+              },
+            });
           }
         }
       }
@@ -591,7 +627,7 @@ export function principalMiddleware(state: AppState) {
     //
     // `iss` mismatch with the IDP row OR JWKS verification failure
     // both surface as PRINCIPAL_INVALID/401 (Rust parity).
-    const claimedIssuer = jwtUnverifiedIssuer(token);
+    const claimedIssuer = jwtUnverifiedIssuer(token, c.get('ctx'));
     let claims: Record<string, unknown> | null = null;
     let resolvedAudience: string | undefined;
     let resolvedTenantId: string | null = null;
@@ -629,7 +665,16 @@ export function principalMiddleware(state: AppState) {
                   issuer: idp.issuer,
                 });
                 claims = payload as Record<string, unknown>;
-              } catch {
+              } catch (e2) {
+                c.get('ctx').logger.warn('auth scheme failed; falling through', {
+                  event: 'Identity.AuthScheme.Jwt.Failed',
+                  properties: {
+                    scheme: 'jwt',
+                    stage: 'verify-after-jwks-refresh',
+                    issuer: idp.issuer,
+                    cause: (e2 as Error).message,
+                  },
+                });
                 return errorResponse(
                   c,
                   'PRINCIPAL_INVALID',
@@ -649,8 +694,17 @@ export function principalMiddleware(state: AppState) {
             }
           }
         }
-      } catch {
+      } catch (e) {
         // Tenant resolution / DB error — fall through to global JWKS.
+        c.get('ctx').logger.warn('auth scheme failed; falling through', {
+          event: 'Identity.AuthScheme.Jwt.Failed',
+          properties: {
+            scheme: 'jwt',
+            stage: 'per-tenant-idp-resolve',
+            tenantId: hostTenantId,
+            cause: (e as Error).message,
+          },
+        });
       }
     }
 

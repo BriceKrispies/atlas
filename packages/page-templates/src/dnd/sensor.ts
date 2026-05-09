@@ -20,6 +20,8 @@
  * pure pointer-to-lifecycle adapter. Keep it that way.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type { DragSource, Point } from './types.ts';
 
 const DEFAULT_ACTIVATION_DISTANCE = 4; // px
@@ -210,8 +212,16 @@ export class PointerSensor {
             capTarget.setPointerCapture?.(this._pointerId);
             this._capturedPointerId = this._pointerId;
             this._captureEl = capTarget;
-          } catch {
-            /* non-capturing environments — fine */
+          } catch (err) {
+            // Non-capturing environments (jsdom, headless DOMs) — fine.
+            // Emit a debug-level record so the gap is observable but not
+            // noisy.
+            emitTelemetry({
+              eventName: 'atlas.dnd.setPointerCapture.failed',
+              level: 'debug',
+              source: 'page-templates.dnd.sensor',
+              'error.message': (err as Error)?.message ?? String(err),
+            });
           }
         }
         // Prevent text selection now that we know it's a drag.
@@ -313,8 +323,13 @@ export class PointerSensor {
     if (this._captureEl && this._capturedPointerId != null) {
       try {
         this._captureEl.releasePointerCapture?.(this._capturedPointerId);
-      } catch {
-        /* ignore */
+      } catch (err) {
+        emitTelemetry({
+          eventName: 'atlas.dnd.releasePointerCapture.failed',
+          level: 'debug',
+          source: 'page-templates.dnd.sensor',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
     this._captureEl = null;

@@ -8,8 +8,7 @@ rate. The "governor limits" that make multi-tenancy safe: one tenant cannot
 degrade another's experience or take down the platform.
 
 ## Capabilities
-TBD. List capabilities here as they're scoped. Capabilities are the agent
-ownership unit — one capability ≈ one agent.
+- [`object-types-per-tenant`](capabilities/object-types-per-tenant/README.md) — **Brief only.** Reserved as a handoff from `custom-schema/object-definition`. Awaiting `commerce-owner` to scope the full capability spec. Hard requirement: configurable per-plan with per-tenant override.
 
 ## Suggested capabilities (not yet scoped)
 - `cpu-budget` — execution-time ceilings for `functions` and queries

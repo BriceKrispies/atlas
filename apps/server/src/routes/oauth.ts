@@ -137,7 +137,15 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'oauth.token',
+          cause: (e as Error).message,
+        },
+      });
       return oauthError(c, 'invalid_request', 'tenant not found', 404);
     }
     const eventStore = new PostgresEventStore(sql);
@@ -204,7 +212,15 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'oauth.revoke',
+          cause: (e as Error).message,
+        },
+      });
       return oauthError(c, 'invalid_request', 'tenant not found', 404);
     }
     const eventStore = new PostgresEventStore(sql);

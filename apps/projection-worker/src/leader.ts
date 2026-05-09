@@ -19,9 +19,14 @@
  *     a periodic `pg_try_advisory_lock` self-check (a no-op if we still
  *     own it because advisory locks are re-entrant per-session) and exit
  *     fast so the orchestrator restarts us.
+ *
+ * Logging: every log line goes through `ctx.logger` from the
+ * AtlasExecutionContext threaded in by main.ts, per
+ * specs/crosscut/logging.md.
  */
 
 import type postgres from 'postgres';
+import type { AtlasExecutionContext } from '@atlas/platform-core';
 
 export interface Leadership {
   /** Idempotent. Releases the advisory lock and returns the connection to the pool. */
@@ -65,13 +70,12 @@ const POLL_INTERVAL_MS = 5_000;
 const WAIT_LOG_INTERVAL_MS = 30_000;
 const VERIFY_INTERVAL_MS = 30_000;
 
-function log(level: 'info' | 'warn' | 'error', msg: string, fields: Record<string, unknown> = {}): void {
-  // Worker logs via console.log(JSON) — match the style in main.ts.
-  console.log(JSON.stringify({ level, msg, ts: new Date().toISOString(), ...fields }));
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -80,6 +84,7 @@ function sleep(ms: number): Promise<void> {
  * blocked so operators can see hot-standby replicas.
  */
 export async function acquireLeadership(
+  ctx: AtlasExecutionContext,
   sql: postgres.Sql,
   moduleId: string,
 ): Promise<Leadership> {
@@ -101,7 +106,10 @@ export async function acquireLeadership(
 
       const now = Date.now();
       if (now - lastWaitLog >= WAIT_LOG_INTERVAL_MS) {
-        log('info', 'waiting for leadership', { moduleId });
+        ctx.logger.info('waiting for leadership', {
+          event: 'ProjectionWorker.Leader.Waiting',
+          properties: { moduleId },
+        });
         lastWaitLog = now;
       }
       await sleep(POLL_INTERVAL_MS);
@@ -111,8 +119,14 @@ export async function acquireLeadership(
     // reserved connection to the pool so we don't leak it.
     try {
       reserved.release();
-    } catch {
-      // ignore
+    } catch (releaseErr) {
+      // Don't let the cleanup error mask the original failure, but
+      // surface it — operator visibility matters because a leaked
+      // reserved connection can starve the pool.
+      ctx.logger.warn('reserved connection release failed during error path', {
+        event: 'ProjectionWorker.Leader.ReleaseFailed',
+        properties: { moduleId, cause: errorMessage(releaseErr) },
+      });
     }
     throw err;
   }
@@ -150,13 +164,30 @@ export async function acquireLeadership(
       `;
       const held = rows[0]?.held === true;
       if (!held) {
-        log('error', 'leadership lost', { moduleId });
+        ctx.logger.error('leadership lost', {
+          event: 'ProjectionWorker.Leader.Lost',
+          error: {
+            code: 'LEADERSHIP_LOST',
+            message: 'pg_locks no longer reports advisory lock for our pid',
+          },
+          properties: {
+            moduleId,
+            cause: 'advisory lock no longer held by this backend',
+          },
+        });
         process.exit(1);
       }
     } catch (err) {
-      log('error', 'leadership verify failed', {
-        moduleId,
-        error: err instanceof Error ? err.message : String(err),
+      ctx.logger.error('leadership verify failed', {
+        event: 'ProjectionWorker.Leader.VerifyFailed',
+        error: {
+          code: 'LEADERSHIP_VERIFY_FAILED',
+          message: errorMessage(err),
+          ...(err instanceof Error && err.stack !== undefined
+            ? { stack: err.stack }
+            : {}),
+        },
+        properties: { moduleId, cause: errorMessage(err) },
       });
       process.exit(1);
     }
@@ -172,15 +203,21 @@ export async function acquireLeadership(
       } catch (err) {
         // If unlock fails (e.g. connection already dropped), the lock
         // is already gone server-side; log and proceed to release.
-        log('warn', 'pg_advisory_unlock failed', {
-          moduleId,
-          error: err instanceof Error ? err.message : String(err),
+        ctx.logger.warn('pg_advisory_unlock failed', {
+          event: 'ProjectionWorker.Leader.UnlockFailed',
+          properties: { moduleId, cause: errorMessage(err) },
         });
       } finally {
         try {
           reserved.release();
-        } catch {
-          // ignore — best effort
+        } catch (releaseErr) {
+          // Best-effort, but operators must see this — a stuck reserved
+          // connection produces split-brain risk on the next replica
+          // restart, so we log at warn with a clear cause.
+          ctx.logger.warn('reserved connection release failed during shutdown', {
+            event: 'ProjectionWorker.Leader.ReleaseFailed',
+            properties: { moduleId, cause: errorMessage(releaseErr) },
+          });
         }
       }
     },

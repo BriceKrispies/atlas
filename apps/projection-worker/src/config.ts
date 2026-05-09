@@ -8,6 +8,8 @@
  * cut-over flips `WORKER_MODE=async` and the worker becomes authoritative.
  */
 
+import type { AtlasEnvironment } from '@atlas/platform-core';
+
 export interface WorkerConfig {
   controlPlaneDbUrl: string;
   /** How often we re-scan the control plane for new tenants. Seconds. */
@@ -16,8 +18,26 @@ export interface WorkerConfig {
   moduleId: string;
   /** Phase 2 / Phase 3 toggle. `shadow` is observe-only; `live` writes. */
   workerMode: 'shadow' | 'live';
-  /** Log verbosity. */
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * Process environment — stamped onto every log line via
+   * AtlasExecutionContext. Defaults to `development` so local runs don't
+   * have to set anything; ops sets `ATLAS_ENVIRONMENT=production` etc.
+   */
+  environment: AtlasEnvironment;
+}
+
+const VALID_ENVIRONMENTS: ReadonlyArray<AtlasEnvironment> = [
+  'development',
+  'staging',
+  'production',
+  'test',
+];
+
+function parseEnvironment(raw: string | undefined): AtlasEnvironment {
+  if (raw && (VALID_ENVIRONMENTS as readonly string[]).includes(raw)) {
+    return raw as AtlasEnvironment;
+  }
+  return 'development';
 }
 
 export function loadWorkerConfig(): WorkerConfig {
@@ -32,8 +52,7 @@ export function loadWorkerConfig(): WorkerConfig {
   );
   const moduleId = process.env['WORKER_MODULE_ID'] ?? 'projection-default';
   const workerMode = process.env['WORKER_MODE'] === 'live' ? 'live' : 'shadow';
-  const logLevel = (process.env['WORKER_LOG_LEVEL'] ??
-    'info') as WorkerConfig['logLevel'];
+  const environment = parseEnvironment(process.env['ATLAS_ENVIRONMENT']);
   return {
     controlPlaneDbUrl,
     tenantDiscoveryIntervalSeconds: Number.isFinite(interval)
@@ -41,6 +60,6 @@ export function loadWorkerConfig(): WorkerConfig {
       : 30,
     moduleId,
     workerMode,
-    logLevel,
+    environment,
   };
 }

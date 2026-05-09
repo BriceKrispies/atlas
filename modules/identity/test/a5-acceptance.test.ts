@@ -39,6 +39,7 @@ import {
   type AuthFactorDocument,
   type TotpFactorAttrs,
 } from '../src/index.ts';
+import { assertEventTags } from './lib/fixtures.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
@@ -266,6 +267,11 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
     );
     await dispatchAll(f);
     expect(result.envelope.eventType).toBe('Identity.MfaChallengeSucceeded');
+    // I10 — MFA-success tags Tenant + User + Session.
+    assertEventTags(result.envelope, [
+      `Tenant:${f.tenantId}`,
+      `User:${enroll.document.userId}`,
+    ]);
     const stored = await getAuthFactorEntity(f.entities, f.tenantId, enroll.document.factorId);
     const sa = stored?.attrs as TotpFactorAttrs;
     expect(sa.lastUsedCounter).toBeGreaterThan(0);
@@ -427,6 +433,8 @@ describe('mfa-recovery.feature: generate + redeem', () => {
     expect(result.envelope.eventType).toBe('Identity.RecoveryCodeConsumed');
     expect(result.document.status).toBe('consumed');
     expect(result.remaining).toBe(9);
+    // I10 — recovery-code consume tags Tenant + User.
+    assertEventTags(result.envelope, [`Tenant:${f.tenantId}`, `User:usr-alice`]);
     // Reuse rejected.
     await expect(
       handleRedeemRecoveryCode(

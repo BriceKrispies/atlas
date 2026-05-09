@@ -63,7 +63,15 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'saml.metadata',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
     }
     const entities = new PostgresEntityStore(sql);
@@ -112,7 +120,15 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'saml.initiate',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
     }
     const entities = new PostgresEntityStore(sql);
@@ -166,7 +182,15 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
     let sql: import('postgres').Sql;
     try {
       sql = await ensureTenantMigrated(state, tenantId);
-    } catch {
+    } catch (e) {
+      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+        event: 'Tenancy.EnsureMigrated.Failed',
+        properties: {
+          tenantId,
+          route: 'saml.acs',
+          cause: (e as Error).message,
+        },
+      });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
     }
     const eventStore = new PostgresEventStore(sql);

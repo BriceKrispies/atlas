@@ -35,6 +35,104 @@ import { handleIdpDisable } from './idp-disable.ts';
 import { handleIdpRotateJwks } from './idp-rotate-jwks.ts';
 import type { SessionEndReason } from '../types.ts';
 import { IdentityError } from '../errors.ts';
+import { eventTypeToLogShape } from './log-shape.ts';
+
+/**
+ * Redact and truncate a free-text value for log output. We never log
+ * raw passwords, recovery codes, JWTs, or scrypt hashes — wrappers
+ * pass only stable identifiers (eventType, userId, eventId, email,
+ * actionId) and any caller-supplied free-text is clamped to ≤200
+ * chars defensively.
+ */
+function clampFreeText(v: unknown): string | undefined {
+  if (typeof v !== 'string' || v.length === 0) return undefined;
+  return v.length > 200 ? `${v.slice(0, 200)}…` : v;
+}
+
+/**
+ * Wrap an `IntentHandler` so that on success it inspects the resulting
+ * primary `eventType` and emits a `Domain.Verb.Outcome` log line via
+ * `ctx.logger`, and on uncaught throw emits `Identity.<verb>.Failed`
+ * at error level (then rethrows).
+ *
+ * Handler bodies are NOT modified. The wrapper is a no-op when no
+ * logger is on the context (test fixtures, sim).
+ *
+ * Caller passes a stable `verb` (e.g. `Login`, `User.Create`) so the
+ * Failed shape is predictable even when the handler throws before
+ * emitting an event. Success / Rejected shapes are derived from the
+ * primary `eventType` via `eventTypeToLogShape`.
+ */
+function withLogging(
+  verb: string,
+  inner: IntentHandler,
+): IntentHandler {
+  return {
+    async handle(
+      ctx: IntentHandlerContext,
+      envelope: IntentEnvelope,
+    ): Promise<HandlerResult> {
+      const logger = ctx.logger;
+      try {
+        const result = await inner.handle(ctx, envelope);
+        if (logger) {
+          const shape = eventTypeToLogShape(result.primary.eventType);
+          // `ctx.logger.info|warn|error(...)` keyed off shape.level. The
+          // properties block carries only stable identifiers — never
+          // raw secrets. Email lives on the envelope payload for some
+          // events; we surface only the eventType-tied identifiers and
+          // any actionId so log readers can correlate.
+          const fields = {
+            event: shape.event,
+            properties: {
+              actionId:
+                clampFreeText(
+                  (envelope.payload as { actionId?: unknown })?.actionId,
+                ) ?? '<unknown>',
+              eventType: result.primary.eventType,
+              eventId: result.primary.eventId,
+              followCount: result.follow.length,
+              ...(result.primary.userId !== null
+                ? { userId: result.primary.userId }
+                : {}),
+            },
+          };
+          if (shape.level === 'warn') {
+            logger.warn(`identity ${verb} ${shape.event}`, fields);
+          } else if (shape.level === 'error') {
+            logger.error(`identity ${verb} ${shape.event}`, fields);
+          } else {
+            logger.info(`identity ${verb} ${shape.event}`, fields);
+          }
+        }
+        return result;
+      } catch (e) {
+        if (logger) {
+          const code =
+            e instanceof IdentityError
+              ? e.code
+              : e instanceof Error
+                ? e.name
+                : 'UnknownError';
+          logger.error(`identity ${verb} failed`, {
+            event: `Identity.${verb}.Failed`,
+            error: {
+              code,
+              message: clampFreeText((e as Error).message ?? String(e)) ?? '',
+            },
+            properties: {
+              actionId:
+                clampFreeText(
+                  (envelope.payload as { actionId?: unknown })?.actionId,
+                ) ?? '<unknown>',
+            },
+          });
+        }
+        throw e;
+      }
+    },
+  };
+}
 
 const VALID_END_REASONS: ReadonlySet<SessionEndReason> = new Set<SessionEndReason>([
   'user_logout',
@@ -667,25 +765,27 @@ export function identityHandlerEntries(
     },
   };
 
+  // Register Phase-A3 IDP wrappers in the table below. Local-scoped
+  // here so the closure-captured `entities` is in scope.
   return [
-    ['Identity.User.Create', userCreateHandler],
-    ['Identity.Membership.Create', membershipCreateHandler],
-    ['Identity.Invite.Issue', inviteIssueHandler],
-    ['Identity.Invite.Accept', inviteAcceptHandler],
-    ['Identity.User.SetPassword', passwordSetHandler],
-    ['Identity.Login.Password', passwordLoginHandler],
+    ['Identity.User.Create', withLogging('User.Create', userCreateHandler)],
+    ['Identity.Membership.Create', withLogging('Membership.Create', membershipCreateHandler)],
+    ['Identity.Invite.Issue', withLogging('Invite.Issue', inviteIssueHandler)],
+    ['Identity.Invite.Accept', withLogging('Invite.Accept', inviteAcceptHandler)],
+    ['Identity.User.SetPassword', withLogging('User.SetPassword', passwordSetHandler)],
+    ['Identity.Login.Password', withLogging('Login.Password', passwordLoginHandler)],
     // Phase A2 — sessions.
-    ['Identity.AuthSession.Issue', sessionIssueHandler],
-    ['Identity.AuthSession.Refresh', sessionRefreshHandler],
-    ['Identity.AuthSession.Revoke', sessionRevokeHandler],
-    ['Identity.AuthSession.RevokeAllForUser', sessionRevokeAllHandler],
+    ['Identity.AuthSession.Issue', withLogging('AuthSession.Issue', sessionIssueHandler)],
+    ['Identity.AuthSession.Refresh', withLogging('AuthSession.Refresh', sessionRefreshHandler)],
+    ['Identity.AuthSession.Revoke', withLogging('AuthSession.Revoke', sessionRevokeHandler)],
+    ['Identity.AuthSession.RevokeAllForUser', withLogging('AuthSession.RevokeAllForUser', sessionRevokeAllHandler)],
     // Phase A2.7-A2.9 — service credentials.
-    ['Identity.ApiKey.Create', apiKeyCreateHandler],
-    ['Identity.ApiKey.Rotate', apiKeyRotateHandler],
-    ['Identity.ApiKey.Revoke', apiKeyRevokeHandler],
-    ['Identity.ServicePrincipal.Create', spCreateHandler],
-    ['Identity.ServicePrincipal.SetScopes', spSetScopesHandler],
-    ['Identity.ServicePrincipal.Disable', spDisableHandler],
+    ['Identity.ApiKey.Create', withLogging('ApiKey.Create', apiKeyCreateHandler)],
+    ['Identity.ApiKey.Rotate', withLogging('ApiKey.Rotate', apiKeyRotateHandler)],
+    ['Identity.ApiKey.Revoke', withLogging('ApiKey.Revoke', apiKeyRevokeHandler)],
+    ['Identity.ServicePrincipal.Create', withLogging('ServicePrincipal.Create', spCreateHandler)],
+    ['Identity.ServicePrincipal.SetScopes', withLogging('ServicePrincipal.SetScopes', spSetScopesHandler)],
+    ['Identity.ServicePrincipal.Disable', withLogging('ServicePrincipal.Disable', spDisableHandler)],
     // OAuth token-issue/revoke flow goes through dedicated /oauth
     // routes (RFC 6749 wire shape, not the standard /api/v1/intents
     // path), so it intentionally has no registry entries here. See

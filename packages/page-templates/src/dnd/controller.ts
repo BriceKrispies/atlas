@@ -7,6 +7,8 @@
  * cache, no autoscroll, no phase store.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import { PointerSensor } from './sensor.ts';
 import { Projection } from './projection.ts';
 import { DragOverlay, cloneSourcePreview } from './overlay.ts';
@@ -128,8 +130,16 @@ export class DndController {
     for (const fn of this._listeners) {
       try {
         fn({ phase, ...(extra ?? {}) });
-      } catch {
-        /* ignore */
+      } catch (err) {
+        // One bad listener must not break the others. Surface it via
+        // structured telemetry rather than silently swallowing.
+        emitTelemetry({
+          eventName: 'Atlas.Listener.Threw',
+          level: 'error',
+          source: 'page-templates.dnd.controller',
+          phase,
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
   }

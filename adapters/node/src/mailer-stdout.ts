@@ -78,8 +78,10 @@ export class StdoutEventMailer implements Mailer {
     `;
 
     // One JSON line per send so log-streamers (Loki, the in-app log panel)
-    // can correlate by `correlationId`. Body is included — these are dev
-    // mails, secrets in dev are not real secrets.
+    // can correlate by `correlationId`. Body is intentionally omitted —
+    // magic-link tokens land in body and tokens are credentials per
+    // specs/crosscut/logging.md. The full body is in email_log above for
+    // the in-app mailbox panel.
     console.log(
       JSON.stringify({
         event: 'mailer.sent',
@@ -90,7 +92,6 @@ export class StdoutEventMailer implements Mailer {
         correlationId: msg.correlationId,
         tags,
         sentAt,
-        body: msg.body,
       }),
     );
 

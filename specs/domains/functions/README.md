@@ -1,11 +1,19 @@
 # Functions
 **Platform:** Extensibility
-**Status:** Stub — domain shape committed, content TBD.
+**Status:** Active stub — domain shape committed, capability specs land Phase 3–4 of the [vision roadmap](../../vision.md). Revived under Extensibility per [ADR 0003](../../decisions/0003-tenant-defined-data-model-pivot.md) (briefly retired by [ADR 0002](../../decisions/0002-developer-platform-domain-map.md), un-retired same day).
 
 ## Purpose
 Sandboxed tenant-authored code. Lets a tenant attach behavior to schema events,
 expose HTTP endpoints, or run scheduled jobs without operating their own
-runtime. The "Apex" of Atlas.
+runtime. The "Apex" of Atlas — third pillar of [`vision.md`](../../vision.md)'s
+"the dream" alongside `custom-schema` (data model) and on-demand provisioning
+(backend services).
+
+**Distinct from `function-runner`** (under Workflow): `function-runner` is
+internal infrastructure for executing workflow jobs; `functions` is the
+tenant-facing surface for authoring and attaching code to schema events,
+HTTP routes, and schedules. They may share runtime substrate but are
+separate domains with separate ports and capabilities.
 
 ## Capabilities
 TBD. List capabilities here as they're scoped. Capabilities are the agent

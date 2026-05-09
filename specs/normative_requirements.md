@@ -794,6 +794,96 @@ These requirements define validation the compiler MUST perform on input artifact
 
 ---
 
+## 3.12 Multi-Tenant Fabric Requirements
+
+These requirements come from [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md), which made the multi-tenant-fabric tenets from ADR 0003 mechanically checkable. Two are compile-time enforceable; four are runtime/integration-test obligations on conforming implementations.
+
+---
+
+### REQ-SIGNUP-001
+
+**Statement:** Atlas MUST support open public signup as a first-class deployment configuration. The signup pipeline (intent → email verify → tenant provisioned → admin user created) MUST function without operator intervention when public signup is enabled.
+
+**Source:** `decisions/0003-tenant-defined-data-model-pivot.md` §2, `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, `vision.md` §Hosting model
+
+**Evidence:** "Open public signup is supported from day one, not retrofitted… Signup gating is configuration, not architecture." Operator-approval-required signup paths are a non-conforming implementation.
+
+**Test Hook:** Integration test `tests/integration/public-signup.itest.ts` runs end-to-end signup with no operator action; admin user is created and tenant is usable on completion.
+
+**Severity:** ERROR
+
+---
+
+### REQ-SIGNUP-002
+
+**Statement:** When public signup is enabled, requests MUST be rate-limited per source IP and per email; a tenant exceeding the signup-rate budget MUST be rejected with `QUOTA_EXCEEDED`.
+
+**Source:** `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, Invariant I13
+
+**Evidence:** Open public signup without rate-limiting is a free DoS vector; quotas are load-bearing per REQ-QUOTA-001.
+
+**Test Hook:** Integration test issues > N signups from one IP within the window; Nth+1 is rejected with `QUOTA_EXCEEDED` and an `Audit.QuotaDenied` event is emitted.
+
+**Severity:** ERROR
+
+---
+
+### REQ-ISO-001
+
+**Statement:** Tenant isolation MUST hold under a mutual-distrust threat model. No tenant on a shared instance may read, write, observe, or starve another tenant's data, runtime workloads, search indexes, secrets, log lines, or quota accounting. The operator is not a fallback.
+
+**Source:** `decisions/0003-tenant-defined-data-model-pivot.md` §2, `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, `architecture.md` §Tenant Runtime Isolation
+
+**Evidence:** "Mutually-distrusting tenants must coexist safely on one instance." Strict isolation is a configuration of the chassis, not a tenant-side responsibility.
+
+**Test Hook:** Cross-tenant isolation contract suite (`packages/contract-tests/src/cross-tenant-isolation.test.ts`) parameterised over every port; assertions per-port that tenant A's writes are invisible to tenant B's reads/lists/scans/searches/quota-meters and that tenant A cannot induce resource starvation on tenant B.
+
+**Severity:** ERROR
+
+---
+
+### REQ-QUOTA-001
+
+**Statement:** Quota enforcement MUST be load-bearing. An over-budget tenant MUST NOT be able to deploy, execute functions, grow data, or accept new signups against their slug. The five MVP-blocking dimensions are `signups-per-window`, `cpu-seconds`, `storage-bytes`, `function-invocations`, `egress-bytes`.
+
+**Source:** `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, Invariant I13, `vision.md` §Core invariants
+
+**Evidence:** Open public signup means abusive tenants will arrive; quotas must be enforced at the boundary, not after the fact.
+
+**Test Hook:** Per-dimension integration tests: tenant approaches budget, last-allowed call succeeds, next call is rejected with `QUOTA_EXCEEDED` before any side effect; `Audit.QuotaDenied` is emitted; no domain events emitted by the rejected handler.
+
+**Severity:** ERROR
+
+---
+
+### REQ-AGENT-001
+
+**Statement:** Every UI surface MUST expose a machine-readable state contract per [`frontend/surface-introspection.md`](frontend/surface-introspection.md). New surfaces without a surface contract MUST fail spec-conformance.
+
+**Source:** `decisions/0003-tenant-defined-data-model-pivot.md` §3, `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, Invariant I18
+
+**Evidence:** "Machine-readable surfaces are a load-bearing tenet, not retrofits." Agents (and tests) need a stable runtime introspection API, not a design-time author contract alone.
+
+**Test Hook:** Surface registry CI check enumerates every `AtlasSurface` subclass; for each, asserts (a) a registry manifest entry exists and (b) `getSurfaceSnapshot()` returns the documented shape. Missing entries fail the build.
+
+**Severity:** ERROR
+
+---
+
+### REQ-INGRESS-002
+
+**Statement:** `atlasctl`, the HTTP API, the web UI, and any agent integration MUST share a single ingress (`apps/server`). No parallel command path may exist. (Companion to Invariant I1.)
+
+**Source:** `decisions/0004-platform-invariants-for-multi-tenant-fabric.md`, Invariants I1 + I17, `vision.md` §Agentic from day one
+
+**Evidence:** "One CLI, one API, one audit trail. Anything an agent needs to do, a tenant or operator can do too — and vice versa."
+
+**Test Hook:** CI diff between the action registry (single source of truth) and `atlasctl` command list; missing pairs fail the build. UI surfaces must reference action IDs from the same registry.
+
+**Severity:** ERROR
+
+---
+
 ## 4. Runtime Semantics Documentation
 
 This section documents runtime semantics that fixtures and architecture define. Compilers **MAY** use these to guide code generation but are **NOT required** to implement runtime logic.

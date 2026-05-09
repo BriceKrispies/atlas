@@ -26,6 +26,7 @@ infra/compose/.env.itest
 # Test artifacts
 test-results.xml
 test-results/
+test-results-integration/
 playwright-report/
 tests/bdd/screenshots/
 tests/bdd/report/

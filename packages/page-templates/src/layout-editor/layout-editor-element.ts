@@ -3,7 +3,7 @@
  * for layout documents.
  */
 
-import { AtlasElement, html } from '@atlas/core';
+import { AtlasElement, emitTelemetry, html } from '@atlas/core';
 
 import {
   validateLayoutDocument,
@@ -494,8 +494,12 @@ export class AtlasLayoutEditorElement extends AtlasElement {
       try {
         this.onChange(cloneLayoutDocument(this._doc));
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[atlas-layout-editor] onChange threw', err);
+        emitTelemetry({
+          eventName: 'Atlas.Listener.Threw',
+          level: 'error',
+          source: 'page-templates.layout-editor.onChange',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
   }
@@ -543,8 +547,12 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     try {
       await this.onSave(cloneLayoutDocument(this._doc!));
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[atlas-layout-editor] onSave threw', err);
+      emitTelemetry({
+        eventName: 'Atlas.Listener.Threw',
+        level: 'error',
+        source: 'page-templates.layout-editor.onSave',
+        'error.message': (err as Error)?.message ?? String(err),
+      });
     }
   }
 

@@ -8,9 +8,29 @@
 
 type EffectFn = () => void;
 
-let activeEffect: EffectFn | null = null;
+// Each EffectFn carries the set of subscriber-Sets it has been added to.
+// Without this, dispose() can't unsubscribe from signals it read — they keep
+// strong refs to the effect's run closure and re-fire it forever (memory leak,
+// stale renders against detached DOM).
+type TrackedEffect = EffectFn & { deps?: Set<Set<EffectFn>> };
+
+let activeEffect: TrackedEffect | null = null;
 let pendingEffects: EffectFn[] = [];
 let batchDepth = 0;
+
+/** Add `effect` to `subs` and record the link so the effect can clear it later. */
+function track(subs: Set<EffectFn>, effect: TrackedEffect): void {
+  subs.add(effect);
+  (effect.deps ??= new Set()).add(subs);
+}
+
+/** Remove `effect` from every subscriber-Set it was tracking. */
+function clearDeps(effect: TrackedEffect): void {
+  const deps = effect.deps;
+  if (!deps) return;
+  for (const subs of deps) subs.delete(effect);
+  deps.clear();
+}
 
 export interface Signal<T> {
   readonly value: T;
@@ -54,14 +74,17 @@ export function signal<T>(initialValue: T): Signal<T> {
   return {
     get value() {
       if (activeEffect) {
-        subscribers.add(activeEffect);
+        track(subscribers, activeEffect);
       }
       return value;
     },
     set(newValue: T) {
       if (Object.is(value, newValue)) return;
       value = newValue;
-      for (const sub of subscribers) {
+      // Snapshot: subscriber.run() does clearDeps + retracks itself, which
+      // mutates `subscribers` mid-iteration and re-yields the same entry on
+      // V8 Sets — infinite loop without the copy.
+      for (const sub of [...subscribers]) {
         if (batchDepth > 0) {
           pendingEffects.push(sub);
         } else {
@@ -88,14 +111,22 @@ export function computed<T>(fn: () => T): Computed<T> {
   let dirty = true;
   const subscribers = new Set<EffectFn>();
 
+  const markDirty: TrackedEffect = () => {
+    if (!dirty) {
+      dirty = true;
+      recompute();
+    }
+  };
+
   const recompute = (): void => {
+    clearDeps(markDirty);
     const prev = activeEffect;
     activeEffect = markDirty;
     try {
       const newValue = fn();
       if (!Object.is(value, newValue)) {
         value = newValue;
-        for (const sub of subscribers) {
+        for (const sub of [...subscribers]) {
           if (batchDepth > 0) {
             pendingEffects.push(sub);
           } else {
@@ -109,17 +140,10 @@ export function computed<T>(fn: () => T): Computed<T> {
     }
   };
 
-  const markDirty = (): void => {
-    if (!dirty) {
-      dirty = true;
-      recompute();
-    }
-  };
-
   return {
     get value() {
       if (activeEffect) {
-        subscribers.add(activeEffect);
+        track(subscribers, activeEffect);
       }
       if (dirty) {
         recompute();
@@ -135,11 +159,14 @@ export function computed<T>(fn: () => T): Computed<T> {
  */
 export function effect(fn: EffectCallback): EffectCleanup {
   let cleanup: EffectCleanup | void;
+  let disposed = false;
 
-  const run: EffectFn = () => {
+  const run: TrackedEffect = () => {
+    if (disposed) return;
     if (typeof cleanup === 'function') {
       cleanup();
     }
+    clearDeps(run);
     const prev = activeEffect;
     activeEffect = run;
     try {
@@ -152,6 +179,9 @@ export function effect(fn: EffectCallback): EffectCleanup {
   run();
 
   return () => {
+    if (disposed) return;
+    disposed = true;
+    clearDeps(run);
     if (typeof cleanup === 'function') {
       cleanup();
     }

@@ -40,6 +40,7 @@ import {
   resolveImpersonationToken,
   DEFAULT_RISK_POLICY,
 } from '../src/index.ts';
+import { assertEventTags } from './lib/fixtures.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
@@ -151,6 +152,12 @@ describe('impersonation.feature: Operator starts an impersonation session', () =
     expect(result.envelope.eventType).toBe('Authorization.ImpersonationStarted');
     expect(result.envelope.retentionTag).toBe(IMPERSONATION_RETENTION_TAG);
     expect(result.envelope.retentionTag).toBe('retention:7y');
+    // I10 — start tags Tenant + User (target) + Impersonation.
+    assertEventTags(result.envelope, [
+      `Tenant:${f.tenantId}`,
+      `User:usr-alice`,
+      `Impersonation:${result.document.impersonationId}`,
+    ]);
     expect(result.bearerToken).toMatch(/^imp-/);
     expect(result.bearerToken.includes('.')).toBe(true);
 
@@ -488,6 +495,13 @@ describe('break-glass.feature: Operator issues a grant', () => {
     expect(result.envelope.eventType).toBe('Authorization.BreakGlassIssued');
     expect(result.envelope.retentionTag).toBe(BREAK_GLASS_RETENTION_TAG);
     expect(result.envelope.retentionTag).toBe('retention:10y');
+    // I10 — break-glass issue tags Tenant + Principal (grantee) + Grant.
+    // Note: this scenario uses an explicit `ledger` tenantId override
+    // rather than the fixture default — assert against that.
+    assertEventTags(result.envelope, [
+      `Tenant:ledger`,
+      `BreakGlassGrant:${result.document.grantId}`,
+    ]);
   });
 
   it('refuses missing justification with BREAK_GLASS_JUSTIFICATION_REQUIRED', async () => {

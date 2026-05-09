@@ -1,4 +1,4 @@
-import type { EventEnvelope, IntentEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, IntentEnvelope, Logger } from '@atlas/platform-core';
 import type { EventStore } from './event-store.ts';
 import type { CatalogStateStore } from './catalog-state-store.ts';
 
@@ -10,6 +10,14 @@ export interface IntentHandlerContext {
   correlationId: string;
   eventStore: EventStore;
   catalogState: CatalogStateStore;
+  /**
+   * Per-request logger. Optional so test fixtures and pre-existing
+   * `IntentHandlerContext` constructions don't need to thread one
+   * through. When present, handler wrappers (e.g. identity's registry
+   * shim) emit Domain.Verb.Outcome lines on success / rejection /
+   * failure. Built from an `AtlasExecutionContext` at the wiring layer.
+   */
+  logger?: Logger;
 }
 
 export interface HandlerResult {

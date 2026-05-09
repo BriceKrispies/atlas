@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
 // `pnpm --filter @atlas/server test` finds them.
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
 });

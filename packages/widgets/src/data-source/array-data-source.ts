@@ -10,6 +10,8 @@
  * receive a `reload` patch.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type { DataSource, DataSourceResult, Row, RowPatch } from './types.ts';
 
 export interface ArrayDataSource<R extends Row = Row> extends DataSource<R> {
@@ -39,13 +41,34 @@ export function arrayDataSource<R extends Row = Row>(
     setRows(next: R[] | null | undefined): void {
       rows = Array.isArray(next) ? next.slice() : [];
       for (const cb of listeners) {
-        try { cb({ type: 'reload' }); } catch { /* listener errors don't corrupt */ }
+        try {
+          cb({ type: 'reload' });
+        } catch (err) {
+          // One bad subscriber must not corrupt the loop; route the
+          // failure through the telemetry pipeline instead of
+          // swallowing silently.
+          emitTelemetry({
+            eventName: 'Atlas.Listener.Threw',
+            level: 'error',
+            source: 'widgets.array-data-source.setRows',
+            'error.message': (err as Error)?.message ?? String(err),
+          });
+        }
       }
     },
 
     emit(patch: RowPatch<R>): void {
       for (const cb of listeners) {
-        try { cb(patch); } catch { /* swallow */ }
+        try {
+          cb(patch);
+        } catch (err) {
+          emitTelemetry({
+            eventName: 'Atlas.Listener.Threw',
+            level: 'error',
+            source: 'widgets.array-data-source.emit',
+            'error.message': (err as Error)?.message ?? String(err),
+          });
+        }
       }
     },
   };

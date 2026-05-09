@@ -112,31 +112,65 @@ export interface DiscoveryResult {
   ignored: string[];
 }
 
+/**
+ * Minimal structural shape of `@atlas/logging`'s Logger that we need —
+ * just `debug`/`warn`. Kept structural so this module doesn't pull
+ * `@atlas/logging` as a hard dependency; callers thread their
+ * `ctx.logger` directly.
+ */
+export interface DiscoverLogger {
+  debug(msg: string, fields?: Record<string, unknown>): void;
+  warn(msg: string, fields?: Record<string, unknown>): void;
+}
+
+export interface DiscoverOptions {
+  /** Optional structured logger for filesystem read failures. */
+  logger?: DiscoverLogger;
+}
+
 /** Recursively walk `fixturesDir` and return parsed cases sorted stably. */
-export async function discover(fixturesDir: string): Promise<DiscoveryResult> {
+export async function discover(
+  fixturesDir: string,
+  options: DiscoverOptions = {},
+): Promise<DiscoveryResult> {
   const result: DiscoveryResult = { cases: [], ignored: [] };
-  await walk(fixturesDir, result);
+  await walk(fixturesDir, result, options.logger);
   result.cases.sort(compareCase);
   return result;
 }
 
-async function walk(dir: string, out: DiscoveryResult): Promise<void> {
+async function walk(
+  dir: string,
+  out: DiscoveryResult,
+  logger?: DiscoverLogger,
+): Promise<void> {
   let entries: string[];
   try {
     entries = await readdir(dir);
-  } catch {
-    return; // mirror Rust: silently skip non-dirs
+  } catch (err) {
+    // Mirror Rust: skip non-dirs without failing the harness, but emit
+    // a structured debug record so downstream operators can see why a
+    // path returned no cases instead of staring at silence.
+    logger?.debug('spec-validate.discover: readdir failed', {
+      dir,
+      error: (err as Error)?.message ?? String(err),
+    });
+    return;
   }
   for (const entry of entries) {
     const full = join(dir, entry);
     let s;
     try {
       s = await stat(full);
-    } catch {
+    } catch (err) {
+      logger?.debug('spec-validate.discover: stat failed', {
+        path: full,
+        error: (err as Error)?.message ?? String(err),
+      });
       continue;
     }
     if (s.isDirectory()) {
-      await walk(full, out);
+      await walk(full, out, logger);
       continue;
     }
     const parsed = parseFilename(full);

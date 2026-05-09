@@ -356,9 +356,18 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
         );
         const dispatch = identityDispatcher({ entities, relations });
         for (const env of result.envelopes) await dispatch(env);
-      } catch {
+      } catch (e) {
         // Best-effort — SCIM patch still succeeds even if no sessions
         // existed.
+        c.get('ctx').logger.warn('scim revoke-all-sessions failed; continuing', {
+          event: 'Identity.ScimUserDeactivate.RevokeSessions.Failed',
+          properties: {
+            tenantId: principal.tenantId,
+            userId,
+            op: 'patch-active-false',
+            cause: (e as Error).message,
+          },
+        });
       }
     }
     const membershipNow = await getMembershipEntity(entities, principal.tenantId, userId);
@@ -404,8 +413,17 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
       );
       const dispatch = identityDispatcher({ entities, relations });
       for (const env of result.envelopes) await dispatch(env);
-    } catch {
+    } catch (e) {
       // Best-effort.
+      c.get('ctx').logger.warn('scim revoke-all-sessions failed; continuing', {
+        event: 'Identity.ScimUserDelete.RevokeSessions.Failed',
+        properties: {
+          tenantId: principal.tenantId,
+          userId,
+          op: 'delete',
+          cause: (e as Error).message,
+        },
+      });
     }
     return c.body(null, 204, SCIM_RESPONSE_HEADERS);
   });

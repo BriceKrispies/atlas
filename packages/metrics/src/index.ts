@@ -39,5 +39,8 @@ export {
   guardrail,
   techDebt,
   mvpShortcut,
+  setGuardrailLogger,
+  getGuardrailLogger,
   type GuardrailOptions,
+  type GuardrailLogger,
 } from './guardrail.ts';

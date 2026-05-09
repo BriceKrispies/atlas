@@ -42,6 +42,7 @@ import {
   lookupOf,
   verifyPassword,
 } from '../src/index.ts';
+import { assertEventTags } from './lib/fixtures.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
@@ -295,6 +296,8 @@ describe('audit-export.feature: retention tagging', () => {
       f.entities,
     );
     expect(result.envelope.retentionTag).toBe('retention:1y');
+    // I10 — every event MUST carry the tenant tag.
+    assertEventTags(result.envelope, [`Tenant:${f.tenantId}`]);
   });
 
   it('Configure rejects destinations missing bucket/region/auth', async () => {

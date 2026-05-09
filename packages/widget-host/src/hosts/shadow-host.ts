@@ -8,6 +8,8 @@
  * cannot traverse into the widget's DOM via `querySelector`.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type {
   HostMountArgs,
   WidgetElementInstance,
@@ -73,8 +75,14 @@ export async function mount({
     try {
       element?.onUnmount?.();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[widget-host] shadow onUnmount threw', err);
+      emitTelemetry({
+        eventName: 'atlas.widget.shadow.onUnmount.threw',
+        level: 'error',
+        source: 'widget-host.shadow-host',
+        widgetId: manifest.widgetId,
+        instanceId,
+        'error.message': (err as Error)?.message ?? String(err),
+      });
     }
     try {
       host?.remove();

@@ -132,8 +132,13 @@ export class IdentityError extends Error {
   readonly code: IdentityErrorCode;
   readonly status: number;
 
-  constructor(code: IdentityErrorCode, message: string, status = 400) {
-    super(message);
+  constructor(
+    code: IdentityErrorCode,
+    message: string,
+    status = 400,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
     this.name = 'IdentityError';
     this.code = code;
     this.status = status;

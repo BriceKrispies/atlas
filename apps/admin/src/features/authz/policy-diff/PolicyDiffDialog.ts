@@ -6,6 +6,7 @@
 
 import { AtlasSurface, html } from '@atlas/core';
 import { getPolicy, listPolicies, type PolicySummary } from '@atlas/api-client';
+import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 
 interface DiffState {
@@ -44,12 +45,28 @@ class PolicyDiffDialog extends AtlasSurface {
     this.appendChild(fragment);
   }
 
+  private _disposeTestState: (() => void) | null = null;
+
   override onMount(): void {
     document.addEventListener('authz-open-diff', this._onOpen as EventListener);
+
+    // Expose surface state to Playwright via `window.__atlasTest`.
+    this._disposeTestState = registerTestState(this.surfaceId, () => ({
+      state: this.getAttribute('data-state') ?? 'unknown',
+      open: this._state.open,
+      loading: this._state.loading,
+      leftVersion: this._state.leftVersion,
+      rightVersion: this._state.rightVersion,
+      hasLoadError: this._state.loadError !== null,
+    }));
   }
 
   override onUnmount(): void {
     document.removeEventListener('authz-open-diff', this._onOpen as EventListener);
+    if (this._disposeTestState) {
+      this._disposeTestState();
+      this._disposeTestState = null;
+    }
   }
 
   private _onOpen = (e: Event): void => {

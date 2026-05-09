@@ -1,13 +1,13 @@
-# Atlas — Multi-Tenant Developer Platform
+# Atlas — Multi-Tenant Platform Fabric
 
 **Version:** 0.1.0
-**Architecture:** Hexagonal, Event-Driven, Policy-First AuthZ
+**Architecture:** Hexagonal, Event-Driven, Policy-First AuthZ, Agentic-First
 **Tenancy Model:** Database-per-Tenant + Cluster-Namespace-per-Tenant (Phase 1+)
 **Timezone:** America/Chicago
 
 ## Purpose
 
-Atlas is a self-hosted developer platform: a tenant signs up, pushes code, gets backend resources provisioned (compute, storage, DNS, secrets), and runs workflows on the platform. See [`vision.md`](vision.md) for the user-facing description and [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for how the domain layout was re-anchored from a CMS framing to this developer-platform framing.
+Atlas is a multi-tenant platform fabric: a tenant signs up, defines their own data model (Salesforce-shaped, Phase 3–4), optionally provisions backend services (Vercel-shaped), writes functions and workflows against their data, and gets identity / authz / audit / observability / search applied uniformly to every operation. Atlas is software anyone can self-host; the project author runs a public reference instance with open public signup as one example deployment. See [`vision.md`](vision.md) for the user-facing description, [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for the original CMS → developer-platform re-anchor, and [`decisions/0003-tenant-defined-data-model-pivot.md`](decisions/0003-tenant-defined-data-model-pivot.md) for the multi-tenant-fabric ambition (Extensibility platform revival, agentic-first tenet, hosting-model framing).
 
 The platform enforces strict security boundaries through centralized authorization, maintains tenant isolation through dedicated databases (control-plane + per-tenant) and per-tenant cluster namespaces (Phase 1+), and supports horizontal scaling through event-driven architecture and cache-first design. Strategy is to **wrap existing tools as adapters** (k3s, kaniko, Caddy, Hetzner Cloud, Gitea, MinIO, etc.) and build the unified multi-tenant control plane that ties them together.
 
@@ -278,6 +278,116 @@ The following invariants are **non-negotiable** and must be enforced by any impl
 
 ---
 
+### I13: Quota Enforcement Precedes Execution
+
+**Invariant**: Quota check MUST run at ingress before handler dispatch. Over-budget tenants MUST emit no events, run no handlers, and consume no compute.
+
+**Semantics**:
+- Quota service is consulted after authz (I2) and before idempotency (I3)
+- Pipeline: validate → resolve tenant → authn → authz → **quota check** → idempotency → dispatch
+- On `QUOTA_EXCEEDED`: request short-circuits with the typed error; no events emitted, no audit-of-side-effect (the denial itself is audited)
+- Quota dimensions are declared per action in the module manifest (e.g., `signups-per-window`, `cpu-seconds`, `storage-bytes`, `function-invocations`, `egress-bytes`)
+
+**Purpose**: Open public signup means abusive tenants will arrive; quotas must be load-bearing from the boundary, not a Phase-4 polish (REQ-QUOTA-001).
+
+**Violation**: An over-budget tenant proceeds past the boundary, consuming resources or affecting other tenants.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md)
+
+---
+
+### I14: Tenant Code Isolation
+
+**Invariant**: Tenant-authored code (Extensibility/`functions`) MUST execute only via the `FunctionRuntime` port. The runtime adapter MUST run out-of-process from `apps/server`.
+
+**Semantics**:
+- Tenant code MUST NOT import `@atlas/*` packages
+- Tenant code MUST NOT have direct filesystem, network, or process access — only mediated egress via host-provided context (`ctx.fetch`, `ctx.logger`, `ctx.kv`, etc.)
+- Tenant code MUST NOT execute in the `apps/server` Node process
+- The MVP runtime adapter is gVisor-backed k8s Jobs ([ADR 0006](decisions/0006-function-runtime-substrate.md)); other adapters (V8 isolates, Firecracker) are swappable behind the same port
+
+**Purpose**: Tenant code is untrusted; the existing hexagonal layering rule ("modules import only `@atlas/ports`") presumes trusted authors. Tenant code requires a stronger boundary.
+
+**Violation**: Tenant code reaches platform internals, sibling tenants, or cross-process state.
+
+**Scope note**: I14 governs **tenant code** — Turing-complete, side-effecting programs authored by tenants under Extensibility/`functions`. Tenant **declarations** (templates, queries, formulas, validation rules — DSL artifacts under [ADR 0007](decisions/0007-dsl-substrate-and-authoring-contract.md)) are a distinct category and execute in `apps/server` via the platform's DSL evaluator. The carve is safe because DSLs are constrained by ADR 0007 §2 (non-Turing-complete, pure, no ambient I/O, deterministic, bounded). A DSL that cannot meet that contract is tenant code and routes through `FunctionRuntime`.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md), [`decisions/0007-dsl-substrate-and-authoring-contract.md`](decisions/0007-dsl-substrate-and-authoring-contract.md)
+
+---
+
+### I15: Egress Mediation
+
+**Invariant**: Tenant outbound HTTP / DNS / network traffic MUST flow through a tenant-scoped egress port that audits, quotas, and applies authz to every call.
+
+**Semantics**:
+- The egress port emits `Audit.EgressCalled` with `correlationId`, `tenantId`, target host, request size
+- Egress quota dimensions: `egress-bytes`, `egress-requests-per-window`
+- Egress authz: per-tenant allowlist / denylist; default-deny on unconfigured destinations
+- No tenant-code path may reach the public internet without traversing this port (the outbound counterpart of I1)
+
+**Purpose**: Mutually-distrusting tenants on one instance means abusive outbound traffic (data exfil, SSRF, DDoS amplification) must be metered and auditable.
+
+**Violation**: Tenant code originates a network call that bypasses audit, quota, or authz.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md)
+
+---
+
+### I16: Schema-Mutation Scope
+
+**Invariant**: Tenant-defined schema mutations (Extensibility/`custom-schema`) MUST affect only the issuing tenant's database and only operations on the constrained DDL allowlist.
+
+**Semantics**:
+- Tenants do not issue raw SQL; they declare object types via Atlas API. The platform translates declarations into a constrained DDL set: `CREATE TABLE`, `ADD COLUMN`, `CREATE INDEX`, `ALTER COLUMN ... TYPE` (with safe-cast rules), `DROP COLUMN`, `DROP TABLE`.
+- Forbidden DDL: `DROP DATABASE`, `CREATE EXTENSION`, cross-schema references, triggers (those are Extensibility/`functions`' responsibility), `GRANT`, `REVOKE`, role manipulation.
+- Schema mutations are scoped to the issuing tenant's per-tenant Postgres schema (`atlas_t_<tenantId>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)) — never the control-plane DB, never another tenant's schema.
+- Per-tenant migration ledger is separate from the control-plane `_atlas_migrations` table; tenant schemas are rebuildable from the tenant's event store (I12 holds for tenant-defined schemas).
+
+**Purpose**: Tenant-controlled DDL is necessary for the Salesforce-shaped data model but is also the largest blast-radius primitive in the platform. The scope boundary is the difference between "tenants define their data" and "tenants operate the database."
+
+**Violation**: A tenant's schema mutation reaches another tenant's DB or executes DDL outside the allowlist.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md), [`decisions/0005-custom-schema-storage-strategy.md`](decisions/0005-custom-schema-storage-strategy.md)
+
+---
+
+### I17: API / CLI / UI Parity
+
+**Invariant**: Every action exposed through `apps/server` MUST be reachable via the HTTP API, an `atlasctl` command (thin wrapper over the API), and a UI surface where user-facing.
+
+**Semantics**:
+- The action registry is the single source of truth for what actions exist
+- `atlasctl` commands are generated from / matched against the action registry; missing pairs fail CI
+- UI surfaces register against the same action vocabulary; user-facing actions without a UI surface are flagged
+- This makes the agentic-first tenet enforceable: an AI agent can do anything a human can do, and vice versa, because there is one set of actions exposed identically across surfaces
+
+**Purpose**: ADR 0003 §3 stated the parity tenet; without an invariant it remained aspirational. I17 makes "anything an agent does, a tenant can do" mechanically checkable.
+
+**Violation**: An HTTP endpoint exists with no `atlasctl` counterpart, or a CLI command has no API equivalent, or a user-facing action has no UI surface.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md)
+
+---
+
+### I18: Surface State Machine-Readability
+
+**Invariant**: Every `AtlasSurface` MUST expose its state via the surface-contract introspection API ([`frontend/surface-introspection.md`](frontend/surface-introspection.md)). State exposure is prod-safe and authz-gated, not a dev-only test affordance.
+
+**Semantics**:
+- Every surface implements `getSurfaceSnapshot(): { surfaceId, state, schemaRef?, data, actions[] }`
+- A surface registry (`/api/v1/surfaces`) returns manifests for every surface so an agent can enumerate without driving the UI
+- Snapshot exposure is gated by the same authz rules as the surface itself; an agent sees what the calling principal would see
+- Surfaces rendering tenant-defined entity types (per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)) carry a `dataSchema: { kind: "tenant-defined", schemaRef }` field
+
+**Purpose**: ADR 0003 §3 codified machine-readable surfaces as a load-bearing tenet. The existing `surface-contract.md` is a design-time author contract; I18 promotes runtime introspection to a platform invariant.
+
+**Violation**: A new surface ships without a surface-contract entry or without implementing the introspection API.
+
+**Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md), [`frontend/surface-introspection.md`](frontend/surface-introspection.md)
+
+---
+
 ## Architecture Planes
 
 ### Control Plane
@@ -401,6 +511,93 @@ Owns tenant lifecycle:
 - API key prefix or JWT claim
 
 Once resolved, `TenantContext` is attached to the request and flows through all downstream processing.
+
+## Tenant Runtime Isolation
+
+The Tenancy Model above covers **data-layer** isolation (per-tenant DB, control-plane DB, tenant-context propagation). Open public signup with mutually-distrusting tenants on a shared instance ([ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md), REQ-ISO-001) raises the bar: isolation must also hold at the **runtime layer** — process boundaries, network egress, schema mutations, and tenant-authored code execution.
+
+**Threat model**: any two tenants on the same Atlas deployment are mutually distrusting. The operator is not a fallback for isolation failures; the platform must hold against adversarial signup, adversarial code, and adversarial workload.
+
+### Tenant code never executes in `apps/server`
+
+Per **I14**, tenant-authored functions (Extensibility/`functions`) execute only via the `FunctionRuntime` port whose adapter runs out-of-process. The MVP adapter is gVisor-backed k8s Jobs ([ADR 0006](decisions/0006-function-runtime-substrate.md)) — `runsc` intercepts syscalls and refuses fs/net access except via host-mediated context.
+
+The `apps/server` Node process never imports tenant code, never `eval`s tenant code, never spawns tenant code as a child process. Tenant code lives in a separate cluster namespace (`atlas-fn-<tenantId>`) with default-deny NetworkPolicy.
+
+### Tenant declarations vs tenant code
+
+Atlas distinguishes three execution categories ([ADR 0007](decisions/0007-dsl-substrate-and-authoring-contract.md)):
+
+| Category | Authored by | Executes in | Boundary |
+|---|---|---|---|
+| **Platform code** | Atlas maintainers | `apps/server`, `apps/projection-worker`, adapters | hexagonal layering |
+| **Tenant declarations** | Tenants (DSL artifacts: templates, queries, formulas, validations) | `apps/server` via platform DSL evaluator | ADR 0007 §2 contract |
+| **Tenant code** | Tenants (`functions`) | `FunctionRuntime` adapter, out-of-process | I14, I15 |
+
+Tenant declarations execute in-process because the ADR 0007 contract makes them safe to: non-Turing-complete (or provably-bounded), pure with respect to host state, no ambient I/O, deterministic, and bounded by step + wall-clock budgets enforced by the substrate. Egress (I15) is impossible by construction — DSLs have no syntax for outbound network. Effectful host operations route back through existing ports (`EntityStore` / `SchemaDefinitionStore` for object reads, `FunctionRuntime` for function calls); the boundary respects I14 / I15 / I16 at the call site.
+
+A DSL that cannot satisfy the §2 contract is tenant code by definition and goes through `FunctionRuntime`. The carve does not weaken I14; it names what I14 was always about.
+
+### Egress mediation
+
+Per **I15**, every outbound network call from tenant code traverses the egress port. The egress proxy:
+
+- Audits the call (`Audit.EgressCalled` with `correlationId`, `tenantId`, host, byte counts).
+- Charges the tenant's `egress-bytes` and `egress-requests-per-window` quotas.
+- Enforces an allowlist / denylist policy per tenant (default-deny on unconfigured destinations, with operator-tunable defaults).
+- Strips host-side credentials from outbound headers; tenants supply their own credentials via the secrets domain.
+
+This is the outbound counterpart of I1's single-ingress rule for inbound traffic.
+
+### Schema-mutation scope
+
+Per **I16**, tenant-defined schema mutations (`custom-schema`) are confined to:
+
+- The issuing tenant's per-tenant Postgres schema (`atlas_t_<tenantId>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)).
+- A constrained DDL allowlist (`CREATE TABLE`, `ADD COLUMN`, `CREATE INDEX`, safe `ALTER COLUMN`, `DROP COLUMN`, `DROP TABLE`).
+
+The migration applier port asserts the target schema name matches the issuing tenant; cross-schema references and forbidden DDL (`DROP DATABASE`, `CREATE EXTENSION`, triggers, role manipulation) are rejected before any SQL executes.
+
+Each tenant's connection role has `USAGE` only on its own schema; cross-schema queries fail at the database, not at the application.
+
+### Compute-layer isolation
+
+Per [ADR 0006](decisions/0006-function-runtime-substrate.md) and `compute-owner`'s scoping for the Compute platform:
+
+- **Namespace per tenant** for runtime workloads (`atlas-rt-<tenantId>`) and for tenant-function execution (`atlas-fn-<tenantId>`). Distinct namespaces so a tenant function cannot pod-exec into the tenant's own deployment.
+- **Default-deny `NetworkPolicy`** at namespace creation: egress to other tenant namespaces, the k8s API, cloud metadata (`169.254.169.254`), and node-local services blocked. Egress to the public internet only via the egress proxy.
+- **`PodSecurityStandard: restricted`** enforced at admission: no privileged, no hostPath, no hostNetwork, runAsNonRoot, seccomp `RuntimeDefault`, drop ALL capabilities.
+- **`ResourceQuota` + `LimitRange`** applied at namespace creation, not deploy-time. Hard caps on pods, CPU, memory, ephemeral-storage, PVC count, NodePort/LoadBalancer = 0.
+- **`RuntimeClass: gvisor`** required for tenant-function pods; admission rejects function pods without it.
+- **ServiceAccount** scoped to the namespace; auto-mount disabled by default.
+
+### Logging isolation
+
+Per [`crosscut/logging.md`](crosscut/logging.md) and the agentic-first observability tenet (REQ-AGENT-001):
+
+- No single log line may reference more than one `tenantId`. Aggregations and overflow meta-logs are either tenant-scoped (one line per tenant) or operator-scoped with `tenantId` omitted entirely — never a list of tenants.
+- Tenant code logs only through the host-provided `ctx.logger`; direct stdout from tenant code is captured at `info` with `source: 'tenant-stdout'` and the runner stamps `tenantId` / `principalId` / `correlationId` (tenant code cannot forge these fields).
+- Cross-tenant log retrieval surfaces (operator dashboards) require operator principal scope; tenant principals see only their own log stream.
+
+### Quota enforcement
+
+Per **I13**, every mutating handler calls `quotaService.check(tenantId, dimension, delta)` after authz and before any side effect. Over-budget tenants are rejected with `QUOTA_EXCEEDED`. The five MVP-blocking dimensions (per `commerce-owner`):
+
+- `signups-per-window` (per source IP and per email domain) — gates signup itself
+- `cpu-seconds` — gates compute deployments and function invocations
+- `storage-bytes` — gates object/block storage writes
+- `function-invocations` — gates `functions` invocation rate, CPU-time, memory-time
+- `egress-bytes` — gates outbound network usage from tenant code
+
+Quotas are per-tenant; an over-budget tenant's hard-block path must not block the quota-check hot path for other tenants (cache-tag invalidation on aggregation commit, never global locks).
+
+### What this section is not
+
+Tenant runtime isolation is the platform's responsibility against the mutual-distrust threat model. It is not:
+
+- **A substitute for tenant secret hygiene.** A tenant whose admin user's password is "password" can still be compromised; that's tenant-side.
+- **A guarantee against side-channel attacks below the gVisor / kernel boundary.** Spectre-class CPU side channels are mitigated at hypervisor / kernel level; Atlas trusts the host kernel and the gVisor `runsc` boundary.
+- **A guarantee against operator compromise.** A compromised operator can read any tenant's data — the audit log will show it, but the platform doesn't pretend to defend against the operator.
 
 ## Authentication & Authorization
 

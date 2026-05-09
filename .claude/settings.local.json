@@ -181,7 +181,32 @@
       "PowerShell(pnpm *)",
       "Bash(awk NR==167 *)",
       "Bash(pnpm --filter @atlas/projection-worker typecheck)",
-      "Bash(pnpm --filter @atlas/server test execution-context)"
+      "Bash(pnpm --filter @atlas/server test execution-context)",
+      "Bash(pnpm --filter @atlas/atlasctl typecheck)",
+      "Bash(pnpm e2e:smoke)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(CONTROL_PLANE_DB_URL=\"postgres://atlas_platform:local_dev_password@localhost:15433/control_plane\" TEST_AUTH_ENABLED=true POLICY_ENGINE=stub WORKER_MODE=inline INGRESS_PORT=3000 LOG_LEVEL=info pnpm *)",
+      "Bash(CONTROL_PLANE_DB_URL=\"postgres://atlas_platform:local_dev_password@localhost:15433/control_plane\" pnpm test:integration intent-logging)",
+      "Bash(CONTROL_PLANE_DB_URL=\"postgres://atlas_platform:local_dev_password@localhost:15433/control_plane\" TEST_AUTH_ENABLED=true POLICY_ENGINE=stub WORKER_MODE=inline INGRESS_PORT=3101 LOG_LEVEL=info TENANT_ID=dev-tenant pnpm *)",
+      "Bash(INGRESS_BASE_URL=\"http://localhost:3101\" CONTROL_PLANE_DB_URL=\"postgres://atlas_platform:local_dev_password@localhost:15433/control_plane\" pnpm test:integration intent-logging)",
+      "Bash(awk '{print $5}')",
+      "Bash(sed -n '60,75p' /c/dev/atlas/modules/catalog/src/dispatch.ts)",
+      "Bash(sed -n '85,95p' /c/dev/atlas/modules/content-pages/src/dispatch.ts)",
+      "Bash(sed -n '55,65p' /c/dev/atlas/modules/repository/src/dispatch.ts)",
+      "Bash(sed -n '20,30p' /c/dev/atlas/modules/catalog/src/dispatch.ts)",
+      "Bash(sed -n '32,42p' /c/dev/atlas/modules/content-pages/src/dispatch.ts)",
+      "Bash(sed -n '36,46p' /c/dev/atlas/modules/repository/src/dispatch.ts)",
+      "Bash(sed -n '58,68p' /c/dev/atlas/modules/identity/src/dispatch.ts)",
+      "Bash(podman port *)",
+      "Bash(podman run *)",
+      "Bash(podman rm *)",
+      "PowerShell(podman compose *)",
+      "PowerShell(podman *)",
+      "Bash(CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane TEST_AUTH_ENABLED=true DEBUG_AUTH_ENDPOINT_ENABLED=true TENANT_ID=tenant-itest-001 MAILER_MODE=smtp MAILER_DRIVER=smtp SMTP_HOST=localhost SMTP_PORT=1025 SMTP_FROM=itest@atlas.local COOKIE_DOMAIN=.localhost OIDC_ISSUER_URL=http://localhost:8081/realms/atlas OIDC_JWKS_URL=http://localhost:8081/realms/atlas/protocol/openid-connect/certs OIDC_AUDIENCE=account INGRESS_PORT=3000 POLICY_ENGINE=stub WORKER_MODE=inline pnpm --filter @atlas/server dev)",
+      "Bash(tee /tmp/atlas-server.log)",
+      "Bash(INGRESS_BASE_URL=http://localhost:3000 SMTP4DEV_URL=http://localhost:5080 KEYCLOAK_BASE_URL=http://localhost:8081 CONTROL_PLANE_DB_URL='postgres://atlas_platform:local_dev_password@localhost:15433/control_plane' pnpm test:integration tests/integration/auth/)",
+      "Bash(PGPASSWORD=local_dev_password psql -h localhost -p 15433 -U atlas_platform -d control_plane -c \"SELECT tenant_id, slug FROM tenants ORDER BY created_at;\")",
+      "Bash(podman exec *)"
     ]
   }
 }

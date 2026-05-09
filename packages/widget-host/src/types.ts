@@ -219,6 +219,19 @@ export interface CapabilityInvokeEnvelope {
   payload: unknown;
 }
 
+/**
+ * Log record shipped from inside the iframe to the host. The host
+ * emits it via the parent's telemetry pipeline with `tenantId` +
+ * `widgetId` fields stamped so tenant-code observability flows
+ * through the same shipping path as everything else.
+ */
+export interface LogEnvelope {
+  kind: 'log';
+  level: 'info' | 'warn' | 'error';
+  /** Stringified args, one per console call argument. */
+  args: ReadonlyArray<string>;
+}
+
 export interface CapabilityAckEnvelope {
   kind: 'capability.ack';
   id: string;
@@ -251,7 +264,8 @@ export interface InitEnvelope {
 export type WidgetToHostMessage =
   | ReadyEnvelope
   | PublishEnvelope
-  | CapabilityInvokeEnvelope;
+  | CapabilityInvokeEnvelope
+  | LogEnvelope;
 
 /** Messages the host sends to the iframe. */
 export type HostToWidgetMessage = InitEnvelope | CapabilityAckEnvelope;

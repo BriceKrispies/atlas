@@ -10,6 +10,8 @@
  * `HostToWidgetMessage` in `../types.ts`.
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type {
   HostToWidgetMessage,
   WidgetToHostMessage,
@@ -24,6 +26,17 @@ export interface PostMessageTransportArgs {
     capability: string;
     payload: unknown;
   }) => void | Promise<void>;
+  /**
+   * Optional log forwarder. The iframe-host wires this so log records
+   * from inside the sandboxed widget surface on the parent's
+   * telemetry pipeline with `tenantId` + `widgetId` stamped (foundational
+   * for ADR 0003 tenant-code observability). When unset, log envelopes
+   * are silently dropped.
+   */
+  onLog?: (env: {
+    level: 'info' | 'warn' | 'error';
+    args: ReadonlyArray<string>;
+  }) => void;
 }
 
 export interface PostMessageTransport {
@@ -41,7 +54,8 @@ function isWidgetMessage(data: unknown): data is WidgetToHostMessage {
   return (
     kind === 'widget-ready' ||
     kind === 'publish' ||
-    kind === 'capability.invoke'
+    kind === 'capability.invoke' ||
+    kind === 'log'
   );
 }
 
@@ -50,6 +64,7 @@ export function createPostMessageTransport({
   onReady,
   onPublish,
   onCapabilityInvoke,
+  onLog,
 }: PostMessageTransportArgs): PostMessageTransport {
   const handler = (event: MessageEvent): void => {
     // Origin is "null" for srcdoc sandbox iframes, so we cannot use
@@ -62,8 +77,12 @@ export function createPostMessageTransport({
       try {
         onReady();
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[widget-host/postmessage] onReady threw', err);
+        emitTelemetry({
+          eventName: 'atlas.widget.postmessage.onReady.threw',
+          level: 'error',
+          source: 'widget-host.postmessage',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
       return;
     }
@@ -74,8 +93,12 @@ export function createPostMessageTransport({
           payload: data.payload,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[widget-host/postmessage] onPublish threw', err);
+        emitTelemetry({
+          eventName: 'atlas.widget.postmessage.onPublish.threw',
+          level: 'error',
+          source: 'widget-host.postmessage',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
       return;
     }
@@ -87,11 +110,33 @@ export function createPostMessageTransport({
           payload: data.payload,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error(
-          '[widget-host/postmessage] onCapabilityInvoke threw',
-          err,
-        );
+        emitTelemetry({
+          eventName: 'atlas.widget.postmessage.onCapabilityInvoke.threw',
+          level: 'error',
+          source: 'widget-host.postmessage',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
+      }
+      return;
+    }
+    if (data.kind === 'log') {
+      if (!onLog) return;
+      const level =
+        data.level === 'info' || data.level === 'warn' || data.level === 'error'
+          ? data.level
+          : 'info';
+      const args = Array.isArray(data.args)
+        ? data.args.map((a) => String(a))
+        : [];
+      try {
+        onLog({ level, args });
+      } catch (err) {
+        emitTelemetry({
+          eventName: 'atlas.widget.postmessage.onLog.threw',
+          level: 'error',
+          source: 'widget-host.postmessage',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
       return;
     }

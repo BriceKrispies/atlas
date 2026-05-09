@@ -20,6 +20,7 @@
 import { policyEvaluationsTotal } from '@atlas/metrics';
 import type { PolicyDecision, PolicyEvaluationRequest } from '@atlas/ports';
 import type { IngressState } from './submit-intent.ts';
+import { toLogError } from './log-error.ts';
 
 function newReadAuditId(): string {
   return `audit-read-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -35,8 +36,18 @@ export async function evaluateRead(
   // because metrics MUST NOT fail the request.
   try {
     policyEvaluationsTotal().inc({ decision: decision.effect });
-  } catch {
-    // Swallow — see comment above.
+  } catch (cause) {
+    // Swallow — debug-level breadcrumb so label-cardinality regressions
+    // on the read path don't go silent (matches submitIntent's metric
+    // catch shape).
+    state.logger?.debug('metric counter failed', {
+      error: toLogError(cause),
+      properties: {
+        metric: 'atlas_policy_evaluations_total',
+        path: 'read',
+        decision: decision.effect,
+      },
+    });
   }
 
   // Audit emit. The hook itself decides whether to record (deny by
@@ -56,8 +67,22 @@ export async function evaluateRead(
         // synthetic per-call key is the right shape.
         idempotencyKey: newReadAuditId(),
       });
-    } catch {
-      // Same swallow rule as submitIntent's audit emit.
+    } catch (cause) {
+      // Same swallow rule as submitIntent's audit emit — a flaky
+      // audit pipeline must not turn a successful read into a 500.
+      // Surfaced at error level: if every read-deny silently fails to
+      // audit itself, that's a compliance gap the operator MUST see.
+      state.logger?.error('audit emit failed', {
+        event: 'Audit.Emit.Failed',
+        error: toLogError(cause),
+        properties: {
+          decision: decision.effect,
+          action: request.action,
+          principalId: request.principal.id,
+          tenantId: request.principal.tenantId,
+          path: 'read',
+        },
+      });
     }
   }
 

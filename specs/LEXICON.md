@@ -1,6 +1,8 @@
-# Atlas Platform Lexicon (v1)
+# Atlas Platform Lexicon (v2)
 
 This file defines the platform’s canonical vocabulary: the nouns that exist, the verbs that may occur, and the invariant-bound pipelines that govern execution.
+
+**v2 (2026-05-08):** Multi-tenant fabric vocabulary added (`Fabric`, `CustomSchema`, `TenantFunction`, `MachineReadableSurface`, `PublicSignup`, `Quota`, `provisionTenant`, `enforceQuota`). PIPE-CMD-001 gains `enforceQuota` between `authorize` and `checkIdempotency` per Invariant I13. CMS-shape entries (`Page`, `WidgetType`, `WidgetInstance`, `WidgetSettings`, `WidgetBoundary`, `INV-ISO-001`, `page.*` / `widget.*` ActionIds) marked **scope: parked first-party CMS app** per [ADR 0002](decisions/0002-developer-platform-domain-map.md) and [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md). They remain in the lexicon for historical continuity but are not active platform vocabulary.
 
 ## Invariants (non-negotiable)
 
@@ -10,8 +12,9 @@ This file defines the platform’s canonical vocabulary: the nouns that exist, t
   - All external requests MUST enter via **Ingress**. No alternate entry paths.
 - **INV-CACHE-001: Cache-first**
   - Read paths must attempt cache first. Misses are expected and controlled (singleflight, SWR, background refresh).
-- **INV-ISO-001: Widget isolation**
+- **INV-ISO-001: Widget isolation** *(scope: parked first-party CMS app)*
   - Widgets cannot reach directly into other widgets’ state or internals.
+  - For the multi-tenant fabric the broader isolation tenet is **REQ-ISO-001** (mutual-distrust isolation between tenants on a shared instance) in [`normative_requirements.md`](normative_requirements.md), backed by Invariants **I7**, **I9**, **I14**, **I15**, **I16** in [`architecture.md`](architecture.md).
 - **INV-DERIVED-001: State is always derived**
   - Persistent facts are events (and a minimal set of authoritative records where needed). Read state is projections/materializations.
 
@@ -25,16 +28,18 @@ Order:
 2. `authenticate`
 3. `validate`
 4. `authorize`
-5. `checkIdempotency`
-6. `dispatchAction`
-7. `handleCommand`
-8. `emitEvent(s)`
-9. `invalidateByTags`
-10. `recordAudit`
+5. `enforceQuota` *(added v2 per Invariant I13)*
+6. `checkIdempotency`
+7. `dispatchAction`
+8. `handleCommand`
+9. `emitEvent(s)`
+10. `invalidateByTags`
+11. `recordAudit`
 
 Notes:
 - Commands return acceptance/receipt, not computed UI state.
 - Emitted events are the only durable “facts” produced by commands.
+- `enforceQuota` runs after authz and before idempotency: an over-budget tenant is denied with `QUOTA_EXCEEDED` before any side effect. Quota dimensions are declared per action in the module manifest.
 
 ### PIPE-QRY-001: Query Pipeline (read path)
 Order:
@@ -357,7 +362,169 @@ Every entry includes:
 
 ---
 
-## UI Composition Nouns
+## Multi-Tenant Fabric Nouns *(v2)*
+
+These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md) and made enforceable by [ADR 0004](decisions/0004-platform-invariants-for-multi-tenant-fabric.md).
+
+### Fabric
+- **Kind**: Noun
+- **Meaning**: The multi-tenant chassis Atlas provides — identity, authorization, tenancy, audit, observability, search — applied uniformly to every operation. The "platform fabric" framing of [`vision.md`](vision.md): tenants get all of these for free by virtue of being a tenant on Atlas.
+- **Shape**: not a runtime entity; a framing concept. Composed of the Spine domains.
+- **Touches**: INV-INGRESS-001, all PIPE-* pipelines
+- **Rules**:
+  - Fabric capabilities apply to every tenant on every instance; opting out is not a tenant-side configuration.
+
+### CustomSchema
+- **Kind**: Noun
+- **Meaning**: A tenant-defined data model — entity types, fields, relationships, and indexes declared by a tenant via Atlas API and stored in the tenant's per-tenant Postgres schema (`atlas_t_<tenantId>`) per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md).
+- **Shape**:
+  - `tenantId`
+  - `objectTypes[]` — entity type declarations (name, fields, relationships)
+  - `version` — monotonically increasing per tenant
+- **Touches**: PIPE-CMD-001, PIPE-PROJ-001, INV-DERIVED-001 (rebuildable from events)
+- **Rules**:
+  - Mutations confined to the issuing tenant's schema (Invariant **I16**).
+  - DDL drawn from a constrained allowlist; no `DROP DATABASE`, no `CREATE EXTENSION`, no cross-schema references.
+  - The unit of declaration is the `ObjectType`; see [`domains/custom-schema/capabilities/object-definition/README.md`](domains/custom-schema/capabilities/object-definition/README.md) for the seam.
+
+### ObjectType
+- **Kind**: Noun
+- **Meaning**: A tenant-declared entity type within a `CustomSchema`. Backed by a native Postgres table inside the tenant's `atlas_t_<tenantUuid>` schema. Identified by `objectTypeId` (UUID-shaped) and a tenant-unique `apiName` (regex `^[A-Za-z][A-Za-z0-9_]{0,62}$`, max 63 chars). Each `ObjectType.Defined` event mints exactly one type.
+- **Shape**:
+  - `tenantId`
+  - `objectTypeId`
+  - `apiName` — tenant-unique stable identifier used in API routes and as the table-name seed
+  - `label`, `pluralLabel`, `description`
+  - `createdAt`, `createdBy`
+- **Touches**: PIPE-CMD-001, INV-DERIVED-001, **I7**, **I16**
+- **Rules**:
+  - `apiName` is unique per `tenantId`; collision returns `OBJECT_TYPE_API_NAME_TAKEN`.
+  - Only types defined in the issuing tenant's schema are addressable; cross-tenant access is impossible at the type level (`tenantId` flows through every read).
+  - Field declarations are NOT part of this entity in v1 — see the `field-types` capability for adding columns.
+
+### Field
+- **Kind**: Noun
+- **Meaning**: A column declaration on an `ObjectType`. Has a `fieldType` (string/number/date/boolean/lookup/etc — defined by the `field-types` capability), an `apiName`, a `label`, and per-type constraints. Backed by a native column on the object type's table.
+- **Shape**:
+  - `fieldId`, `objectTypeId`, `apiName`, `label`, `fieldType`, `constraints`
+- **Touches**: PIPE-CMD-001, **I16**
+- **Rules**:
+  - Out of scope for `object-definition`; declared and frozen by the `field-types` capability.
+  - System-minted audit columns (`id`, `created_at`, `updated_at`, `version`) are not Fields — they are platform infrastructure.
+
+### Relation
+- **Kind**: Noun
+- **Meaning**: A typed reference from one `ObjectType` to another within the same tenant's `CustomSchema`. Backed by a foreign-key column per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md) ("relationships become foreign keys"). Distinct from the existing `RelationStore` port, which is a generic platform-level adjacency store; `Relation` here is a tenant-defined first-class metadata declaration.
+- **Shape**:
+  - `relationId`, `tenantId`, `fromObjectTypeId`, `toObjectTypeId`, `apiName`, `cardinality` (`one-to-many` | `many-to-one` | `many-to-many`), `onDelete` (`restrict` | `cascade` | `set-null`)
+- **Touches**: PIPE-CMD-001, **I7**, **I16**
+- **Rules**:
+  - Both endpoints MUST live in the same tenant's schema (Invariant **I16**); cross-tenant relations are forbidden.
+  - Out of scope for `object-definition`; declared as a reference-typed field by the `field-types` capability — there is no separate `relations` capability.
+  - Naming disambiguation: this entry refers to the *tenant-defined* relation metadata, not the platform-level `RelationStore` port at `ports/src/relation-store.ts`.
+
+### TenantFunction
+- **Kind**: Noun
+- **Meaning**: Sandboxed tenant-authored code — written by a tenant, attached to schema lifecycle events / HTTP routes / schedules, executed via the `FunctionRuntime` port (gVisor-backed by default per [ADR 0006](decisions/0006-function-runtime-substrate.md)).
+- **Shape**:
+  - `tenantId`
+  - `functionId`
+  - `version`
+  - `bundleRef` — pointer to the source/image
+  - `runtime` — `"gvisor"` (MVP) or `"v8-isolate"` (Phase 4)
+  - `triggers[]` — schema events, HTTP routes, schedules
+- **Touches**: PIPE-CMD-001, INV-INGRESS-001 (HTTP-route functions submit through Ingress)
+- **Rules**:
+  - Executes only via `FunctionRuntime` port; never in `apps/server` process (Invariant **I14**).
+  - Outbound network through the egress port only (Invariant **I15**).
+  - Distinct from `function-runner` (Workflow internal infrastructure); see [`domains/functions/README.md`](domains/functions/README.md).
+
+### MachineReadableSurface
+- **Kind**: Noun
+- **Meaning**: An `AtlasSurface` that exposes its current state via `getSurfaceSnapshot()` and a registry manifest at `/api/v1/surfaces`, per [`frontend/surface-introspection.md`](frontend/surface-introspection.md). Required for every surface (Invariant **I18**).
+- **Shape**:
+  - `surfaceId`
+  - `state` — current snapshot kind (loading / empty / success / etc.)
+  - `dataSchema` — static or tenant-defined
+  - `data`
+  - `actions[]` — available actions, post-authz
+- **Touches**: INV-INGRESS-001 (snapshots flow through Ingress), INV-UI-001
+- **Rules**:
+  - Snapshots are authz-gated; agents see only what their principal scope allows.
+  - Required for every `AtlasSurface` subclass; CI enforces.
+
+### PublicSignup
+- **Kind**: Noun
+- **Meaning**: Open self-serve tenant provisioning — the signup configuration in which any visitor can become a tenant without operator intervention. The default for the project author's public reference instance, opt-out for self-hosters who want gated signup.
+- **Shape**:
+  - request flow: intent → email verify → tenant provisioned → admin user created
+  - quota dimensions enforced: `signups-per-window` per IP and per email
+- **Touches**: PIPE-CMD-001, REQ-SIGNUP-001, REQ-SIGNUP-002
+- **Rules**:
+  - Must function without operator intervention when enabled.
+  - Rate-limited per source IP and per email; over-budget rejected with `QUOTA_EXCEEDED`.
+
+### Quota
+- **Kind**: Noun
+- **Meaning**: A per-tenant resource budget enforced at ingress before any side effect. Quotas are load-bearing: an over-budget tenant cannot deploy, run functions, grow data, or accept new signups (Invariant **I13**, REQ-QUOTA-001).
+- **Shape**:
+  - `tenantId`
+  - `dimension` — one of `signups-per-window`, `cpu-seconds`, `storage-bytes`, `function-invocations`, `egress-bytes`, plus future per-domain dimensions
+  - `budget`
+  - `usedSoFar`
+  - `windowStart` (for time-bounded budgets)
+- **Touches**: PIPE-CMD-001 (between `authorize` and `checkIdempotency`)
+- **Rules**:
+  - Per-tenant accounting; over-quota tenant must not block other tenants' quota-check hot path.
+  - Quota dimensions declared per action in module manifest.
+
+### QuotaService
+- **Kind**: Noun (port)
+- **Meaning**: The platform-level seam every mutating handler consults between `authorize` and `checkIdempotency` per Invariant **I13**. Single-method (`check`) port mirroring the `PolicyEngine` shape. Tenancy owns the contract; Commerce ships the real adapter (`QuotaLedger`-backed); a stub (`QuotaServiceStub`, always-allow) ships alongside this port for dev/sim.
+- **Shape**:
+  - `check(request: QuotaCheckRequest) -> Promise<QuotaCheckResult>`
+- **Touches**: PIPE-CMD-001, INV-INGRESS-001
+- **Rules**:
+  - Atomic decrement-or-reject — when the result is `allowed: true`, the budget is already consumed (single round trip, no check-then-consume race).
+  - Fail-closed — when the service is unreachable, callers refuse the intent (`QUOTA_SERVICE_UNAVAILABLE`); there is no degraded-mode passthrough.
+
+### QuotaCheckRequest
+- **Kind**: Noun (type)
+- **Meaning**: The request shape passed to `QuotaService.check`. Tenant-scoped at the type level.
+- **Shape**:
+  - `tenantId`
+  - `dimension` (a `QuotaDimension` value)
+  - `delta` (amount to decrement)
+  - `correlationId`
+- **Touches**: PIPE-CMD-001, INV-DERIVED-001 (correlationId propagation)
+- **Rules**:
+  - Cross-tenant requests are impossible by signature.
+
+### QuotaCheckResult
+- **Kind**: Noun (type)
+- **Meaning**: The decision returned from `QuotaService.check`. `allowed: true` means the budget is already decremented; `allowed: false` carries a `reason` distinguishing over-budget from service-unavailable.
+- **Shape**:
+  - `allowed` (boolean)
+  - `remainingBudget?` (number)
+  - `reason?` — `'QUOTA_EXCEEDED'` (over-budget) or `'QUOTA_SERVICE_UNAVAILABLE'` (fail-closed)
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - `reason` is required whenever `allowed: false`; it shapes the audit event the handler subsequently emits (`Audit.QuotaDenied` vs. operator-side service-unavailable signal).
+
+### defaultQuotas
+- **Kind**: Noun (payload field)
+- **Meaning**: A map of `QuotaDimension → { budget, windowSeconds? }` carried on `Tenancy.TenantProvisioned`. Commerce's future `QuotaLedger` projection consumes this to materialise per-tenant budget rows. Operator-tunable via the `commerce/plans` capability without touching tenancy or the events themselves.
+- **Shape**:
+  - `Record<QuotaDimension, { budget: number, windowSeconds?: number }>`
+- **Touches**: PIPE-CMD-001, INV-DERIVED-001 (events as facts)
+- **Rules**:
+  - Ships with all five MVP-blocking dimensions populated; per-domain dimensions add themselves in their own capability specs.
+
+---
+
+## UI Composition Nouns *(scope: parked first-party CMS app)*
+
+The entries below are CMS-flavored vocabulary from before the developer-platform re-anchor ([ADR 0002](decisions/0002-developer-platform-domain-map.md)) and the multi-tenant-fabric pivot ([ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md)). They remain here for historical continuity and because the parked CMS app at `apps/cms/` may revive on top of `custom-schema` + `functions` later (or may not — see ADR 0003 §"Out of scope"). Active platform vocabulary lives above; these terms are not active for new work.
 
 ### Page
 - **Kind**: Noun
@@ -544,11 +711,31 @@ Every entry includes:
 - **Rules**:
   - Token must be single-use and time-bound.
 
+### enforceQuota *(v2)*
+- **Kind**: Verb
+- **Meaning**: Atomic decrement-or-reject against the named quota dimension for the tenant. Runs in PIPE-CMD-001 between `authorize` and `checkIdempotency`. Per Invariant **I13**.
+- **Signature**: `(TenantId, QuotaDimension, delta) -> { ok } | { rejected: 'QUOTA_EXCEEDED' }`
+- **Touches**: PIPE-CMD-001
+- **Rules**:
+  - Atomic — no TOCTOU window between check and consume for fungible budgets.
+  - Rejection emits `Audit.QuotaDenied` and short-circuits the pipeline; no domain events emitted.
+  - Hot-path safe: per-tenant accounting must not block other tenants on contention.
+
+### provisionTenant *(v2)*
+- **Kind**: Verb
+- **Meaning**: Atomically create a new tenant — control-plane row, per-tenant DB, per-tenant Postgres schema (`atlas_t_<tenantId>`), default quota ledger entries, admin user, ingress hostname binding. Triggered by `Tenancy.Signup.Approved` (private) or `PublicSignup.EmailVerified` (open).
+- **Signature**: `(SignupRequest) -> DomainEvent[]` (`Tenancy.TenantProvisioned`, `Identity.AdminUserCreated`, `Commerce.QuotaLedgerInitialized`, etc.)
+- **Touches**: PIPE-CMD-001, REQ-SIGNUP-001
+- **Rules**:
+  - Idempotent on the same `signupRequestId` — replay must not create duplicate tenants.
+  - Fail-closed: if any step (DB provision, quota init, admin create) fails, the whole transition rolls back; no half-provisioned tenants.
+  - Must function without operator intervention when public signup is enabled.
+
 ---
 
-## Closed-set UI Composition Verbs (ActionIds)
+## Closed-set UI Composition Verbs (ActionIds) *(scope: parked first-party CMS app)*
 
-These are platform-recognized actions (examples; expand as needed):
+These ActionIds were defined for the CMS-shaped platform that preceded the developer-platform re-anchor. They are retained for historical continuity; new work uses the action vocabulary defined per-domain under `specs/domains/<x>/`.
 
 - `page.create`
 - `page.update`

@@ -1,8 +1,8 @@
 # Atlas Platform
 
-Self-hosted multi-tenant **developer platform**. A tenant signs up, pushes code, gets backend resources provisioned (compute, storage, DNS, secrets), and runs workflows on the platform. **TypeScript** (Node + browser). Hexagonal architecture: ports define the surface, adapters implement them, modules hold domain logic, packages are shared infrastructure, apps wire it all together.
+Multi-tenant **platform fabric**. A tenant signs up, defines their own data model, optionally provisions backend services, writes functions/workflows against their data, and gets identity / authz / audit / observability / search applied uniformly to every operation — for free, by virtue of being a tenant. Atlas is **software anyone can self-host**; the project author runs a public reference instance with open public signup as one example deployment. **TypeScript** (Node + browser). Hexagonal architecture: ports define the surface, adapters implement them, modules hold domain logic, packages are shared infrastructure, apps wire it all together. **Agentic from day one** — single ingress, structured logs, machine-readable surfaces are load-bearing tenets, not retrofits.
 
-See [`specs/vision.md`](specs/vision.md) for the user-facing vision and [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for how the domain map was re-anchored from a CMS-flavored shape to this developer-platform shape on 2026-05-08.
+See [`specs/vision.md`](specs/vision.md) for the user-facing vision, [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for the original CMS → developer-platform re-anchor (2026-05-08), and [`specs/decisions/0003-tenant-defined-data-model-pivot.md`](specs/decisions/0003-tenant-defined-data-model-pivot.md) for the multi-tenant-fabric ambition (Salesforce-shaped data model + Vercel-shaped service provisioning + agentic-first + self-hostable software with public reference instance).
 
 A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`, and `/tests/blackbox` has been removed. Some specs still reference Rust paths as historical context — treat those as legacy notes, not active code locations.
 
@@ -36,6 +36,7 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 |-------|------------------|
 | [`architect`](.claude/agents/architect.md) | Design reviews; any change touching I1–I12, P1–P6, hexagonal layering, ingress, authz precedence, cache invalidation, or tenant scoping |
 | [`spec-keeper`](.claude/agents/spec-keeper.md) | Scoping new capabilities, adding normative rules, lexicon changes, migrating legacy spec content into `specs/domains/<x>/` |
+| [`vision-keeper`](.claude/agents/vision-keeper.md) | CTO-altitude monthly drift audit. Read-only; finds capability scopes that don't trace to vision tenets, code rebuilding what should be wrapped, agentic-first violations, missing ADRs for directional changes. Findings cite `specs/vision.md` / ADRs. Default cadence: monthly, last 30 days. |
 
 **Platform owners (one per platform — spec/design authority, not implementer)**
 
@@ -141,11 +142,11 @@ infra/      compose files, container runtime
 
 ## Domain Map
 
-Atlas is structured as **6 platforms + 1 parked-apps platform**, each containing several **domains**. Domains are the agent-ownership unit — one agent (or platform owner) owns a capability inside a domain end-to-end (spec → BDD → modules → adapters → UI). Platforms are a doc-level grouping for narrative; they are not a folder layer.
+Atlas is structured as **7 platforms + 1 parked-apps platform**, each containing several **domains**. Domains are the agent-ownership unit — one agent (or platform owner) owns a capability inside a domain end-to-end (spec → BDD → modules → adapters → UI). Platforms are a doc-level grouping for narrative; they are not a folder layer.
 
 Each domain's spec home is `specs/domains/<domain>/`. BDD feature folders under `tests/bdd/features/<domain>/` are created lazily — only when a scenario exists.
 
-This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a developer-platform shape. See [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for the prior layout, what was retired, and why.
+This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a developer-platform shape ([ADR 0002](specs/decisions/0002-developer-platform-domain-map.md)) and amended the same day to add the **Extensibility** platform (`custom-schema`, `functions`) so tenants can define their own data model and author their own code, alongside the developer-platform substrate ([ADR 0003](specs/decisions/0003-tenant-defined-data-model-pivot.md)).
 
 | Platform | Domain | Spec home |
 |----------|--------|-----------|
@@ -177,6 +178,8 @@ This map was re-anchored on 2026-05-08 from a CMS / SaaS-framework shape to a de
 | **Commerce** | quotas | [`specs/domains/quotas/`](specs/domains/quotas/) |
 | **Commerce** | metering | [`specs/domains/commerce/metering/`](specs/domains/commerce/metering/) *(stub, to be created)* |
 | **Commerce** | plans | [`specs/domains/commerce/plans/`](specs/domains/commerce/plans/) *(stub, to be created)* |
+| **Extensibility** | custom-schema | [`specs/domains/custom-schema/`](specs/domains/custom-schema/) *(active stub — capability specs Phase 3–4 per [ADR 0003](specs/decisions/0003-tenant-defined-data-model-pivot.md))* |
+| **Extensibility** | functions | [`specs/domains/functions/`](specs/domains/functions/) *(active stub — capability specs Phase 3–4 per [ADR 0003](specs/decisions/0003-tenant-defined-data-model-pivot.md))* |
 | **First-party apps** *(parked)* | cms | `apps/cms/` once moved (currently `modules/content-pages/`, `modules/catalog/`, `apps/authoring/`, `packages/page-templates/`, `packages/bundles/standard/`) |
 
 The remaining Compute / Storage / Code platform stubs and the new Workflow domains are **net-new and currently unspecified** — capability specs land in subsequent PRs per the slice workflow. Phase 1 of the project plan starts with `compute/cluster` (stand up k3s on Hetzner), `compute/image-build` (kaniko in-cluster), and `code/repository` (the upload-tarball foundation Phase 1 depends on).

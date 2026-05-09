@@ -66,6 +66,7 @@ upload, workflow runs, and real compute deploy.
   magic-link plaintext: secrets stay out of event history).
   Projections built on top of this stream are rebuildable from event
   history alone.
+- **I13** *(NEW per [ADR 0004](../../../../decisions/0004-platform-invariants-for-multi-tenant-fabric.md))* — `enforceQuota` runs at ingress before `/api/v1/signup` and `/api/v1/admin/signups/:id/approve` dispatch. The capability is **not yet compliant**: see [Known Debt](#known-debt) items (d) plan/quota attachment and (h) signup-rate quota. Compliance is now MVP-blocking, not Phase 4 polish, because [ADR 0003](../../../../decisions/0003-tenant-defined-data-model-pivot.md) frames open public signup as a first-class deployment configuration and [REQ-SIGNUP-002 / REQ-QUOTA-001](../../../../normative_requirements.md) make rate-limiting + quotas load-bearing on this capability specifically.
 
 ## Lexicon
 
@@ -225,9 +226,7 @@ slice did not introduce a logger seam; the cleanup happens after
 `apps/projection-worker/src/tenant-loop.ts`. Cross-process IPC is
 required to fix the SSE one properly. Phase 2/3 follow-up.
 
-(d) **Default plan / quota attachment.** Tenants are created with no
-plan attached. Needs a `quotas/cpu-budget` capability spec before
-Compute slice 5.
+(d) **Default plan / quota attachment.** *(Severity raised to MVP-blocker by [ADR 0004](../../../../decisions/0004-platform-invariants-for-multi-tenant-fabric.md) / REQ-QUOTA-001.)* Tenants are created with no plan attached. The `tenancy/quota-handoff` capability (per `spine-owner`'s scoping) lands the contract: on `Tenancy.TenantProvisioned`, Commerce attaches `defaultQuotas` (`cpu-seconds`, `storage-bytes`, `function-invocations`, `egress-bytes`); tenancy refuses subsequent intents if quota service is unreachable (fail-closed). Required before any compute / storage / function capability can ship safely on a public instance.
 
 (e) **BDD `.feature` for signup.** The BDD harness is currently
 sim-only; the slice did not extend the harness to drive the real
@@ -243,6 +242,10 @@ rather than reading them off `AppState`. Separate refactor slice.
 credentials must come through the secrets domain, not via env-var
 loaders directly.
 
+(h) **Signup rate limiting (`signups-per-window` quota).** *(Severity raised to MVP-blocker by REQ-SIGNUP-002.)* `/signup` and `/api/v1/signup` have no rate-limit gate. Open public signup without per-IP and per-email rate limiting is a free DoS vector. Lands as a `tenancy/signup-rate-limit` capability per `spine-owner`'s scoping; reads its budget from Commerce's `signups-per-window` dimension. Required before public signup can be enabled on the public reference instance.
+
+(i) **Self-serve provisioning (no admin-approval gate).** *(Severity raised to MVP-blocker by REQ-SIGNUP-001 when public signup is enabled.)* Today the flow requires an admin to approve every signup; for the operator-private deployment shape that's correct, but it does not function as "open public signup without operator intervention." A `tenancy/self-serve-provisioning` capability lands the email-verify-then-provision path; signup gating becomes configuration (operator-approved / invite-only / open) rather than the only path being admin-approved.
+
 ## What's NOT in Scope
 
 Each item below is a separate spec/PR if/when it lands:
@@ -255,12 +258,10 @@ Each item below is a separate spec/PR if/when it lands:
 - **Production SMTP credentials.** See Known Debt (g) — auth fields
   on `SmtpConfig` plus secrets-domain wiring deferred until a real
   provider lands.
-- **Rate limiting on `/signup`.** Hardening slice.
 - **Bounce / failure handling.** smtp4dev never bounces; the real
   adapter must, but separately.
-- **Self-service approval / email verification before admin sees
-  it.** Today admin must approve every signup. Self-service is a
-  policy decision for later.
+
+(Two items previously listed here — rate limiting on `/signup`, and self-service provisioning without admin approval — were promoted to MVP-blocking debt by [ADR 0004](../../../../decisions/0004-platform-invariants-for-multi-tenant-fabric.md) and now appear as Known Debt items (h) and (i). They are no longer "out of scope"; they are gating work for any public-instance deployment.)
 - **SPA-shell replacement of the inline HTML pages.** Slice 2/3.
 - **`atlasctl signup` / `atlasctl push`.** Slice 3+.
 - **Real frontend deploy via k3s + kaniko + Caddy.** Slice 5.

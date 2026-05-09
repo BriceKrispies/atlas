@@ -29,6 +29,14 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
     const principal = c.get('principal');
     const ctx = c.get('ctx');
 
+    if (!principal) {
+      ctx.logger.warn('intent rejected', {
+        event: 'Intent.Rejected',
+        properties: { code: 'PRINCIPAL_REQUIRED', reason: 'no-principal-on-context' },
+      });
+      return errorResponse(c, 'PRINCIPAL_REQUIRED', 'authentication required', 401, correlationId);
+    }
+
     let envelope: IntentEnvelope;
     try {
       envelope = (await c.req.json()) as IntentEnvelope;
@@ -109,11 +117,18 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       return c.json(response, 202);
     } catch (e) {
       const err = e as Error;
+      // Truncate user-supplied error text (e.g. schema validation strings)
+      // before logging at info — avoids unbounded log-line growth and
+      // keeps PII / pasted secrets from accidentally landing in the
+      // structured log stream.
+      const reason = err.message.length > 200
+        ? `${err.message.slice(0, 200)}…`
+        : err.message;
       ctx.logger.info('intent rejected', {
         event: 'Intent.Rejected',
         properties: {
           code: (e as { code?: string }).code ?? 'INTERNAL_ERROR',
-          reason: err.message,
+          reason,
           actionId: action,
         },
       });
@@ -122,8 +137,15 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       const elapsed = Number(process.hrtime.bigint() - start) / 1e9;
       try {
         intentDurationSeconds().observe(elapsed, { action });
-      } catch {
+      } catch (cause) {
         // Metrics MUST NOT fail the request. See submit-intent.ts.
+        ctx.logger.debug('intent metric observe failed', {
+          event: 'Intent.MetricObserve.Failed',
+          properties: {
+            actionId: action,
+            cause: (cause as Error).message,
+          },
+        });
       }
     }
   });

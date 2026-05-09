@@ -11,6 +11,13 @@
  * `channel.publish`, a `context.request(capability, payload)`, and a
  * `log` triad. `channel.subscribe` and `channel.request` are stubbed
  * as clearly-throwing no-ops; extending the transport is future work.
+ *
+ * Logging contract: the per-widget `log` capability does NOT call
+ * `console.*` directly. Instead, log records are shipped to the host
+ * via postMessage `{kind: 'log', level, args}`; the host then emits
+ * them on the parent's `ctx.logger`/telemetry pipeline with `tenantId`
+ * + `widgetId` stamped. This is foundational for ADR 0003 tenant-code
+ * observability.
  */
 
 export const BOOT_SCRIPT: string = `
@@ -25,6 +32,26 @@ export const BOOT_SCRIPT: string = `
     window.parent.postMessage(msg, '*');
   }
 
+  function shipLog(level, args) {
+    try {
+      const stringArgs = [];
+      for (const a of args) {
+        try {
+          if (a && typeof a === 'object') {
+            stringArgs.push(JSON.stringify(a));
+          } else {
+            stringArgs.push(String(a));
+          }
+        } catch (_e) {
+          stringArgs.push(String(a));
+        }
+      }
+      post({ kind: 'log', level: level, args: stringArgs });
+    } catch (_e) {
+      // Logging must never throw — drop silently if postMessage fails.
+    }
+  }
+
   function makeContext(envelope) {
     const channel = Object.freeze({
       publish: (topic, payload) => {
@@ -33,9 +60,9 @@ export const BOOT_SCRIPT: string = `
       subscribe: () => {
         // channel.subscribe is not implemented in the iframe transport
         // yet. Return a no-op unsubscribe so widgets that call it
-        // defensively don't crash, but keep the gap visible.
-        // eslint-disable-next-line no-console
-        console.warn('[widget iframe] channel.subscribe is not implemented');
+        // defensively don't crash, but keep the gap visible by shipping
+        // a structured warn record back to the host.
+        shipLog('warn', ['channel.subscribe is not implemented']);
         return () => {};
       },
       request: () => {
@@ -50,15 +77,13 @@ export const BOOT_SCRIPT: string = `
         post({ kind: 'capability.invoke', id, capability: String(capability), payload });
       });
 
-    const prefix = '[widget-iframe ' + (envelope.manifest && envelope.manifest.widgetId) +
-      ' cid=' + (envelope.context && envelope.context.correlationId) + ']';
+    // The log triad ships records to the host via postMessage; the host
+    // emits them on the parent's telemetry pipeline with tenantId +
+    // widgetId stamped (see iframe-host.ts onLog). No direct console.*.
     const log = Object.freeze({
-      // eslint-disable-next-line no-console
-      info: (...args) => console.info(prefix, ...args),
-      // eslint-disable-next-line no-console
-      warn: (...args) => console.warn(prefix, ...args),
-      // eslint-disable-next-line no-console
-      error: (...args) => console.error(prefix, ...args),
+      info: function () { shipLog('info', arguments); },
+      warn: function () { shipLog('warn', arguments); },
+      error: function () { shipLog('error', arguments); },
     });
 
     return Object.freeze({
@@ -103,8 +128,10 @@ export const BOOT_SCRIPT: string = `
       const root = document.getElementById('root');
       root.appendChild(element);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[widget iframe] boot failed', err);
+      // Boot failure: ship a structured error record up to the host
+      // rather than calling console.error directly.
+      const message = err && err.message ? err.message : String(err);
+      shipLog('error', ['boot failed: ' + message]);
     }
   }
 

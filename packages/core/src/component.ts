@@ -14,6 +14,11 @@
  */
 
 import { effect, type EffectCleanup } from './signals.ts';
+import {
+  emitTelemetry,
+  isDevMode,
+  type TelemetryEvent,
+} from './telemetry-pipeline.ts';
 
 export type SurfaceState =
   | 'loading'
@@ -129,16 +134,38 @@ export class AtlasElement extends HTMLElement {
       (this.constructor as typeof AtlasElement).prototype.render !==
       AtlasElement.prototype.render
     ) {
-      this._renderDispose = effect(() => {
-        const content = this.render();
-        if (content instanceof DocumentFragment) {
-          this.textContent = '';
-          this.appendChild(content);
-        }
-      });
+      this._renderDispose = effect(() => this._safeRender());
     }
 
     this.onMount();
+  }
+
+  /**
+   * Run `render()` inside a try/catch. A thrown render no longer silently
+   * dies inside the signal `effect` — we emit `Atlas.Render.Failed` and
+   * rethrow in dev so Vitest fails loudly. Prod swallows so a single broken
+   * element doesn't take down the page.
+   */
+  protected _safeRender(): void {
+    try {
+      const content = this.render();
+      if (content instanceof DocumentFragment) {
+        this.textContent = '';
+        this.appendChild(content);
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      emitTelemetry({
+        eventName: 'Atlas.Render.Failed',
+        surfaceId: this.surfaceId,
+        tagName: this.tagName.toLowerCase(),
+        error: { message: error.message, stack: error.stack },
+        ...(this._effectiveCorrelationId()
+          ? { correlationId: this._effectiveCorrelationId() as string }
+          : {}),
+      });
+      if (isDevMode()) throw error;
+    }
   }
 
   disconnectedCallback(): void {
@@ -212,15 +239,36 @@ export class AtlasElement extends HTMLElement {
   onUnmount(): void {}
 
   /**
-   * Emit a telemetry event with surface context.
+   * Emit a telemetry event with surface context. Routes through the global
+   * telemetry pipeline; default sink is a no-op (dev installs ConsoleJsonSink).
+   * Public signature unchanged — 140+ call sites compile as-is.
    */
   emit(eventName: string, properties: Record<string, unknown> = {}): void {
-    console.debug('[telemetry]', {
+    const cid = this._effectiveCorrelationId();
+    const ev: Omit<TelemetryEvent, 'timestamp'> = {
       eventName,
       surfaceId: this.surfaceId,
-      timestamp: new Date().toISOString(),
+      ...(cid ? { correlationId: cid } : {}),
       ...properties,
-    });
+    };
+    emitTelemetry(ev);
+  }
+
+  /**
+   * Walk to the surface for a correlation id when this element doesn't own
+   * one. We read `correlationId` off `this` and the surface dynamically so
+   * subclasses (page shells, content-page elements) that already declare a
+   * `correlationId` field aren't forced into an `override` modifier.
+   */
+  protected _effectiveCorrelationId(): string | undefined {
+    const own = (this as unknown as { correlationId?: unknown }).correlationId;
+    if (typeof own === 'string' && own) return own;
+    const s = this.surface;
+    if (s) {
+      const sid = (s as unknown as { correlationId?: unknown }).correlationId;
+      if (typeof sid === 'string' && sid) return sid;
+    }
+    return undefined;
   }
 }
 
@@ -313,9 +361,24 @@ export class AtlasSurface extends AtlasElement {
     }
   }
 
-  /** Track the current state for testing. */
+  /**
+   * Track the current state for testing. Emits `Surface.State.<from>.<to>`
+   * the first time AND on every actual transition (silent-state findings #2);
+   * no-op when the value didn't change.
+   */
   setState(state: SurfaceState): void {
+    const prev = this.getAttribute('data-state') as SurfaceState | null;
+    if (prev === state) return;
     this.setAttribute('data-state', state);
+    emitTelemetry({
+      eventName: `Surface.State.${prev ?? 'init'}.${state}`,
+      surfaceId: this.surfaceId,
+      from: prev ?? 'init',
+      to: state,
+      ...(this._effectiveCorrelationId()
+        ? { correlationId: this._effectiveCorrelationId() as string }
+        : {}),
+    });
   }
 
   override connectedCallback(): void {
@@ -330,13 +393,7 @@ export class AtlasSurface extends AtlasElement {
         proto.render !== AtlasSurface.prototype.render &&
         proto.render !== AtlasElement.prototype.render
       ) {
-        this._renderDispose = effect(() => {
-          const content = this.render();
-          if (content instanceof DocumentFragment) {
-            this.textContent = '';
-            this.appendChild(content);
-          }
-        });
+        this._renderDispose = effect(() => this._safeRender());
       }
     }
 
@@ -555,13 +612,7 @@ export class AtlasSurface extends AtlasElement {
       this._renderDispose = null;
     }
 
-    this._renderDispose = effect(() => {
-      const content = this.render();
-      if (content instanceof DocumentFragment) {
-        this.textContent = '';
-        this.appendChild(content);
-      }
-    });
+    this._renderDispose = effect(() => this._safeRender());
   }
 
   protected async _runLoad(): Promise<void> {

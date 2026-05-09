@@ -120,8 +120,13 @@ function ensureInstalled(): void {
           return (snapshot as { lastCommit?: unknown }).lastCommit ?? null;
         }
         return null;
-      } catch {
-        return null;
+      } catch (err) {
+        // Surface the failure to callers (Playwright BDD assertion code)
+        // rather than silently returning null — null could just mean "no
+        // commit yet" and is indistinguishable from a thrown reader. We
+        // mirror getState()'s `{error: String(err)}` shape so the same
+        // assertion patterns work for both APIs.
+        return { error: String(err) };
       }
     },
 

@@ -66,6 +66,9 @@ export default defineConfig({
       // apps/atlasctl is a node-only CLI — Vitest only, same pattern.
       'apps/atlasctl/test/**/*.test.ts',
       'apps/atlasctl/src/**/*.test.ts',
+      // apps/server is a Node-only Hono service — Vitest only, no Playwright specs.
+      'apps/server/test/**/*.test.ts',
+      'apps/server/src/**/*.test.ts',
     ],
     exclude: [
       '**/node_modules/**',
@@ -79,7 +82,6 @@ export default defineConfig({
       'apps/authoring/**',
       'apps/sandbox/**',
       'apps/sim/**',
-      'apps/server/**',
       'apps/control-plane/**',
       'tests/integration/**',
       'tests/blackbox/**',

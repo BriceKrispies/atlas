@@ -8,7 +8,7 @@
  * can simply `import '@atlas/widget-host'` to use <widget-host>.
  */
 
-import { AtlasElement, html } from '@atlas/core';
+import { AtlasElement, emitTelemetry, html } from '@atlas/core';
 
 import { validateLayout } from './layout.ts';
 import { WidgetMediator } from './mediator.ts';
@@ -71,14 +71,24 @@ function selectHost(isolation: string): HostMountFn {
   }
 }
 
-function telemetry(event: string, payload: TelemetryPayload): void {
-  // Errors go to console.error so they show up at default DevTools log
-  // levels (console.debug is hidden by default). Non-error lifecycle
-  // events stay on console.debug so they don't spam normal sessions.
-  // eslint-disable-next-line no-console
-  const fn =
-    event === 'atlas.widget.error' ? console.error : console.debug;
-  fn(event, payload);
+type TelemetryLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/**
+ * Forward a widget lifecycle / error event into the frontend telemetry
+ * pipeline. Levels are part of the contract — the caller decides
+ * info-vs-error rather than the logger inferring it from the event name.
+ */
+function telemetry(
+  event: string,
+  payload: TelemetryPayload,
+  level: TelemetryLevel = 'debug',
+): void {
+  emitTelemetry({
+    eventName: event,
+    level,
+    source: 'widget-host',
+    ...payload,
+  });
 }
 
 export class WidgetHostElement extends AtlasElement {
@@ -179,8 +189,11 @@ export class WidgetHostElement extends AtlasElement {
       try {
         unmount();
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[widget-host] unmount threw', { instanceId, err });
+        telemetry('atlas.widget.unmount.threw', {
+          instanceId,
+          correlationId: this.correlationId,
+          message: (err as Error)?.message ?? String(err),
+        }, 'error');
       }
       telemetry('atlas.widget.unmount', {
         instanceId,
@@ -253,7 +266,7 @@ export class WidgetHostElement extends AtlasElement {
         phase: 'layout-validate',
         correlationId: this.correlationId,
         message: msg,
-      });
+      }, 'error');
       return;
     }
 
@@ -410,11 +423,12 @@ export class WidgetHostElement extends AtlasElement {
     try {
       mounted.unmount();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[widget-host] incremental unmount threw', {
+      telemetry('atlas.widget.unmount.threw', {
         instanceId,
-        err,
-      });
+        correlationId: this.correlationId,
+        phase: 'incremental',
+        message: (err as Error)?.message ?? String(err),
+      }, 'error');
     }
     try {
       this._mediator?.revokeInstance(instanceId);
@@ -463,7 +477,7 @@ export class WidgetHostElement extends AtlasElement {
         correlationId: this.correlationId,
         phase: 'resolve',
         message: msg,
-      });
+      }, 'error');
       return;
     }
 
@@ -487,7 +501,7 @@ export class WidgetHostElement extends AtlasElement {
         correlationId: this.correlationId,
         phase: 'host-select',
         message: msg,
-      });
+      }, 'error');
       return;
     }
 
@@ -508,7 +522,7 @@ export class WidgetHostElement extends AtlasElement {
         correlationId: this.correlationId,
         phase: 'permission-register',
         message: msg,
-      });
+      }, 'error');
       return;
     }
 
@@ -538,7 +552,7 @@ export class WidgetHostElement extends AtlasElement {
         correlationId: this.correlationId,
         phase: 'mount',
         message: msg,
-      });
+      }, 'error');
     };
 
     // hostStrategy.mount returns a Promise; await it synchronously via
@@ -600,11 +614,12 @@ export class WidgetHostElement extends AtlasElement {
         try {
           unmount();
         } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error('[widget-host] unmount threw', {
+          telemetry('atlas.widget.unmount.threw', {
             instanceId,
-            err,
-          });
+            correlationId: this.correlationId,
+            phase: 'tracker-closure',
+            message: (err as Error)?.message ?? String(err),
+          }, 'error');
         }
       },
     });

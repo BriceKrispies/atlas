@@ -1,4 +1,4 @@
-import type { EventEnvelope, IntentEnvelope, IntentResponse } from '@atlas/platform-core';
+import type { EventEnvelope, IntentEnvelope, IntentResponse, Logger } from '@atlas/platform-core';
 import { IngressError } from '@atlas/platform-core';
 import { intentsSubmittedTotal, policyEvaluationsTotal } from '@atlas/metrics';
 import type {
@@ -16,6 +16,7 @@ import type {
   PolicyEvaluationRequest,
   EventDispatcher,
 } from '@atlas/ports';
+import { toLogError } from './log-error.ts';
 
 // Hook invoked for every event produced by submitIntent (handler-emitted or
 // the generic fall-through). The wiring layer plugs in module-specific
@@ -91,6 +92,18 @@ export interface IngressState {
     decision: PolicyDecision,
     context: { correlationId: string; idempotencyKey: string },
   ) => Promise<void> | void;
+  /**
+   * Per-request structured logger. Wired by the ingress chokepoint
+   * (`apps/server/src/middleware/state.ts`) from the request-scoped
+   * `AtlasExecutionContext`. Optional because long-lived test fixtures
+   * (`apps/sim`, `tests/parity/lib/sim-factory.ts`) construct
+   * `IngressState` without a pipeline; in that case the catch-blocks
+   * below remain silent (preserving prior behavior).
+   *
+   * Production wiring MUST set this so metrics-counter, attr-lookup,
+   * and audit-emit failures are observable. See `specs/crosscut/logging.md`.
+   */
+  logger?: Logger;
 }
 
 function err(code: string, message: string, status: number, correlationId: string): never {
@@ -125,10 +138,20 @@ export async function submitIntent(
   } finally {
     try {
       intentsSubmittedTotal().inc({ action: observedAction, decision: observedDecision });
-    } catch {
+    } catch (cause) {
       // Metrics MUST NOT fail the request. A typo'd label or a
       // registration race would normally throw — swallow so the
-      // request shape stays unchanged.
+      // request shape stays unchanged. Surface the cause as a
+      // debug-level breadcrumb so label-cardinality regressions are
+      // visible to operators (silence here previously hid them).
+      state.logger?.debug('metric counter failed', {
+        error: toLogError(cause),
+        properties: {
+          metric: 'atlas_intents_submitted_total',
+          action: observedAction,
+          decision: observedDecision,
+        },
+      });
     }
   }
 }
@@ -248,9 +271,25 @@ async function submitIntentInner(
       if (row && row.status === 'active') {
         resourceAttributes = row.attrs as Record<string, unknown>;
       }
-    } catch {
+    } catch (cause) {
       // Lookup failure is non-fatal — treat as "no attrs" and let the
-      // policy engine decide. Wiring layer logs the underlying error.
+      // policy engine decide. Cedar policies that reference resource
+      // attrs gracefully evaluate to deny when the attribute is absent
+      // (matching pre-A1 behavior). Log at warn so the operator can
+      // tell apart "no row" (silent, correct) from "store unavailable"
+      // (loud — every authz call flying blind).
+      state.logger?.warn(
+        'entity-attr lookup failed; policy will evaluate with empty attrs',
+        {
+          event: 'Authz.AttrLookup.Failed',
+          error: toLogError(cause),
+          properties: {
+            resourceType,
+            resourceId,
+            action: actionId,
+          },
+        },
+      );
     }
   }
 
@@ -282,8 +321,17 @@ async function submitIntentInner(
   // the request (cardinality protection lives in the metric layer).
   try {
     policyEvaluationsTotal().inc({ decision: decision.effect });
-  } catch {
-    // Swallow — see comment above.
+  } catch (cause) {
+    // Swallow — metrics MUST NOT fail the request. Same rationale as
+    // `intentsSubmittedTotal` above; emit a debug breadcrumb so
+    // cardinality regressions are visible.
+    state.logger?.debug('metric counter failed', {
+      error: toLogError(cause),
+      properties: {
+        metric: 'atlas_policy_evaluations_total',
+        decision: decision.effect,
+      },
+    });
   }
 
   // Audit emit (Chunk 6c — `StructuredAuthz.PolicyEvaluated`). Wired
@@ -303,10 +351,23 @@ async function submitIntentInner(
         correlationId,
         idempotencyKey: envelope.idempotencyKey,
       });
-    } catch {
+    } catch (cause) {
       // Swallow audit-emit errors so a flaky audit pipeline doesn't
-      // turn a clean deny into a 500. Audit emitters are expected to
-      // log internally; if they don't, the deny still surfaces.
+      // turn a clean deny into a 500 — but surface at error level.
+      // If the audit pipeline is broken, every deny silently fails to
+      // record itself; an operator MUST see this. Behavior is
+      // unchanged (the deny still throws below) — only the silence
+      // becomes signal.
+      state.logger?.error('audit emit failed', {
+        event: 'Audit.Emit.Failed',
+        error: toLogError(cause),
+        properties: {
+          decision: decision.effect,
+          action: actionId,
+          principalId: state.principalId,
+          tenantId: state.tenantId,
+        },
+      });
     }
   }
 
@@ -337,6 +398,12 @@ async function submitIntentInner(
       correlationId,
       eventStore: state.eventStore,
       catalogState: state.catalogState,
+      // Thread the per-request logger from the ingress chokepoint into
+      // the handler context. Module wrappers (e.g. identity's registry
+      // shim) emit Domain.Verb.Outcome lines via this logger. Optional
+      // so test fixtures that build IngressState without a pipeline
+      // (sim, parity) keep working.
+      ...(state.logger !== undefined ? { logger: state.logger } : {}),
     };
     const { primary, follow } = await handler.handle(handlerCtx, envelope);
     await state.dispatch(primary);

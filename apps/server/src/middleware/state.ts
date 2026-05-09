@@ -187,6 +187,31 @@ export interface RequestBundle {
   principal: Principal;
 }
 
+/**
+ * Canonical, ordered list of the dispatcher names that compose the
+ * inline request dispatcher chain (Phase 2 / I12 worker-mirror invariant).
+ *
+ * Exposed so tests can assert structural parity with the projection
+ * worker's chain in `apps/projection-worker/src/tenant-loop.ts` without
+ * having to construct adapter instances. Adding or reordering a
+ * dispatcher in either composition MUST update this list.
+ *
+ * Order is significant: `cache-tag` runs after the per-module dispatchers
+ * so emitted tags are picked up; `policy-cache` runs after `cache-tag`
+ * so the next evaluate sees the freshly-activated bundle; `server-events`
+ * runs last so SSE subscribers only see events whose projections have
+ * been rebuilt.
+ */
+export const REQUEST_DISPATCHER_CHAIN_NAMES: ReadonlyArray<string> = [
+  'catalog',
+  'content-pages',
+  'identity',
+  'repository',
+  'cache-tag',
+  'policy-cache',
+  'server-events',
+];
+
 export async function buildRequestBundle(
   state: AppState,
   principal: Principal,
@@ -319,6 +344,20 @@ export async function buildRequestBundle(
       ? buildAsyncNoopDispatch(state, principal.tenantId, correlationId)
       : inlineDispatch;
 
+  // Per-request logger — the ingress chokepoint surfaces metrics,
+  // attr-lookup, and audit-emit failures through this. Built from the
+  // same pipeline + tenant/correlation envelope as the dispatcher
+  // instrumentation above so the lines collate with the rest of the
+  // request trace. `moduleId` reflects the chokepoint, not a specific
+  // domain module.
+  const ingressCtx = createSystemContext({
+    pipeline: state.logPipeline,
+    environment: state.config.environment,
+    tenantId: enrichedPrincipal.tenantId,
+    moduleId: '@atlas/ingress',
+    correlationId,
+  });
+
   const ingress: IngressState = {
     tenantId: enrichedPrincipal.tenantId,
     principalId: enrichedPrincipal.principalId,
@@ -329,6 +368,7 @@ export async function buildRequestBundle(
     search,
     registry: state.controlPlaneRegistry,
     catalogState,
+    logger: ingressCtx.logger,
     // L3 substrate threaded into ingress so submit-intent can populate
     // `resource.attributes` for ABAC. Without this the policy engine
     // sees `{}` for every resource and ABAC rules can never match.

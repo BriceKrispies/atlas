@@ -4,7 +4,7 @@ Specs are the SOURCE OF TRUTH. Code implements specs, not the other way around. 
 
 ## Canonical Domain Index
 
-Atlas's domains are grouped into **6 platforms + 1 parked-apps platform** (the developer-platform shape; see [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for how this differs from the prior CMS-flavored layout). Root [`CLAUDE.md`](../CLAUDE.md) has the full per-domain table; this file owns the spec-organisation conventions.
+Atlas's domains are grouped into **7 platforms + 1 parked-apps platform** (multi-tenant fabric shape; see [`decisions/0002-developer-platform-domain-map.md`](decisions/0002-developer-platform-domain-map.md) for the original CMS → developer-platform re-anchor and [`decisions/0003-tenant-defined-data-model-pivot.md`](decisions/0003-tenant-defined-data-model-pivot.md) for the Extensibility revival + open-public-signup + agentic-first amendments). The substrate decisions that capability specs in Extensibility build on are recorded in [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md) (I13–I18 + REQ rules), [`decisions/0005-custom-schema-storage-strategy.md`](decisions/0005-custom-schema-storage-strategy.md) (schema-per-tenant), [`decisions/0006-function-runtime-substrate.md`](decisions/0006-function-runtime-substrate.md) (gVisor for tenant code), and [`decisions/0007-dsl-substrate-and-authoring-contract.md`](decisions/0007-dsl-substrate-and-authoring-contract.md) (tenant declarations as a distinct category from tenant code). Root [`CLAUDE.md`](../CLAUDE.md) has the full per-domain table; this file owns the spec-organisation conventions.
 
 | Platform | Domains |
 |----------|---------|
@@ -14,6 +14,7 @@ Atlas's domains are grouped into **6 platforms + 1 parked-apps platform** (the d
 | **Code** | repository, pipeline, artifact-registry *(net-new — wraps Gitea + a registry)* |
 | **Workflow** | triggers, scheduling, jobs, function-runner, approvals, import-export *(reshape — same names where retained, content rewritten for "run user code")* |
 | **Commerce** | billing, quotas, metering, plans *(quotas + metering moved here from old Extensibility; both load-bearing)* |
+| **Extensibility** | custom-schema, functions *(revived per [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md) — tenant-defined data model + tenant-authored code; capability specs land Phase 3–4)* |
 | **First-party apps** *(parked)* | cms (catalog + content-pages + authoring + page-templates) |
 
 Most Compute / Storage / Code platform domains and several Workflow domains are **net-new and currently unspecified** — capability specs land via the slice workflow as Phase 1 of the project plan begins. Domain stub directories are created lazily when a domain's first capability is scoped, not pre-emptively. The Code platform's `repository` domain has its first capability scoped (`upload-tarball`) — see [`domains/code/repository/capabilities/upload-tarball/README.md`](domains/code/repository/capabilities/upload-tarball/README.md).
@@ -32,7 +33,7 @@ The 2026-05-08 domain re-anchor changed several mappings. Per [`decisions/0002`]
 | automation, rules | **Retired** — replaced by the new Workflow domains (triggers, jobs, function-runner). |
 | scheduling, approvals, import-export | **Kept** under Workflow (unchanged location). |
 | communications, notifications, analytics, experimentation, gamification | **Retired** — Engagement platform is gone. Notifications about deployments / workflow runs may return as a new domain under Spine if needed. |
-| custom-schema, functions | **Retired from core** — Extensibility platform is gone. Tenant-defined entity types and tenant-defined functions are not on the dev-platform path today. |
+| custom-schema, functions | **Revived under Extensibility** per [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md). Tenant-defined entity types and tenant-authored functions are load-bearing (Salesforce-shaped data model + tenant code execution). Capability specs land Phase 3–4 via the slice workflow. |
 | quotas | **Moved** to Commerce platform — load-bearing, paired with billing + metering. |
 | billing | **Kept** under Commerce. |
 

@@ -5,6 +5,8 @@
  * Requires the ingress service to be running on VITE_API_URL (default: http://localhost:3000).
  */
 
+import { emitTelemetry } from '@atlas/core';
+
 import type {
   Backend,
   BackendEventCallback,
@@ -161,8 +163,15 @@ function ensurePooledSource(tags: readonly string[]): PooledSource {
       try {
         cb(parsed);
       } catch (err) {
-        // One bad subscriber must not break the others.
-        console.error('[atlas/api-client] subscribeTags callback threw', err);
+        // One bad subscriber must not break the others. Route the
+        // failure through the frontend telemetry pipeline instead of
+        // bypassing the logging contract.
+        emitTelemetry({
+          eventName: 'Atlas.Listener.Threw',
+          level: 'error',
+          source: 'api-client.http.subscribeTags',
+          'error.message': (err as Error)?.message ?? String(err),
+        });
       }
     }
   };

@@ -13,7 +13,7 @@
  *                   plus optional `invite.user` edge on accept
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
 import type {
   Cache,
   EntityStore,
@@ -59,7 +59,35 @@ export interface IdentityDispatchContext {
   entities: EntityStore;
   relations: RelationStore;
   cache?: Cache;
+  /**
+   * Optional logger for per-event debug breadcrumbs. Carried through
+   * the wiring layer when available; absent in tests / sim. The
+   * dispatcher emits one `Identity.Dispatch.Ran` debug line per
+   * dispatched event so operators can trace projection rebuilds.
+   */
+  logger?: Logger;
 }
+
+/**
+ * Events that are appended + dispatched but legitimately carry no
+ * `payload.document`. These are audit-only or batch-metadata events;
+ * the dispatcher returns early without touching projections.
+ *
+ * Anything NOT in this allowlist that lands here without a document
+ * is a bug — handler emit-site dropped the document field. We throw
+ * so the failure is visible at dispatch time rather than silently
+ * leaving projections stale.
+ */
+const EVENTS_WITHOUT_DOCUMENT: ReadonlySet<string> = new Set([
+  // Audit-only diagnostic event — refresh-token reuse / suspicious
+  // refresh patterns. The corresponding RevokeAllForUser flow emits
+  // SessionEnded events that DO carry documents.
+  'Identity.SessionAnomaly',
+  // Batch-metadata events — handlers eager-write the per-code rows,
+  // so the dispatcher has nothing extra to persist from the event.
+  'Identity.RecoveryCodesGenerated',
+  'Identity.RecoveryCodesRegenerated',
+]);
 
 // All Phase A2 service-credential events. Each carries a merged
 // document on `payload.document`; dispatcher persists.
@@ -136,12 +164,19 @@ export async function dispatchIdentityEvent(
 ): Promise<void> {
   if (!HANDLED_EVENT_TYPES.has(envelope.eventType)) return;
 
-  // SessionAnomaly carries diagnostic fields, not a document — it's
-  // an audit-only event. The corresponding RevokeAllForUser path
-  // emits SessionEnded events that DO carry documents; this branch
-  // is just a no-op so the event lands in the audit log without
-  // touching projections.
-  if (envelope.eventType === 'Identity.SessionAnomaly') return;
+  // Single debug breadcrumb per dispatched event. Logger is opt-in
+  // via the context — sim / unit tests pass nothing and stay silent.
+  ctx.logger?.debug('identity dispatcher ran', {
+    event: 'Identity.Dispatch.Ran',
+    properties: {
+      eventType: envelope.eventType,
+      eventId: envelope.eventId,
+    },
+  });
+
+  // Events legitimately without a document (audit-only / batch
+  // metadata). Early-return so projections stay untouched.
+  if (EVENTS_WITHOUT_DOCUMENT.has(envelope.eventType)) return;
 
   const payload = envelope.payload as Record<string, unknown>;
   const document = payload['document'] as
@@ -160,7 +195,16 @@ export async function dispatchIdentityEvent(
     | MfaBypassDocument
     | SamlSpKeyDocument
     | undefined;
-  if (!document) return;
+  if (!document) {
+    // Hard failure: event type is in HANDLED_EVENT_TYPES, not in the
+    // EVENTS_WITHOUT_DOCUMENT allowlist, but the emit-site forgot to
+    // attach `payload.document`. Silently dropping leaves projections
+    // stale — surface it instead so the bug shows up immediately
+    // rather than as inexplicably-missing read-model rows.
+    throw new Error(
+      `dispatchIdentityEvent: ${envelope.eventType} (eventId=${envelope.eventId ?? 'unset'}) has no payload.document and is not in EVENTS_WITHOUT_DOCUMENT — handler emit-site bug`,
+    );
+  }
 
   if (
     envelope.eventType === 'Identity.UserCreated' ||

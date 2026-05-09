@@ -52,6 +52,7 @@ import {
   type AuthSessionDocument,
   type OAuthAccessTokenDocument,
 } from '../src/index.ts';
+import { assertEventTags } from './lib/fixtures.ts';
 
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
@@ -288,6 +289,11 @@ describe('session-management.feature: refresh-token rotation', () => {
     expect(refreshed.envelope.eventType).toBe('Identity.SessionRefreshed');
     expect(refreshed.plaintextRefreshToken).not.toBe(boot.refreshSecret);
     expect(refreshed.document?.sessionId).toBe(boot.sessionId);
+    // I10 — primary session-refresh emit must tag the tenant + session.
+    assertEventTags(refreshed.envelope, [
+      `Tenant:${f.tenantId}`,
+      `Session:${boot.sessionId}`,
+    ]);
   });
 });
 
@@ -628,6 +634,11 @@ describe('service-principal-oauth.feature: revoke', () => {
     );
     await dispatchAll(f);
     expect(revoked.envelope?.eventType).toBe('Identity.OAuthTokenRevoked');
+    // I10 — revoke event tags Tenant + the token entity.
+    assertEventTags(revoked.envelope!, [
+      `Tenant:${f.tenantId}`,
+      `OAuthToken:${issued.document.tokenId}`,
+    ]);
     const stored = await getOAuthTokenEntity(f.entities, f.tenantId, issued.document.tokenId);
     expect(stored?.status).toBe('revoked');
   });
@@ -716,6 +727,8 @@ describe('password.feature: Successful password login (now mints a session)', ()
     expect(result.sessionResult).toBeTruthy();
     expect(result.sessionResult?.cookiePayload).toContain('.');
     expect(result.sessionResult?.plaintextAccessToken.length).toBeGreaterThan(20);
+    // I10 — login-success carries the tenant tag at minimum.
+    assertEventTags(result.envelope, [`Tenant:${f.tenantId}`]);
     // sanity: the sessionId from the new login is different from the
     // one minted during bootstrap.
     expect(result.sessionResult?.document.sessionId).not.toBe(boot.sessionId);
