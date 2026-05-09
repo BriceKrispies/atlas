@@ -33,6 +33,7 @@ async function enrollTotp(
       name,
     },
     fx.events,
+    fx.secrets,
   );
   await dispatchAll(fx);
   return r.document.factorId;

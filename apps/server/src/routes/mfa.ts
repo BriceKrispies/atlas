@@ -92,6 +92,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
           name,
         },
         ad.eventStore,
+        state.secrets,
       );
       await identityDispatcher({ entities: ad.entities, relations: ad.relations })(r.envelope);
       return c.json(
@@ -132,6 +133,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
         },
         ad.eventStore,
         ad.entities,
+        state.secrets,
       );
       await identityDispatcher({ entities: ad.entities, relations: ad.relations })(r.envelope);
       return c.json({ ok: true });
@@ -451,6 +453,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
         },
         ad.eventStore,
         ad.entities,
+        state.secrets,
       );
       const dispatch = identityDispatcher({ entities: ad.entities, relations: ad.relations });
       for (const f of r.follow) await dispatch(f);

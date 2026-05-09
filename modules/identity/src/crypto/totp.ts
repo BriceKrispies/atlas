@@ -20,6 +20,10 @@ import {
   createHmac,
   randomBytes,
 } from 'node:crypto';
+import type { SecretStore } from '@atlas/ports';
+
+/** Name under which `IDENTITY_ENCRYPTION_KEY` (32 bytes base64) is read from `SecretStore`. */
+export const IDENTITY_ENCRYPTION_KEY_NAME = 'IDENTITY_ENCRYPTION_KEY';
 
 const TOTP_STEP_SECONDS = 30;
 const TOTP_DIGITS = 6;
@@ -145,10 +149,10 @@ export function encryptionKeyIdForTenant(tenantId: string): string {
   return `tenant:${tenantId}:v1`;
 }
 
-function deriveKeyForTenant(tenantId: string): Buffer {
-  const root = process.env['IDENTITY_ENCRYPTION_KEY'] ?? '';
-  // For tests + dev, fall back to a constant. PRODUCTION MUST set
-  // IDENTITY_ENCRYPTION_KEY (32 bytes base64).
+function deriveKeyForTenant(tenantId: string, secrets: SecretStore): Buffer {
+  const root = secrets.get(IDENTITY_ENCRYPTION_KEY_NAME) ?? '';
+  // For tests + dev, fall back to a constant. PRODUCTION MUST seed
+  // IDENTITY_ENCRYPTION_KEY (32 bytes base64) into the SecretStore.
   const rootBytes =
     root.length > 0 ? Buffer.from(root, 'base64') : Buffer.alloc(32, 1);
   return createHash('sha256')
@@ -161,8 +165,12 @@ function deriveKeyForTenant(tenantId: string): Buffer {
 /**
  * Encrypt the TOTP secret. Returns base64-encoded `iv|tag|ciphertext`.
  */
-export function encryptSecret(plaintext: Buffer, tenantId: string): string {
-  const key = deriveKeyForTenant(tenantId);
+export function encryptSecret(
+  plaintext: Buffer,
+  tenantId: string,
+  secrets: SecretStore,
+): string {
+  const key = deriveKeyForTenant(tenantId, secrets);
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
@@ -173,7 +181,11 @@ export function encryptSecret(plaintext: Buffer, tenantId: string): string {
 /**
  * Decrypt. Throws on AEAD failure (tampered ciphertext / wrong key).
  */
-export function decryptSecret(encoded: string, tenantId: string): Buffer {
+export function decryptSecret(
+  encoded: string,
+  tenantId: string,
+  secrets: SecretStore,
+): Buffer {
   const buf = Buffer.from(encoded, 'base64');
   if (buf.length < 28) {
     throw new Error('encrypted secret too short');
@@ -181,7 +193,7 @@ export function decryptSecret(encoded: string, tenantId: string): Buffer {
   const iv = buf.subarray(0, 12);
   const tag = buf.subarray(12, 28);
   const ct = buf.subarray(28);
-  const key = deriveKeyForTenant(tenantId);
+  const key = deriveKeyForTenant(tenantId, secrets);
   const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]);

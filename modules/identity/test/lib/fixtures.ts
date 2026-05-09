@@ -25,6 +25,7 @@ import type {
   Relation,
   RelationStore,
   RelationWriteInput,
+  SecretStore,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { dispatchIdentityEvent } from '../../src/index.ts';
@@ -170,7 +171,23 @@ export interface Fixture {
   events: InMemoryEventStore;
   entities: InMemoryEntityStore;
   relations: InMemoryRelationStore;
+  secrets: SecretStore;
   tenantId: string;
+}
+
+/**
+ * In-memory `SecretStore` for tests. Pre-seeded with the
+ * `IDENTITY_ENCRYPTION_KEY` that identity's TOTP/SAML crypto reads —
+ * tests don't need to set it explicitly.
+ */
+export class TestSecretStore implements SecretStore {
+  private readonly snapshot: Map<string, string>;
+  constructor(values: Readonly<Record<string, string>> = {}) {
+    this.snapshot = new Map(Object.entries(values));
+  }
+  get(name: string): string | null {
+    return this.snapshot.get(name) ?? null;
+  }
 }
 
 /**
@@ -183,6 +200,9 @@ export function newFixture(tenantId = 't1'): Fixture {
     events: new InMemoryEventStore(),
     entities: new InMemoryEntityStore(),
     relations: new InMemoryRelationStore(),
+    secrets: new TestSecretStore({
+      IDENTITY_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    }),
     tenantId,
   };
 }

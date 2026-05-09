@@ -20,7 +20,7 @@
  */
 
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { EntityStore, EventStore } from '@atlas/ports';
+import type { EntityStore, EventStore, SecretStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
   AuthSessionDocument,
@@ -71,6 +71,7 @@ export async function handleMfaChallengeSubmit(
   cmd: MfaChallengeSubmitCommand,
   eventStore: EventStore,
   entities: EntityStore,
+  secrets: SecretStore,
 ): Promise<MfaChallengeSubmitResult> {
   const session = await getSessionEntity(entities, cmd.tenantId, cmd.sessionId);
   if (!session) {
@@ -114,6 +115,7 @@ export async function handleMfaChallengeSubmit(
         },
         eventStore,
         entities,
+        secrets,
       );
       follow.push(r.envelope);
       break;

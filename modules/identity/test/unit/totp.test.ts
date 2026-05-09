@@ -37,12 +37,16 @@ async function enroll(
       name: 'iPhone',
     },
     fx.events,
+    fx.secrets,
   );
 }
 
-function codeFor(factor: AuthFactorDocument, tenantId: string): string {
+function codeFor(
+  factor: AuthFactorDocument,
+  fx: ReturnType<typeof newFixture>,
+): string {
   const attrs = factor.attrs as TotpFactorAttrs;
-  const secret = decryptSecret(attrs.encryptedSecret, tenantId);
+  const secret = decryptSecret(attrs.encryptedSecret, fx.tenantId, fx.secrets);
   return hotp(secret, Math.floor(Date.now() / 1000 / 30));
 }
 
@@ -85,7 +89,7 @@ describe('handleTotpChallenge — happy path', () => {
     const fx = newFixture();
     const r = await enroll(fx);
     await dispatchAll(fx);
-    const code = codeFor(r.document, fx.tenantId);
+    const code = codeFor(r.document, fx);
     const result = await handleTotpChallenge(
       {
         tenantId: fx.tenantId,
@@ -96,6 +100,7 @@ describe('handleTotpChallenge — happy path', () => {
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     expect(result.envelope.eventType).toBe('Identity.MfaChallengeSucceeded');
     expect(result.ok).toBe(true);
@@ -105,7 +110,7 @@ describe('handleTotpChallenge — happy path', () => {
     const fx = newFixture();
     const r = await enroll(fx, 'user-2');
     await dispatchAll(fx);
-    const code = codeFor(r.document, fx.tenantId);
+    const code = codeFor(r.document, fx);
     const result = await handleTotpChallenge(
       {
         tenantId: fx.tenantId,
@@ -116,6 +121,7 @@ describe('handleTotpChallenge — happy path', () => {
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     expect(result.envelope.cacheInvalidationTags).toEqual([
       `Tenant:${fx.tenantId}`,
@@ -139,6 +145,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_FACTOR_NOT_FOUND });
   });
@@ -172,6 +179,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_FACTOR_NOT_FOUND });
   });
@@ -191,6 +199,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.TOTP_INVALID_CODE });
     // Failure event was emitted before the throw.
@@ -220,6 +229,7 @@ describe('handleTotpChallenge — error paths', () => {
           },
           fx.events,
           fx.entities,
+          fx.secrets,
         ),
       ).rejects.toMatchObject({ code: identityErrorCodes.TOTP_INVALID_CODE });
       await dispatchAll(fx);
@@ -236,6 +246,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_FACTOR_LOCKED });
     const lastEvent = fx.events.events.at(-1);
@@ -264,6 +275,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_FACTOR_LOCKED });
   });
@@ -281,6 +293,7 @@ describe('handleTotpChallenge — error paths', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toBeInstanceOf(IdentityError);
   });

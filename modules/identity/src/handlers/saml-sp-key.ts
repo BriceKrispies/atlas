@@ -1,5 +1,5 @@
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { EntityStore, EventStore } from '@atlas/ports';
+import type { EntityStore, EventStore, SecretStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type { SamlSpKeyDocument } from '../types.ts';
 import { newEventId, newSamlSpKeyId } from '../ids.ts';
@@ -34,6 +34,7 @@ export async function handleSamlSpKeyGenerate(
   cmd: SamlSpKeyGenerateCommand,
   eventStore: EventStore,
   entities: EntityStore,
+  secrets: SecretStore,
 ): Promise<SamlSpKeyGenerateResult> {
   // Refuse if there's already an active key — caller should rotate
   // explicitly so the audit trail distinguishes "first key" from
@@ -46,7 +47,7 @@ export async function handleSamlSpKeyGenerate(
       409,
     );
   }
-  return mintKey(cmd, eventStore, entities);
+  return mintKey(cmd, eventStore, secrets);
 }
 
 export interface SamlSpKeyRotateCommand {
@@ -72,6 +73,7 @@ export async function handleSamlSpKeyRotate(
   cmd: SamlSpKeyRotateCommand,
   eventStore: EventStore,
   entities: EntityStore,
+  secrets: SecretStore,
 ): Promise<SamlSpKeyRotateResult> {
   const predecessor = await getSamlSpKeyEntity(entities, cmd.tenantId, cmd.keyId);
   if (!predecessor) {
@@ -104,7 +106,7 @@ export async function handleSamlSpKeyRotate(
       ...(cmd.keyLength !== undefined ? { keyLength: cmd.keyLength } : {}),
     },
     eventStore,
-    entities,
+    secrets,
     { rotatedFromKeyId: cmd.keyId },
   );
   // Flip predecessor to rotated.
@@ -152,7 +154,7 @@ async function mintKey(
     keyLength?: 2048 | 3072 | 4096;
   },
   eventStore: EventStore,
-  entities: EntityStore,
+  secrets: SecretStore,
   rotationContext: { rotatedFromKeyId?: string } = {},
 ): Promise<SamlSpKeyGenerateResult> {
   const occurredAt = new Date().toISOString();
@@ -166,6 +168,7 @@ async function mintKey(
   const encryptedPrivateKey = encryptSecret(
     Buffer.from(generated.privateKeyPem, 'utf8'),
     cmd.tenantId,
+    secrets,
   );
   const document: SamlSpKeyDocument = {
     keyId,

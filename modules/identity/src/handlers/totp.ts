@@ -1,5 +1,5 @@
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { EntityStore, EventStore } from '@atlas/ports';
+import type { EntityStore, EventStore, SecretStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
   AuthFactorDocument,
@@ -61,11 +61,12 @@ export interface TotpEnrollBeginResult {
 export async function handleTotpEnroll(
   cmd: TotpEnrollBeginCommand,
   eventStore: EventStore,
+  secrets: SecretStore,
 ): Promise<TotpEnrollBeginResult> {
   const occurredAt = new Date().toISOString();
   const factorId = newAuthFactorId();
   const secret = generateTotpSecret();
-  const encrypted = encryptSecret(secret, cmd.tenantId);
+  const encrypted = encryptSecret(secret, cmd.tenantId, secrets);
   const attrs: TotpFactorAttrs = {
     encryptedSecret: encrypted,
     encryptionKeyId: encryptionKeyIdForTenant(cmd.tenantId),
@@ -154,6 +155,7 @@ export async function handleTotpChallenge(
   cmd: TotpChallengeCommand,
   eventStore: EventStore,
   entities: EntityStore,
+  secrets: SecretStore,
 ): Promise<TotpChallengeResult> {
   const policy = cmd.policy ?? DEFAULT_IDENTITY_POLICY;
   const factor = await getAuthFactorEntity(entities, cmd.tenantId, cmd.factorId);
@@ -188,7 +190,7 @@ export async function handleTotpChallenge(
   const totpAttrs = factor.attrs as TotpFactorAttrs;
   let secret: Buffer;
   try {
-    secret = decryptSecret(totpAttrs.encryptedSecret, cmd.tenantId);
+    secret = decryptSecret(totpAttrs.encryptedSecret, cmd.tenantId, secrets);
   } catch (e) {
     throw new IdentityError(
       codes.MFA_CHALLENGE_INVALID,

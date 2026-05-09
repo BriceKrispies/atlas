@@ -35,6 +35,7 @@ describe('handleSamlSpKeyGenerate — happy path', () => {
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     expect(result.envelope.eventType).toBe('Identity.SamlSpKeyGenerated');
     expect(result.document.status).toBe('active');
@@ -58,6 +59,7 @@ describe('handleSamlSpKeyGenerate — failure: already-active key', () => {
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     // Persist the entity row by reading + putting (the handler does not
     // currently write the document into the entity store on Generate —
@@ -88,6 +90,7 @@ describe('handleSamlSpKeyGenerate — failure: already-active key', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toBeInstanceOf(IdentityError);
 
@@ -110,6 +113,7 @@ describe('handleSamlSpKeyRotate — failure: predecessor not found', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({
       code: identityErrorCodes.SAML_SP_KEY_NOT_FOUND,

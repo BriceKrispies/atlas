@@ -20,6 +20,7 @@ import type {
   RelationWriteInput,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
+import { TestSecretStore } from './lib/fixtures.ts';
 import {
   buildOtpauthUri,
   decryptSecret,
@@ -149,6 +150,7 @@ interface Fx {
   events: InMemoryEventStore;
   entities: InMemoryEntityStore;
   relations: InMemoryRelationStore;
+  secrets: TestSecretStore;
   tenantId: string;
 }
 function fx(): Fx {
@@ -156,6 +158,9 @@ function fx(): Fx {
     events: new InMemoryEventStore(),
     entities: new InMemoryEntityStore(),
     relations: new InMemoryRelationStore(),
+    secrets: new TestSecretStore({
+      IDENTITY_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    }),
     tenantId: 'sec',
   };
 }
@@ -193,17 +198,20 @@ describe('crypto/totp: HOTP test vector', () => {
 });
 
 describe('crypto/totp: secret encryption roundtrip', () => {
+  const secrets = new TestSecretStore({
+    IDENTITY_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  });
   it('encryptSecret + decryptSecret recover the plaintext under the same tenant', () => {
     const secret = generateTotpSecret();
-    const enc = encryptSecret(secret, 'sec');
-    const dec = decryptSecret(enc, 'sec');
+    const enc = encryptSecret(secret, 'sec', secrets);
+    const dec = decryptSecret(enc, 'sec', secrets);
     expect(dec.equals(secret)).toBe(true);
   });
 
   it('decrypting under a different tenant fails (AEAD)', () => {
     const secret = generateTotpSecret();
-    const enc = encryptSecret(secret, 'tenant-a');
-    expect(() => decryptSecret(enc, 'tenant-b')).toThrow();
+    const enc = encryptSecret(secret, 'tenant-a', secrets);
+    expect(() => decryptSecret(enc, 'tenant-b', secrets)).toThrow();
   });
 });
 
@@ -225,6 +233,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
         name: 'iPhone',
       },
       f.events,
+      f.secrets,
     );
     await dispatchAll(f);
     expect(result.document.kind).toBe('totp');
@@ -248,11 +257,12 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
         name: 'iPhone',
       },
       f.events,
+      f.secrets,
     );
     await dispatchAll(f);
     // Reach into the encrypted secret to compute the current code.
     const attrs = enroll.document.attrs as TotpFactorAttrs;
-    const secret = decryptSecret(attrs.encryptedSecret, f.tenantId);
+    const secret = decryptSecret(attrs.encryptedSecret, f.tenantId, f.secrets);
     const code = hotp(secret, Math.floor(Date.now() / 1000 / 30));
     const result = await handleTotpChallenge(
       {
@@ -264,6 +274,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
       },
       f.events,
       f.entities,
+      f.secrets,
     );
     await dispatchAll(f);
     expect(result.envelope.eventType).toBe('Identity.MfaChallengeSucceeded');
@@ -291,6 +302,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
         name: 'iPhone',
       },
       f.events,
+      f.secrets,
     );
     await dispatchAll(f);
     await expect(
@@ -304,6 +316,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
         },
         f.events,
         f.entities,
+        f.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.TOTP_INVALID_CODE });
   });
@@ -321,6 +334,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
         name: 'iPhone',
       },
       f.events,
+      f.secrets,
     );
     await dispatchAll(f);
     let lastErr: unknown = null;
@@ -336,6 +350,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
           },
           f.events,
           f.entities,
+          f.secrets,
         );
       } catch (e) {
         lastErr = e;

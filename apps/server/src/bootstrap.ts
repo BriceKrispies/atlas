@@ -18,6 +18,7 @@
 import postgres from 'postgres';
 import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import {
+  EnvSecretStore,
   PostgresControlPlaneRegistry,
   PostgresCustomDomainStore,
   PostgresEmailLogStore,
@@ -43,6 +44,7 @@ import type {
   RelationStore,
   RepositoryRevisionStore,
   RepositoryStore,
+  SecretStore,
   SignupRequestStore,
   TenantStore,
 } from '@atlas/ports';
@@ -168,6 +170,14 @@ export interface AppState {
   readonly tenants: TenantStore;
   readonly mailer: Mailer;
   readonly emailLog: EmailLogStore;
+  /**
+   * Process-wide secret lookup. Snapshotted from `process.env` at boot.
+   * Modules read named secrets through this port instead of reaching for
+   * `process.env` directly (closes ADR 0008 leak #4 / SecretStore slice).
+   * Production swaps `EnvSecretStore` for a sealed-secrets / KMS-backed
+   * impl with the same surface.
+   */
+  readonly secrets: SecretStore;
 }
 
 export interface BootstrapDeps {
@@ -293,6 +303,10 @@ export async function bootstrap(
     properties: { driver: config.mailerMode },
   });
 
+  // Snapshot process.env at boot. Modules read named secrets through
+  // this port instead of touching process.env directly.
+  const secrets = new EnvSecretStore();
+
   return {
     config,
     logPipeline: deps.logPipeline,
@@ -314,6 +328,7 @@ export async function bootstrap(
     tenants,
     mailer,
     emailLog,
+    secrets,
   };
 }
 

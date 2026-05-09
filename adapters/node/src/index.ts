@@ -16,6 +16,7 @@ export { StdoutEventMailer, PostgresEmailLogStore } from './mailer-stdout.ts';
 export { SmtpMailer } from './mailer-smtp.ts';
 export { PostgresSignupRequestStore } from './signup-request-store.ts';
 export { PostgresTenantStore } from './tenant-store.ts';
+export { EnvSecretStore } from './secret-store.ts';
 export {
   PostgresTenantDbProvider,
   parseTenantConnectionUrl,

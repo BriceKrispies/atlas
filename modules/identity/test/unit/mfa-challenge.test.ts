@@ -48,6 +48,7 @@ async function setup(fx: ReturnType<typeof newFixture>, userId = 'user-1') {
       name: 'iPhone',
     },
     fx.events,
+    fx.secrets,
   );
   await dispatchAll(fx);
   const sessionId = `sess-mfa-${userId}`;
@@ -75,9 +76,12 @@ async function setup(fx: ReturnType<typeof newFixture>, userId = 'user-1') {
   return { sessionId, factor: enroll.document };
 }
 
-function totpCode(factor: AuthFactorDocument, tenantId: string): string {
+function totpCode(
+  factor: AuthFactorDocument,
+  fx: ReturnType<typeof newFixture>,
+): string {
   const attrs = factor.attrs as TotpFactorAttrs;
-  const secret = decryptSecret(attrs.encryptedSecret, tenantId);
+  const secret = decryptSecret(attrs.encryptedSecret, fx.tenantId, fx.secrets);
   return hotp(secret, Math.floor(Date.now() / 1000 / 30));
 }
 
@@ -94,11 +98,12 @@ describe('handleMfaChallengeSubmit — happy path (TOTP)', () => {
         method: 'totp',
         totp: {
           factorId: factor.factorId,
-          presentedCode: totpCode(factor, fx.tenantId),
+          presentedCode: totpCode(factor, fx),
         },
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     expect(result.envelope.eventType).toBe('Identity.SessionMfaSatisfied');
     expect(result.document.status).toBe('active');
@@ -120,6 +125,7 @@ describe('handleMfaChallengeSubmit — session-state guards', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.SESSION_NOT_FOUND });
   });
@@ -149,6 +155,7 @@ describe('handleMfaChallengeSubmit — session-state guards', () => {
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     // The handler returns a NoOp event without re-running the factor proof.
     expect(result.envelope.eventType).toContain('NoOp');
@@ -186,6 +193,7 @@ describe('handleMfaChallengeSubmit — session-state guards', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.SESSION_REVOKED });
   });
@@ -213,6 +221,7 @@ describe('handleMfaChallengeSubmit — method / payload mismatch', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_CHALLENGE_INVALID });
   });
@@ -231,6 +240,7 @@ describe('handleMfaChallengeSubmit — method / payload mismatch', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_CHALLENGE_INVALID });
   });
@@ -249,6 +259,7 @@ describe('handleMfaChallengeSubmit — method / payload mismatch', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_CHALLENGE_INVALID });
   });
@@ -267,6 +278,7 @@ describe('handleMfaChallengeSubmit — method / payload mismatch', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toMatchObject({ code: identityErrorCodes.MFA_CHALLENGE_INVALID });
   });
@@ -285,6 +297,7 @@ describe('handleMfaChallengeSubmit — method / payload mismatch', () => {
         },
         fx.events,
         fx.entities,
+        fx.secrets,
       ),
     ).rejects.toBeInstanceOf(IdentityError);
   });

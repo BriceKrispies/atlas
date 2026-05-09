@@ -456,6 +456,7 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
         label: 'My phone',
       },
       fx.events,
+      fx.secrets,
     );
     await dispatchAll(fx);
     await handleFactorRevoke(
@@ -582,6 +583,7 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     await dispatchAll(fx);
     await handleSamlSpKeyRotate(
@@ -593,6 +595,7 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
       },
       fx.events,
       fx.entities,
+      fx.secrets,
     );
     await dispatchAll(fx);
 
