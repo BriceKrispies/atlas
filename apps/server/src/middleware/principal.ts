@@ -126,7 +126,6 @@ function upgradeContextWithPrincipal(
   upgraded.logger.debug('authentication resolved', {
     event: 'Authn.Resolved',
     properties: {
-      principalType: principal.userId ? 'user' : 'service',
       roles: principal.roles?.length ?? 0,
     },
   });

@@ -82,6 +82,7 @@ describe('principalMiddleware — logging instrumentation', () => {
     expect(e.tenantId).toBe('dev-tenant');
     expect(e.principalId).toBe('tester');
     expect(e.properties).toMatchObject({ roles: 1 });
+    expect(e.properties).not.toHaveProperty('principalType');
   });
 
   it('emits Authn.Failed when X-Debug-Principal is malformed', async () => {

@@ -38,6 +38,7 @@
     "tenant:add-admin": "tsx scripts/tenant-add-admin.ts",
     "atlasctl": "tsx apps/atlasctl/src/main.ts",
     "sync-openapi": "tsx packages/openapi/scripts/sync-openapi.ts",
+    "e2e:smoke": "tsx scripts/e2e-smoke.ts",
     "safe": "tsx scripts/safe-pnpm.ts"
   },
   "pnpm": {
