@@ -15,10 +15,7 @@ import {
   PostgresCatalogStateStore,
   PostgresPolicyStore,
 } from '@atlas/adapter-node';
-import {
-  policyEvaluatedEvent,
-  shouldEmitPolicyEvaluated,
-} from '@atlas/adapter-policy-cedar';
+import { policyEvaluatedEvent, shouldEmitPolicyEvaluated } from '@atlas/ports';
 import {
   catalogHandlerRegistry,
   catalogDispatcher,

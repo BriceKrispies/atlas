@@ -6,6 +6,16 @@ export type { Cache } from './cache.ts';
 export type { SecretStore } from './secret-store.ts';
 export type { Compression } from './compression.ts';
 export type { Crypto } from './crypto.ts';
+export {
+  POLICY_EVALUATED_SCHEMA_ID,
+  POLICY_EVALUATED_EVENT_TYPE,
+  policyEvaluatedEvent,
+  shouldEmitPolicyEvaluated,
+} from './audit-emitter.ts';
+export type {
+  PolicyEvaluatedPayload,
+  PolicyEvaluatedEventOptions,
+} from './audit-emitter.ts';
 export type { ProjectionStore } from './projection-store.ts';
 export type { SearchEngine } from './search-engine.ts';
 export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry.ts';
