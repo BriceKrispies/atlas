@@ -2,7 +2,7 @@
 
 Multi-tenant **platform fabric**. A tenant signs up, defines their own data model, optionally provisions backend services, writes functions/workflows against their data, and gets identity / authz / audit / observability / search applied uniformly to every operation — for free, by virtue of being a tenant. Atlas is **software anyone can self-host**; the project author runs a public reference instance with open public signup as one example deployment. **TypeScript** (Node + browser). Hexagonal architecture: ports define the surface, adapters implement them, modules hold domain logic, packages are shared infrastructure, apps wire it all together. **Agentic from day one** — single ingress, structured logs, machine-readable surfaces are load-bearing tenets, not retrofits.
 
-See [`specs/vision.md`](specs/vision.md) for the user-facing vision, [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for the original CMS → developer-platform re-anchor (2026-05-08), and [`specs/decisions/0003-tenant-defined-data-model-pivot.md`](specs/decisions/0003-tenant-defined-data-model-pivot.md) for the multi-tenant-fabric ambition (Salesforce-shaped data model + Vercel-shaped service provisioning + agentic-first + self-hostable software with public reference instance).
+See [`specs/vision.md`](specs/vision.md) for the user-facing vision, [`specs/decisions/0002-developer-platform-domain-map.md`](specs/decisions/0002-developer-platform-domain-map.md) for the original CMS → developer-platform re-anchor (2026-05-08), [`specs/decisions/0003-tenant-defined-data-model-pivot.md`](specs/decisions/0003-tenant-defined-data-model-pivot.md) for the multi-tenant-fabric ambition (Salesforce-shaped data model + Vercel-shaped service provisioning + agentic-first + self-hostable software with public reference instance), and [`specs/decisions/0008-atlas-on-atlas.md`](specs/decisions/0008-atlas-on-atlas.md) for the recursive-kernel principle (Atlas itself is a tenant of itself; code change is the exception).
 
 A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`, and `/tests/blackbox` has been removed. Some specs still reference Rust paths as historical context — treat those as legacy notes, not active code locations.
 
@@ -48,6 +48,7 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 | [`code-owner`](.claude/agents/code-owner.md) | repository, pipeline, artifact-registry |
 | [`workflow-owner`](.claude/agents/workflow-owner.md) | triggers, scheduling, jobs, function-runner, approvals |
 | [`commerce-owner`](.claude/agents/commerce-owner.md) | billing, quotas, metering, plans |
+| [`extensibility-owner`](.claude/agents/extensibility-owner.md) | custom-schema, functions (DDL allowlist, `FunctionRuntime` contract, DSL substrate per ADRs 0005–0007) |
 | [`first-party-apps-owner`](.claude/agents/first-party-apps-owner.md) | parked CMS (`apps/cms/`) and any future first-party tenant-installable apps |
 
 **Implementation devs**

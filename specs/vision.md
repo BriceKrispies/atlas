@@ -22,6 +22,16 @@ Atlas is designed to be operable by AI agents from the start, not retrofitted la
 - **Structured logs and machine-readable surfaces.** Every log line is structured JSON with mandatory correlation/tenant/principal fields ([`crosscut/logging.md`](crosscut/logging.md)). Every UI surface exposes its state in a form an agent can read (the `surface-contract.md` model).
 - **One CLI, one API, one audit trail.** `atlasctl` is the operator surface; the same HTTP API backs both the UI and any agent. Anything an agent needs to do, a tenant or operator can do too — and vice versa.
 
+### Atlas-on-Atlas
+
+The platform is a tenant of itself. Atlas's own admin operations run through the same chassis any tenant uses, not through a privileged side-layer. Three concrete commitments:
+
+- **The platform is a tenant.** Atlas's own state lives in `control_plane.tenants` as an ordinary row (`_platform`). The same identity / authz / audit / observability pipeline that governs any tenant operation governs Atlas's own admin operations. There is no privileged platform layer that bypasses the chassis.
+- **Code change is the exception.** Schemas, policies, intents, and surface manifests are data wherever sensible. New behavior asks first **"could this have been data?"** before reaching for a code change. The kernel is small (`packages/ingress`, event-log append, projection rebuild, policy evaluation); the rest is data candidates.
+- **Always-on.** Server and database run continuously; tenant changes never restart them. The "what counts as restart-required" bar is documented in `crosscut/always-on.md`.
+
+See [`decisions/0008-atlas-on-atlas.md`](decisions/0008-atlas-on-atlas.md) for the principle and the staged path from today's `_platform`-as-magic-string state to a real recursive kernel.
+
 ### What every tenant gets for free
 
 Because they are a tenant on Atlas, not because they wrote code for it:
@@ -135,4 +145,4 @@ Every step emits an audit event with the same `correlationId`. Every step is ten
 
 The Salesforce-shaped data model and the Vercel-shaped service provisioning live in Phases 3–4 and Phase 5+ respectively. Phase 1's MVP is the chassis they all run on.
 
-Detailed phasing in the internal plan; the [domain-map ADR (0002)](decisions/0002-developer-platform-domain-map.md) records the prior re-anchor, [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md) records this vision (un-retiring `custom-schema` + `functions`, codifying agentic-first, framing Atlas as software with a public reference deployment), [ADR 0004](decisions/0004-platform-invariants-for-multi-tenant-fabric.md) lands the new platform invariants I13–I18 and six normative requirements that make the multi-tenant-fabric tenets mechanically checkable, [ADR 0005](decisions/0005-custom-schema-storage-strategy.md) commits `custom-schema` to schema-per-tenant Postgres storage, and [ADR 0006](decisions/0006-function-runtime-substrate.md) commits the `functions` MVP runtime to gVisor with the port shape kept swappable for V8 isolates and Firecracker.
+Detailed phasing in the internal plan; the [domain-map ADR (0002)](decisions/0002-developer-platform-domain-map.md) records the prior re-anchor, [ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md) records this vision (un-retiring `custom-schema` + `functions`, codifying agentic-first, framing Atlas as software with a public reference deployment), [ADR 0004](decisions/0004-platform-invariants-for-multi-tenant-fabric.md) lands the new platform invariants I13–I18 and six normative requirements that make the multi-tenant-fabric tenets mechanically checkable, [ADR 0005](decisions/0005-custom-schema-storage-strategy.md) commits `custom-schema` to schema-per-tenant Postgres storage, [ADR 0006](decisions/0006-function-runtime-substrate.md) commits the `functions` MVP runtime to gVisor with the port shape kept swappable for V8 isolates and Firecracker, [ADR 0007](decisions/0007-dsl-substrate-and-authoring-contract.md) commits tenant declarations (DSL artifacts) to a shared substrate distinct from tenant code, and [ADR 0008](decisions/0008-atlas-on-atlas.md) records the recursive-kernel principle (Atlas itself is a tenant of itself; code change is the exception).
