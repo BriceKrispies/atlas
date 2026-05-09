@@ -188,7 +188,7 @@ export async function handleTotpChallenge(
     );
   }
   const totpAttrs = factor.attrs as TotpFactorAttrs;
-  let secret: Buffer;
+  let secret: Uint8Array;
   try {
     secret = decryptSecret(totpAttrs.encryptedSecret, cmd.tenantId, secrets);
   } catch (e) {

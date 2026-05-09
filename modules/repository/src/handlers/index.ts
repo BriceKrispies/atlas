@@ -26,6 +26,7 @@
  */
 
 import type {
+  Crypto,
   HandlerRegistry,
   IntentHandler,
   IntentHandlerContext,
@@ -47,6 +48,7 @@ import { newEventId } from '../ids.ts';
 interface RepositoryHandlerContext extends IntentHandlerContext {
   repositories: RepositoryStore;
   revisions: RepositoryRevisionStore;
+  crypto: Crypto;
 }
 
 function readString(payload: Record<string, unknown>, key: string): string {
@@ -79,9 +81,9 @@ function readNumber(payload: Record<string, unknown>, key: string): number {
 
 function ctxAsRepoCtx(ctx: IntentHandlerContext): RepositoryHandlerContext {
   const c = ctx as Partial<RepositoryHandlerContext>;
-  if (!c.repositories || !c.revisions) {
+  if (!c.repositories || !c.revisions || !c.crypto) {
     throw new Error(
-      'repository handlers require `repositories` + `revisions` on IntentHandlerContext (wired by apps/server)',
+      'repository handlers require `repositories` + `revisions` + `crypto` on IntentHandlerContext (wired by apps/server)',
     );
   }
   return c as RepositoryHandlerContext;
@@ -166,6 +168,7 @@ const repositoryUploadHandler: IntentHandler = {
       c.repositories,
       c.revisions,
       ctx.eventStore,
+      c.crypto,
     );
     return { primary: result.envelope, follow: [] };
   },

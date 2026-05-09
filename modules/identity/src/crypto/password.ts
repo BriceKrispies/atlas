@@ -21,8 +21,8 @@
  *   `$scrypt$N=<N>,r=<r>,p=<p>$<saltBase64>$<hashBase64>`
  */
 
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { IdentityError, codes } from '../errors.ts';
+import { getIdentityCrypto } from './runtime.ts';
 
 const N = 16384;
 const R = 8;
@@ -61,16 +61,29 @@ export function validatePasswordComplexity(password: string): void {
   }
 }
 
-function encode(salt: Buffer, hash: Buffer): string {
-  return `$scrypt$N=${N},r=${R},p=${P}$${salt.toString('base64')}$${hash.toString('base64')}`;
+function encode(salt: Uint8Array, hash: Uint8Array): string {
+  return `$scrypt$N=${N},r=${R},p=${P}$${b64Encode(salt)}$${b64Encode(hash)}`;
 }
 
 interface Decoded {
   N: number;
   r: number;
   p: number;
-  salt: Buffer;
-  hash: Buffer;
+  salt: Uint8Array;
+  hash: Uint8Array;
+}
+
+function b64Encode(bytes: Uint8Array): string {
+  let str = '';
+  for (let i = 0; i < bytes.length; i += 1) str += String.fromCharCode(bytes[i]!);
+  return globalThis.btoa(str);
+}
+
+function b64Decode(s: string): Uint8Array {
+  const bin = globalThis.atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 /**
@@ -106,13 +119,13 @@ function decode(encoded: string): DecodeResult {
   if (!paramMap['N'] || !paramMap['r'] || !paramMap['p']) {
     return { ok: false, reason: 'missing_required_params' };
   }
-  let salt: Buffer;
-  let hash: Buffer;
+  let salt: Uint8Array;
+  let hash: Uint8Array;
   try {
-    salt = Buffer.from(saltB64, 'base64');
-    hash = Buffer.from(hashB64, 'base64');
+    salt = b64Decode(saltB64);
+    hash = b64Decode(hashB64);
   } catch (e) {
-    // Preserve the underlying Buffer.from failure for callers that
+    // Preserve the underlying decode failure for callers that
     // want to log it. We don't take a logger here — a tagged result
     // keeps the leaf utility port-surface-free per the convention.
     return { ok: false, reason: 'base64_decode_failed', cause: e };
@@ -132,14 +145,14 @@ function decode(encoded: string): DecodeResult {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  // `scryptSync` is CPU-bound; calling it from an async function
-  // matches the pre-swap `hash-wasm` interface (Promise<string>)
-  // without changing call sites. For server-side use the
-  // synchronous behavior is fine — at ~100ms per call we're not
-  // blocking the event loop meaningfully on a lightly-loaded auth
-  // path.
-  const salt = randomBytes(SALT_LEN);
-  const hash = scryptSync(password, salt, DK_LEN, { N, r: R, p: P });
+  // The crypto port's `scrypt` is sync (CPU-bound); we keep this
+  // function async to preserve the pre-port `hash-wasm` interface
+  // (Promise<string>) so call sites don't churn. For server-side
+  // use the sync behavior is fine — at ~100ms per call we're not
+  // blocking the event loop meaningfully on a lightly-loaded auth path.
+  const crypto = getIdentityCrypto();
+  const salt = crypto.randomBytes(SALT_LEN);
+  const hash = crypto.scrypt(password, salt, DK_LEN, { N, r: R, p: P });
   return encode(salt, hash);
 }
 
@@ -173,9 +186,10 @@ export async function verifyPasswordDetailed(
     return out;
   }
   const params = decoded.value;
-  let computed: Buffer;
+  const crypto = getIdentityCrypto();
+  let computed: Uint8Array;
   try {
-    computed = scryptSync(password, params.salt, params.hash.length, {
+    computed = crypto.scrypt(password, params.salt, params.hash.length, {
       N: params.N,
       r: params.r,
       p: params.p,
@@ -189,5 +203,5 @@ export async function verifyPasswordDetailed(
   if (computed.length !== params.hash.length) {
     return { ok: true, matched: false };
   }
-  return { ok: true, matched: timingSafeEqual(computed, params.hash) };
+  return { ok: true, matched: crypto.timingSafeEqual(computed, params.hash) };
 }

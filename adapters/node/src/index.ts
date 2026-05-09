@@ -18,6 +18,7 @@ export { PostgresSignupRequestStore } from './signup-request-store.ts';
 export { PostgresTenantStore } from './tenant-store.ts';
 export { EnvSecretStore } from './secret-store.ts';
 export { NodeCompression } from './compression.ts';
+export { NodeCrypto } from './crypto.ts';
 export {
   PostgresTenantDbProvider,
   parseTenantConnectionUrl,

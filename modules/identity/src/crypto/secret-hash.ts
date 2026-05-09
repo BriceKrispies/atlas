@@ -9,7 +9,7 @@
  * cross-wire them.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { getIdentityCrypto } from './runtime.ts';
 
 /**
  * Generate an opaque high-entropy secret. 32 bytes encoded as URL-safe
@@ -18,11 +18,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
  * codes).
  */
 export function generateSecret(): string {
-  return randomBytes(32).toString('base64url');
+  return base64url(getIdentityCrypto().randomBytes(32));
 }
 
 export function hashSecret(secret: string): string {
-  return createHash('sha256').update(secret).digest('hex');
+  return toHex(getIdentityCrypto().sha256(secret));
 }
 
 /**
@@ -36,8 +36,25 @@ export function lookupOf(secret: string): string {
 }
 
 export function constantTimeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, 'utf8');
-  const bb = Buffer.from(b, 'utf8');
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
   if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  return getIdentityCrypto().timingSafeEqual(ab, bb);
+}
+
+function base64url(bytes: Uint8Array): string {
+  let str = '';
+  for (let i = 0; i < bytes.length; i += 1) str += String.fromCharCode(bytes[i]!);
+  return globalThis
+    .btoa(str)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function toHex(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 1)
+    s += bytes[i]!.toString(16).padStart(2, '0');
+  return s;
 }

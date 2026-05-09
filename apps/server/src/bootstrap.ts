@@ -20,6 +20,7 @@ import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import {
   EnvSecretStore,
   NodeCompression,
+  NodeCrypto,
   PostgresControlPlaneRegistry,
   PostgresCustomDomainStore,
   PostgresEmailLogStore,
@@ -38,6 +39,7 @@ import {
 } from '@atlas/adapter-node';
 import type {
   Compression,
+  Crypto,
   CustomDomainStore,
   EmailLogStore,
   EntityStore,
@@ -50,6 +52,7 @@ import type {
   SignupRequestStore,
   TenantStore,
 } from '@atlas/ports';
+import { setIdentityCrypto } from '@atlas/identity';
 import { reconcileEntityIndexes, UpcasterRegistry } from '@atlas/platform-core';
 import { TenantHostCache } from './middleware/tenant-resolution.ts';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
@@ -186,6 +189,13 @@ export interface AppState {
    * directly. Closes ADR 0008 leak #1 (`node:zlib` in identity SAML).
    */
   readonly compression: Compression;
+  /**
+   * Sync crypto primitives (random bytes, sha256, hmac-sha1, AES-GCM,
+   * scrypt, timing-safe compare). Wired into identity at boot via
+   * `setIdentityCrypto`; consumed directly by `repository.handleUpload`.
+   * Closes ADR 0008 leak #1 (`node:crypto` / `node:buffer` in modules).
+   */
+  readonly crypto: Crypto;
 }
 
 export interface BootstrapDeps {
@@ -318,6 +328,12 @@ export async function bootstrap(
   // Process-wide compression port (Node zlib backend).
   const compression = new NodeCompression();
 
+  // Process-wide crypto port (Node crypto backend). Wire identity's
+  // resolver immediately so handlers loaded from `@atlas/identity`
+  // can find their Crypto on first call.
+  const crypto = new NodeCrypto();
+  setIdentityCrypto(crypto);
+
   return {
     config,
     logPipeline: deps.logPipeline,
@@ -341,6 +357,7 @@ export async function bootstrap(
     emailLog,
     secrets,
     compression,
+    crypto,
   };
 }
 

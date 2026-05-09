@@ -29,6 +29,7 @@ import type {
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { dispatchIdentityEvent } from '../../src/index.ts';
+// Crypto is wired in test-setup/identity-crypto.ts (vitest setupFiles).
 
 export class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];

@@ -205,7 +205,7 @@ describe('crypto/totp: secret encryption roundtrip', () => {
     const secret = generateTotpSecret();
     const enc = encryptSecret(secret, 'sec', secrets);
     const dec = decryptSecret(enc, 'sec', secrets);
-    expect(dec.equals(secret)).toBe(true);
+    expect(dec).toEqual(secret);
   });
 
   it('decrypting under a different tenant fails (AEAD)', () => {

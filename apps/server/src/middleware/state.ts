@@ -270,7 +270,7 @@ export async function buildRequestBundle(
       if (!actionId.startsWith('Repository.')) return inner;
       return {
         async handle(ctx, envelope) {
-          const extended = { ...ctx, repositories, revisions };
+          const extended = { ...ctx, repositories, revisions, crypto: state.crypto };
           return inner.handle(extended, envelope);
         },
       };

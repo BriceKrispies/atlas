@@ -443,6 +443,9 @@ export {
   encryptionKeyIdForTenant,
 } from './crypto/totp.ts';
 
+// ADR 0008 / Crypto port — host wires the runtime via this setter.
+export { setIdentityCrypto, getIdentityCrypto } from './crypto/runtime.ts';
+
 // Phase A5 — MFA AuthFactor wrappers.
 export {
   AUTH_FACTOR_ENTITY_TYPE,

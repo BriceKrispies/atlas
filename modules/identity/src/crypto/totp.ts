@@ -13,14 +13,8 @@
  * KMS-ready, the integration is post-A5 polish.
  */
 
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-} from 'node:crypto';
 import type { SecretStore } from '@atlas/ports';
+import { getIdentityCrypto } from './runtime.ts';
 
 /** Name under which `IDENTITY_ENCRYPTION_KEY` (32 bytes base64) is read from `SecretStore`. */
 export const IDENTITY_ENCRYPTION_KEY_NAME = 'IDENTITY_ENCRYPTION_KEY';
@@ -30,12 +24,12 @@ const TOTP_DIGITS = 6;
 const TOTP_ALGORITHM = 'sha1';
 
 /** Random 20-byte (160-bit) TOTP secret — RFC 6238 §4. */
-export function generateTotpSecret(): Buffer {
-  return randomBytes(20);
+export function generateTotpSecret(): Uint8Array {
+  return getIdentityCrypto().randomBytes(20);
 }
 
 /** Base32 encoding (no padding) — for the otpauth URI. */
-export function base32Encode(buf: Buffer): string {
+export function base32Encode(buf: Uint8Array): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let bits = 0;
   let value = 0;
@@ -61,7 +55,7 @@ export function base32Encode(buf: Buffer): string {
 export function buildOtpauthUri(opts: {
   issuer: string;
   accountLabel: string;
-  secret: Buffer;
+  secret: Uint8Array;
 }): string {
   const enc = encodeURIComponent;
   const label = `${enc(opts.issuer)}:${enc(opts.accountLabel)}`;
@@ -76,18 +70,18 @@ export function buildOtpauthUri(opts: {
 }
 
 /** Compute the TOTP code at a given UNIX timestamp (seconds). */
-export function totpAt(secret: Buffer, unixSeconds: number): string {
+export function totpAt(secret: Uint8Array, unixSeconds: number): string {
   const counter = Math.floor(unixSeconds / TOTP_STEP_SECONDS);
   return hotp(secret, counter);
 }
 
 /** HOTP — the per-counter primitive. Exported for tests. */
-export function hotp(secret: Buffer, counter: number): string {
-  const counterBuf = Buffer.alloc(8);
+export function hotp(secret: Uint8Array, counter: number): string {
+  const counterBuf = new Uint8Array(8);
   // Big-endian uint64.
-  counterBuf.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
-  counterBuf.writeUInt32BE(counter & 0xffffffff, 4);
-  const hmac = createHmac(TOTP_ALGORITHM, secret).update(counterBuf).digest();
+  new DataView(counterBuf.buffer).setUint32(0, Math.floor(counter / 0x100000000), false);
+  new DataView(counterBuf.buffer).setUint32(4, counter & 0xffffffff, false);
+  const hmac = getIdentityCrypto().hmacSha1(secret, counterBuf);
   const offset = hmac[hmac.length - 1]! & 0x0f;
   const code =
     ((hmac[offset]! & 0x7f) << 24) |
@@ -112,7 +106,7 @@ export interface TotpVerifyResult {
  * used, reject. Caller persists the matched counter on success.
  */
 export function verifyTotp(
-  secret: Buffer,
+  secret: Uint8Array,
   presented: string,
   opts: { lastUsedCounter?: number; nowSeconds?: number } = {},
 ): TotpVerifyResult {
@@ -149,33 +143,39 @@ export function encryptionKeyIdForTenant(tenantId: string): string {
   return `tenant:${tenantId}:v1`;
 }
 
-function deriveKeyForTenant(tenantId: string, secrets: SecretStore): Buffer {
+function deriveKeyForTenant(tenantId: string, secrets: SecretStore): Uint8Array {
+  const crypto = getIdentityCrypto();
   const root = secrets.get(IDENTITY_ENCRYPTION_KEY_NAME) ?? '';
   // For tests + dev, fall back to a constant. PRODUCTION MUST seed
   // IDENTITY_ENCRYPTION_KEY (32 bytes base64) into the SecretStore.
-  const rootBytes =
-    root.length > 0 ? Buffer.from(root, 'base64') : Buffer.alloc(32, 1);
-  return createHash('sha256')
-    .update(rootBytes)
-    .update('|')
-    .update(tenantId)
-    .digest();
+  const rootBytes = root.length > 0 ? b64Decode(root) : new Uint8Array(32).fill(1);
+  // sha256(rootBytes || '|' || tenantId)
+  const sep = new TextEncoder().encode('|');
+  const tid = new TextEncoder().encode(tenantId);
+  const buf = new Uint8Array(rootBytes.length + sep.length + tid.length);
+  buf.set(rootBytes, 0);
+  buf.set(sep, rootBytes.length);
+  buf.set(tid, rootBytes.length + sep.length);
+  return crypto.sha256(buf);
 }
 
 /**
  * Encrypt the TOTP secret. Returns base64-encoded `iv|tag|ciphertext`.
  */
 export function encryptSecret(
-  plaintext: Buffer,
+  plaintext: Uint8Array,
   tenantId: string,
   secrets: SecretStore,
 ): string {
+  const crypto = getIdentityCrypto();
   const key = deriveKeyForTenant(tenantId, secrets);
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ct]).toString('base64');
+  const iv = crypto.randomBytes(12);
+  const { ciphertext, tag } = crypto.aesGcmEncrypt(key, iv, plaintext);
+  const out = new Uint8Array(iv.length + tag.length + ciphertext.length);
+  out.set(iv, 0);
+  out.set(tag, iv.length);
+  out.set(ciphertext, iv.length + tag.length);
+  return b64Encode(out);
 }
 
 /**
@@ -185,8 +185,9 @@ export function decryptSecret(
   encoded: string,
   tenantId: string,
   secrets: SecretStore,
-): Buffer {
-  const buf = Buffer.from(encoded, 'base64');
+): Uint8Array {
+  const crypto = getIdentityCrypto();
+  const buf = b64Decode(encoded);
   if (buf.length < 28) {
     throw new Error('encrypted secret too short');
   }
@@ -194,7 +195,18 @@ export function decryptSecret(
   const tag = buf.subarray(12, 28);
   const ct = buf.subarray(28);
   const key = deriveKeyForTenant(tenantId, secrets);
-  const decipher = createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]);
+  return crypto.aesGcmDecrypt(key, iv, ct, tag);
+}
+
+function b64Encode(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 1) s += String.fromCharCode(bytes[i]!);
+  return globalThis.btoa(s);
+}
+
+function b64Decode(str: string): Uint8Array {
+  const bin = globalThis.atob(str);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
 }

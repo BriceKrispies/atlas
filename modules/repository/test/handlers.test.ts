@@ -10,11 +10,20 @@
  *   - Repository.Upload > rejects when repo does not exist (REPO_NOT_FOUND)
  */
 
-import { createHash } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes as nodeRandomBytes,
+  scryptSync,
+  timingSafeEqual as nodeTimingSafeEqual,
+} from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { describe, it, expect } from 'vitest';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type {
+  Crypto,
   EventStore,
   RepositoryRecord,
   RepositoryRevisionStore,
@@ -22,6 +31,34 @@ import type {
   RevisionRecord,
   StoredEvent,
 } from '@atlas/ports';
+
+function toPlain(buf: Buffer): Uint8Array {
+  const out = new Uint8Array(buf.length);
+  out.set(buf);
+  return out;
+}
+
+const testCrypto: Crypto = {
+  randomBytes: (n) => toPlain(nodeRandomBytes(n)),
+  sha256: (input) => {
+    const data = typeof input === 'string' ? Buffer.from(input, 'utf8') : input;
+    return toPlain(createHash('sha256').update(data).digest());
+  },
+  hmacSha1: (key, msg) => toPlain(createHmac('sha1', key).update(msg).digest()),
+  aesGcmEncrypt: (key, iv, plaintext) => {
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    return { ciphertext: toPlain(ct), tag: toPlain(cipher.getAuthTag()) };
+  },
+  aesGcmDecrypt: (key, iv, ciphertext, tag) => {
+    const decipher = createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return toPlain(Buffer.concat([decipher.update(ciphertext), decipher.final()]));
+  },
+  scrypt: (password, salt, dkLen, params) =>
+    toPlain(scryptSync(password, salt, dkLen, params)),
+  timingSafeEqual: (a, b) => a.length === b.length && nodeTimingSafeEqual(a, b),
+};
 import {
   handleRepositoryCreate,
   handleRepositoryUpload,
@@ -373,6 +410,7 @@ describe('handleRepositoryUpload', () => {
       fx.repositories,
       fx.revisions,
       fx.events,
+      testCrypto,
     );
 
     const env = result.envelope;
@@ -417,6 +455,7 @@ describe('handleRepositoryUpload', () => {
         fx.repositories,
         fx.revisions,
         fx.events,
+        testCrypto,
       ),
     ).rejects.toMatchObject({
       name: 'RepositoryError',
@@ -447,6 +486,7 @@ describe('handleRepositoryUpload', () => {
         fx.repositories,
         fx.revisions,
         fx.events,
+        testCrypto,
       ),
     ).rejects.toMatchObject({
       name: 'RepositoryError',
@@ -480,6 +520,7 @@ describe('handleRepositoryUpload', () => {
         fx.repositories,
         fx.revisions,
         fx.events,
+        testCrypto,
       ),
     ).rejects.toMatchObject({
       name: 'RepositoryError',
@@ -504,6 +545,7 @@ describe('handleRepositoryUpload', () => {
         fx.repositories,
         fx.revisions,
         fx.events,
+        testCrypto,
       );
       throw new Error('expected throw');
     } catch (e) {

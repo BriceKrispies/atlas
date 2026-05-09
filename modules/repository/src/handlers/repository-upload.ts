@@ -29,10 +29,9 @@
  *   `['Tenant:${tenantId}', 'Repository:${repoId}', 'Revision:${revisionId}']`
  */
 
-import { createHash } from 'node:crypto';
-import { Buffer } from 'node:buffer';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type {
+  Crypto,
   EventStore,
   RepositoryStore,
   RepositoryRevisionStore,
@@ -51,11 +50,19 @@ import {
   type RepositoryUploadedPayload,
 } from '../types.ts';
 
-function sha256Hex(bytes: Uint8Array): string {
-  // node:crypto's `update` accepts both Buffer and Uint8Array. Wrapping
-  // in `Buffer.from(bytes)` is defensive against TS overload narrowness
-  // on some Node typings.
-  return createHash('sha256').update(Buffer.from(bytes)).digest('hex');
+function sha256Hex(bytes: Uint8Array, crypto: Crypto): string {
+  const digest = crypto.sha256(bytes);
+  let hex = '';
+  for (let i = 0; i < digest.length; i += 1)
+    hex += digest[i]!.toString(16).padStart(2, '0');
+  return hex;
+}
+
+function base64Decode(str: string): Uint8Array {
+  const bin = globalThis.atob(str);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 export async function handleRepositoryUpload(
@@ -63,6 +70,7 @@ export async function handleRepositoryUpload(
   repositories: RepositoryStore,
   revisions: RepositoryRevisionStore,
   eventStore: EventStore,
+  crypto: Crypto,
 ): Promise<RepositoryUploadResult> {
   // 1. Repo must exist in the tenant scope. Cross-tenant lookups return
   //    null at the port boundary (I7).
@@ -86,12 +94,7 @@ export async function handleRepositoryUpload(
   }
 
   // 3. Decode + re-check size against the actual payload.
-  const decoded = Buffer.from(cmd.bytesBase64, 'base64');
-  const bytes = new Uint8Array(
-    decoded.buffer,
-    decoded.byteOffset,
-    decoded.byteLength,
-  );
+  const bytes = base64Decode(cmd.bytesBase64);
   if (bytes.byteLength !== cmd.byteCount) {
     throw new RepositoryError(
       codes.UPLOAD_TOO_LARGE,
@@ -109,7 +112,7 @@ export async function handleRepositoryUpload(
 
   // 4. Hash check. Lowercase compare so a hex-uppercased contentHash
   //    from the CLI doesn't false-negative.
-  const computedHash = sha256Hex(bytes);
+  const computedHash = sha256Hex(bytes, crypto);
   if (computedHash !== cmd.contentHash.toLowerCase()) {
     throw new RepositoryError(
       codes.CONTENT_HASH_MISMATCH,

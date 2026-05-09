@@ -41,12 +41,19 @@ export default defineConfig({
       ),
       '@atlas/metrics': r('./packages/metrics/src/index.ts'),
       '@atlas/wasm-host': r('./packages/wasm-host/src/index.ts'),
+      '@atlas/identity': r('./modules/identity/src/index.ts'),
     },
   },
   test: {
     // Global DOM shims for linkedom (CSSStyleSheet, ElementInternals,
     // FormData, adoptedStyleSheets). See test-setup/linkedom-shims.ts.
-    setupFiles: ['./test-setup/linkedom-shims.ts'],
+    // identity-crypto wires the identity module's Crypto resolver to a
+    // node-backed impl so tests that call into identity don't need to
+    // remember to set it themselves (closes ADR 0008 leak #1 ergonomically).
+    setupFiles: [
+      './test-setup/linkedom-shims.ts',
+      './test-setup/identity-crypto.ts',
+    ],
     include: [
       'packages/*/test/**/*.test.ts',
       'packages/*/src/**/*.test.ts',

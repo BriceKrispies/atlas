@@ -5,6 +5,7 @@ export { InMemoryAnalyticsStore } from './analytics-store.ts';
 export type { Cache } from './cache.ts';
 export type { SecretStore } from './secret-store.ts';
 export type { Compression } from './compression.ts';
+export type { Crypto } from './crypto.ts';
 export type { ProjectionStore } from './projection-store.ts';
 export type { SearchEngine } from './search-engine.ts';
 export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry.ts';
@@ -72,3 +73,12 @@ export type {
   WasmPluginLoader,
 } from './wasm-host.ts';
 export type { WorkerSource, WorkerSubscription } from './worker-source.ts';
+export type {
+  SeedCorpus,
+  ScenarioFilter,
+  ScenarioRef,
+  FixtureRef,
+  Scenario,
+  Fixture,
+  ScenarioStep,
+} from './seed-corpus.ts';

@@ -13,7 +13,7 @@
  * `crypto.randomBytes` rather than `Math.random()`.
  */
 
-import { randomBytes } from 'node:crypto';
+import { getIdentityCrypto } from './crypto/runtime.ts';
 
 /**
  * 16 bytes → 128 bits of entropy → ~22 base64url characters. Comfortable
@@ -21,7 +21,17 @@ import { randomBytes } from 'node:crypto';
  * even with billions of IDs per type.
  */
 function token(bytes = 16): string {
-  return randomBytes(bytes).toString('base64url');
+  return base64url(getIdentityCrypto().randomBytes(bytes));
+}
+
+function base64url(bytes: Uint8Array): string {
+  let str = '';
+  for (let i = 0; i < bytes.length; i += 1) str += String.fromCharCode(bytes[i]!);
+  return globalThis
+    .btoa(str)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 export function newEventId(): string {
