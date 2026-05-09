@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import type { Compression } from '@atlas/ports';
 import {
   buildAuthnRequest,
   generateSamlSpKey,
@@ -16,6 +18,17 @@ import {
   DEFAULT_SAML_ATTRIBUTE_MAPPINGS,
   identityErrorCodes,
 } from '../src/index.ts';
+
+// Test-side Compression: tests are allowed to reach `node:zlib` for
+// fixture wiring; the leak rule (ADR 0008) applies to source modules.
+const compression: Compression = {
+  async deflateRaw(input) {
+    return deflateRawSync(input);
+  },
+  async inflateRaw(input) {
+    return inflateRawSync(input);
+  },
+};
 
 const MINIMAL_IDP_METADATA = `<?xml version="1.0"?>
 <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://idp.example/saml/metadata">
@@ -84,12 +97,15 @@ describe('saml.feature: parseIdpMetadata', () => {
 });
 
 describe('saml.feature: buildAuthnRequest', () => {
-  it('produces a well-formed AuthnRequest XML with Issuer + ACS URL', () => {
-    const built = buildAuthnRequest({
-      spEntityId: 'https://atlas.example/sso/saml/acme',
-      destination: 'https://idp.example/saml/sso/post',
-      acsUrl: 'https://atlas.example/sso/saml/acme/acs',
-    });
+  it('produces a well-formed AuthnRequest XML with Issuer + ACS URL', async () => {
+    const built = await buildAuthnRequest(
+      {
+        spEntityId: 'https://atlas.example/sso/saml/acme',
+        destination: 'https://idp.example/saml/sso/post',
+        acsUrl: 'https://atlas.example/sso/saml/acme/acs',
+      },
+      compression,
+    );
     expect(built.requestId).toMatch(/^_/);
     expect(built.xml).toContain('<samlp:AuthnRequest');
     expect(built.xml).toContain('xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"');
@@ -104,23 +120,29 @@ describe('saml.feature: buildAuthnRequest', () => {
     expect(built.redirectQueryParam).toMatch(/^SAMLRequest=/);
   });
 
-  it('builds redirect URL with RelayState round-trip', () => {
-    const built = buildAuthnRequest({
-      spEntityId: 'https://atlas.example/sso/saml/acme',
-      destination: 'https://idp.example/saml/sso',
-      acsUrl: 'https://atlas.example/sso/saml/acme/acs',
-    });
+  it('builds redirect URL with RelayState round-trip', async () => {
+    const built = await buildAuthnRequest(
+      {
+        spEntityId: 'https://atlas.example/sso/saml/acme',
+        destination: 'https://idp.example/saml/sso',
+        acsUrl: 'https://atlas.example/sso/saml/acme/acs',
+      },
+      compression,
+    );
     const url = built.buildRedirectUrl('hello world');
     expect(url).toMatch(/^https:\/\/idp\.example\/saml\/sso\?SAMLRequest=/);
     expect(url).toContain('RelayState=hello%20world');
   });
 
-  it('escapes XML metacharacters in entity ids', () => {
-    const built = buildAuthnRequest({
-      spEntityId: 'https://atlas.example/<evil>',
-      destination: 'https://idp.example/saml/sso',
-      acsUrl: 'https://atlas.example/acs',
-    });
+  it('escapes XML metacharacters in entity ids', async () => {
+    const built = await buildAuthnRequest(
+      {
+        spEntityId: 'https://atlas.example/<evil>',
+        destination: 'https://idp.example/saml/sso',
+        acsUrl: 'https://atlas.example/acs',
+      },
+      compression,
+    );
     expect(built.xml).not.toContain('<evil>');
     expect(built.xml).toContain('&lt;evil&gt;');
   });

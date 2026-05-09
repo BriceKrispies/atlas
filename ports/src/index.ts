@@ -4,6 +4,7 @@ export type { AnalyticsEvent } from '@atlas/platform-core';
 export { InMemoryAnalyticsStore } from './analytics-store.ts';
 export type { Cache } from './cache.ts';
 export type { SecretStore } from './secret-store.ts';
+export type { Compression } from './compression.ts';
 export type { ProjectionStore } from './projection-store.ts';
 export type { SearchEngine } from './search-engine.ts';
 export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry.ts';

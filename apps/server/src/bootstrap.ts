@@ -19,6 +19,7 @@ import postgres from 'postgres';
 import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import {
   EnvSecretStore,
+  NodeCompression,
   PostgresControlPlaneRegistry,
   PostgresCustomDomainStore,
   PostgresEmailLogStore,
@@ -36,6 +37,7 @@ import {
   runMigrations,
 } from '@atlas/adapter-node';
 import type {
+  Compression,
   CustomDomainStore,
   EmailLogStore,
   EntityStore,
@@ -178,6 +180,12 @@ export interface AppState {
    * impl with the same surface.
    */
   readonly secrets: SecretStore;
+  /**
+   * Symmetric byte-level compression (raw DEFLATE today). Backs identity's
+   * SAML AuthnRequest builder; modules MUST NOT import `node:zlib`
+   * directly. Closes ADR 0008 leak #1 (`node:zlib` in identity SAML).
+   */
+  readonly compression: Compression;
 }
 
 export interface BootstrapDeps {
@@ -307,6 +315,9 @@ export async function bootstrap(
   // this port instead of touching process.env directly.
   const secrets = new EnvSecretStore();
 
+  // Process-wide compression port (Node zlib backend).
+  const compression = new NodeCompression();
+
   return {
     config,
     logPipeline: deps.logPipeline,
@@ -329,6 +340,7 @@ export async function bootstrap(
     mailer,
     emailLog,
     secrets,
+    compression,
   };
 }
 

@@ -22,3 +22,4 @@ export { IdbEntityStore } from './entity-store.ts';
 export { IdbRelationStore } from './relation-store.ts';
 export { IdbRepositoryStore, IdbRepositoryRevisionStore } from './repository-store.ts';
 export { InMemorySecretStore } from './secret-store.ts';
+export { WebCompression } from './compression.ts';

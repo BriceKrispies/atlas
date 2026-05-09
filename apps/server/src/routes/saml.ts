@@ -140,14 +140,17 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
       return errorResponse(c, 'IDP_DISABLED', `IdP ${idpId} not active`, 403, correlationId);
     }
     const host = c.req.header('host') ?? 'localhost';
-    const built = buildAuthnRequest({
-      spEntityId: idp.samlSpEntityId ?? spEntityIdFor(host, tenantId),
-      destination: idp.samlSsoUrl,
-      acsUrl: acsUrlFor(host, tenantId),
-      ...(idp.samlNameIdFormat
-        ? { nameIdFormat: `urn:oasis:names:tc:SAML:2.0:nameid-format:${idp.samlNameIdFormat}` }
-        : {}),
-    });
+    const built = await buildAuthnRequest(
+      {
+        spEntityId: idp.samlSpEntityId ?? spEntityIdFor(host, tenantId),
+        destination: idp.samlSsoUrl,
+        acsUrl: acsUrlFor(host, tenantId),
+        ...(idp.samlNameIdFormat
+          ? { nameIdFormat: `urn:oasis:names:tc:SAML:2.0:nameid-format:${idp.samlNameIdFormat}` }
+          : {}),
+      },
+      state.compression,
+    );
     // Stash the requestId so ACS can verify InResponseTo. For Phase
     // A6 we bind it into the RelayState (signed-cookie integration
     // is post-A6 polish). RelayState carries `<requestId>:<userRelay>`.

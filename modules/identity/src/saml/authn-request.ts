@@ -12,7 +12,7 @@
  * SP cert is registered in metadata.
  */
 
-import { deflateRawSync } from 'node:zlib';
+import type { Compression } from '@atlas/ports';
 
 export interface BuildAuthnRequestOptions {
   /** SP entityID — goes into `<saml:Issuer>`. */
@@ -58,7 +58,10 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-export function buildAuthnRequest(opts: BuildAuthnRequestOptions): BuiltAuthnRequest {
+export async function buildAuthnRequest(
+  opts: BuildAuthnRequestOptions,
+  compression: Compression,
+): Promise<BuiltAuthnRequest> {
   const requestId = opts.requestId ?? newRequestId();
   const issueInstant = opts.issueInstant ?? new Date().toISOString();
   const nameIdFormat =
@@ -78,8 +81,8 @@ export function buildAuthnRequest(opts: BuildAuthnRequestOptions): BuiltAuthnReq
     `</samlp:AuthnRequest>`;
 
   // HTTP-Redirect binding: DEFLATE → base64 → URL-encode.
-  const deflated = deflateRawSync(Buffer.from(xml, 'utf8'));
-  const b64 = deflated.toString('base64');
+  const deflated = await compression.deflateRaw(new TextEncoder().encode(xml));
+  const b64 = Buffer.from(deflated).toString('base64');
   const redirectQueryParam = `SAMLRequest=${encodeURIComponent(b64)}`;
 
   function buildRedirectUrl(relayState?: string): string {
