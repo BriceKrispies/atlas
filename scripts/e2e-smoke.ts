@@ -22,6 +22,12 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
+import {
+  fetchTrace as fetchTraceHelper,
+  assertContainsEvents,
+  assertAllCorrelated,
+  type LogRecord,
+} from '../tests/integration/helpers/log-trace.ts';
 
 // ────────────────────────────────────────────────────────────────────
 // Configuration
@@ -45,17 +51,8 @@ const REQUIRED_EVENT_NAMES = [
   'Request.Completed',
 ] as const;
 
-interface LogRecord {
-  timestamp: string;
-  level: string;
-  message: string;
-  eventName?: string;
-  correlationId: string;
-  tenantId?: string;
-  principalId?: string;
-  durationMs?: number;
-  properties?: Record<string, unknown>;
-}
+// LogRecord type is shared with the integration spec — see
+// tests/integration/helpers/log-trace.ts.
 
 // ────────────────────────────────────────────────────────────────────
 // Tiny coloured-output helpers (no third-party deps)
@@ -286,22 +283,10 @@ async function submitIntent(): Promise<SubmitResult> {
 }
 
 async function fetchTrace(correlationId: string): Promise<LogRecord[]> {
-  // Ring sink is async-flushed; give it one beat to drain so the
-  // Request.Completed line for THIS request is visible.
-  await new Promise((r) => setTimeout(r, 100));
-  const url = `${BASE}/api/v1/admin/logging/correlation/${encodeURIComponent(correlationId)}/recent?limit=200`;
-  const r = await fetch(url, {
-    headers: { 'X-Debug-Principal': ADMIN_PRINCIPAL },
-  });
-  if (!r.ok) {
-    fail(`trace fetch failed: ${r.status} ${await r.text()}`);
-  }
-  const body = (await r.json()) as { events: LogRecord[] };
-  // Ring sink returns most-recent-first; flip to chronological for
-  // human reading + the monotonic-timestamp assertion.
-  return [...body.events].sort((a, b) =>
-    a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0,
-  );
+  // Delegates to the shared helper, which the integration spec also
+  // uses (so the smoke and the CI assertion can never disagree on the
+  // shape of a "captured trace").
+  return fetchTraceHelper(BASE, correlationId, { principal: ADMIN_PRINCIPAL });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -354,28 +339,26 @@ function formatProps(props: Record<string, unknown>): string {
 function assertTrace(records: LogRecord[], correlationId: string): void {
   header('Assertions');
 
-  // 1. Non-empty trace
   if (records.length === 0) {
     fail('no log records captured for this correlationId');
   }
   ok(`${records.length} log records captured`);
 
-  // 2. Correlation propagation
-  const wrongCorr = records.filter((r) => r.correlationId !== correlationId);
-  if (wrongCorr.length > 0) {
-    fail(`${wrongCorr.length} records have wrong correlationId`);
+  try {
+    assertAllCorrelated(records, correlationId);
+    ok('every record carries the request correlationId');
+  } catch (e) {
+    fail((e as Error).message);
   }
-  ok('every record carries the request correlationId');
 
-  // 3. Required boundary event names
-  const seen = new Set(records.map((r) => r.eventName).filter((s): s is string => !!s));
-  const missing = REQUIRED_EVENT_NAMES.filter((n) => !seen.has(n));
-  if (missing.length > 0) {
-    fail(`missing expected boundary events: ${missing.join(', ')}`);
+  try {
+    assertContainsEvents(records, REQUIRED_EVENT_NAMES);
+    ok(`all required boundary events present: ${REQUIRED_EVENT_NAMES.join(', ')}`);
+  } catch (e) {
+    fail((e as Error).message);
   }
-  ok(`all required boundary events present: ${REQUIRED_EVENT_NAMES.join(', ')}`);
 
-  // 4. Timestamps monotonic-ish (drift up to a few ms is fine on Windows)
+  // Timestamps monotonic-ish (sub-ms drift on Windows is fine).
   let prev = 0;
   let outOfOrder = 0;
   for (const r of records) {
