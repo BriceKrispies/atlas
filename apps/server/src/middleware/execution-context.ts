@@ -53,10 +53,33 @@ export function executionContextMiddleware(
     c.set('correlationId', correlationId);
     c.set('ctx', ctx);
 
+    const startedAt = performance.now();
+    ctx.logger.debug('request received', {
+      event: 'Request.Received',
+      properties: {
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+      },
+    });
+
     await next();
 
     // Surface correlation id back to the caller so they can join their
     // request log to ours during incident response.
     c.res.headers.set(CORRELATION_HEADER, correlationId);
+
+    // The current ctx may have been swapped (principalMiddleware replaces
+    // the anonymous one with a principal-bound one); re-read so the
+    // completion line carries the resolved tenantId / principalId.
+    const finalCtx = c.get('ctx');
+    finalCtx.logger.debug('request completed', {
+      event: 'Request.Completed',
+      durationMs: performance.now() - startedAt,
+      properties: {
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+        status: c.res.status,
+      },
+    });
   };
 }

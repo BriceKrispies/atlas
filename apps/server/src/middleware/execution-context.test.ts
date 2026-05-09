@@ -29,6 +29,21 @@ interface TestRig {
   pipeline: LogPipeline;
 }
 
+/**
+ * Filter collector to user-emitted events (skip boundary events like
+ * Request.Received / Request.Completed that the middleware itself emits).
+ * Existing assertions count user log lines only.
+ */
+function testEvents(collector: CollectorSink): LogEvent[] {
+  return collector.events.filter((e) => e.eventName?.startsWith('Test.'));
+}
+
+function boundaryEvents(collector: CollectorSink): LogEvent[] {
+  return collector.events.filter(
+    (e) => e.eventName === 'Request.Received' || e.eventName === 'Request.Completed',
+  );
+}
+
 function makeRig(): TestRig {
   const collector = new CollectorSink();
   const pipeline = new LogPipeline(
@@ -57,8 +72,8 @@ describe('executionContextMiddleware', () => {
 
     const res = await app.request('/probe');
     expect(res.status).toBe(200);
-    expect(collector.events).toHaveLength(1);
-    const e = collector.events[0]!;
+    expect(testEvents(collector)).toHaveLength(1);
+    const e = testEvents(collector)[0]!;
     expect(e.correlationId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
@@ -76,7 +91,7 @@ describe('executionContextMiddleware', () => {
       headers: { 'X-Correlation-Id': 'corr-fixed-1' },
     });
     expect(res.status).toBe(200);
-    expect(collector.events[0]!.correlationId).toBe('corr-fixed-1');
+    expect(testEvents(collector)[0]!.correlationId).toBe('corr-fixed-1');
     expect(res.headers.get('x-correlation-id')).toBe('corr-fixed-1');
   });
 
@@ -96,7 +111,7 @@ describe('executionContextMiddleware', () => {
     });
     expect(res.status).toBe(200);
     // Bad chars → sanitizer rejects → fresh UUID minted.
-    const id = collector.events[0]!.correlationId;
+    const id = testEvents(collector)[0]!.correlationId;
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
   });
 
@@ -107,7 +122,7 @@ describe('executionContextMiddleware', () => {
       return c.text('ok');
     });
     await app.request('/probe');
-    const e = collector.events[0]!;
+    const e = testEvents(collector)[0]!;
     expect(e.principalId).toBe('anonymous');
     expect(e.tenantId).toBe('dev-tenant');
   });
@@ -125,8 +140,8 @@ describe('executionContextMiddleware', () => {
       return c.text('ok');
     });
     await app.request('/probe', { headers: { 'X-Correlation-Id': 'fixed' } });
-    expect(collector.events.length).toBe(3);
-    for (const e of collector.events) {
+    expect(testEvents(collector).length).toBe(3);
+    for (const e of testEvents(collector)) {
       expect(e.correlationId).toBe('fixed');
     }
   });
@@ -139,8 +154,8 @@ describe('executionContextMiddleware', () => {
     });
     await app.request('/probe');
     await app.request('/probe');
-    expect(collector.events).toHaveLength(2);
-    const ids = collector.events.map((e: LogEvent) => e.correlationId);
+    expect(testEvents(collector)).toHaveLength(2);
+    const ids = testEvents(collector).map((e: LogEvent) => e.correlationId);
     expect(new Set(ids).size).toBe(2);
   });
 
@@ -152,8 +167,32 @@ describe('executionContextMiddleware', () => {
     });
     await app.request('/probe');
     await app.request('/probe');
-    const requestIds = collector.events.map((e) => e.requestId).filter(Boolean);
+    const requestIds = testEvents(collector).map((e) => e.requestId).filter(Boolean);
     expect(requestIds).toHaveLength(2);
     expect(new Set(requestIds).size).toBe(2);
+  });
+
+  it('emits Request.Received and Request.Completed boundary events', async () => {
+    const { app, collector } = makeRig();
+    app.get('/probe', (c) => c.text('ok'));
+    const res = await app.request('/probe', {
+      headers: { 'X-Correlation-Id': 'corr-boundary' },
+    });
+    expect(res.status).toBe(200);
+    const boundary = boundaryEvents(collector);
+    expect(boundary.map((e) => e.eventName)).toEqual([
+      'Request.Received',
+      'Request.Completed',
+    ]);
+    for (const e of boundary) {
+      expect(e.correlationId).toBe('corr-boundary');
+    }
+    const completed = boundary[1]!;
+    expect(completed.properties).toMatchObject({
+      method: 'GET',
+      path: '/probe',
+      status: 200,
+    });
+    expect(typeof completed.durationMs).toBe('number');
   });
 });

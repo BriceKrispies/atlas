@@ -27,11 +27,16 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
   app.post('/api/v1/intents', async (c: AppCtx) => {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
+    const ctx = c.get('ctx');
 
     let envelope: IntentEnvelope;
     try {
       envelope = (await c.req.json()) as IntentEnvelope;
     } catch (e) {
+      ctx.logger.info('intent rejected', {
+        event: 'Intent.Rejected',
+        properties: { code: 'BAD_REQUEST', reason: 'invalid-json-body' },
+      });
       return errorResponse(
         c,
         'BAD_REQUEST',
@@ -50,10 +55,34 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       envelope.principalId = principal.principalId;
     }
 
+    const action =
+      typeof envelope.payload === 'object' &&
+      envelope.payload !== null &&
+      typeof envelope.payload.actionId === 'string'
+        ? envelope.payload.actionId
+        : 'unknown';
+
+    ctx.logger.info('intent submitted', {
+      event: 'Intent.Submitted',
+      properties: {
+        actionId: action,
+        eventType: envelope.eventType,
+        idempotencyKey: envelope.idempotencyKey,
+      },
+    });
+
     let bundle;
     try {
       bundle = await buildRequestBundle(state, principal, correlationId);
     } catch (e) {
+      ctx.logger.info('intent rejected', {
+        event: 'Intent.Rejected',
+        properties: {
+          code: 'BUNDLE_BUILD_FAILED',
+          reason: (e as Error).message,
+          actionId: action,
+        },
+      });
       return mapError(c, e, correlationId);
     }
 
@@ -66,17 +95,28 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
     // is dwarfed by the success path in steady state. If this ever
     // becomes a cardinality concern, switch to a hardcoded `unknown`
     // bucket on schema-validation failures.
-    const action =
-      typeof envelope.payload === 'object' &&
-      envelope.payload !== null &&
-      typeof envelope.payload.actionId === 'string'
-        ? envelope.payload.actionId
-        : 'unknown';
     const start = process.hrtime.bigint();
     try {
       const response = await submitIntent(bundle.ingress, envelope);
+      ctx.logger.info('intent accepted', {
+        event: 'Intent.Accepted',
+        properties: {
+          actionId: action,
+          eventId: response.eventId,
+          idempotencyKey: envelope.idempotencyKey,
+        },
+      });
       return c.json(response, 202);
     } catch (e) {
+      const err = e as Error;
+      ctx.logger.info('intent rejected', {
+        event: 'Intent.Rejected',
+        properties: {
+          code: (e as { code?: string }).code ?? 'INTERNAL_ERROR',
+          reason: err.message,
+          actionId: action,
+        },
+      });
       return mapError(c, e, correlationId);
     } finally {
       const elapsed = Number(process.hrtime.bigint() - start) / 1e9;

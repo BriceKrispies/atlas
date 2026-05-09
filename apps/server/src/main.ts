@@ -24,8 +24,10 @@ import {
   LogPipeline,
   MemoryRingBufferSink,
   createSystemContext,
+  isLogLevel,
   registerForExitFlush,
 } from '@atlas/logging';
+import type { LogLevel } from '@atlas/platform-core';
 import { loadConfig } from './config.ts';
 import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
 import { healthRoutes } from './routes/health.ts';
@@ -127,7 +129,16 @@ async function main(): Promise<void> {
   // for atlasctl logging inspect <correlationId>). Keep a typed
   // reference to the ring so the admin-logging route can query it
   // without iterating pipeline.sinks.
-  const levelController = new InMemoryLevelController('info');
+  // LOG_LEVEL seeds the global override on the level controller. Defaults
+  // to 'info' for production parity. Smoke / debugging flows set
+  // LOG_LEVEL=debug to surface boundary trace lines (Request.Received,
+  // Dispatcher.Ran, etc.) that are filtered out at info.
+  const initialLevel: LogLevel = (() => {
+    const raw = process.env['LOG_LEVEL'];
+    if (raw && isLogLevel(raw)) return raw;
+    return 'info';
+  })();
+  const levelController = new InMemoryLevelController(initialLevel);
   const inspectionSink = new MemoryRingBufferSink({ capacity: 5000 });
   const logPipeline = new LogPipeline(
     [new ConsoleJsonSink(), inspectionSink],

@@ -76,6 +76,56 @@ function newAuditId(): string {
 let asyncDispatchSkipLogged = false;
 
 /**
+ * Wrap a dispatcher closure so each invocation emits a `Dispatcher.Ran`
+ * debug line on the per-request ctx. Captures durationMs and surfaces
+ * eventType (already on the envelope) so the trace shows which dispatcher
+ * touched which event. Errors propagate unchanged — composeDispatchers'
+ * error semantics are preserved.
+ */
+function instrumentDispatcher(
+  name: string,
+  state: AppState,
+  tenantId: string,
+  correlationId: string,
+  d: EventDispatcher,
+): EventDispatcher {
+  return async (envelope) => {
+    const ctx = createSystemContext({
+      pipeline: state.logPipeline,
+      environment: state.config.environment,
+      tenantId,
+      moduleId: '@atlas/server',
+      correlationId,
+    });
+    const started = performance.now();
+    try {
+      await d(envelope);
+      ctx.logger.debug('dispatcher ran', {
+        event: 'Dispatcher.Ran',
+        durationMs: performance.now() - started,
+        properties: {
+          dispatcher: name,
+          eventType: envelope.eventType,
+          eventId: envelope.eventId,
+        },
+      });
+    } catch (e) {
+      ctx.logger.debug('dispatcher failed', {
+        event: 'Dispatcher.Ran',
+        durationMs: performance.now() - started,
+        properties: {
+          dispatcher: name,
+          eventType: envelope.eventType,
+          eventId: envelope.eventId,
+          error: (e as Error).message,
+        },
+      });
+      throw e;
+    }
+  };
+}
+
+/**
  * Build the no-op dispatcher used when `WORKER_MODE=async`. Matches the
  * `EventDispatcher` signature so the call sites in `submitIntent` and
  * the audit hook are mode-agnostic. Emits a single structured log line
@@ -237,28 +287,31 @@ export async function buildRequestBundle(
   // We still build `inlineDispatch` first because the call sites
   // (submitIntent, the audit hook below) expect an `EventDispatcher`
   // shape regardless of mode; in async mode we just don't invoke it.
+  const wrap = (name: string, d: EventDispatcher | null): EventDispatcher | null =>
+    d === null ? null : instrumentDispatcher(name, state, principal.tenantId, correlationId, d);
+
   const inlineDispatch: EventDispatcher = composeDispatchers(
-    catalogDispatcher({ catalogState, projections, search, cache }),
-    contentPagesDispatcher({
+    wrap('catalog', catalogDispatcher({ catalogState, projections, search, cache })),
+    wrap('content-pages', contentPagesDispatcher({
       entities,
       relations,
       cache,
       ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
-    }),
-    identityDispatcher({ entities, relations, cache }),
+    })),
+    wrap('identity', identityDispatcher({ entities, relations, cache })),
     // Code / repository — projection rebuilds for `Repository.Created`
     // and `Repository.Uploaded`. Runs after identity (per-domain
     // ordering) and BEFORE `cacheTagDispatcher` so the cache-tag
     // dispatcher can pick up tags emitted by repository projections.
-    repositoryDispatcher({ repositories, revisions, cache }),
-    cacheTagDispatcher(cache),
-    policyBundle ? policyCacheDispatcher(policyBundle) : null,
+    wrap('repository', repositoryDispatcher({ repositories, revisions, cache })),
+    wrap('cache-tag', cacheTagDispatcher(cache)),
+    wrap('policy-cache', policyBundle ? policyCacheDispatcher(policyBundle) : null),
     // Fan freshly-dispatched events out to SSE/WS subscribers. Runs
     // last so subscribers only see events whose projections have been
     // rebuilt and whose cache tags have been invalidated. Mirrors the
     // Rust worker's `event_sender.send(...)` calls (see
     // `crates/ingress/src/worker.rs`).
-    serverEventDispatcher(state.serverEvents),
+    wrap('server-events', serverEventDispatcher(state.serverEvents)),
   );
 
   const dispatch: EventDispatcher =

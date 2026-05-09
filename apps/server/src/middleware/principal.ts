@@ -123,6 +123,30 @@ function upgradeContextWithPrincipal(
   if (prior.requestId !== undefined) ctxInput.requestId = prior.requestId;
   const upgraded = createRootContext(ctxInput);
   c.set('ctx', upgraded);
+  upgraded.logger.debug('authentication resolved', {
+    event: 'Authn.Resolved',
+    properties: {
+      principalType: principal.userId ? 'user' : 'service',
+      roles: principal.roles?.length ?? 0,
+    },
+  });
+}
+
+/**
+ * Emit an `Authn.Failed` audit-style log line on the per-request ctx.
+ * Safe to call before `upgradeContextWithPrincipal` runs — the anonymous
+ * ctx set by `executionContextMiddleware` is always available.
+ */
+function logAuthnFailed(
+  c: Context<{ Variables: ServerVariables }>,
+  code: string,
+  reason: string,
+): void {
+  const ctx = c.get('ctx');
+  ctx?.logger.info('authentication failed', {
+    event: 'Authn.Failed',
+    properties: { code, reason },
+  });
 }
 
 function parseDebugPrincipal(
@@ -477,6 +501,7 @@ export function principalMiddleware(state: AppState) {
           // Rust counterpart: AuthnError::malformed → 400 BAD_REQUEST. Code is
           // PRINCIPAL_INVALID because the spec-taxonomy AUTHN bucket has no
           // dedicated "malformed test-auth header" entry; collapsing here.
+          logAuthnFailed(c, 'PRINCIPAL_INVALID', 'debug-principal-malformed');
           return errorResponse(
             c,
             'PRINCIPAL_INVALID',
@@ -489,6 +514,7 @@ export function principalMiddleware(state: AppState) {
           // Host says tenantA, debug principal claims tenantB → reject.
           // Prevents "log in to tenantA, browse to a custom-branded URL
           // owned by tenantB to trigger tenantB-side actions".
+          logAuthnFailed(c, 'PRINCIPAL_INVALID', 'debug-principal-host-tenant-mismatch');
           return errorResponse(
             c,
             'PRINCIPAL_INVALID',
@@ -530,6 +556,7 @@ export function principalMiddleware(state: AppState) {
     // a structured envelope while staying behaviourally aligned with Rust.
     const authHeader = c.req.header('Authorization') ?? c.req.header('authorization');
     if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+      logAuthnFailed(c, 'PRINCIPAL_INVALID', 'missing-or-malformed-authorization-header');
       return errorResponse(
         c,
         'PRINCIPAL_INVALID',
@@ -540,6 +567,7 @@ export function principalMiddleware(state: AppState) {
     }
     const token = authHeader.slice(7).trim();
     if (!token) {
+      logAuthnFailed(c, 'PRINCIPAL_INVALID', 'empty-bearer-token');
       return errorResponse(
         c,
         'PRINCIPAL_INVALID',
