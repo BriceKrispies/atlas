@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import type postgres from 'postgres';
 import { buildRolePackBundle } from '@atlas/identity';
 import { moduleManifests } from '@atlas/schemas';
-import type { ManifestAction } from '@atlas/adapter-policy-cedar';
+import type { ActionDeclaration } from '@atlas/platform-core';
 import { seedContentPagesEntityTypes } from '../seeds/content-pages-types.ts';
 import { seedIdentityEntityTypes } from '../seeds/identity-types.ts';
 
@@ -70,15 +70,17 @@ function md5Hex(input: string): string {
 }
 
 /**
- * Pull every `ManifestAction` declared across the bundled module
+ * Pull every `ActionDeclaration` declared across the bundled module
  * manifests. Used to drive the role-pack Cedar generation. Defensive
  * shape coercion — `moduleManifests()` returns `unknown[]` so we
- * structurally pick what we need.
+ * structurally pick what we need. Missing `verb` defaults to empty
+ * (treated as a read by the role-pack builder); missing `auditLevel`
+ * defaults to `INFO` (the role-pack builder ignores this field).
  */
 function collectManifestActions(
   manifests: ReadonlyArray<unknown>,
-): ManifestAction[] {
-  const out: ManifestAction[] = [];
+): ActionDeclaration[] {
+  const out: ActionDeclaration[] = [];
   for (const m of manifests) {
     if (typeof m !== 'object' || m === null) continue;
     const actions = (m as { actions?: unknown }).actions;
@@ -88,12 +90,20 @@ function collectManifestActions(
       const aid = (a as { actionId?: unknown }).actionId;
       const rt = (a as { resourceType?: unknown }).resourceType;
       if (typeof aid !== 'string' || typeof rt !== 'string') continue;
-      const verb = (a as { verb?: unknown }).verb;
+      const rawVerb = (a as { verb?: unknown }).verb;
+      const rawAuditLevel = (a as { auditLevel?: unknown }).auditLevel;
       out.push({
         actionId: aid,
         resourceType: rt,
-        ...(typeof verb === 'string' ? { verb } : {}),
-      } as ManifestAction);
+        verb: typeof rawVerb === 'string' ? rawVerb : '',
+        auditLevel:
+          rawAuditLevel === 'NONE' ||
+          rawAuditLevel === 'BASIC' ||
+          rawAuditLevel === 'SENSITIVE' ||
+          rawAuditLevel === 'FULL_PAYLOAD'
+            ? rawAuditLevel
+            : 'INFO',
+      });
     }
   }
   return out;

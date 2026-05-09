@@ -511,9 +511,6 @@ importers:
 
   modules/identity:
     dependencies:
-      '@atlas/adapter-policy-cedar':
-        specifier: workspace:*
-        version: link:../../adapters/policy-cedar
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../../packages/platform-core
@@ -599,6 +596,10 @@ importers:
       '@atlas/logging':
         specifier: workspace:*
         version: link:../logging
+    devDependencies:
+      linkedom:
+        specifier: ^0.18.0
+        version: 0.18.12
 
   packages/design:
     dependencies:
@@ -732,7 +733,11 @@ importers:
         specifier: ^1.48.0
         version: 1.59.1
 
-  packages/test-state: {}
+  packages/test-state:
+    devDependencies:
+      linkedom:
+        specifier: ^0.18.0
+        version: 0.18.12
 
   packages/wasm-host:
     dependencies:

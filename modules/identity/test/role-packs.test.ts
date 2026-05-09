@@ -1,24 +1,24 @@
 /**
  * Role-pack Cedar generator tests.
  *
- * The generator is a pure function over `ManifestAction[]` — no I/O,
+ * The generator is a pure function over `ActionDeclaration[]` — no I/O,
  * no DB. We assert verb classification, action-set ordering (stable so
  * the bundle hash is reproducible), and the structural shape of the
  * emitted Cedar text.
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ManifestAction } from '@atlas/adapter-policy-cedar';
+import type { ActionDeclaration } from '@atlas/platform-core';
 import { buildRolePacksCedar, buildRolePackBundle } from '../src/index.ts';
 
-const ACTIONS: ManifestAction[] = [
-  { actionId: 'ContentPages.Page.Create', resourceType: 'Page', verb: 'create' } as ManifestAction,
-  { actionId: 'ContentPages.Page.Update', resourceType: 'Page', verb: 'update' } as ManifestAction,
-  { actionId: 'ContentPages.Page.Delete', resourceType: 'Page', verb: 'delete' } as ManifestAction,
-  { actionId: 'ContentPages.Page.Search', resourceType: 'Page', verb: 'search' } as ManifestAction,
-  { actionId: 'Catalog.Family.Publish', resourceType: 'Family', verb: 'publish' } as ManifestAction,
-  { actionId: 'Catalog.Family.Get', resourceType: 'Family', verb: 'get' } as ManifestAction,
-  { actionId: 'Analytics.Query', resourceType: 'AnalyticsDashboard', verb: 'query' } as ManifestAction,
+const ACTIONS: ActionDeclaration[] = [
+  { actionId: 'ContentPages.Page.Create', resourceType: 'Page', verb: 'create', auditLevel: 'INFO' },
+  { actionId: 'ContentPages.Page.Update', resourceType: 'Page', verb: 'update', auditLevel: 'INFO' },
+  { actionId: 'ContentPages.Page.Delete', resourceType: 'Page', verb: 'delete', auditLevel: 'INFO' },
+  { actionId: 'ContentPages.Page.Search', resourceType: 'Page', verb: 'search', auditLevel: 'INFO' },
+  { actionId: 'Catalog.Family.Publish', resourceType: 'Family', verb: 'publish', auditLevel: 'INFO' },
+  { actionId: 'Catalog.Family.Get', resourceType: 'Family', verb: 'get', auditLevel: 'INFO' },
+  { actionId: 'Analytics.Query', resourceType: 'AnalyticsDashboard', verb: 'query', auditLevel: 'INFO' },
 ];
 
 describe('buildRolePacksCedar', () => {
@@ -89,8 +89,8 @@ describe('buildRolePacksCedar', () => {
   });
 
   it('treats unknown verbs as reads (defensive)', () => {
-    const odd: ManifestAction[] = [
-      { actionId: 'Module.Mystery', resourceType: 'X', verb: 'mystery' as unknown as string } as ManifestAction,
+    const odd: ActionDeclaration[] = [
+      { actionId: 'Module.Mystery', resourceType: 'X', verb: 'mystery', auditLevel: 'INFO' },
     ];
     const cedar = buildRolePacksCedar(odd);
     const writeBlock = cedar.split('@id("role-author-write")')[1]?.split('@id("role-author-read")')[0] ?? '';

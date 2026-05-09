@@ -8,7 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@atlas/adapter-policy-cedar": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",
     "@simplewebauthn/server": "^13.3.0",

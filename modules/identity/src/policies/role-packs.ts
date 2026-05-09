@@ -23,7 +23,7 @@
  * "highest version wins + don't downgrade" semantics.
  */
 
-import type { ManifestAction } from '@atlas/adapter-policy-cedar';
+import type { ActionDeclaration } from '@atlas/platform-core';
 
 /**
  * Verbs treated as MUTATING. Anything not in this set is treated as a
@@ -68,20 +68,12 @@ function actionSetLiteral(ids: ReadonlyArray<string>): string {
  * Classify every manifest action into write / read buckets and emit
  * the four-role Cedar policy bundle.
  */
-export function buildRolePacksCedar(actions: ReadonlyArray<ManifestAction>): string {
+export function buildRolePacksCedar(actions: ReadonlyArray<ActionDeclaration>): string {
   const writeActions: string[] = [];
   const readActions: string[] = [];
   for (const a of actions) {
-    if (typeof a.actionId !== 'string' || a.actionId.length === 0) continue;
-    const verb = (a as { verb?: unknown }).verb;
-    if (typeof verb !== 'string') {
-      // Manifests today require `verb`; defensively bucket as read so a
-      // missing-verb action doesn't accidentally land in TenantAdmin-only
-      // territory.
-      readActions.push(a.actionId);
-      continue;
-    }
-    if (isWriteVerb(verb)) {
+    if (a.actionId.length === 0) continue;
+    if (isWriteVerb(a.verb)) {
       writeActions.push(a.actionId);
     } else {
       readActions.push(a.actionId);
@@ -152,7 +144,7 @@ export interface PolicyBundleWrapper {
 }
 
 export function buildRolePackBundle(
-  actions: ReadonlyArray<ManifestAction>,
+  actions: ReadonlyArray<ActionDeclaration>,
 ): PolicyBundleWrapper {
   return {
     format: 'cedar-text',
