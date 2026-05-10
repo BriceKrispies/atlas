@@ -1,9 +1,9 @@
 ---
 title: Seeder Phase 1.4 — adapter-seed-memory + schema registration
-status: scoped
+status: review
 type: capability
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [agentic-first]
@@ -85,3 +85,10 @@ Update tickets/INDEX.md.
 ## Notes / log
 
 - 2026-05-10: created. Migrated from TASK.md "Phase 1.4" entry.
+- 2026-05-10: in-flight → review. Implemented by `port-adapter-dev` (opus) in worktree, cherry-picked to main as `0ce9ef4` — 9 files, 489 insertions. Acceptance gates: typecheck clean, 8/8 tests passing, deps:check 0 errors.
+  Notable implementation choices for sdet to scrutinise:
+  - The "worked-example scenario" referenced in the resume prompt is **absent from `specs/crosscut/seed-corpus.md`** (spec ends at §9 cross-references). Agent created a minimal-but-spec-aligned example inline in the smoke test and asserted AJV validation against `seed.scenario.v1`. Worth a spec follow-up: add the worked example to the spec proper.
+  - `seed.*.v1` schemas declare `$schema: draft-07`. AJV2020 needed `addMetaSchema(draft7)` and an alias-keyed `addSchema(eventEnvelope, 'event-envelope.v1')` (because `event_envelope.schema.json`'s `$id` is a long URL while seed schemas reference the short id). Aliasing is scoped to the loader. Suggested follow-up: `chore/event-envelope-schema-id-rename` to normalise `$id`s repo-wide and remove the alias.
+  - `listScenarios` snapshots at iteration-start (current behavior). The spec says streaming; if Phase 1.5 contract tests want live-stream semantics (concurrent add during iteration → new entries visible), revisit. Snapshot is one valid interpretation.
+  - `Crypto` constructor-injected; node-backed test stub lives only in the test file.
+  - `pnpm-workspace.yaml` has an explicit `adapters/seed-memory` line (redundant under `adapters/*` glob; kept per resume prompt).

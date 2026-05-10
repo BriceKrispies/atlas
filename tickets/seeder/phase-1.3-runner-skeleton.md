@@ -1,9 +1,9 @@
 ---
 title: Seeder Phase 1.3 — packages/seeder runner skeleton
-status: scoped
+status: review
 type: capability
-owner: module-dev
-phase: 1
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [agentic-first, atlas-on-atlas]
@@ -90,3 +90,9 @@ Update tickets/INDEX.md.
 ## Notes / log
 
 - 2026-05-10: created. Migrated from TASK.md "Phase 1.3" entry. Spec is complete (see specs/crosscut/seed-corpus.md, lands via chore/commit-untracked-deliverables).
+- 2026-05-10: in-flight → review. Implemented by `module-dev` (opus). Committed in `bd79db0` — 11 files, 678 insertions. Acceptance gates: typecheck clean, 6/6 tests passing, deps:check 0 errors.
+  Notable implementation choices for sdet to scrutinise:
+  - `IntentDriver` is a *local* interface in `packages/seeder/src/types.ts` because `@atlas/test-fabric` does not yet exist as a workspace package. Re-exported from `src/index.ts`. Will be lifted/replaced when test-fabric lands.
+  - `Crypto` is taken via `RunnerDeps.crypto` (`@atlas/ports`); no `node:crypto` import. Test uses a `Pick<Crypto, 'sha256'>`-narrowed stub.
+  - Default `retry: 0` (fail-fast) per locked decision.
+  - `pnpm-workspace.yaml` has an explicit `packages/seeder` line (redundant under `packages/*` glob; kept per resume prompt).
