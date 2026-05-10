@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seed.fixture.v1",
+  "title": "SeedFixture",
+  "description": "A composable, reusable bundle of ScenarioSteps. Scenarios reference fixtures via 'apply: [fixtureRef]'. Recursive composition is depth-limited at runtime (max 8). See specs/crosscut/seed-corpus.md §4.2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "fixtureId", "steps"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "fixtureId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,127}$",
+      "description": "Stable, corpus-unique id. Slash-segments are conventional grouping (e.g. 'tenants/single-basic')."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "apply": {
+      "type": "array",
+      "description": "FixtureRefs whose steps are prepended (in order) to this fixture's steps. Recursive composition; cycles forbidden, depth ≤ 8 enforced at runtime.",
+      "items": { "$ref": "#/definitions/FixtureRef" },
+      "maxItems": 32
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ScenarioStep" },
+      "minItems": 1,
+      "maxItems": 1024
+    }
+  },
+  "definitions": {
+    "FixtureRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtureId", "contentHash"],
+      "properties": {
+        "fixtureId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,127}$"
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "ScenarioStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepId", "intent"],
+      "properties": {
+        "stepId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+        },
+        "intent": {
+          "$ref": "event-envelope.v1#"
+        },
+        "asTenant": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "asPrincipal": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "errorCode": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

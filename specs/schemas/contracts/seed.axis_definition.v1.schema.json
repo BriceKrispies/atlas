@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seed.axis_definition.v1",
+  "title": "SeedAxisDefinition",
+  "description": "One axis of a fuzz Template. kind=enum lists discrete values; kind=range steps inclusively from..to; kind=generator names a deterministic generator the runner's PRNG drives. See specs/crosscut/scenario-fuzzing.md §4.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "kind"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,62}$",
+      "description": "Axis name. Lexically sorted across an axes array to determine canonical id ordering."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["enum", "range", "generator"]
+    },
+    "values": {
+      "type": "array",
+      "description": "Required when kind=enum. Each value stringified to canonical-JSON form during scenarioId encoding.",
+      "items": {
+        "type": ["string", "number", "boolean"]
+      },
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true
+    },
+    "range": {
+      "type": "object",
+      "description": "Required when kind=range. Inclusive endpoints; (to - from) must be a non-negative multiple of step.",
+      "additionalProperties": false,
+      "required": ["from", "to", "step"],
+      "properties": {
+        "from": { "type": "integer" },
+        "to": { "type": "integer" },
+        "step": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "generatorRef": {
+      "type": "string",
+      "description": "Required when kind=generator. Format: '<family>:<variant>' e.g. 'string:slug', 'int:positive'. Phase 3 ships string and int families.",
+      "pattern": "^(string|int):[a-zA-Z][a-zA-Z0-9_-]{0,63}$"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Optional for kind=generator. Number of values to draw per axis (default 1). Each draw uses the same per-axis PRNG substream so order is deterministic.",
+      "minimum": 1,
+      "maximum": 1024
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "enum" } }, "required": ["kind"] },
+      "then": { "required": ["values"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "range" } }, "required": ["kind"] },
+      "then": { "required": ["range"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "generator" } }, "required": ["kind"] },
+      "then": { "required": ["generatorRef"] }
+    }
+  ]
+}

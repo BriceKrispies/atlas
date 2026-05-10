@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seed.template.v1",
+  "title": "SeedTemplate",
+  "description": "A parameterised scenario. Materialising a template takes the cartesian product of its axes and emits one Scenario per binding tuple. See specs/crosscut/scenario-fuzzing.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "templateId", "axes", "template"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "templateId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+      "description": "Stable id. Used as the prefix for materialized scenarioIds per the axis-id grammar (scenario-fuzzing.md §5)."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]+$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "uniqueItems": true,
+      "maxItems": 32
+    },
+    "axes": {
+      "type": "array",
+      "items": { "$ref": "seed.axis_definition.v1#" },
+      "minItems": 1,
+      "maxItems": 16
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The step-template body. Same shape as a Scenario sans scenarioId. String fields in steps may contain ${axisName} placeholders that the materialiser substitutes per binding.",
+      "required": ["steps"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "uniqueItems": true
+        },
+        "apply": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fixtureId", "contentHash"],
+            "properties": {
+              "fixtureId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,127}$"
+              },
+              "contentHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "maxItems": 32
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepId", "intent"],
+            "properties": {
+              "stepId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9$][a-zA-Z0-9${}_-]{0,127}$",
+                "description": "May contain ${axisName} placeholders for materialisation."
+              },
+              "intent": {
+                "type": "object",
+                "description": "IntentEnvelope-shaped; string fields may contain ${axisName} placeholders. Strict validation (against event-envelope.v1) is deferred until after materialisation."
+              },
+              "asTenant": { "type": "string" },
+              "asPrincipal": { "type": "string" },
+              "expect": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "ok": { "type": "boolean" },
+                  "errorCode": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+                  }
+                }
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 1024
+        }
+      }
+    }
+  }
+}

@@ -522,6 +522,42 @@ These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 000
 
 ---
 
+## Seed Corpus Nouns
+
+These entries describe the seed-corpus and scenario-fuzzing vocabulary introduced by [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) and [`crosscut/scenario-fuzzing.md`](crosscut/scenario-fuzzing.md). They cover the shared building blocks the seeder, atlasctl, and the test fabric all consume.
+
+### SeedCorpus
+- **Kind**: Noun (port). A port-backed library of `Scenario`s and `Fixture`s; methods `listScenarios`, `loadScenario`, `loadFixture`. Adapters: memory (Phase 1), fs (Phase 2), sqlite (Phase 4). See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.
+
+### Scenario
+- **Kind**: Noun. A stable-id'd, ordered list of `ScenarioStep`s plus optional `apply: [fixtureRef]` composition; defines a known starting state the runner produces by submitting each step's intent through `IntentDriver`. See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.2.
+
+### Fixture
+- **Kind**: Noun. A reusable bundle of `ScenarioStep`s referenced by other scenarios via `apply: [fixtureRef]`; recursive composition is depth-limited to 8 at runtime. See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.2.
+
+### ScenarioStep
+- **Kind**: Noun. One step in a scenario or fixture: a `stepId`, an `intent` (IntentEnvelope), optional `asTenant`/`asPrincipal` handles, and optional `expect: { ok?, errorCode? }` acceptance. See `seed.scenario.v1` schema.
+
+### ScenarioRef
+- **Kind**: Noun. A reference into a `SeedCorpus`: `{ scenarioId, contentHash, origin: 'fixed' | 'materialized', axisBindings? }`; `listScenarios` streams these. See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.1.
+
+### FixtureRef
+- **Kind**: Noun. A reference into a `SeedCorpus`: `{ fixtureId, contentHash }`; carried in `Scenario.apply[]` and `Fixture.apply[]`. See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.1.
+
+### AxisDefinition
+- **Kind**: Noun. One axis of a fuzz `Template`: `kind: enum | range | generator`, with `values` / `range: {from, to, step}` / `generatorRef` respectively. See [`crosscut/scenario-fuzzing.md`](crosscut/scenario-fuzzing.md) §4.
+
+### axis-id
+- **Kind**: Noun (grammar). The materialized-scenario id format `<templateId>/<axisName>=<value>/...`; axes lexically sorted by name, values percent-encoded outside `[A-Za-z0-9._-]`; round-trippable from a CI log line alone. See [`crosscut/scenario-fuzzing.md`](crosscut/scenario-fuzzing.md) §5.
+
+### materialized scenario
+- **Kind**: Noun. A `Scenario` produced by expanding a fuzz `Template` against a binding tuple; `ScenarioRef.origin === 'materialized'` and the scenarioId follows the axis-id grammar. See [`crosscut/scenario-fuzzing.md`](crosscut/scenario-fuzzing.md) §6.
+
+### fixed scenario
+- **Kind**: Noun. A `Scenario` authored directly (not produced from a template); `ScenarioRef.origin === 'fixed'`. The scenarioId is a hand-chosen kebab-case slug. See [`crosscut/seed-corpus.md`](crosscut/seed-corpus.md) §4.2.
+
+---
+
 ## UI Composition Nouns *(scope: parked first-party CMS app)*
 
 The entries below are CMS-flavored vocabulary from before the developer-platform re-anchor ([ADR 0002](decisions/0002-developer-platform-domain-map.md)) and the multi-tenant-fabric pivot ([ADR 0003](decisions/0003-tenant-defined-data-model-pivot.md)). They remain here for historical continuity and because the parked CMS app at `apps/cms/` may revive on top of `custom-schema` + `functions` later (or may not — see ADR 0003 §"Out of scope"). Active platform vocabulary lives above; these terms are not active for new work.

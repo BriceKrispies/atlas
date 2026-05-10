@@ -29,6 +29,7 @@ implemented by an `/adapters/*` package.
 | `EventDispatcher` | `dispatcher.ts` | Event-handling composition closure (see [`specs/lifecycle.md`](../specs/lifecycle.md) for usage in context) |
 | `Mailer` | `mailer.ts` | Outbound email delivery (magic links, notifications) |
 | `WasmHost` / `WasmPluginLoader` | `wasm-host.ts` | Sandboxed plugin execution |
+| `SeedCorpus` | `seed-corpus.ts` | Operator/SDET-scoped library of scenarios + fixtures (memory/fs/sqlite) |
 
 The full surface is re-exported from `src/index.ts`. Read it first when picking
 the port a feature depends on.
