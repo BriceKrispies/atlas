@@ -363,6 +363,24 @@ describe('deriveIdempotencyKey', () => {
     expect(a).not.toBe(b);
   });
 
+  it('PINNED: exact bytes for known (scenarioId, stepIndex) pairs do not drift', () => {
+    // The seeder uses these keys to dedupe re-applies. A byte-level shift
+    // in the hash output (e.g. uppercase hex, leading-zero pruning,
+    // a different UTF-8 encoding path) would silently invalidate every
+    // existing replay log. Pin the exact 32 hex chars for a known input
+    // so the sha256Hex extraction can't drift without the test failing.
+    //
+    // Source of truth: openssl-equivalent
+    //   sha256("seed/scenario-1::0") = 7cb2e2ea83e721c5e4c1b50d96fa28fe<...>
+    //   sha256("seed/scenario-1::1") = 91dc561f37e2f948436bca11f4f7956a<...>
+    expect(deriveIdempotencyKey(stubCrypto as Crypto, 'seed/scenario-1', 0)).toBe(
+      '7cb2e2ea83e721c5e4c1b50d96fa28fe',
+    );
+    expect(deriveIdempotencyKey(stubCrypto as Crypto, 'seed/scenario-1', 1)).toBe(
+      '91dc561f37e2f948436bca11f4f7956a',
+    );
+  });
+
   it('SENTINEL COLLISION: scenarioIds containing "::" are NOT delimiter-safe', () => {
     // Spec §4.3: idempotencyKey = sha256Hex(scenarioId + '::' + i).slice(0, 32).
     // The current encoding has no field separator. Two distinct

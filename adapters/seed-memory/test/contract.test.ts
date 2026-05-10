@@ -133,6 +133,25 @@ describe('InMemorySeedCorpus (smoke)', () => {
     expect(ref!.contentHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('PINNED: contentHash for minimalScenario is byte-stable across the sha256Hex extraction', async () => {
+    // The contentHash drives fuzz reproducibility (specs/crosscut/
+    // seed-corpus.md §4.1): the same scenario body MUST always hash to
+    // the same 64-char hex string, otherwise replays diverge between
+    // runs. The recent extraction replaced an inline `bytesToHex` helper
+    // with `sha256Hex` from @atlas/platform-core; the previous regex pin
+    // would pass even if the helper silently changed casing or padding
+    // semantics. Pin the literal value of the canonical fixture so any
+    // such drift fails the suite.
+    //
+    // To recompute (when minimalScenario changes intentionally):
+    //   node -e "console.log(require('crypto').createHash('sha256')
+    //     .update(canonicalJsonStringify(minimalScenario)).digest('hex'))"
+    const ref = computeScenarioRef(minimalScenario, testCrypto);
+    expect(ref.contentHash).toBe(
+      '52140527f2273d4163c2df17c76509106432e74a418e8ae1a179918638940972',
+    );
+  });
+
   it('loadScenario validates against seed.scenario.v1 and round-trips', async () => {
     const corpus = buildCorpus();
     const ref = computeScenarioRef(minimalScenario, testCrypto);
@@ -221,13 +240,22 @@ describe('InMemorySeedCorpus (smoke)', () => {
     };
     const scenarios = new Map<string, Scenario>([[bad.scenarioId, bad]]);
     const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
-    await expect(
-      corpus.loadScenario({
-        scenarioId: bad.scenarioId,
-        contentHash: '0'.repeat(64),
-        origin: 'fixed',
-      }),
-    ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+    const badRef = {
+      scenarioId: bad.scenarioId,
+      contentHash: '0'.repeat(64),
+      origin: 'fixed' as const,
+    };
+    await expect(corpus.loadScenario(badRef)).rejects.toThrow(
+      /SEED_VALIDATION_FAILED/,
+    );
+    // Symmetry with the not-registered test below: a body-invalid fault
+    // must NOT collapse into the registry-misconfig code. Pins the
+    // distinction in BOTH directions, so a future swap of the two
+    // branches in validateOrThrow would fail this assertion AND the
+    // not-registered one (not just one of them).
+    await expect(corpus.loadScenario(badRef)).rejects.not.toThrow(
+      /SEED_VALIDATOR_NOT_REGISTERED/,
+    );
   });
 
   it('throws SEED_VALIDATION_FAILED when an unknown top-level field is added (additionalProperties:false)', async () => {
@@ -265,6 +293,38 @@ describe('InMemorySeedCorpus (smoke)', () => {
       // Must NOT collapse into the body-invalid code.
       await expect(corpus.loadScenario(ref)).rejects.not.toThrow(
         /SEED_VALIDATION_FAILED/,
+      );
+      // Message must name the schemaId that wasn't registered — without
+      // this, observability can't distinguish which of the two seed
+      // schemas tripped the misconfig.
+      await expect(corpus.loadScenario(ref)).rejects.toThrow(
+        /seed\.scenario\.v1/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('throws SEED_VALIDATOR_NOT_REGISTERED on loadFixture when seed.fixture.v1 is missing from the registry', async () => {
+    // loadFixture takes the same validateOrThrow branch as loadScenario
+    // but with schemaId='seed.fixture.v1'. Pin the new code for the
+    // fixture path independently — otherwise a regression that only
+    // touched the scenario branch would silently lose fixture coverage.
+    const schemasModule = await import('@atlas/schemas');
+    const spy = vi
+      .spyOn(schemasModule, 'getSchemaValidator')
+      .mockReturnValue(null);
+    try {
+      const corpus = buildCorpus();
+      const ref = computeFixtureRef(minimalFixture, testCrypto);
+      await expect(corpus.loadFixture(ref)).rejects.toThrow(
+        /SEED_VALIDATOR_NOT_REGISTERED/,
+      );
+      await expect(corpus.loadFixture(ref)).rejects.not.toThrow(
+        /SEED_VALIDATION_FAILED/,
+      );
+      await expect(corpus.loadFixture(ref)).rejects.toThrow(
+        /seed\.fixture\.v1/,
       );
     } finally {
       spy.mockRestore();
@@ -333,10 +393,12 @@ describe('InMemorySeedCorpus (smoke)', () => {
     expect(refs[0]!.origin).toBe('materialized');
   });
 
-  it('listScenarios is snapshot-at-iteration-start (mutations after start NOT visible — port spec ambiguous)', async () => {
-    // Spec §4.1 calls listScenarios "streaming". The implementation
-    // snapshots at start. Pin the current semantics so any move to live
-    // streaming is conscious. See ticket log: phase-1.4 flagged this.
+  it('listScenarios is snapshot-at-iteration-start: post-start adds are NOT observed', async () => {
+    // Pinned by `specs/crosscut/seed-corpus.md` §4.1 and the port JSDoc
+    // on `SeedCorpus.listScenarios`. Rationale: fuzz reproducibility —
+    // a run's corpus view is fixed at the moment listScenarios() is
+    // called, regardless of concurrent mutations during iteration. The
+    // fs and sqlite adapters MUST honour the same semantic.
     const scenarios = new Map<string, Scenario>([
       [minimalScenario.scenarioId, minimalScenario],
     ]);
@@ -348,6 +410,50 @@ describe('InMemorySeedCorpus (smoke)', () => {
     scenarios.set('late-add', { ...minimalScenario, scenarioId: 'late-add' });
     const next = await it.next();
     expect(next.done).toBe(true); // snapshot semantics: 'late-add' not seen
+  });
+
+  it('listScenarios is snapshot-at-iteration-start: post-start DELETES of not-yet-yielded entries are NOT observed', async () => {
+    // The §4.1 wording calls out "adds, removes, fs/sqlite writes" as
+    // all-excluded. Pin the remove path too — without this assertion
+    // an adapter could legally return undefined for a deleted entry
+    // mid-iteration and still claim spec compliance.
+    const scenarios = new Map<string, Scenario>();
+    for (let i = 0; i < 3; i++) {
+      scenarios.set(`s-${i}`, { ...minimalScenario, scenarioId: `s-${i}` });
+    }
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    const it = corpus.listScenarios()[Symbol.asyncIterator]();
+    const first = await it.next();
+    expect(first.done).toBe(false);
+    // Remove an entry the iterator hasn't reached yet.
+    scenarios.delete('s-2');
+    const second = await it.next();
+    const third = await it.next();
+    const fourth = await it.next();
+    // All three originally-snapshotted scenarios must still yield.
+    expect([first.value!.scenarioId, second.value!.scenarioId, third.value!.scenarioId].sort())
+      .toEqual(['s-0', 's-1', 's-2']);
+    expect(fourth.done).toBe(true);
+  });
+
+  it('listScenarios snapshot is per-call: a NEW listScenarios() after a mutation DOES observe the mutation', async () => {
+    // The other half of the snapshot contract: consumers that want to
+    // see post-start writes call listScenarios() again. This is the
+    // documented re-call path in the port JSDoc and §4.1.
+    const scenarios = new Map<string, Scenario>([
+      [minimalScenario.scenarioId, minimalScenario],
+    ]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+
+    const before: string[] = [];
+    for await (const ref of corpus.listScenarios()) before.push(ref.scenarioId);
+    expect(before).toEqual([minimalScenario.scenarioId]);
+
+    scenarios.set('late-add', { ...minimalScenario, scenarioId: 'late-add' });
+
+    const after: string[] = [];
+    for await (const ref of corpus.listScenarios()) after.push(ref.scenarioId);
+    expect(after.sort()).toEqual([minimalScenario.scenarioId, 'late-add'].sort());
   });
 
   it('listScenarios early-break does not leak state (re-iterating yields full list)', async () => {
@@ -408,5 +514,29 @@ describe('InMemorySeedCorpus (smoke)', () => {
     const r1 = computeScenarioRef(minimalScenario, testCrypto);
     const r2 = computeScenarioRef(reordered, testCrypto);
     expect(r1.contentHash).toBe(r2.contentHash);
+  });
+
+  // Regression pin for chore/event-envelope-schema-id-rename.
+  //
+  // The seed.scenario.v1 / seed.fixture.v1 contracts reference the event
+  // envelope by its short `$id` (`$ref: "event-envelope.v1#"`). The
+  // @atlas/schemas loader registers `event_envelope.schema.json` via
+  // `ajv.addSchema(eventEnvelope)` — no alias, no explicit key — so AJV
+  // discovers the schema strictly by the schema's own `$id`.
+  //
+  // If anyone re-introduces a long-URL `$id` on event_envelope.schema.json
+  // (and forgets to either restore the loader alias or rewrite the seed
+  // schemas' $refs), this test fails fast with a focused signal instead of
+  // a noisy AJV "can't resolve reference" deep in the seed-validation path.
+  it('regression: getSchemaValidator("event-envelope.v1") returns a usable validator (no loader alias needed)', async () => {
+    const { getSchemaValidator } = await import('@atlas/schemas');
+    const validate = getSchemaValidator('event-envelope.v1', 1);
+    expect(validate).not.toBeNull();
+    // Sanity-check the validator with the in-test minimalScenario's intent —
+    // that intent is the canonical envelope-shaped payload we already round-
+    // trip elsewhere in this file, so if event-envelope.v1 resolved to a
+    // mis-bound schema we'd see it here too.
+    const intent = minimalScenario.steps[0]!.intent;
+    expect(validate!(intent)).toBe(true);
   });
 });
