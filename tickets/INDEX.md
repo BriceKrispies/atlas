@@ -4,7 +4,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## seeder/
 
-- [spec-add-worked-example](seeder/spec-add-worked-example.md) — spec — review — → sdet
+- [spec-add-worked-example](seeder/spec-add-worked-example.md) — spec — review — → sdet (post-realism fix-pass)
 - [spec-streaming-vs-snapshot-clarify](seeder/spec-streaming-vs-snapshot-clarify.md) — spec — review — → sdet
 - [validate-or-throw-split-codes](seeder/validate-or-throw-split-codes.md) — refactor — review — → sdet
 - [intent-driver-lift-to-test-fabric](seeder/intent-driver-lift-to-test-fabric.md) — refactor — open — → port-adapter-dev (blocked on @atlas/test-fabric existing)

@@ -228,13 +228,17 @@ Phase gates: Phase 1 acceptance is contract-test-green against memory adapter + 
 
 ## 9. Worked example
 
-A realistic Phase 2 scenario a tenant author would write: seed a small developer-team tenant with an admin already in place and one editor invited and accepted. The starting state (tenant + admin) is reusable, so it lives in a fixture (`fixtures/tenants/single-basic`) that other scenarios — invite flows, role-management flows, billing-onboarding flows — all share via `apply:`.
+A realistic Phase 2 scenario a tenant author would write: against a fresh empty tenant, provision one admin user and grant them the admin role (reusable starting state — lives in a fixture), then issue and accept an invite for a second user with the editor role. Other scenarios (role-management, billing-onboarding, audit-export) share the same starting state via `apply: [fixtures/tenants/single-basic]`.
 
 The scenario is **materialized** from a `region` × `tier` template, which is why `axisBindings` is set and `scenarioId` follows the axis-id grammar from [`scenario-fuzzing.md`](scenario-fuzzing.md) §5.
 
+**Intent shape, not event shape.** The values in each `intent` block are `IntentEnvelope`s — the same wire shape `apps/server` accepts on `POST /api/v1/intents`. `payload.actionId` selects the handler in the registry (e.g. `Identity.User.Create` resolves to `handleUserCreate` per `modules/identity/src/handlers/registry.ts`); the rest of `payload` is the action's input. `eventType` and `schemaId` reference the schema the payload validates against — by convention the past-tense event the handler will emit (`Identity.UserCreated`, schema `identity.user.create.v1`). A reader copy-pasting these envelopes will get intents the registry actually dispatches.
+
+**Tenant pre-existence.** This example does not provision the tenant itself — no `Tenancy.Tenant.Create` action exists (tenants arrive via the signup pipeline, terminating in `Tenancy.SignupApproved` per `modules/tenancy/src/types.ts`). The fixture assumes the runner has already resolved `asTenant: team-onboard` to a fresh tenantId; a sibling fixture under `fixtures/tenants/` (out of scope for this example) would seed that signup if needed.
+
 When `runScenario` is invoked, it:
 
-1. Resolves `apply:` and prepends the fixture's two steps (`create-tenant`, `register-admin`) to the scenario's own two steps (`issue-editor-invite`, `accept-editor-invite`).
+1. Resolves `apply:` and prepends the fixture's two steps (`register-admin-user`, `grant-admin-membership`) to the scenario's own two steps (`issue-editor-invite`, `accept-editor-invite`).
 2. Derives per-step `idempotencyKey` and `correlationId` from `scenarioId + index` (§4.3) — the values embedded below are illustrative; the runner *overwrites* them at submit time so reruns dedupe.
 3. Submits each resulting `IntentEnvelope` through `IntentDriver`, going `authn → authz → quota → idempotency → dispatch` like any real intent (I1).
 
@@ -246,7 +250,7 @@ When `runScenario` is invoked, it:
 {
   "schemaVersion": 1,
   "scenarioId": "team-onboard/region=us-east-1/tier=starter",
-  "description": "Onboards a small developer-team tenant: provisions the tenant and admin via the fixtures/tenants/single-basic fixture, then issues and accepts an invite for a second user with the editor role.",
+  "description": "Onboards a small developer-team tenant: applies the fixtures/tenants/single-basic fixture (admin user + membership), then issues and accepts an invite for a second user with the editor role.",
   "tags": ["onboarding", "identity", "invite-flow"],
   "axisBindings": {
     "region": "us-east-1",
@@ -266,7 +270,7 @@ When `runScenario` is invoked, it:
       "intent": {
         "eventId": "evt-issue-editor-invite-0001",
         "eventType": "Identity.InviteIssued",
-        "schemaId": "domain.identity.invite.issued.v1",
+        "schemaId": "identity.invite.issue.v1",
         "schemaVersion": 1,
         "occurredAt": "2026-05-10T12:00:00.000Z",
         "tenantId": "t_team_onboard",
@@ -274,10 +278,10 @@ When `runScenario` is invoked, it:
         "correlationId": "seed:team-onboard/region=us-east-1/tier=starter:0",
         "idempotencyKey": "seed-team-onboard-step-0",
         "payload": {
-          "actionId": "identity.invite.issue",
+          "actionId": "Identity.Invite.Issue",
           "resourceType": "invite",
           "email": "editor@example.com",
-          "roles": ["editor"]
+          "rolesOnAccept": ["editor"]
         }
       }
     },
@@ -287,17 +291,17 @@ When `runScenario` is invoked, it:
       "intent": {
         "eventId": "evt-accept-editor-invite-0001",
         "eventType": "Identity.InviteAccepted",
-        "schemaId": "domain.identity.invite.accepted.v1",
+        "schemaId": "identity.invite.accept.v1",
         "schemaVersion": 1,
         "occurredAt": "2026-05-10T12:00:01.000Z",
         "tenantId": "t_team_onboard",
         "correlationId": "seed:team-onboard/region=us-east-1/tier=starter:1",
         "idempotencyKey": "seed-team-onboard-step-1",
         "payload": {
-          "actionId": "identity.invite.accept",
+          "actionId": "Identity.Invite.Accept",
           "resourceType": "invite",
-          "tokenId": "inv_editor_0001",
-          "handle": "editor"
+          "presentedToken": "inv-editor-0001-plaintext",
+          "acceptedEmail": "editor@example.com"
         }
       },
       "expect": { "ok": true }
@@ -312,45 +316,47 @@ When `runScenario` is invoked, it:
 {
   "schemaVersion": 1,
   "fixtureId": "fixtures/tenants/single-basic",
-  "description": "A single tenant with one admin principal. Reused as the starting state for invite-flow, role-management, and billing-onboarding scenarios.",
+  "description": "Given a fresh tenant already exists (the runner resolves asTenant: team-onboard to its tenantId), this fixture provisions one admin user and grants them the admin role. Reused as the starting state for invite-flow, role-management, and billing-onboarding scenarios.",
   "steps": [
     {
-      "stepId": "create-tenant",
+      "stepId": "register-admin-user",
+      "asTenant": "team-onboard",
       "asPrincipal": "operator",
       "intent": {
-        "eventId": "evt-create-tenant-0001",
-        "eventType": "Tenancy.TenantCreated",
-        "schemaId": "domain.tenancy.tenant.created.v1",
+        "eventId": "evt-register-admin-user-0001",
+        "eventType": "Identity.UserCreated",
+        "schemaId": "identity.user.create.v1",
         "schemaVersion": 1,
         "occurredAt": "2026-05-10T11:59:58.000Z",
         "tenantId": "t_team_onboard",
         "correlationId": "seed:fixtures/tenants/single-basic:0",
         "idempotencyKey": "seed-fixture-single-basic-0",
         "payload": {
-          "actionId": "tenancy.tenant.create",
-          "resourceType": "tenant",
-          "handle": "team-onboard"
+          "actionId": "Identity.User.Create",
+          "resourceType": "user",
+          "email": "admin@example.com",
+          "givenName": "Team",
+          "familyName": "Admin"
         }
       }
     },
     {
-      "stepId": "register-admin",
+      "stepId": "grant-admin-membership",
       "asTenant": "team-onboard",
       "asPrincipal": "operator",
       "intent": {
-        "eventId": "evt-register-admin-0001",
-        "eventType": "Identity.UserCreated",
-        "schemaId": "domain.identity.user.created.v1",
+        "eventId": "evt-grant-admin-membership-0001",
+        "eventType": "Identity.MembershipCreated",
+        "schemaId": "identity.membership.create.v1",
         "schemaVersion": 1,
         "occurredAt": "2026-05-10T11:59:59.000Z",
         "tenantId": "t_team_onboard",
         "correlationId": "seed:fixtures/tenants/single-basic:1",
         "idempotencyKey": "seed-fixture-single-basic-1",
         "payload": {
-          "actionId": "identity.user.create",
-          "resourceType": "user",
-          "handle": "admin",
-          "email": "admin@example.com",
+          "actionId": "Identity.Membership.Create",
+          "resourceType": "membership",
+          "userId": "u_admin",
           "roles": ["admin"]
         }
       }
@@ -361,10 +367,11 @@ When `runScenario` is invoked, it:
 
 ### 9.3 What this example pins
 
-- **Multi-step ordering.** Four steps in resolved order — `create-tenant`, `register-admin` (from the fixture), then `issue-editor-invite`, `accept-editor-invite` (from the scenario). The runner submits them sequentially; later steps may causally depend on earlier ones (the invite-accept step relies on the invite issued two steps prior).
+- **Multi-step ordering.** Four steps in resolved order — `register-admin-user`, `grant-admin-membership` (from the fixture), then `issue-editor-invite`, `accept-editor-invite` (from the scenario). The runner submits them sequentially; later steps may causally depend on earlier ones (the invite-accept step relies on the invite issued two steps prior; the membership step relies on the user the prior step created).
 - **`apply:` composition.** The fixture is referenced by id + `contentHash`; the runner verifies the hash matches the resolved fixture before flattening (§6). Reusing `fixtures/tenants/single-basic` across scenarios is how the corpus avoids copy-paste.
 - **`axisBindings` materialised-scenario semantics.** The presence of `axisBindings` flips `origin` to `materialized` at the port surface (§4.1). The `scenarioId` encodes the bindings in lexical axis order per [`scenario-fuzzing.md`](scenario-fuzzing.md) §5 — round-trip parseable, reproducible across processes.
-- **`asTenant` / `asPrincipal` resolution.** Logical handles (`team-onboard`, `admin`, `operator`) the runner resolves to concrete `tenantId` / `principalId` at submit time. The fixture's `create-tenant` step has no `asTenant` because the tenant doesn't exist yet — `asPrincipal: operator` (a platform-scoped principal) executes the create.
+- **`asTenant` / `asPrincipal` resolution.** Logical handles (`team-onboard`, `admin`, `operator`) the runner resolves to concrete `tenantId` / `principalId` at submit time. Every step here is scoped to the same tenant; the tenant itself is assumed pre-existing (see the "Tenant pre-existence" note above).
+- **Action-form intents.** `payload.actionId` carries the registry key (`Identity.User.Create`, `Identity.Membership.Create`, `Identity.Invite.Issue`, `Identity.Invite.Accept` — all present in `modules/identity/src/handlers/registry.ts`). Each handler reads its inputs from the rest of `payload`; the field names here (`email`, `givenName`/`familyName`, `userId`, `roles`, `rolesOnAccept`, `presentedToken`, `acceptedEmail`) match the `readString` / `readStringArray` calls in those handlers.
 - **`expect` is opt-in.** Only `accept-editor-invite` declares an expectation. Other steps default to `r.ok` per §6.
 
 ## 10. Cross-References
