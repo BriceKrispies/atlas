@@ -12,7 +12,11 @@ export {
   deriveIdempotencyKey,
   deriveCorrelationId,
 } from './idempotency.ts';
-export { canonicalJsonStringify } from './canonical-json.ts';
+// Canonical JSON stringify lives in @atlas/platform-core per
+// `specs/crosscut/scenario-fuzzing.md` §7 ("Re-export `prngFromSeed`,
+// `sha256Hex`, `canonicalJsonStringify` from `@atlas/platform-core`").
+// Re-exported here for backwards compatibility with seeder consumers.
+export { canonicalJsonStringify } from '@atlas/platform-core';
 export {
   SEED_SCENARIO_SCHEMA_ID,
   SEED_FIXTURE_SCHEMA_ID,

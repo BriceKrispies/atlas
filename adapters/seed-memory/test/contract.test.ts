@@ -7,10 +7,10 @@ import type {
 } from '@atlas/ports';
 import {
   InMemorySeedCorpus,
-  canonicalJsonStringify,
   computeFixtureRef,
   computeScenarioRef,
 } from '@atlas/adapter-seed-memory';
+import { canonicalJsonStringify } from '@atlas/platform-core';
 
 /**
  * Smoke tests for `InMemorySeedCorpus`. The full contract suite arrives in
@@ -247,17 +247,18 @@ describe('InMemorySeedCorpus (smoke)', () => {
     ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
   });
 
-  it('loadFixture throws on unknown id (FINDING: error code is misnamed SEED_SCENARIO_NOT_FOUND)', async () => {
-    // BUG: the fixture-not-found path raises the *scenario* not-found
-    // error code. spec/crosscut/errors.md owns the taxonomy; the closest
-    // current name in the spec is SEED_SCENARIO_NOT_FOUND, but a fixture
-    // miss MUST surface as a fixture-shaped error so callers can
-    // distinguish them. Pinning the current (wrong) behavior so a fix
-    // breaks this loudly. Filed as `port-adapter-dev` follow-up.
+  it('loadFixture throws SEED_FIXTURE_NOT_FOUND for unknown fixtureId', async () => {
+    // Fixture-shaped error code distinguishes the miss from
+    // SEED_SCENARIO_NOT_FOUND so callers can branch. Spec entry in
+    // `specs/crosscut/errors.md` Seeder section.
     const corpus = buildCorpus();
     await expect(
       corpus.loadFixture({ fixtureId: 'ghost', contentHash: '0'.repeat(64) }),
-    ).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
+    ).rejects.toThrow(/SEED_FIXTURE_NOT_FOUND/);
+    // Must NOT use the scenario-shaped code anymore.
+    await expect(
+      corpus.loadFixture({ fixtureId: 'ghost', contentHash: '0'.repeat(64) }),
+    ).rejects.not.toThrow(/SEED_SCENARIO_NOT_FOUND/);
   });
 
   it('listScenarios respects the axes filter for materialized scenarios', async () => {
@@ -353,14 +354,17 @@ describe('InMemorySeedCorpus (smoke)', () => {
     expect(refs).toHaveLength(0);
   });
 
-  it('canonicalJsonStringify (adapter copy): Date objects collapse to {} (KNOWN GAP)', () => {
-    // Both packages ship their own canonicalJsonStringify (duplication).
-    // Both treat Date as Object.keys(Date) → []. Two scenarios that
-    // differ only in a Date value would currently have identical
-    // contentHashes — silent collision risk. Pinning so a future Date
-    // fix breaks this loudly. Filed as follow-up.
-    const out = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
-    expect(out).toBe('{"at":{}}');
+  it('canonicalJsonStringify (consolidated in @atlas/platform-core): Date → ISO string, distinct dates hash distinct', () => {
+    // Consolidated impl: both adapter and seeder now import from
+    // @atlas/platform-core. Date values serialise via toJSON (ISO
+    // string), mirroring JSON.stringify. Two scenarios differing only
+    // in a Date value MUST yield distinct canonical bytes per spec
+    // §4.1 determinism contract.
+    const a = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
+    const b = canonicalJsonStringify({ at: new Date('2026-05-11T00:00:00Z') });
+    expect(a).toBe('{"at":"2026-05-10T00:00:00.000Z"}');
+    expect(b).toBe('{"at":"2026-05-11T00:00:00.000Z"}');
+    expect(a).not.toBe(b);
   });
 
   it('contentHash is stable across rebuilds of the same scenario', () => {

@@ -3,12 +3,22 @@
  * seeder for `contentHash` derivation: `sha256Hex(canonicalJsonStringify(
  * resolvedScenario))` per `specs/crosscut/seed-corpus.md` §4.1.
  *
+ * Re-exported from `@atlas/platform-core` per
+ * `specs/crosscut/scenario-fuzzing.md` §7 ("Re-export `prngFromSeed`,
+ * `sha256Hex`, `canonicalJsonStringify` from `@atlas/platform-core`"). One
+ * canonical implementation lives here; the seeder and adapter-seed-memory
+ * import it rather than maintaining their own copies.
+ *
  * Rules:
  *   - Object keys are emitted in lexical (codepoint) order.
  *   - Arrays preserve their existing order.
  *   - `undefined` values and function values are dropped (matching
  *     `JSON.stringify`).
  *   - Cycles throw — the runner's payloads are tree-shaped JSON.
+ *   - `Date` values are serialised via `toJSON()`. Mirrors
+ *     `JSON.stringify` Date semantics — Dates serialise to ISO strings,
+ *     not `{}`. Two scenarios that differ only in a Date field MUST
+ *     produce distinct `contentHash`es (spec §4.1 determinism contract).
  *
  * Hand-rolled (no third-party dep) — Atlas dep hygiene is strict and
  * the surface here is small. Output is not pretty-printed.
@@ -42,6 +52,15 @@ function stringify(value: unknown, seen: WeakSet<object>): string {
 
   // Objects + arrays.
   const obj = value as object;
+
+  // Honor toJSON() for objects that opt into a serialisation form (Date,
+  // most notably). Mirrors JSON.stringify Date semantics — Dates serialise
+  // to ISO strings, not `{}`.
+  const maybeToJson = (obj as { toJSON?: (key?: string) => unknown }).toJSON;
+  if (typeof maybeToJson === 'function') {
+    return stringify(maybeToJson.call(obj), seen);
+  }
+
   if (seen.has(obj)) {
     throw new TypeError('canonicalJsonStringify: cyclic value');
   }

@@ -66,6 +66,20 @@ Error codes are organized into categories. See `/specs/error_taxonomy.json` for 
 | REGISTRY     | Module/action registry errors                    |
 | CACHE        | Cache policy violations                          |
 
+## Seeder Errors
+
+Seed-corpus and scenario-fuzzing operations surface dedicated error codes. The codes below are referenced by [`seed-corpus.md`](seed-corpus.md) §9 and [`scenario-fuzzing.md`](scenario-fuzzing.md) §9.
+
+| Code | Category | Description |
+|------|----------|-------------|
+| `SEED_SCENARIO_NOT_FOUND` | RESOURCE | `SeedCorpus.loadScenario` called with a `scenarioId` not present in the corpus. |
+| `SEED_FIXTURE_NOT_FOUND` | RESOURCE | `SeedCorpus.loadFixture` called with a `fixtureId` not present in the corpus. Distinct from `SEED_SCENARIO_NOT_FOUND` so callers can branch on the missing kind. |
+| `SEED_VALIDATION_FAILED` | VALIDATION | A scenario or fixture body failed AJV validation against its `seed.*.v1` schema on load. |
+| `SEED_FIXTURE_DEPTH_EXCEEDED` | VALIDATION | `apply:` resolution exceeded the depth limit of 8 — likely a cycle or pathologically deep composition. |
+| `SEED_AXIS_RANGE_INVALID` | VALIDATION | A `range`-kind axis violates `step > 0` or `(to - from) % step === 0`. |
+| `SEED_AXIS_GENERATOR_UNKNOWN` | VALIDATION | A `generator`-kind axis references an unknown `generatorRef` variant. |
+| `SEED_AXIS_ID_PARSE_FAILED` | VALIDATION | `parseAxisId` could not round-trip a materialised `scenarioId`. |
+
 ## Artifacts
 
 ### Current

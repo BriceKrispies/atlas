@@ -8,7 +8,12 @@
     ".": "./src/index.ts",
     "./spec-validate": "./src/spec-validate/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
   "devDependencies": {
-    "@atlas/ports": "workspace:*"
+    "@atlas/ports": "workspace:*",
+    "vitest": "^4.1.5"
   }
 }

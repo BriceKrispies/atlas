@@ -7,6 +7,7 @@ import type {
   ScenarioRef,
   SeedCorpus,
 } from '@atlas/ports';
+import { canonicalJsonStringify } from '@atlas/platform-core';
 import { getSchemaValidator } from '@atlas/schemas';
 
 /**
@@ -66,7 +67,7 @@ export class InMemorySeedCorpus implements SeedCorpus {
   async loadFixture(ref: FixtureRef): Promise<Fixture> {
     const fixture = this.fixtures.get(ref.fixtureId);
     if (!fixture) {
-      throw new Error(`SEED_SCENARIO_NOT_FOUND: ${ref.fixtureId}`);
+      throw new Error(`SEED_FIXTURE_NOT_FOUND: ${ref.fixtureId}`);
     }
     validateOrThrow('seed.fixture.v1', fixture, ref.fixtureId);
     return fixture;
@@ -109,27 +110,6 @@ export function computeFixtureRef(
     fixtureId: fixture.fixtureId,
     contentHash: bytesToHex(crypto.sha256(body)),
   };
-}
-
-/**
- * Canonical JSON: keys recursively sorted, no whitespace, JSON.stringify
- * for primitives. Matches the determinism rule called out in
- * `seed-corpus.md` §4.1 ("identical resolved content always hashes
- * identically"). Arrays preserve order — they are part of the value.
- */
-export function canonicalJsonStringify(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-function canonicalize(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(canonicalize);
-  const obj = value as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const k of Object.keys(obj).sort()) {
-    out[k] = canonicalize(obj[k]);
-  }
-  return out;
 }
 
 function matchesFilter(

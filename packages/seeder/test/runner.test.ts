@@ -292,7 +292,7 @@ describe('canonicalJsonStringify', () => {
 
   it('throws TypeError on a cyclic value rather than infinite-looping', () => {
     const cyc: Record<string, unknown> = { a: 1 };
-    cyc.self = cyc;
+    cyc['self'] = cyc;
     expect(() => canonicalJsonStringify(cyc)).toThrow(TypeError);
   });
 
@@ -329,15 +329,17 @@ describe('canonicalJsonStringify', () => {
     expect(a).toBe(b);
   });
 
-  it('Date objects serialise to "{}" (KNOWN GAP — flag for follow-up)', () => {
-    // Per spec §4.1 contentHash MUST be deterministic. JSON.stringify of a
-    // Date produces an ISO string via its toJSON; this canonical
-    // implementation walks Object.keys instead, yielding "{}". Two
-    // scenarios whose only difference is a Date value would currently
-    // share a contentHash — silently. Pinning this here so a future fix
-    // breaks the test loudly. Filed as follow-up.
-    const stamped = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
-    expect(stamped).toBe('{"at":{}}');
+  it('Date objects serialise to ISO strings via toJSON — distinct dates hash distinct', () => {
+    // Spec §4.1 determinism contract: two scenarios differing only in a
+    // Date value MUST produce distinct canonical bytes (and therefore
+    // distinct contentHashes). The consolidated canonicalJsonStringify in
+    // @atlas/platform-core mirrors JSON.stringify Date semantics —
+    // Dates serialise to their ISO string via toJSON, not `{}`.
+    const a = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
+    const b = canonicalJsonStringify({ at: new Date('2026-05-11T00:00:00Z') });
+    expect(a).toBe('{"at":"2026-05-10T00:00:00.000Z"}');
+    expect(b).toBe('{"at":"2026-05-11T00:00:00.000Z"}');
+    expect(a).not.toBe(b);
   });
 });
 

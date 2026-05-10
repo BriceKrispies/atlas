@@ -16,6 +16,8 @@ export type { ErrorBody, IngressErrorCode } from './errors.ts';
 export { SingleFlight } from './singleflight.ts';
 export { CachedRead } from './cached-read.ts';
 
+export { canonicalJsonStringify } from './canonical-json.ts';
+
 export {
   buildCacheKey,
   renderTags,
