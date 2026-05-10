@@ -4,9 +4,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## seeder/
 
-- [phase-1.3-runner-skeleton](seeder/phase-1.3-runner-skeleton.md) — capability — review — → sdet
-- [phase-1.4-adapter-seed-memory](seeder/phase-1.4-adapter-seed-memory.md) — capability — review — → sdet (re-review after fix-pass)
-- [phase-1.5-contract-tests](seeder/phase-1.5-contract-tests.md) — test — scoped — → port-adapter-dev — blocked_by: seeder/phase-1.3-runner-skeleton, seeder/phase-1.4-adapter-seed-memory
+- [phase-1.5-contract-tests](seeder/phase-1.5-contract-tests.md) — test — scoped — → port-adapter-dev
 
 ## atlas-on-atlas/
 

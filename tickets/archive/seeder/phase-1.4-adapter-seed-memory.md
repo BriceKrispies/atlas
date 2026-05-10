@@ -1,9 +1,9 @@
 ---
 title: Seeder Phase 1.4 — adapter-seed-memory + schema registration
-status: review
+status: done
 type: capability
-owner: sdet
-phase: 2
+owner: architect
+phase: 5
 capability: specs/crosscut/seed-corpus.md
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [agentic-first]
@@ -106,3 +106,6 @@ Update tickets/INDEX.md.
   **Tests flipped:** `packages/seeder/test/runner.test.ts` Date pin → "distinct dates hash distinct"; `adapters/seed-memory/test/contract.test.ts` Date pin → same flip + fixture-not-found pin flipped to expect `SEED_FIXTURE_NOT_FOUND` and explicitly reject `SEED_SCENARIO_NOT_FOUND`.
   **Gates:** `pnpm safe install` clean; `pnpm safe --filter @atlas/platform-core typecheck` clean; `vitest packages/platform-core/src/canonical-json.test.ts` 6/6 pass (all 7 platform-core test files 85/85 still pass); `pnpm safe --filter @atlas/seeder typecheck` reports one pre-existing TS4111 on `cyc.self` in the cyclic-value test (verified present on main pre-fix — not introduced here); `vitest packages/seeder` 23/23 pass; `pnpm safe --filter @atlas/adapter-seed-memory typecheck` clean; `vitest adapters/seed-memory` 19/19 pass; `pnpm safe deps:check` 0 errors (1 unrelated warning).
   **Flagged but not fixed (out of scope per ticket guardrails):** `sha256Hex` is referenced in `scenario-fuzzing.md` §7 as a platform-core re-export but lives only inline in tests today — extraction is a separate fix-pass. The pre-existing `cyc.self` TS4111 in `packages/seeder/test/runner.test.ts:295` is unrelated to this fix.
+- 2026-05-10: orchestrator fixed the TS4111 inline (`cyc.self` → `cyc['self']`); committed as part of `c6d409f`. All `@atlas/seeder` gates now green.
+- 2026-05-10: architect Phase 3 invariant gate. Verdict: **clean with concerns** — ready for merge. Verified no I7/I9 coupling (operator-scoped per port doc, justified at `ports/src/seed-corpus.ts:10-17`); ADR 0008 leaks audited — no node:crypto / node:fs / process.env / console.* in `adapters/seed-memory/src/**` (test file uses node:crypto for the Crypto stub, acceptable). canonical-json deduplicated; both packages import from `@atlas/platform-core`. AJV draft-07 meta-registration + event-envelope alias in `packages/schemas/src/loader.ts` is scoped and robust. SEED_FIXTURE_NOT_FOUND rename verified at `in-memory-seed-corpus.ts:70` and matching entry in `specs/crosscut/errors.md`. Concerns (non-violating): SEED_VALIDATION_FAILED overloads "schema not registered" vs "body invalid" at `in-memory-seed-corpus.ts:147`; worked-example scenario absent from spec; listScenarios snapshot-vs-stream wording — all spec-keeper follow-ups, not gating.
+- 2026-05-10: done. Merged via main lineage (0ce9ef4 → 79602ef → c6d409f). Archived.

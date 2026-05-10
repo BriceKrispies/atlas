@@ -1,9 +1,9 @@
 ---
 title: Seeder Phase 1.3 — packages/seeder runner skeleton
-status: review
+status: done
 type: capability
-owner: sdet
-phase: 2
+owner: architect
+phase: 5
 capability: specs/crosscut/seed-corpus.md
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [agentic-first, atlas-on-atlas]
