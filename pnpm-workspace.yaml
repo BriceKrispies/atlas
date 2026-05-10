@@ -3,6 +3,7 @@ packages:
   - 'packages/seeder'
   - 'modules/*'
   - 'adapters/*'
+  - 'adapters/seed-memory'
   - 'ports'
   - 'apps/*'
   - 'bundles/*'

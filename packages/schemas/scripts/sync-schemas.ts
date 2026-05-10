@@ -23,14 +23,16 @@ mkdirSync(manifestsOutDir, { recursive: true });
 
 const copied: string[] = [];
 
-// Copy module-domain schemas (`catalog.*`, `authz.*`, `content_pages.*`) and
+// Copy module-domain schemas (`catalog.*`, `authz.*`, `content_pages.*`),
 // platform-emitted ones (`platform.*` — e.g. StructuredAuthz.PolicyEvaluated
-// audit events).
+// audit events), and the seeder-corpus contracts (`seed.*` — Scenario,
+// Fixture, Template, AxisDefinition; see specs/crosscut/seed-corpus.md).
 const isPicked = (n: string): boolean =>
   (n.startsWith('catalog.') ||
     n.startsWith('platform.') ||
     n.startsWith('authz.') ||
-    n.startsWith('content_pages.')) &&
+    n.startsWith('content_pages.') ||
+    n.startsWith('seed.')) &&
   n.endsWith('.schema.json');
 
 for (const dir of [contracts, events]) {
@@ -41,6 +43,13 @@ for (const dir of [contracts, events]) {
     }
   }
 }
+
+// The seed.* schemas $ref event-envelope.v1; copy that contract too so the
+// loader can register it under the short alias and the refs resolve.
+const eventEnvelopeSrc = join(contracts, 'event_envelope.schema.json');
+const eventEnvelopeDest = join(outDir, 'event_envelope.schema.json');
+copyFileSync(eventEnvelopeSrc, eventEnvelopeDest);
+copied.push('event_envelope.schema.json');
 
 // Module-manifest sources after the 2026-05 spec migration. Legacy modules
 // previously lived under `specs/modules/<id>/module.manifest.json`; the

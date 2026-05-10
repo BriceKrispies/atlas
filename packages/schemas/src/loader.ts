@@ -1,6 +1,7 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import type { ValidateFunction, AnySchemaObject } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import draft7MetaSchema from 'ajv/dist/refs/json-schema-draft-07.json' with { type: 'json' };
 
 import seedApply from './generated/catalog.seed_package.apply.v1.schema.json' with { type: 'json' };
 import familyPublish from './generated/catalog.family.publish.v1.schema.json' with { type: 'json' };
@@ -15,6 +16,11 @@ import contentPagesPageCreate from './generated/content_pages.page.create.v1.sch
 import contentPagesPageUpdate from './generated/content_pages.page.update.v1.schema.json' with { type: 'json' };
 import contentPagesPageDelete from './generated/content_pages.page.delete.v1.schema.json' with { type: 'json' };
 import contentPagesPageRead from './generated/content_pages.page.read.v1.schema.json' with { type: 'json' };
+import seedScenario from './generated/seed.scenario.v1.schema.json' with { type: 'json' };
+import seedFixture from './generated/seed.fixture.v1.schema.json' with { type: 'json' };
+import seedTemplate from './generated/seed.template.v1.schema.json' with { type: 'json' };
+import seedAxisDefinition from './generated/seed.axis_definition.v1.schema.json' with { type: 'json' };
+import eventEnvelope from './generated/event_envelope.schema.json' with { type: 'json' };
 import structuredCatalogManifest from './generated/manifests/structured-catalog.manifest.json' with { type: 'json' };
 import authzManifest from './generated/manifests/authz.manifest.json' with { type: 'json' };
 import contentPagesManifest from './generated/manifests/content-pages.manifest.json' with { type: 'json' };
@@ -34,6 +40,10 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   contentPagesPageUpdate as AnySchemaObject,
   contentPagesPageDelete as AnySchemaObject,
   contentPagesPageRead as AnySchemaObject,
+  seedScenario as AnySchemaObject,
+  seedFixture as AnySchemaObject,
+  seedTemplate as AnySchemaObject,
+  seedAxisDefinition as AnySchemaObject,
 ];
 
 let cachedAjv: Ajv2020 | null = null;
@@ -42,6 +52,14 @@ function getAjv(): Ajv2020 {
   if (cachedAjv) return cachedAjv;
   const ajv = new Ajv2020({ strict: false, allErrors: true });
   addFormats(ajv);
+  // The seeder schemas (seed.scenario.v1, seed.fixture.v1, seed.template.v1,
+  // seed.axis_definition.v1) declare $schema=draft-07. AJV2020 doesn't load
+  // the draft-07 meta-schema by default — registering it here lets those
+  // schemas validate without rewriting them to draft 2020-12.
+  ajv.addMetaSchema(draft7MetaSchema as AnySchemaObject);
+  // event_envelope ships with a URL $id; the seed.* schemas $ref it by the
+  // short key `event-envelope.v1`. Register both keys so the refs resolve.
+  ajv.addSchema(eventEnvelope as AnySchemaObject, 'event-envelope.v1');
   for (const s of SCHEMAS) {
     ajv.addSchema(s);
   }
