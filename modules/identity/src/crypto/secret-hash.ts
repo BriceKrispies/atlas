@@ -9,6 +9,7 @@
  * cross-wire them.
  */
 
+import { sha256Hex } from '@atlas/platform-core';
 import { getIdentityCrypto } from './runtime.ts';
 
 /**
@@ -22,7 +23,7 @@ export function generateSecret(): string {
 }
 
 export function hashSecret(secret: string): string {
-  return toHex(getIdentityCrypto().sha256(secret));
+  return sha256Hex(secret, getIdentityCrypto());
 }
 
 /**
@@ -52,9 +53,3 @@ function base64url(bytes: Uint8Array): string {
     .replace(/=+$/, '');
 }
 
-function toHex(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 1)
-    s += bytes[i]!.toString(16).padStart(2, '0');
-  return s;
-}

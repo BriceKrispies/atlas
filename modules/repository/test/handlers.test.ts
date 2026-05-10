@@ -22,6 +22,7 @@ import {
 import { Buffer } from 'node:buffer';
 import { describe, it, expect } from 'vitest';
 import type { EventEnvelope } from '@atlas/platform-core';
+import { sha256Hex } from '@atlas/platform-core';
 import type {
   Crypto,
   EventStore,
@@ -242,10 +243,6 @@ class InMemoryRepositoryRevisionStore implements RepositoryRevisionStore {
 
 // --- helpers ---------------------------------------------------------
 
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(Buffer.from(bytes)).digest('hex');
-}
-
 function makeBytes(byteCount: number, fill = 0x41): Uint8Array {
   const out = new Uint8Array(byteCount);
   out.fill(fill);
@@ -394,7 +391,7 @@ describe('handleRepositoryUpload', () => {
     const fx = newFixture();
     const repoId = await seedRepo(fx);
     const bytes = makeBytes(1024, 0x7a);
-    const contentHash = sha256Hex(bytes);
+    const contentHash = sha256Hex(bytes, testCrypto);
     const bytesBase64 = Buffer.from(bytes).toString('base64');
 
     const result = await handleRepositoryUpload(
@@ -432,7 +429,7 @@ describe('handleRepositoryUpload', () => {
     const stored = await fx.revisions.getBytes('acme', result.revision.revisionId);
     expect(stored).not.toBeNull();
     expect(stored!.byteLength).toBe(bytes.byteLength);
-    expect(sha256Hex(stored!)).toBe(contentHash);
+    expect(sha256Hex(stored!, testCrypto)).toBe(contentHash);
   });
 
   it('rejects payload over 10 MB with code UPLOAD_TOO_LARGE', async () => {
@@ -504,7 +501,7 @@ describe('handleRepositoryUpload', () => {
     const fx = newFixture();
     const bytes = makeBytes(8, 0x10);
     const bytesBase64 = Buffer.from(bytes).toString('base64');
-    const contentHash = sha256Hex(bytes);
+    const contentHash = sha256Hex(bytes, testCrypto);
 
     await expect(
       handleRepositoryUpload(

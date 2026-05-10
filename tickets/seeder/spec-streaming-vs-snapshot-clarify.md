@@ -1,9 +1,9 @@
 ---
 title: Clarify listScenarios snapshot-vs-stream semantics in seed-corpus spec
-status: scoped
+status: review
 type: spec
-owner: spec-keeper
-phase: 0
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr:
 vision: [agentic-first]
@@ -88,3 +88,4 @@ completion. Set status: review and hand to sdet.
 ## Notes / log
 
 - 2026-05-10: created from sdet + architect concerns on seeder Phase 1.4. Blocks Phase 1.5 contract tests.
+- 2026-05-10: spec-keeper picked **snapshot-at-iteration-start**. Rationale: fuzz reproducibility — a run's corpus view is fixed at start so concurrent mutations don't perturb a deterministic seed. Edited `specs/crosscut/seed-corpus.md` §4.1 with explicit semantic + rationale; updated `ports/src/seed-corpus.ts` `listScenarios` JSDoc to match. No code changes — the in-memory adapter already implements this semantic and sdet's regression test pins it. No follow-up ticket needed.

@@ -25,10 +25,18 @@ import type { IntentEnvelope } from '@atlas/platform-core';
  */
 export interface SeedCorpus {
   /**
-   * Stream refs for every scenario in the corpus matching `filter`. Always
+   * Yield refs for every scenario in the corpus matching `filter`. Always
    * AsyncIterable regardless of adapter — fuzz expansions of large
-   * templates produce 10K+ refs and uniform streaming avoids buffering.
-   * Mirrors `WorkerSubscription.events()`.
+   * templates produce 10K+ refs and uniform async iteration avoids
+   * buffering. Mirrors `WorkerSubscription.events()`.
+   *
+   * Semantics: **snapshot-at-iteration-start**. The iterator is
+   * materialised against the corpus state at the moment this method is
+   * called; mutations performed after the call (adds, removes, fs/sqlite
+   * writes) are NOT observed by the returned iterator. Re-call
+   * `listScenarios()` to see later writes. Rationale: deterministic fuzz
+   * reproduction — a run's corpus view is fixed at start. See
+   * `specs/crosscut/seed-corpus.md` §4.1.
    */
   listScenarios(filter?: ScenarioFilter): AsyncIterable<ScenarioRef>;
 

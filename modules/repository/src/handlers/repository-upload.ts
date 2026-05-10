@@ -30,6 +30,7 @@
  */
 
 import type { EventEnvelope } from '@atlas/platform-core';
+import { sha256Hex } from '@atlas/platform-core';
 import type {
   Crypto,
   EventStore,
@@ -49,14 +50,6 @@ import {
   type RepositoryUploadResult,
   type RepositoryUploadedPayload,
 } from '../types.ts';
-
-function sha256Hex(bytes: Uint8Array, crypto: Crypto): string {
-  const digest = crypto.sha256(bytes);
-  let hex = '';
-  for (let i = 0; i < digest.length; i += 1)
-    hex += digest[i]!.toString(16).padStart(2, '0');
-  return hex;
-}
 
 function base64Decode(str: string): Uint8Array {
   const bin = globalThis.atob(str);

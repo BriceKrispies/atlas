@@ -11,6 +11,7 @@
  * idempotency contract — Invariant I3 — deduplicates).
  */
 
+import { sha256Hex } from '@atlas/platform-core';
 import type { Crypto } from '@atlas/ports';
 
 export function deriveIdempotencyKey(
@@ -18,19 +19,9 @@ export function deriveIdempotencyKey(
   scenarioId: string,
   stepIndex: number,
 ): string {
-  const digest = crypto.sha256(scenarioId + '::' + String(stepIndex));
-  return toHex(digest).slice(0, 32);
+  return sha256Hex(scenarioId + '::' + String(stepIndex), crypto).slice(0, 32);
 }
 
 export function deriveCorrelationId(scenarioId: string, stepIndex: number): string {
   return `seed:${scenarioId}:${stepIndex}`;
-}
-
-function toHex(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i] as number;
-    s += b.toString(16).padStart(2, '0');
-  }
-  return s;
 }

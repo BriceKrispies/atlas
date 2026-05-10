@@ -88,7 +88,9 @@ export interface FixtureRef {
 }
 ```
 
-`listScenarios` is **always** an `AsyncIterable<ScenarioRef>` regardless of adapter — fuzz expansions of large templates produce 10K+ refs and uniform streaming avoids buffering. The streaming pattern mirrors `WorkerSubscription.events()` in `ports/src/worker-source.ts`.
+`listScenarios` is **always** an `AsyncIterable<ScenarioRef>` regardless of adapter — fuzz expansions of large templates produce 10K+ refs and uniform streaming avoids buffering. The async-iterable pattern mirrors `WorkerSubscription.events()` in `ports/src/worker-source.ts`.
+
+**Snapshot-at-iteration-start semantics.** The iterator is materialised against the corpus state at the moment `listScenarios()` is called; mutations to the corpus (`addScenario`, `addFixture`, file-system or sqlite writes) that happen *after* the iterator starts are NOT observed by that iterator. A consumer that needs to see post-start writes calls `listScenarios()` again. *Rationale:* fuzz reproducibility — a scenario run derives its corpus view at iteration start and is unaffected by concurrent edits during the run, which is what makes a corpus snapshot a stable input to a deterministic fuzz seed (see [`scenario-fuzzing.md`](scenario-fuzzing.md) §5). This semantic is uniform across the memory / fs / sqlite adapters.
 
 `contentHash` is `sha256Hex(canonicalJsonStringify(resolvedScenario))` after `apply:` flattening but before idempotency-key derivation (so identical resolved content always hashes identically). Determinism rules live in [`scenario-fuzzing.md`](scenario-fuzzing.md) §5.
 

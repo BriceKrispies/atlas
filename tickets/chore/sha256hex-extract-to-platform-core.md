@@ -1,9 +1,9 @@
 ---
 title: Extract sha256Hex to @atlas/platform-core per scenario-fuzzing §7
-status: scoped
+status: review
 type: chore
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability:
 adr:
 vision: []
@@ -99,3 +99,4 @@ completion. Set status: review and hand to sdet.
 ## Notes / log
 
 - 2026-05-10: created from sdet + architect concerns on seeder Phase 1.4 fix-pass.
+- 2026-05-10: implemented by `port-adapter-dev`. Added `packages/platform-core/src/sha256-hex.ts` (signature: `sha256Hex(input: string | Uint8Array, crypto: CryptoSha256Shape): string` — structurally typed `{ sha256(input): Uint8Array }` to dodge the `@atlas/ports → @atlas/platform-core` cycle, mirroring the existing `CachePortShape` pattern in `cached-read.ts`). Re-exported from `packages/platform-core/src/index.ts`. Added `packages/platform-core/src/sha256-hex.test.ts` (5 tests: empty string, ASCII "abc", UTF-8 non-ASCII, Uint8Array input, determinism + hex shape regex). Replaced inline `sha256Hex`/`bytesToHex`/`toHex` definitions in: `modules/repository/src/handlers/repository-upload.ts`, `modules/repository/test/handlers.test.ts` (the `node:crypto` direct one — now goes through `testCrypto`), `packages/seeder/src/idempotency.ts`, `adapters/seed-memory/src/in-memory-seed-corpus.ts`, `modules/identity/src/crypto/secret-hash.ts`. Done bar: `pnpm safe --filter @atlas/platform-core typecheck` clean; `pnpm safe vitest run packages/platform-core/src/sha256-hex.test.ts packages/platform-core/src/canonical-json.test.ts` 11/11 green; `pnpm safe vitest run packages/seeder adapters/seed-memory modules/repository` 54/54 green; identity handlers + unit + a4-acceptance + session 374/374 green; `pnpm safe deps:check` 0 errors (1 pre-existing orphan warning unrelated). Out-of-scope observation: `modules/identity/test/security/` (17 failing tests, untracked) is pre-existing drift unrelated to this extraction.

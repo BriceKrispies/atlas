@@ -7,7 +7,7 @@ import type {
   ScenarioRef,
   SeedCorpus,
 } from '@atlas/ports';
-import { canonicalJsonStringify } from '@atlas/platform-core';
+import { canonicalJsonStringify, sha256Hex } from '@atlas/platform-core';
 import { getSchemaValidator } from '@atlas/schemas';
 
 /**
@@ -85,7 +85,7 @@ export function computeScenarioRef(
   crypto: Crypto,
 ): ScenarioRef {
   const body = canonicalJsonStringify(scenario);
-  const hash = bytesToHex(crypto.sha256(body));
+  const hash = sha256Hex(body, crypto);
   const ref: ScenarioRef = {
     scenarioId: scenario.scenarioId,
     contentHash: hash,
@@ -108,7 +108,7 @@ export function computeFixtureRef(
   const body = canonicalJsonStringify(fixture);
   return {
     fixtureId: fixture.fixtureId,
-    contentHash: bytesToHex(crypto.sha256(body)),
+    contentHash: sha256Hex(body, crypto),
   };
 }
 
@@ -158,11 +158,3 @@ function validateOrThrow(
   }
 }
 
-function bytesToHex(bytes: Uint8Array): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i] ?? 0;
-    out += (b < 16 ? '0' : '') + b.toString(16);
-  }
-  return out;
-}

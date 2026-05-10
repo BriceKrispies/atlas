@@ -17,6 +17,7 @@ export { SingleFlight } from './singleflight.ts';
 export { CachedRead } from './cached-read.ts';
 
 export { canonicalJsonStringify } from './canonical-json.ts';
+export { sha256Hex } from './sha256-hex.ts';
 
 export {
   buildCacheKey,
