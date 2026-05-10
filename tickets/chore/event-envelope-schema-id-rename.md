@@ -1,9 +1,9 @@
 ---
 title: Normalise event_envelope.schema.json $id to short form; remove the loader alias
-status: scoped
+status: review
 type: chore
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability:
 adr:
 vision: []
@@ -81,3 +81,4 @@ completion. Set status: review and hand to sdet.
 ## Notes / log
 
 - 2026-05-10: created from Phase 1.4 implementation note + sdet flag. Cleanup; no behavior change expected, just substrate hygiene.
+- 2026-05-10: port-adapter-dev implemented the rename. Changed `specs/schemas/contracts/event_envelope.schema.json` $id from `https://atlas-platform.example.com/schemas/event-envelope.v1.json` to `event-envelope.v1`. Updated `apps/atlasctl/src/envelope-schema.ts` ENVELOPE_SCHEMA_ID constant to match. Dropped the `addSchema(eventEnvelope, 'event-envelope.v1')` alias in `packages/schemas/src/loader.ts` (now just `ajv.addSchema(eventEnvelope)` — the schema's own $id is sufficient). Refreshed comment in `packages/schemas/scripts/sync-schemas.ts`. Re-ran `sync-schemas` to refresh the generated copy. Gates: `pnpm safe --filter @atlas/schemas sync-schemas` clean; `pnpm safe vitest run adapters/seed-memory` 20/20 pass; `pnpm safe vitest run packages/seeder` 23/23 pass; `pnpm safe vitest run apps/atlasctl` 22/22 pass; `pnpm safe deps:check` 0 errors (1 pre-existing orphan warning); grep for the old long-URL string returns 0 hits. `pnpm safe typecheck` has pre-existing failures in `modules/identity/test/**` unrelated to this ticket (verified by re-running with changes stashed — same errors). Other long-URL $ids in `specs/schemas/contracts/` remain (error_envelope, cache_policy, page_*, widget_manifest, ui_bundle, render_tree, policy_ast, module_manifest); flagged for separate tickets per the out-of-scope note.

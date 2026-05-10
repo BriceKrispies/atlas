@@ -124,6 +124,8 @@ export interface ScenarioStep {
 
 Fixture composition is a **directed acyclic graph**. Cycles are runtime-detected (depth limit 8, see §6); the schema does not enforce DAG-ness because validating that requires the whole corpus. Adapters are responsible for cycle detection during resolution.
 
+See §9 ("Worked example") for a materialized scenario that exercises `apply:`, multi-step ordering, and `axisBindings` end-to-end.
+
 ### 4.3 Runner contract
 
 ```ts
@@ -222,7 +224,148 @@ CLI output follows `crosscut/atlasctl.md` conventions for structured output, `co
 
 Phase gates: Phase 1 acceptance is contract-test-green against memory adapter + AJV-validated example scenarios. Phase 3 acceptance is a 1000-iteration round-trip test (id → bindings → re-materialize → byte-identical contentHash) across two processes.
 
-## 9. Cross-References
+## 9. Worked example
+
+A realistic Phase 2 scenario a tenant author would write: seed a small developer-team tenant with an admin already in place and one editor invited and accepted. The starting state (tenant + admin) is reusable, so it lives in a fixture (`fixtures/tenants/single-basic`) that other scenarios — invite flows, role-management flows, billing-onboarding flows — all share via `apply:`.
+
+The scenario is **materialized** from a `region` × `tier` template, which is why `axisBindings` is set and `scenarioId` follows the axis-id grammar from [`scenario-fuzzing.md`](scenario-fuzzing.md) §5.
+
+When `runScenario` is invoked, it:
+
+1. Resolves `apply:` and prepends the fixture's two steps (`create-tenant`, `register-admin`) to the scenario's own two steps (`issue-editor-invite`, `accept-editor-invite`).
+2. Derives per-step `idempotencyKey` and `correlationId` from `scenarioId + index` (§4.3) — the values embedded below are illustrative; the runner *overwrites* them at submit time so reruns dedupe.
+3. Submits each resulting `IntentEnvelope` through `IntentDriver`, going `authn → authz → quota → idempotency → dispatch` like any real intent (I1).
+
+`contentHash` values on the `apply:` ref below are placeholder lowercase-hex SHA256s; in a live corpus they are the canonical hash of the resolved fixture (§4.1).
+
+### 9.1 Scenario
+
+```json
+{
+  "schemaVersion": 1,
+  "scenarioId": "team-onboard/region=us-east-1/tier=starter",
+  "description": "Onboards a small developer-team tenant: provisions the tenant and admin via the fixtures/tenants/single-basic fixture, then issues and accepts an invite for a second user with the editor role.",
+  "tags": ["onboarding", "identity", "invite-flow"],
+  "axisBindings": {
+    "region": "us-east-1",
+    "tier": "starter"
+  },
+  "apply": [
+    {
+      "fixtureId": "fixtures/tenants/single-basic",
+      "contentHash": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "steps": [
+    {
+      "stepId": "issue-editor-invite",
+      "asTenant": "team-onboard",
+      "asPrincipal": "admin",
+      "intent": {
+        "eventId": "evt-issue-editor-invite-0001",
+        "eventType": "Identity.InviteIssued",
+        "schemaId": "domain.identity.invite.issued.v1",
+        "schemaVersion": 1,
+        "occurredAt": "2026-05-10T12:00:00.000Z",
+        "tenantId": "t_team_onboard",
+        "principalId": "p_admin",
+        "correlationId": "seed:team-onboard/region=us-east-1/tier=starter:0",
+        "idempotencyKey": "seed-team-onboard-step-0",
+        "payload": {
+          "actionId": "identity.invite.issue",
+          "resourceType": "invite",
+          "email": "editor@example.com",
+          "roles": ["editor"]
+        }
+      }
+    },
+    {
+      "stepId": "accept-editor-invite",
+      "asTenant": "team-onboard",
+      "intent": {
+        "eventId": "evt-accept-editor-invite-0001",
+        "eventType": "Identity.InviteAccepted",
+        "schemaId": "domain.identity.invite.accepted.v1",
+        "schemaVersion": 1,
+        "occurredAt": "2026-05-10T12:00:01.000Z",
+        "tenantId": "t_team_onboard",
+        "correlationId": "seed:team-onboard/region=us-east-1/tier=starter:1",
+        "idempotencyKey": "seed-team-onboard-step-1",
+        "payload": {
+          "actionId": "identity.invite.accept",
+          "resourceType": "invite",
+          "tokenId": "inv_editor_0001",
+          "handle": "editor"
+        }
+      },
+      "expect": { "ok": true }
+    }
+  ]
+}
+```
+
+### 9.2 Fixture (`fixtures/tenants/single-basic`)
+
+```json
+{
+  "schemaVersion": 1,
+  "fixtureId": "fixtures/tenants/single-basic",
+  "description": "A single tenant with one admin principal. Reused as the starting state for invite-flow, role-management, and billing-onboarding scenarios.",
+  "steps": [
+    {
+      "stepId": "create-tenant",
+      "asPrincipal": "operator",
+      "intent": {
+        "eventId": "evt-create-tenant-0001",
+        "eventType": "Tenancy.TenantCreated",
+        "schemaId": "domain.tenancy.tenant.created.v1",
+        "schemaVersion": 1,
+        "occurredAt": "2026-05-10T11:59:58.000Z",
+        "tenantId": "t_team_onboard",
+        "correlationId": "seed:fixtures/tenants/single-basic:0",
+        "idempotencyKey": "seed-fixture-single-basic-0",
+        "payload": {
+          "actionId": "tenancy.tenant.create",
+          "resourceType": "tenant",
+          "handle": "team-onboard"
+        }
+      }
+    },
+    {
+      "stepId": "register-admin",
+      "asTenant": "team-onboard",
+      "asPrincipal": "operator",
+      "intent": {
+        "eventId": "evt-register-admin-0001",
+        "eventType": "Identity.UserCreated",
+        "schemaId": "domain.identity.user.created.v1",
+        "schemaVersion": 1,
+        "occurredAt": "2026-05-10T11:59:59.000Z",
+        "tenantId": "t_team_onboard",
+        "correlationId": "seed:fixtures/tenants/single-basic:1",
+        "idempotencyKey": "seed-fixture-single-basic-1",
+        "payload": {
+          "actionId": "identity.user.create",
+          "resourceType": "user",
+          "handle": "admin",
+          "email": "admin@example.com",
+          "roles": ["admin"]
+        }
+      }
+    }
+  ]
+}
+```
+
+### 9.3 What this example pins
+
+- **Multi-step ordering.** Four steps in resolved order — `create-tenant`, `register-admin` (from the fixture), then `issue-editor-invite`, `accept-editor-invite` (from the scenario). The runner submits them sequentially; later steps may causally depend on earlier ones (the invite-accept step relies on the invite issued two steps prior).
+- **`apply:` composition.** The fixture is referenced by id + `contentHash`; the runner verifies the hash matches the resolved fixture before flattening (§6). Reusing `fixtures/tenants/single-basic` across scenarios is how the corpus avoids copy-paste.
+- **`axisBindings` materialised-scenario semantics.** The presence of `axisBindings` flips `origin` to `materialized` at the port surface (§4.1). The `scenarioId` encodes the bindings in lexical axis order per [`scenario-fuzzing.md`](scenario-fuzzing.md) §5 — round-trip parseable, reproducible across processes.
+- **`asTenant` / `asPrincipal` resolution.** Logical handles (`team-onboard`, `admin`, `operator`) the runner resolves to concrete `tenantId` / `principalId` at submit time. The fixture's `create-tenant` step has no `asTenant` because the tenant doesn't exist yet — `asPrincipal: operator` (a platform-scoped principal) executes the create.
+- **`expect` is opt-in.** Only `accept-editor-invite` declares an expectation. Other steps default to `r.ok` per §6.
+
+## 10. Cross-References
 
 - [`specs/crosscut/scenario-fuzzing.md`](scenario-fuzzing.md) — axis system layered on top of this spec; locks the scenario-id grammar
 - [`specs/crosscut/test-fabric.md`](test-fabric.md) — sibling crosscut; Phase 5 wires `SeededTenant` into `TenantFactory`. The §11 open question about an adversarial-payload corpus may resolve into a future sibling spec, not this one.

@@ -45,7 +45,7 @@ for (const dir of [contracts, events]) {
 }
 
 // The seed.* schemas $ref event-envelope.v1; copy that contract too so the
-// loader can register it under the short alias and the refs resolve.
+// loader can register it and the refs resolve.
 const eventEnvelopeSrc = join(contracts, 'event_envelope.schema.json');
 const eventEnvelopeDest = join(outDir, 'event_envelope.schema.json');
 copyFileSync(eventEnvelopeSrc, eventEnvelopeDest);

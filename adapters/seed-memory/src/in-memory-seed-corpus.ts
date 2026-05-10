@@ -142,10 +142,12 @@ function validateOrThrow(
 ): void {
   const validate = getSchemaValidator(schemaId, 1);
   if (!validate) {
-    // Schema not registered — surface as a hard error so a misconfigured
-    // host fails loudly rather than silently skipping validation.
+    // Schema not registered in the AJV registry — a host/platform
+    // misconfiguration distinct from a caller-supplied body failing
+    // validation. Surface a dedicated code so observability and error
+    // handling can branch on tenant-data vs platform-config faults.
     throw new Error(
-      `SEED_VALIDATION_FAILED: schema ${schemaId} not registered (loading ${refId})`,
+      `SEED_VALIDATOR_NOT_REGISTERED: schema ${schemaId} not registered (loading ${refId})`,
     );
   }
   if (!validate(body)) {

@@ -1,9 +1,9 @@
 ---
 title: Split SEED_VALIDATION_FAILED into distinct codes for "schema not registered" vs "body invalid"
-status: scoped
+status: review
 type: refactor
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr:
 vision: []
@@ -83,3 +83,4 @@ Set status: review and hand to sdet.
 ## Notes / log
 
 - 2026-05-10: created from sdet + architect concerns on seeder Phase 1.4.
+- 2026-05-10 (port-adapter-dev): split overloaded code. New code `SEED_VALIDATOR_NOT_REGISTERED` (REGISTRY category) covers the schema-not-in-AJV-registry branch in `validateOrThrow`; `SEED_VALIDATION_FAILED` (VALIDATION) retained for body-fails-schema. `validateOrThrow` signature + call sites unchanged. Added regression test in `adapters/seed-memory/test/contract.test.ts` mocking `getSchemaValidator` to return `null` and asserting the new code (and not the old one) fires. `errors.md` entry inserted directly after `SEED_VALIDATION_FAILED` with parallel wording. Done bar green: typecheck clean, 20/20 tests pass, deps:check 0 errors (1 pre-existing unrelated warning).

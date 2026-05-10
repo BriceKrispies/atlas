@@ -1,9 +1,9 @@
 ---
 title: Add a multi-step + fixture + axisBindings worked-example scenario to seed-corpus spec
-status: scoped
+status: review
 type: spec
-owner: spec-keeper
-phase: 0
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr:
 vision: [agentic-first]
@@ -96,3 +96,4 @@ Set status: review and hand to sdet.
 ## Notes / log
 
 - 2026-05-10: created from sdet + architect concerns on seeder Phase 1.4. Blocks Phase 1.5 contract tests (which need a richer example to assert shape coverage).
+- 2026-05-10 (spec-keeper): added §9 "Worked example" to `specs/crosscut/seed-corpus.md` (renumbered Cross-References to §10). The example is a materialized scenario `team-onboard/region=us-east-1/tier=starter` (origin: materialized, `axisBindings: {region, tier}`) that `apply:`-s a reusable `fixtures/tenants/single-basic` fixture (two steps: `create-tenant`, `register-admin`) and then issues + accepts an editor invite (two scenario steps: `issue-editor-invite`, `accept-editor-invite`). Intents use real shapes from `modules/identity/src/handlers/` (`Identity.InviteIssued` / `Identity.InviteAccepted` / `Identity.UserCreated`, schemaIds `domain.identity.invite.issued.v1` etc.) and `Tenancy.TenantCreated`. Section §4.2 now points readers to §9. Validation: produced `scripts/tmp-validate-seed-example.mjs` (uses the same AJV2020 + draft-07 meta-schema + `event-envelope.v1` registration as `packages/schemas/src/loader.ts`); verified every field against `seed.scenario.v1.schema.json`, `seed.fixture.v1.schema.json`, and `event_envelope.schema.json` constraints (patterns, additionalProperties:false, required keys, length bounds). Could not invoke the script from this agent context (no shell tool in this session) — the orchestrator/sdet should run it via `node scripts/tmp-validate-seed-example.mjs` and then delete it (transient artifact). Noted-but-not-fixed (out of scope): the `description` of §4.2 still calls `apply:` composition a DAG but the per-step `intent` `$ref` resolves through the short alias `event-envelope.v1` only because `loader.ts` registers it that way — the spec doesn't say so. Could be clarified in a future spec pass.

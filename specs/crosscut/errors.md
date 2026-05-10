@@ -75,6 +75,7 @@ Seed-corpus and scenario-fuzzing operations surface dedicated error codes. The c
 | `SEED_SCENARIO_NOT_FOUND` | RESOURCE | `SeedCorpus.loadScenario` called with a `scenarioId` not present in the corpus. |
 | `SEED_FIXTURE_NOT_FOUND` | RESOURCE | `SeedCorpus.loadFixture` called with a `fixtureId` not present in the corpus. Distinct from `SEED_SCENARIO_NOT_FOUND` so callers can branch on the missing kind. |
 | `SEED_VALIDATION_FAILED` | VALIDATION | A scenario or fixture body failed AJV validation against its `seed.*.v1` schema on load. |
+| `SEED_VALIDATOR_NOT_REGISTERED` | REGISTRY | The AJV schema referenced by a `loadScenario` / `loadFixture` call (e.g. `seed.scenario.v1`) is not present in the schema registry. Distinct from `SEED_VALIDATION_FAILED` so callers can branch on tenant-data faults vs. platform-config faults. |
 | `SEED_FIXTURE_DEPTH_EXCEEDED` | VALIDATION | `apply:` resolution exceeded the depth limit of 8 — likely a cycle or pathologically deep composition. |
 | `SEED_AXIS_RANGE_INVALID` | VALIDATION | A `range`-kind axis violates `step > 0` or `(to - from) % step === 0`. |
 | `SEED_AXIS_GENERATOR_UNKNOWN` | VALIDATION | A `generator`-kind axis references an unknown `generatorRef` variant. |

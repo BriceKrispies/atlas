@@ -7,5 +7,4 @@
 import envelopeSchema from '../../../specs/schemas/contracts/event_envelope.schema.json' with { type: 'json' };
 
 export { envelopeSchema };
-export const ENVELOPE_SCHEMA_ID =
-  'https://atlas-platform.example.com/schemas/event-envelope.v1.json';
+export const ENVELOPE_SCHEMA_ID = 'event-envelope.v1';

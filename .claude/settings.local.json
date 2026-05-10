@@ -206,7 +206,8 @@
       "Bash(tee /tmp/atlas-server.log)",
       "Bash(INGRESS_BASE_URL=http://localhost:3000 SMTP4DEV_URL=http://localhost:5080 KEYCLOAK_BASE_URL=http://localhost:8081 CONTROL_PLANE_DB_URL='postgres://atlas_platform:local_dev_password@localhost:15433/control_plane' pnpm test:integration tests/integration/auth/)",
       "Bash(PGPASSWORD=local_dev_password psql -h localhost -p 15433 -U atlas_platform -d control_plane -c \"SELECT tenant_id, slug FROM tenants ORDER BY created_at;\")",
-      "Bash(podman exec *)"
+      "Bash(podman exec *)",
+      "Bash(podman stop *)"
     ]
   }
 }

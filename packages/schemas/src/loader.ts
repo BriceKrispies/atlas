@@ -57,9 +57,7 @@ function getAjv(): Ajv2020 {
   // the draft-07 meta-schema by default — registering it here lets those
   // schemas validate without rewriting them to draft 2020-12.
   ajv.addMetaSchema(draft7MetaSchema as AnySchemaObject);
-  // event_envelope ships with a URL $id; the seed.* schemas $ref it by the
-  // short key `event-envelope.v1`. Register both keys so the refs resolve.
-  ajv.addSchema(eventEnvelope as AnySchemaObject, 'event-envelope.v1');
+  ajv.addSchema(eventEnvelope as AnySchemaObject);
   for (const s of SCHEMAS) {
     ajv.addSchema(s);
   }

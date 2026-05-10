@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type {
   Crypto,
   Fixture,
@@ -245,6 +245,30 @@ describe('InMemorySeedCorpus (smoke)', () => {
         origin: 'fixed',
       }),
     ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+  });
+
+  it('throws SEED_VALIDATOR_NOT_REGISTERED when the AJV schema is missing from the registry', async () => {
+    // Distinct from SEED_VALIDATION_FAILED (body-invalid path). This
+    // condition is a platform/config fault — the seed.scenario.v1 schema
+    // was never loaded into the AJV registry — and must surface a
+    // dedicated code per specs/crosscut/errors.md Seeder section.
+    const schemasModule = await import('@atlas/schemas');
+    const spy = vi
+      .spyOn(schemasModule, 'getSchemaValidator')
+      .mockReturnValue(null);
+    try {
+      const corpus = buildCorpus();
+      const ref = computeScenarioRef(minimalScenario, testCrypto);
+      await expect(corpus.loadScenario(ref)).rejects.toThrow(
+        /SEED_VALIDATOR_NOT_REGISTERED/,
+      );
+      // Must NOT collapse into the body-invalid code.
+      await expect(corpus.loadScenario(ref)).rejects.not.toThrow(
+        /SEED_VALIDATION_FAILED/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('loadFixture throws SEED_FIXTURE_NOT_FOUND for unknown fixtureId', async () => {
