@@ -66,7 +66,21 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 | [`sdet`](.claude/agents/sdet.md) | Adversarial test review — finds untested branches, cache-tag gaps, projection rebuild gaps, surface-state assertion holes; pushes back on hard-to-test designs |
 | [`observability-architect`](.claude/agents/observability-architect.md) | Adversarial logging / instrumentation audit. Reads recent commits (default last 7 days), enforces [`specs/crosscut/logging.md`](specs/crosscut/logging.md), produces findings keyed to contract clauses. Read-only; doesn't fix. Invoke periodically or on-demand. |
 
-**Typical flow for a new capability:** `spec-keeper` (scope) → relevant platform owner (design) → `module-dev` + `frontend-dev` + `port-adapter-dev` (implement) → `sdet` (adversarial review) → `architect` (invariant gate before merge).
+**Typical flow for a new capability:** `spec-keeper` (scope) → relevant platform owner (design) → `module-dev` + `frontend-dev` + `port-adapter-dev` (implement) → `sdet` (adversarial review) → `architect` (invariant gate before merge). Every dispatch references a ticket id — see [Work Ticketing](#work-ticketing) below.
+
+## Work Ticketing
+
+Tickets are the unit-of-work layer between specs (durable *what*) and chat (ephemeral *how-it's-going*). Every agent dispatch references a ticket id; tickets carry the capability/ADR ref, acceptance bar, and resume prompt the agent needs to pick up cold.
+
+See [`tickets/CLAUDE.md`](tickets/CLAUDE.md) for the full contract. Quick rules:
+
+- **One ticket = one slice.** A single capability spec's worth of work, or a single refactor / drift fix / chore.
+- **Tickets organized by *set* in [`tickets/`](tickets/).** A set is a stream of related work — one capability, one multi-stage refactor, one drift-audit run, or the catch-all `chore/`. Files live at `tickets/<set>/<slug>.md`. No global id counter — references between tickets use paths (e.g., `blocked_by: [chore/commit-untracked-deliverables]`).
+- **A ticket cannot move to `in-flight` without `capability:` or `adr:` set.** A ticket cannot move to `done` without all `acceptance:` checks green. Same anti-slop principles as the slice workflow — just mechanically attached.
+- **Drift findings → tickets.** When `vision-keeper`, `observability-architect`, or `sdet` find drift they aren't fixing in-turn, they file a `type: drift-finding` ticket so the backlog is visible.
+- **The board:** [`tickets/INDEX.md`](tickets/INDEX.md) — open / scoped / in-flight / blocked / done at a glance.
+
+If you start a session and don't know what to work on: read `tickets/INDEX.md`. If you're about to dispatch an agent and there's no ticket: scope one first.
 
 ## Slice Workflow
 
@@ -111,6 +125,7 @@ Phase 5 — User checkpoint → merge
 4. **Adversarial pass is mandatory and time-boxed.** SDET runs every slice; one pass; produces a green report or specific feedback. Not optional, not infinite.
 5. **Invariant gate is non-negotiable.** Architect rejects on I1–I12 violation; user is the only override.
 6. **User checkpoints at boundaries.** Spec approval before code; final approval before merge. Bypass and you're the one shipping the slop.
+7. **Ticket-first dispatch.** Every agent dispatch references a ticket id — the ticket is the work order, carrying the capability/ADR ref, acceptance bar, and resume prompt. No ticket → scope one first. See [`tickets/CLAUDE.md`](tickets/CLAUDE.md).
 
 ### Mechanically-checked invariants every slice
 
@@ -138,6 +153,7 @@ packages/   shared infra: core, design, widgets, ingress, schemas, …
 apps/       runnable units: server (Hono), admin, authoring, sandbox, projection-worker, sim
 tests/      bdd (Playwright + Gherkin)
 specs/      RFC-style specs and lexicon — the source of truth
+tickets/    unit-of-work — slice instances dispatched to agents (see tickets/CLAUDE.md)
 infra/      compose files, container runtime
 ```
 
