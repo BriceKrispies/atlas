@@ -210,4 +210,175 @@ describe('InMemorySeedCorpus (smoke)', () => {
     const loaded = await corpus.loadScenario(ref);
     expect(loaded).toEqual(minimalScenario);
   });
+
+  it('throws SEED_VALIDATION_FAILED when a stored scenario violates the schema', async () => {
+    // A schemaVersion of 2 violates the const:1 constraint in
+    // seed.scenario.v1. AJV validation must catch it on load.
+    const bad: Scenario = {
+      ...minimalScenario,
+      // @ts-expect-error — deliberately malformed for the test
+      schemaVersion: 2,
+    };
+    const scenarios = new Map<string, Scenario>([[bad.scenarioId, bad]]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    await expect(
+      corpus.loadScenario({
+        scenarioId: bad.scenarioId,
+        contentHash: '0'.repeat(64),
+        origin: 'fixed',
+      }),
+    ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+  });
+
+  it('throws SEED_VALIDATION_FAILED when an unknown top-level field is added (additionalProperties:false)', async () => {
+    const bad = {
+      ...minimalScenario,
+      // Schema declares additionalProperties: false; this must be rejected.
+      extraneous: 'nope',
+    } as unknown as Scenario;
+    const scenarios = new Map<string, Scenario>([[bad.scenarioId, bad]]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    await expect(
+      corpus.loadScenario({
+        scenarioId: bad.scenarioId,
+        contentHash: '0'.repeat(64),
+        origin: 'fixed',
+      }),
+    ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+  });
+
+  it('loadFixture throws on unknown id (FINDING: error code is misnamed SEED_SCENARIO_NOT_FOUND)', async () => {
+    // BUG: the fixture-not-found path raises the *scenario* not-found
+    // error code. spec/crosscut/errors.md owns the taxonomy; the closest
+    // current name in the spec is SEED_SCENARIO_NOT_FOUND, but a fixture
+    // miss MUST surface as a fixture-shaped error so callers can
+    // distinguish them. Pinning the current (wrong) behavior so a fix
+    // breaks this loudly. Filed as `port-adapter-dev` follow-up.
+    const corpus = buildCorpus();
+    await expect(
+      corpus.loadFixture({ fixtureId: 'ghost', contentHash: '0'.repeat(64) }),
+    ).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
+  });
+
+  it('listScenarios respects the axes filter for materialized scenarios', async () => {
+    const materialised: Scenario = {
+      ...minimalScenario,
+      scenarioId: 'tpl/region=us-east-1/tier=pro',
+      axisBindings: { region: 'us-east-1', tier: 'pro' },
+    };
+    const scenarios = new Map<string, Scenario>([
+      [minimalScenario.scenarioId, minimalScenario],
+      [materialised.scenarioId, materialised],
+    ]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+
+    const matches = [];
+    for await (const ref of corpus.listScenarios({ axes: { region: 'us-east-1' } })) {
+      matches.push(ref);
+    }
+    expect(matches.map((r) => r.scenarioId)).toEqual(['tpl/region=us-east-1/tier=pro']);
+
+    const missMatches = [];
+    for await (const ref of corpus.listScenarios({ axes: { region: 'eu-west-1' } })) {
+      missMatches.push(ref);
+    }
+    expect(missMatches).toHaveLength(0);
+
+    const partialMatches = [];
+    for await (const ref of corpus.listScenarios({
+      axes: { region: 'us-east-1', tier: 'pro' },
+    })) {
+      partialMatches.push(ref);
+    }
+    expect(partialMatches).toHaveLength(1);
+  });
+
+  it('listScenarios sets origin=materialized when axisBindings present', async () => {
+    const materialised: Scenario = {
+      ...minimalScenario,
+      scenarioId: 'tpl/k=v',
+      axisBindings: { k: 'v' },
+    };
+    const scenarios = new Map<string, Scenario>([
+      [materialised.scenarioId, materialised],
+    ]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    const refs: Array<{ scenarioId: string; origin: string }> = [];
+    for await (const ref of corpus.listScenarios()) refs.push(ref);
+    expect(refs[0]!.origin).toBe('materialized');
+  });
+
+  it('listScenarios is snapshot-at-iteration-start (mutations after start NOT visible — port spec ambiguous)', async () => {
+    // Spec §4.1 calls listScenarios "streaming". The implementation
+    // snapshots at start. Pin the current semantics so any move to live
+    // streaming is conscious. See ticket log: phase-1.4 flagged this.
+    const scenarios = new Map<string, Scenario>([
+      [minimalScenario.scenarioId, minimalScenario],
+    ]);
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    const it = corpus.listScenarios()[Symbol.asyncIterator]();
+    const first = await it.next();
+    expect(first.done).toBe(false);
+    // Mutate AFTER the iterator started.
+    scenarios.set('late-add', { ...minimalScenario, scenarioId: 'late-add' });
+    const next = await it.next();
+    expect(next.done).toBe(true); // snapshot semantics: 'late-add' not seen
+  });
+
+  it('listScenarios early-break does not leak state (re-iterating yields full list)', async () => {
+    const scenarios = new Map<string, Scenario>();
+    for (let i = 0; i < 3; i++) {
+      scenarios.set(`s-${i}`, { ...minimalScenario, scenarioId: `s-${i}` });
+    }
+    const corpus = new InMemorySeedCorpus(scenarios, new Map(), testCrypto);
+    // First iteration with early break.
+    let count = 0;
+    for await (const _ref of corpus.listScenarios()) {
+      count++;
+      if (count === 1) break;
+    }
+    expect(count).toBe(1);
+    // Second iteration should see all 3 again.
+    const second: string[] = [];
+    for await (const ref of corpus.listScenarios()) {
+      second.push(ref.scenarioId);
+    }
+    expect(second).toHaveLength(3);
+  });
+
+  it('listScenarios over an empty corpus completes without error', async () => {
+    const corpus = new InMemorySeedCorpus(new Map(), new Map(), testCrypto);
+    const refs = [];
+    for await (const ref of corpus.listScenarios()) refs.push(ref);
+    expect(refs).toHaveLength(0);
+  });
+
+  it('canonicalJsonStringify (adapter copy): Date objects collapse to {} (KNOWN GAP)', () => {
+    // Both packages ship their own canonicalJsonStringify (duplication).
+    // Both treat Date as Object.keys(Date) → []. Two scenarios that
+    // differ only in a Date value would currently have identical
+    // contentHashes — silent collision risk. Pinning so a future Date
+    // fix breaks this loudly. Filed as follow-up.
+    const out = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
+    expect(out).toBe('{"at":{}}');
+  });
+
+  it('contentHash is stable across rebuilds of the same scenario', () => {
+    const r1 = computeScenarioRef(minimalScenario, testCrypto);
+    const r2 = computeScenarioRef(minimalScenario, testCrypto);
+    expect(r1.contentHash).toBe(r2.contentHash);
+  });
+
+  it('contentHash is stable under shuffled top-level key insertion order', () => {
+    const reordered = {
+      tags: minimalScenario.tags,
+      steps: minimalScenario.steps,
+      schemaVersion: minimalScenario.schemaVersion,
+      description: minimalScenario.description,
+      scenarioId: minimalScenario.scenarioId,
+    } as Scenario;
+    const r1 = computeScenarioRef(minimalScenario, testCrypto);
+    const r2 = computeScenarioRef(reordered, testCrypto);
+    expect(r1.contentHash).toBe(r2.contentHash);
+  });
 });

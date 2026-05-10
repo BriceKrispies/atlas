@@ -289,4 +289,191 @@ describe('canonicalJsonStringify', () => {
     expect(canonicalJsonStringify(42)).toBe('42');
     expect(canonicalJsonStringify(true)).toBe('true');
   });
+
+  it('throws TypeError on a cyclic value rather than infinite-looping', () => {
+    const cyc: Record<string, unknown> = { a: 1 };
+    cyc.self = cyc;
+    expect(() => canonicalJsonStringify(cyc)).toThrow(TypeError);
+  });
+
+  it('throws TypeError on bigint values (not JSON-serialisable)', () => {
+    expect(() => canonicalJsonStringify({ n: 1n })).toThrow(TypeError);
+  });
+
+  it('drops undefined / function / symbol object values, mirroring JSON.stringify', () => {
+    const out = canonicalJsonStringify({
+      a: 1,
+      b: undefined,
+      c: () => 1,
+      d: Symbol('x'),
+      e: null,
+    });
+    // Only `a` and `e: null` survive.
+    expect(out).toBe('{"a":1,"e":null}');
+  });
+
+  it('replaces undefined / function / symbol array entries with null', () => {
+    const out = canonicalJsonStringify([1, undefined, () => 1, Symbol('x'), 2]);
+    expect(out).toBe('[1,null,null,null,2]');
+  });
+
+  it('emits NaN / Infinity as null (mirrors JSON.stringify of those primitives)', () => {
+    expect(canonicalJsonStringify(NaN)).toBe('null');
+    expect(canonicalJsonStringify(Infinity)).toBe('null');
+    expect(canonicalJsonStringify(-Infinity)).toBe('null');
+  });
+
+  it('handles deeply nested arrays-of-objects deterministically', () => {
+    const a = canonicalJsonStringify([{ b: 1, a: 2 }, { z: 3, x: 4 }]);
+    const b = canonicalJsonStringify([{ a: 2, b: 1 }, { x: 4, z: 3 }]);
+    expect(a).toBe(b);
+  });
+
+  it('Date objects serialise to "{}" (KNOWN GAP — flag for follow-up)', () => {
+    // Per spec §4.1 contentHash MUST be deterministic. JSON.stringify of a
+    // Date produces an ISO string via its toJSON; this canonical
+    // implementation walks Object.keys instead, yielding "{}". Two
+    // scenarios whose only difference is a Date value would currently
+    // share a contentHash — silently. Pinning this here so a future fix
+    // breaks the test loudly. Filed as follow-up.
+    const stamped = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
+    expect(stamped).toBe('{"at":{}}');
+  });
+});
+
+describe('deriveIdempotencyKey', () => {
+  it('is deterministic across calls', () => {
+    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
+    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('produces distinct keys for distinct stepIndex with the same content', () => {
+    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
+    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 1);
+    expect(a).not.toBe(b);
+  });
+
+  it('produces distinct keys for distinct scenarioIds at the same stepIndex', () => {
+    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid-a', 0);
+    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid-b', 0);
+    expect(a).not.toBe(b);
+  });
+
+  it('SENTINEL COLLISION: scenarioIds containing "::" are NOT delimiter-safe', () => {
+    // Spec §4.3: idempotencyKey = sha256Hex(scenarioId + '::' + i).slice(0, 32).
+    // The current encoding has no field separator. Two distinct
+    // (scenarioId, stepIndex) pairs that flatten to the same byte sequence
+    // collide. e.g. ('abc::1', 2) and ('abc', '1::2'-shaped-step) cannot
+    // collide because step is a number — but ('abc::', 12) → 'abc::::12'
+    // and ('abc', '::12'-shaped-step) likewise can't because step is a
+    // number. The realistic risk is: ('a', 12) → 'a::12' vs ('a::1', 2) →
+    // 'a::1::2'. These don't collide. So with stepIndex-as-number the
+    // grammar is in fact injective today. Document the assumption so a
+    // future change (e.g. compound stepIds) doesn't break it silently.
+    const k1 = deriveIdempotencyKey(stubCrypto as Crypto, 'a', 12);
+    const k2 = deriveIdempotencyKey(stubCrypto as Crypto, 'a::1', 2);
+    expect(k1).not.toBe(k2);
+  });
+});
+
+describe('runScenario — additional coverage', () => {
+  it('runs a 0-step scenario without invoking the driver', async () => {
+    // Note: schema requires minItems:1 but the runner is the spec's
+    // dispatch contract; AJV validation lives at the adapter level. The
+    // runner must not crash on an empty steps array if a caller bypasses
+    // validation (e.g. an in-process driver).
+    const scenario: Scenario = {
+      schemaVersion: 1,
+      scenarioId: 'unit/empty',
+      steps: [],
+    };
+    const { d, rec } = deps(scenario, []);
+    const result = await runScenario(d, makeRef(scenario.scenarioId, 'h'));
+    expect(rec.envelopes).toHaveLength(0);
+    expect(result.steps).toHaveLength(0);
+    expect(result.scenarioId).toBe('unit/empty');
+  });
+
+  it('propagates errors thrown by IntentDriver.submit (does not swallow)', async () => {
+    const scenario = makeScenario();
+    const driver: IntentDriver = {
+      async submit() {
+        throw new Error('transport-down');
+      },
+    };
+    const d: RunnerDeps = {
+      corpus: corpusReturning(scenario),
+      driver,
+      crypto: stubCrypto as Crypto,
+    };
+    await expect(runScenario(d, makeRef(scenario.scenarioId, 'h'))).rejects.toThrow(
+      /transport-down/,
+    );
+  });
+
+  it('propagates errors thrown by SeedCorpus.loadScenario (does not swallow)', async () => {
+    const corpus: SeedCorpus = {
+      listScenarios() {
+        throw new Error('not-used');
+      },
+      async loadScenario() {
+        throw new Error('SEED_SCENARIO_NOT_FOUND: ghost');
+      },
+      async loadFixture() {
+        throw new Error('not-used');
+      },
+    };
+    const { driver } = recordingDriver([]);
+    await expect(
+      runScenario({ corpus, driver, crypto: stubCrypto as Crypto }, makeRef('ghost', 'h')),
+    ).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
+  });
+
+  it('expect.ok=true matches a driver-ok response (positive path)', async () => {
+    const scenario: Scenario = {
+      schemaVersion: 1,
+      scenarioId: 'unit/expect-ok',
+      steps: [
+        {
+          stepId: 's1',
+          intent: makeIntent('Test.Do', 'r1'),
+          expect: { ok: true },
+        },
+      ],
+    };
+    const { d } = deps(scenario, [{ ok: true }]);
+    const result = await runScenario(d, makeRef(scenario.scenarioId, 'h'));
+    expect(result.steps[0]!.ok).toBe(true);
+  });
+
+  it('expect.errorCode mismatch flips ok=false even when driver ok flag matches', async () => {
+    const scenario: Scenario = {
+      schemaVersion: 1,
+      scenarioId: 'unit/expect-errcode',
+      steps: [
+        {
+          stepId: 's1',
+          intent: makeIntent('Test.Do', 'r1'),
+          expect: { ok: false, errorCode: 'WANTED' },
+        },
+      ],
+    };
+    const { d } = deps(scenario, [{ ok: false, errorCode: 'GOT_OTHER' }]);
+    const result = await runScenario(d, makeRef(scenario.scenarioId, 'h'));
+    expect(result.steps[0]!.ok).toBe(false);
+    expect(result.steps[0]!.errorCode).toBe('GOT_OTHER');
+  });
+
+  it('does not mutate the caller-supplied intent envelope', async () => {
+    const scenario = makeScenario();
+    const originalIdempotencyKey = scenario.steps[0]!.intent.idempotencyKey;
+    const originalCorrelationId = scenario.steps[0]!.intent.correlationId;
+    const { d } = deps(scenario, [{ ok: true }, { ok: true }]);
+    await runScenario(d, makeRef(scenario.scenarioId, 'h'));
+    // The runner builds a NEW envelope per step; original must be intact.
+    expect(scenario.steps[0]!.intent.idempotencyKey).toBe(originalIdempotencyKey);
+    expect(scenario.steps[0]!.intent.correlationId).toBe(originalCorrelationId);
+  });
 });
