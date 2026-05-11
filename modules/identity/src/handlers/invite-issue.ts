@@ -70,7 +70,10 @@ export async function handleInviteIssue(
     idempotencyKey: `identity.invite.issue.${document.tokenId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // No User subject at issue time — the invitee is identified by
+    // email only; the User entity is minted on accept. `principalId`
+    // is the actor (the robot for system-initiated invites).
+    userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `Invite:${document.tokenId}`,

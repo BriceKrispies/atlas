@@ -6,13 +6,9 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [intent-driver-lift-to-test-fabric](seeder/intent-driver-lift-to-test-fabric.md) — refactor — open — → port-adapter-dev (blocked on @atlas/test-fabric existing)
 
-## chore/
-
-- [schema-id-normalization-sweep](chore/schema-id-normalization-sweep.md) — chore — review — → sdet
-
 ## atlas-on-atlas/
 
-- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — in-flight — → module-dev (sdet bounce: userId field stamps robot id where it should be null/user)
+- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — review — → architect (post fix-pass)
 
 ## identity/
 

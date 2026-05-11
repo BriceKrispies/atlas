@@ -69,7 +69,12 @@ export async function handleOAuthRevokeToken(
     idempotencyKey: `identity.oauth.revoke.${token.tokenId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // OAuth access tokens are owned by ServicePrincipals, not Users —
+    // there is no User subject for this event. `principalId` is the
+    // actor (robot on RFC 7009 public revoke; the operator on
+    // admin-revoke). NOTE: if a future capability binds OAuth tokens
+    // to a User, revisit this — for now `null` is the correct subject.
+    userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `OAuthToken:${token.tokenId}`,

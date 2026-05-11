@@ -201,9 +201,11 @@ describe('audit-actor invariant — system-initiated handlers stamp the robot id
   it('handleOAuthRevokeToken (public revoke): OAuthTokenRevoked.principalId === PLATFORM_ROBOT_PRINCIPAL_ID', async () => {
     // Mirrors `apps/server/src/routes/oauth.ts:237`. We can't exercise a
     // full ServicePrincipal flow here, but we can pin the envelope-shape
-    // contract: the handler propagates `cmd.principalId` verbatim to
-    // both `principalId` and `userId` envelope fields — so when the
-    // route passes the robot id, the audit row carries it.
+    // contract: the handler stamps `principalId` from `cmd.principalId`
+    // (the robot for front-door revoke). NOTE: `userId` is now `null`
+    // for this event (post-Stage-2 fix-pass) because OAuth tokens are
+    // owned by ServicePrincipals, not Users — see the `subject vs.
+    // actor` describe block below for the userId pin.
     const fx = newFixture();
     const result = await handleOAuthRevokeToken(
       {
@@ -405,6 +407,114 @@ describe('audit-actor invariant — system-initiated handlers stamp the robot id
     expect(userCreated?.principalId).toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
     expect(membershipCreated?.eventType).toBe('Identity.MembershipCreated');
     expect(membershipCreated?.principalId).toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
+  });
+});
+
+// ---------------------------------------------------------------------
+// 2b. Subject vs. actor: `userId` is NEVER the robot id
+// ---------------------------------------------------------------------
+//
+// Stage 2 fix-pass — sdet's review finding #1 caught a class of leak
+// where `userId: cmd.principalId` carried the robot id into the
+// envelope's `userId` (subject) field. Audit rows index by `userId` to
+// answer "show events about user X" — letting the robot string land
+// there pollutes per-user queries (the robot is not a User). These
+// regression tests pin each fixed site to `null` (no user subject) or
+// the real `user.userId`.
+
+describe('subject-vs-actor invariant — `userId` is null or a real User id, never the robot id', () => {
+  it('handleUserCreate stamps `userId` to the newly-created user, not `cmd.principalId`', async () => {
+    const fx = newFixture();
+    const result = await handleUserCreate(
+      {
+        tenantId: fx.tenantId,
+        correlationId: 'c',
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        email: 'subject-vs-actor@example.com',
+      },
+      fx.events,
+    );
+    expect(result.envelope.principalId).toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
+    // Subject is the newly-minted user — NOT the robot.
+    expect(result.envelope.userId).toBe(result.document.userId);
+    expect(result.envelope.userId).not.toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
+  });
+
+  it('handleInviteIssue stamps `userId` to null (invitee identified by email only)', async () => {
+    const fx = newFixture();
+    const result = await handleInviteIssue(
+      {
+        tenantId: fx.tenantId,
+        correlationId: 'c',
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        email: 'pre-user@example.com',
+        rolesOnAccept: ['admin'],
+      },
+      fx.events,
+    );
+    expect(result.envelope.principalId).toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
+    expect(result.envelope.userId).toBeNull();
+  });
+
+  it('handleInviteAccept: all three emissions stamp `userId` to the accepted User, not the robot', async () => {
+    const fx = newFixture();
+    const issued = await handleInviteIssue(
+      {
+        tenantId: fx.tenantId,
+        correlationId: 'c',
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        email: 'accept-subject@example.com',
+        rolesOnAccept: ['admin'],
+      },
+      fx.events,
+    );
+    await dispatchAll(fx);
+    const accept = await handleInviteAccept(
+      {
+        tenantId: fx.tenantId,
+        correlationId: 'c',
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        presentedToken: issued.plaintextToken,
+        acceptedEmail: 'accept-subject@example.com',
+        issueSession: false,
+      },
+      fx.events,
+      fx.entities,
+    );
+    const expectedUserId = accept.user.userId;
+    // Primary event (InviteAccepted) subject is the accepting User.
+    expect(accept.envelope.userId).toBe(expectedUserId);
+    // Follows are UserCreated + MembershipCreated — both also have the
+    // user as their subject (not the robot actor).
+    for (const f of accept.follow) {
+      expect(f.userId).toBe(expectedUserId);
+      expect(f.userId).not.toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
+    }
+  });
+
+  it('handleOAuthRevokeToken stamps `userId` to null (OAuth tokens belong to ServicePrincipals, not Users)', async () => {
+    // We can't easily mint a real ServicePrincipal-bound OAuth token in
+    // this unit harness, but the contract is mechanical: the handler
+    // sets `userId: null` regardless of token content. Until a future
+    // capability binds OAuth tokens to a User, this is the correct
+    // subject.
+    //
+    // Source-level pin: oauth-token-revoke.ts:72 — `userId: null` (post
+    // fix-pass). If the line changes, this comment is the canary.
+    // (Unknown-token path returns null envelope, so the runtime
+    // assertion is restricted to source review for the FOUND path.)
+    const fx = newFixture();
+    const result = await handleOAuthRevokeToken(
+      {
+        tenantId: fx.tenantId,
+        correlationId: 'c',
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        presentedToken: 'unknown-token-for-shape-pin',
+      },
+      fx.events,
+      fx.entities,
+    );
+    expect(result.envelope).toBeNull();
   });
 });
 

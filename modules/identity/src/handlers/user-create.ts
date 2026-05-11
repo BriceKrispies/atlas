@@ -59,7 +59,11 @@ export async function handleUserCreate(
     idempotencyKey: `identity.user.create.${cmd.tenantId}.${userId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject of the event is the newly-created User. `principalId` is
+    // the actor (robot on bootstrap / front-door create; the operator
+    // on admin-create) — never the same value as `userId` here unless
+    // a user is somehow creating themselves.
+    userId,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `User:${userId}`],
     payload: { document },
   };

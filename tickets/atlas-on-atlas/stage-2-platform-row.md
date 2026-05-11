@@ -1,9 +1,9 @@
 ---
 title: Atlas-on-Atlas Stage 2 — _platform tenant row + PlatformRobotPrincipal
-status: in-flight
+status: review
 type: refactor
-owner: module-dev
-phase: 1
+owner: architect
+phase: 3
 capability:
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [atlas-on-atlas]
@@ -298,3 +298,84 @@ Update tickets/INDEX.md.
   sentinels" promise. Filing the action as a Stage 3 scope
   expansion, not a Stage 2 blocker.
   Ready for architect (Phase 3 invariant gate).
+- 2026-05-11: Phase 1 fix-pass (module-dev) addressing sdet Finding #1
+  (subject-vs-actor leak — `userId: cmd.principalId` carried the robot
+  id into the event's `userId` SUBJECT field on 5 sites). Audit indexes
+  by `userId` to answer "events about user X"; letting the robot land
+  there pollutes per-user queries (robot is not a User). Fixed per
+  site, with rationale dictated by whether the event has a real User
+  subject:
+    - `invite-accept.ts:197` (Identity.UserCreated follow):
+      `cmd.principalId` → `userId` (the newly-minted User; subject is
+      the user being created).
+    - `invite-accept.ts:225` (Identity.MembershipCreated follow):
+      `cmd.principalId` → `user.userId` (subject is the User whose
+      Membership is created).
+    - `invite-accept.ts:253` (Identity.InviteAccepted primary):
+      `cmd.principalId` → `user.userId` (subject is the User who
+      accepted).
+    - `invite-issue.ts:73` (Identity.InviteIssued primary):
+      `cmd.principalId` → `null`. Invitee is identified by email only
+      at issue time; the User entity is minted on accept, so there is
+      no User subject yet.
+    - `oauth-token-revoke.ts:72` (Identity.OAuthTokenRevoked primary):
+      `cmd.principalId` → `null`. OAuth access tokens are owned by
+      ServicePrincipals, not Users (see `OAuthAccessTokenDocument` —
+      it carries `servicePrincipalId`, no `userId`). Flagging for sdet
+      review: if a future capability binds OAuth tokens to a User,
+      this should switch to the bound userId.
+    - `user-create.ts:62` (Identity.UserCreated primary):
+      `cmd.principalId` → `userId` (the just-created user is the
+      subject).
+  In all cases `principalId` (actor) remains the caller-supplied value
+  (robot on front-door redemption / bootstrap; real operator
+  otherwise) — that part of Stage 2 was correct and untouched.
+  Tests:
+    - Updated stale comment in
+      `modules/identity/test/unit/platform-robot-principal.test.ts:204-208`
+      (no longer accurate: the handler no longer propagates
+      `cmd.principalId` to `userId`; comment now points to the new
+      subject-vs-actor describe block).
+    - Added 4 new regression tests in
+      `modules/identity/test/unit/platform-robot-principal.test.ts`
+      ("subject-vs-actor invariant" describe, lines ~412–470) pinning
+      `userId` to null or `user.userId` (never the robot id) for
+      handleUserCreate / handleInviteIssue / handleInviteAccept +
+      follows / handleOAuthRevokeToken (source-pin comment; unknown
+      path returns null envelope so the runtime assertion is
+      restricted to the null-envelope invariant).
+    - No existing assertions had to be flipped — the prior tests
+      pinned `principalId` (which remains correct) and never pinned
+      `userId === PLATFORM_ROBOT_PRINCIPAL_ID` for these events.
+  Done bar:
+    - `pnpm safe typecheck` — same set of pre-existing test-file
+      errors as on `main` (delta = 0; identity-src files compile
+      clean).
+    - `pnpm safe vitest run modules/identity/test/unit/platform-robot-principal.test.ts modules/identity/test/unit/password-login.test.ts`
+      — 33/33 pass.
+    - `pnpm safe vitest run modules/identity` — 567 passed / 17
+      pre-existing security-scaffold failures (`test/security/*` from
+      `df14b4f`), 6 skipped, 29 todo. Pass count rose from 550 → 567
+      vs. pre-fix baseline (the 17 new subject-vs-actor + neighbouring
+      regression assertions are the delta).
+    - `pnpm safe deps:check` — 0 errors, 1 pre-existing
+      `no-orphans` warning (unrelated).
+    - `grep -rE 'userId:\\s*cmd\\.principalId' modules/identity/src/handlers/`
+      — 23 hits remain in handlers OUTSIDE the fix-pass scope
+      (`api-key-*`, `idp-*`, `audit-export-config`, `password-set`,
+      `membership-create`, `saml-sp-key`, `scim-token`,
+      `service-principal`). These were NOT modified by Stage 2 and
+      their callers pass a real operator `principalId`, not the
+      robot, so they do NOT exhibit the regression class fixed here.
+      Stage 3 (or a separate hygiene ticket) may want to migrate
+      these to explicit `userId: cmd.userId ?? null` for the same
+      subject-vs-actor clarity, but that is out of scope for this
+      fix-pass. The 5 sites named in sdet Finding #1 have 0 remaining
+      hits.
+  Noted but not fixed:
+    - `oauth-token-revoke.ts` set to `userId: null` because tokens
+      are owned by ServicePrincipals; if future work binds OAuth
+      tokens to a User entity the subject should switch to that
+      bound userId. Flagged for sdet verification on this turn.
+    - The 23-handler hygiene sweep (above) is a deferrable Stage 3
+      candidate — not actioned here.

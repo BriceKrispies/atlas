@@ -194,7 +194,11 @@ export async function handleInviteAccept(
       idempotencyKey: `identity.user.create.${userId}`,
       causationId: null,
       principalId: cmd.principalId,
-      userId: cmd.principalId,
+      // Subject of the event is the newly-created User. `principalId` is
+      // the actor (the platform robot on front-door redemption); `userId`
+      // is the user the event is ABOUT (ADR 0008 §2 — robot is actor,
+      // never subject).
+      userId,
       cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `User:${userId}`],
       payload: { document: user },
     };
@@ -222,7 +226,9 @@ export async function handleInviteAccept(
     idempotencyKey: `identity.membership.create.${cmd.tenantId}.${user.userId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject of the event is the User whose Membership is created.
+    // `principalId` is the actor (robot on front-door redemption).
+    userId: user.userId,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `User:${user.userId}`,
@@ -250,7 +256,9 @@ export async function handleInviteAccept(
     idempotencyKey: `identity.invite.accept.${invite.tokenId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject of the event is the User who accepted the invite.
+    // `principalId` is the actor (robot on front-door redemption).
+    userId: user.userId,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `Invite:${invite.tokenId}`,
