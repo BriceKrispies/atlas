@@ -336,6 +336,35 @@ export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
         expect(byId.get('minimal-tenant-bootstrap')!.origin).toBe('fixed');
         expect(byId.get(WORKED_SCENARIO.scenarioId)!.origin).toBe('materialized');
       });
+
+      test('propagates axisBindings on the ScenarioRef for materialized scenarios; omits/leaves-undefined for fixed', async () => {
+        // The port doc (`ports/src/seed-corpus.ts`) declares
+        // `axisBindings?: Readonly<Record<string, string>>` on
+        // `ScenarioRef`, and the worked example (§9) emits it. A
+        // future fs/sqlite adapter that returned origin='materialized'
+        // but left axisBindings undefined on the ref would break the
+        // round-trip into `scenario-fuzzing.md` axis system (consumers
+        // expect the bindings without re-loading the scenario body).
+        // Pin it explicitly — neither the origin check above nor the
+        // axes-filter check pins what the ref itself carries.
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
+          fixtures: [],
+        });
+        const refs = await collect(r.corpus.listScenarios());
+        const byId = new Map(refs.map((ref) => [ref.scenarioId, ref]));
+        const matRef = byId.get(WORKED_SCENARIO.scenarioId)!;
+        expect(matRef.axisBindings).toEqual({
+          region: 'us-east-1',
+          tier: 'starter',
+        });
+        const fixedRef = byId.get('minimal-tenant-bootstrap')!;
+        // FIXED scenarios MUST NOT surface axisBindings — either omit
+        // the key or leave it explicitly undefined. Pinning the
+        // distinction lets consumers (the axis system) discriminate
+        // origin solely from the ref.
+        expect(fixedRef.axisBindings).toBeUndefined();
+      });
     });
 
     // ─── listScenarios — filters ──────────────────────────────────
@@ -476,6 +505,27 @@ export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
         expect(after).toEqual([FIXED_SCENARIO.scenarioId, 'late-add'].sort());
       });
 
+      test('snapshot is captured at listScenarios() call, NOT at first Symbol.asyncIterator() call', async () => {
+        // Spec §4.1 + port JSDoc: "the iterator is materialised
+        // against the corpus state at the moment listScenarios() is
+        // called". A lazy adapter (e.g., an fs adapter that walks the
+        // directory only when the iterator first advances) could
+        // silently pass every other snapshot test by snapshotting at
+        // first iteration instead. Pin the distinction.
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const iterable = r.corpus.listScenarios();
+        // Mutate AFTER listScenarios() but BEFORE first .next() —
+        // a lazy adapter would observe 'late-add'; a spec-compliant
+        // adapter would not.
+        await r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
+        const seen: string[] = [];
+        for await (const ref of iterable) seen.push(ref.scenarioId);
+        expect(seen).toEqual(['minimal-tenant-bootstrap']);
+      });
+
       test('early-break does not leak state — re-iterating yields the full list', async () => {
         const scenarios: Scenario[] = [];
         for (let i = 0; i < 3; i += 1) {
@@ -593,6 +643,35 @@ export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
             origin: 'fixed',
           }),
         ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+      });
+
+      test('loadFixture throws SEED_VALIDATION_FAILED when the stored fixture body violates seed.fixture.v1', async () => {
+        // Symmetry with the scenario-body path: the errors taxonomy
+        // (`specs/crosscut/errors.md`) lists SEED_VALIDATION_FAILED as
+        // category VALIDATION for "A scenario or fixture body failed
+        // AJV validation". An adapter that validates scenarios but
+        // silently loads malformed fixtures would silently pass every
+        // existing test — pin the fixture branch explicitly. Use
+        // additionalProperties:false from seed.fixture.v1 as the trip
+        // condition because it's adapter-agnostic (no const fields to
+        // collide with).
+        const badFixture = {
+          ...ADMIN_FIXTURE,
+          extraneous: 'nope',
+        } as unknown as Fixture;
+        const r = await makeAdapter({ scenarios: [], fixtures: [badFixture] });
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: badFixture.fixtureId,
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: badFixture.fixtureId,
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.not.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
       });
     });
 
