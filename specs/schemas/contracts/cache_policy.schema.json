@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/cache-policy.v1.json",
+  "$id": "cache-policy.v1",
   "title": "CacheArtifactDescriptor",
   "description": "Cache artifact policy and invalidation rules",
   "type": "object",

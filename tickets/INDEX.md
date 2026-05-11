@@ -8,11 +8,11 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## chore/
 
-- [schema-id-normalization-sweep](chore/schema-id-normalization-sweep.md) — chore — scoped — → port-adapter-dev
+- [schema-id-normalization-sweep](chore/schema-id-normalization-sweep.md) — chore — review — → sdet
 
 ## atlas-on-atlas/
 
-- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — scoped — → module-dev
+- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — review — → sdet
 
 ## identity/
 

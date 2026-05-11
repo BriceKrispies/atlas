@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/page-template.v1.json",
+  "$id": "page-template.v1",
   "title": "PageTemplate",
   "description": "Declarative manifest exported alongside a page template's element class. Identifies the template, declares its regions (named drop zones), and the placement rules for each. See specs/crosscut/page-templates.md.",
   "type": "object",

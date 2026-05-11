@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/page-document.v1.json",
+  "$id": "page-document.v1",
   "title": "PageDocument",
   "description": "Tenant-scoped record that binds a content page to a template and stores widget placement for each region. Frozen at v1 — see 'Page Document Shape — Frozen at v1' in specs/crosscut/page-templates.md. The WidgetInstance entry shape is reused from page-layout.v1.json to guarantee one widget-entry shape across the platform.",
   "type": "object",
@@ -56,7 +56,7 @@
       "description": "Map of region name to ordered array of widget instances. Region names MUST exist in the resolved template's manifest (INV-TEMPLATE-02); required regions MUST be non-empty (INV-TEMPLATE-05).",
       "additionalProperties": {
         "type": "array",
-        "items": { "$ref": "https://atlas-platform.example.com/schemas/page-layout.v1.json#/definitions/WidgetInstance" }
+        "items": { "$ref": "page-layout.v1#/definitions/WidgetInstance" }
       }
     },
     "status": {

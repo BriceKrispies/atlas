@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/widget-manifest.v1.json",
+  "$id": "widget-manifest.v1",
   "title": "WidgetManifest",
   "description": "Declarative manifest exported alongside a widget's element class. Identifies the widget, declares its isolation mode, capability and topic permissions, and the JSON schema its per-instance config must satisfy. See specs/crosscut/widgets.md for full specification.",
   "type": "object",

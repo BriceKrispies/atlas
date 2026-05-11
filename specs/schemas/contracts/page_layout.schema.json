@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/page-layout.v1.json",
+  "$id": "page-layout.v1",
   "title": "PageLayout",
   "description": "Tenant-scoped layout document that assigns widget instances to slots on a content page. Stored as page data (not bundle code). Consumed by <widget-host> at mount time. See specs/crosscut/widgets.md.",
   "type": "object",

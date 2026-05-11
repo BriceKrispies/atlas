@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/cedar-policy.v1.json",
+  "$id": "cedar-policy.v1",
   "$comment": "Cedar policy representation for Atlas authorization engine",
   "title": "CedarPolicy",
   "description": "Cedar-based authorization policy for ABAC evaluation. Policies are expressed in Cedar's policy language syntax.",

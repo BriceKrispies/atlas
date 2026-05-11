@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/module-manifest.v2.json",
+  "$id": "module-manifest.v2",
   "title": "ModuleManifest",
   "description": "Module capability declaration and governance manifest",
   "type": "object",

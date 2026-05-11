@@ -1,9 +1,9 @@
 ---
 title: Normalise 11 canonical schema $ids to short form; drop loader aliases
-status: scoped
+status: review
 type: chore
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability:
 adr:
 vision: []
@@ -147,3 +147,4 @@ those in your summary — they may need attention separately.
 ## Notes / log
 
 - 2026-05-11: created. Filed after event-envelope-rename agent flagged 11 other long-URL `$id`s in `specs/schemas/contracts/`. Verified scope via grep — actual touched-file count likely ~20-25 once downstream refs are counted (embedded openapi, duplicated copies, TS constants).
+- 2026-05-11: sweep executed by `port-adapter-dev`. Renamed 11 canonical `$id`s in `specs/schemas/contracts/` from `https://atlas-platform.example.com/schemas/<name>.v<n>.json` to bare `<name>.v<n>`. Updated intra-schema `$ref` in `page_document.schema.json` (canonical + duplicated copy in `packages/page-templates/src/schemas/`) from long-URL → `page-layout.v1#/definitions/WidgetInstance`. Updated OpenAPI embeds: `specs/openapi.tenant.json:851` + `specs/openapi.operator.json:25`. Updated duplicated copies in `packages/page-templates/src/schemas/` (3 files: page_template, page_layout, page_document) and `packages/widget-host/src/schemas/` (2 files: page_layout, widget_manifest). No loader aliases dropped (none existed for these 11; `loader.ts` only explicitly addSchemas event-envelope). No `*_SCHEMA_ID` TS constants reference the long URL (verified via grep). Re-ran `pnpm safe --filter @atlas/schemas sync-schemas` — clean (22 files, 3 manifests). Vitest across packages/schemas, packages/widget-host, packages/page-templates, packages/seeder, adapters/seed-memory, apps/atlasctl — 114/114 passing across 10 test files. `pnpm safe deps:check` — 0 errors (1 unrelated orphan warning). Done-bar grep clean outside excluded paths (widget config schemas, ticket log, archived ticket).

@@ -22,7 +22,7 @@
     "schemas": {
       "ErrorEnvelope": {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "$id": "https://atlas-platform.example.com/schemas/error-envelope.v1.json",
+        "$id": "error-envelope.v1",
         "title": "ErrorEnvelope",
         "description": "Standard error response envelope for all Atlas API errors. See specs/crosscut/errors.md for failure semantics contract.",
         "type": "object",

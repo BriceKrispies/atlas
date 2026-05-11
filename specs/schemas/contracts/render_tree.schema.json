@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/render-tree.v1.json",
+  "$id": "render-tree.v1",
   "title": "RenderTree",
   "description": "Structured render tree IR produced by WASM plugins. Pure-data, frontend-agnostic, validated by the platform before caching or delivery.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://atlas-platform.example.com/schemas/page-create-intent-payload.v1.json",
+  "$id": "page-create-intent-payload.v1",
   "title": "PageCreateIntentPayload",
   "description": "Payload schema for ContentPages.Page.Create intents",
   "type": "object",
