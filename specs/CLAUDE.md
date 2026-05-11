@@ -42,6 +42,7 @@ Any spec content under retired-domain directories should be considered legacy no
 ### Remaining crosscut
 
 - `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
+- `crosscut/always-on.md` — always-on contract: what's kernel (restart-required) vs. data (hot-changeable), hot-reload lifecycle, operator surface. Sets the bar [ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6 deferred.
 - `crosscut/errors.md` — error taxonomy (referenced by every domain).
 - `crosscut/events.md` — event vocabulary (referenced by every domain).
 - `crosscut/logging.md` — logging contract (structured JSON, mandatory fields, levels, redaction). Audited by the `observability-architect` agent.
@@ -70,6 +71,7 @@ The legacy `specs/modules/` folder is gone — all content has migrated.
 
 | Path | Why it's still here |
 |------|---------------------|
+| `crosscut/always-on.md` | Always-on contract — kernel/data split, hot-reload rules ([ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6) |
 | `crosscut/atlasctl.md` | Operator CLI — tooling, not a domain |
 | `crosscut/errors.md` | Error taxonomy — referenced by every domain |
 | `crosscut/events.md` | Event vocabulary — referenced by every domain |

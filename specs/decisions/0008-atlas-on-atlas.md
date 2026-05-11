@@ -96,7 +96,7 @@ This ADR is spec-only. Concretely:
 2. **Stage 1 (next):** Plug the four hexagon leaks — six new ports under `ports/src/` (`crypto`, `secret-store`, `logger`, `audit-emitter`, `metrics-sink`, `policy-manifest`), with `adapter-node` + `adapter-idb` impls and contract tests. One slice per port, owned by `port-adapter-dev`.
 3. **Stage 2:** Make `_platform` a real `control_plane.tenants` row. Bootstrap seed; replace string literal with `PLATFORM_TENANT_ID` constant; introduce `PlatformRobotPrincipal` and eliminate `principalId: null` sentinels.
 4. **Stage 3:** Refactor the ~16 brittle tests. Replace hardcoded `'_platform'` with `getPlatformTenantId()` from a shared test helper.
-5. **Stage 5 / 6:** Extract `packages/dispatch-chain` (consolidate the `state.ts:318–340` ↔ `tenant-loop.ts` duplication). Write `crosscut/always-on.md` capturing the "what counts as restart-required" bar.
+5. **Stage 5 / 6:** Extract `packages/dispatch-chain` (consolidate the `state.ts:318–340` ↔ `tenant-loop.ts` duplication). Write `crosscut/always-on.md` capturing the "what counts as restart-required" bar — **Stage 6 spec drafted at [`crosscut/always-on.md`](../crosscut/always-on.md) (2026-05-10)**; the staged implementation phases land per its §6.
 
 Stage 4 (adapter parity decision) is recorded in §5 of this ADR — no further migration step.
 

@@ -272,7 +272,7 @@ The following invariants are **non-negotiable** and must be enforced by any impl
 - Projection state is derived purely from events (no external dependencies)
 - Deleting a projection and replaying events reconstructs identical state
 
-**Purpose**: Enables projection version upgrades, bug fixes, and disaster recovery.
+**Purpose**: Enables projection version upgrades, bug fixes, and disaster recovery. Also the foundation for the always-on contract ([`crosscut/always-on.md`](crosscut/always-on.md)) — state is durable independent of code, so reload-then-resume is a well-defined operation.
 
 **Violation**: If projections depend on non-event state, rebuilds fail or produce incorrect data.
 
