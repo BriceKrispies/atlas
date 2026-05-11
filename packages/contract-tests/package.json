@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
   "dependencies": {
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*"

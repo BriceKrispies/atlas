@@ -5,7 +5,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 ## seeder/
 
 - [intent-driver-lift-to-test-fabric](seeder/intent-driver-lift-to-test-fabric.md) — refactor — open — → port-adapter-dev (blocked on @atlas/test-fabric existing)
-- [phase-1.5-contract-tests](seeder/phase-1.5-contract-tests.md) — test — scoped — → port-adapter-dev
+- [phase-1.5-contract-tests](seeder/phase-1.5-contract-tests.md) — test — review — → sdet
 
 ## atlas-on-atlas/
 

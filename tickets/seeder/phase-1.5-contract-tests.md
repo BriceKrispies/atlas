@@ -1,9 +1,9 @@
 ---
 title: Seeder Phase 1.5 — SeedCorpus contract test suite
-status: scoped
+status: review
 type: test
-owner: port-adapter-dev
-phase: 1
+owner: sdet
+phase: 2
 capability: specs/crosscut/seed-corpus.md
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [agentic-first]
@@ -81,3 +81,4 @@ Update tickets/INDEX.md.
 ## Notes / log
 
 - 2026-05-10: created. Migrated from TASK.md "Phase 1.5" entry.
+- 2026-05-10: implemented by `port-adapter-dev`. Created `packages/contract-tests/src/seed-corpus.ts` exporting `seedCorpusContract(makeAdapter)` — 22 tests across six describe blocks: listScenarios shape (4), listScenarios filters (3), listScenarios snapshot-at-iteration-start (4), loadScenario/loadFixture (6), SEED_VALIDATOR_NOT_REGISTERED (2), contentHash determinism (3). Factory shape is `{ corpus, addScenario, addFixture, removeScenario, simulateValidatorMissing }` — adapter-agnostic (no `Map` assumption). Wired `adapters/seed-memory/test/contract.test.ts` as a small bridge that constructs `InMemorySeedCorpus` with backing `Map`s the factory hooks mutate, plus a `vi.spyOn`-based `simulateValidatorMissing`. Three regression pins kept in the adapter file (canonicalJsonStringify order, Date semantics, event-envelope schema-registry) — they test `@atlas/platform-core` and `@atlas/schemas`, not the port. Pinned `contentHash` vector `52140527f2273d4163c2df17c76509106432e74a418e8ae1a179918638940972` (FIXED_SCENARIO worked-example minimal-tenant-bootstrap) lifted from sdet's smoke test. Acceptance: `pnpm safe --filter @atlas/contract-tests typecheck` green; `pnpm safe vitest run adapters/seed-memory` 25 tests / 25 pass; `pnpm safe deps:check` 0 errors (1 pre-existing orphan warning unrelated). Added `typecheck` script to `packages/contract-tests/package.json` (was missing) and `@atlas/contract-tests` to seed-memory devDeps.

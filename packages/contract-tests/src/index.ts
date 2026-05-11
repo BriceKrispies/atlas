@@ -25,3 +25,9 @@ export {
   type RepositoryStoreFactoryOptions,
   type RepositoryStoreFactoryResult,
 } from './repository-store.ts';
+export {
+  seedCorpusContract,
+  type SeedCorpusFactory,
+  type SeedCorpusFactoryArgs,
+  type SeedCorpusFactoryResult,
+} from './seed-corpus.ts';
