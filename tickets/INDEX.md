@@ -12,7 +12,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## atlas-on-atlas/
 
-- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — review — → sdet
+- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — in-flight — → module-dev (sdet bounce: userId field stamps robot id where it should be null/user)
 
 ## identity/
 

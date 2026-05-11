@@ -1,9 +1,9 @@
 ---
 title: Atlas-on-Atlas Stage 2 — _platform tenant row + PlatformRobotPrincipal
-status: review
+status: in-flight
 type: refactor
-owner: sdet
-phase: 2
+owner: module-dev
+phase: 1
 capability:
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [atlas-on-atlas]
@@ -194,3 +194,107 @@ Update tickets/INDEX.md.
     it; updated it for consistency. Spec doc-literals in
     `specs/domains/quotas/capabilities/object-types-per-tenant/README.md`
     left as prose per ticket.
+- 2026-05-11: Phase 2 SDET adversarial review (sdet). Verdict:
+  **clean with caveats** — implementation lands cleanly, the
+  widened gate is *defensible-as-a-bridge*, but two findings warrant
+  follow-up tickets (see below). Added a 13-test adversarial regression
+  file at
+  `modules/identity/test/unit/platform-robot-principal.test.ts`
+  pinning: (a) the widened gate's positive (robot id) and
+  back-compat (null) acceptance; (b) negative — string `'null'`,
+  near-miss robot id, empty string all rejected with NO side effects;
+  (c) audit-actor invariant on the InviteIssue / InviteAccept /
+  JitProvision / PasswordLogin reject + lockout paths; (d) success-path
+  attribution (SessionIssued must carry the user's id, not the robot
+  id — pins that the gate-bypass does not leak into the audit row).
+  Findings:
+    1. **`userId: cmd.principalId` regression in 5 handlers**
+       (`invite-accept.ts:197,225,253`, `invite-issue.ts:73`,
+       `oauth-token-revoke.ts:72`, `user-create.ts:62`). Before Stage 2
+       this idiom produced `userId: null` on system-initiated events.
+       After Stage 2 it produces
+       `userId: 'platform-robot:bootstrap'` — the audit row's `userId`
+       index column now contains the robot string, which is NOT a
+       valid User. This pollutes per-user audit queries and means
+       "show events about user X" can never accidentally match the
+       robot. Likely benign for now but violates the implicit
+       contract that `userId` is a real User id or null. Severity:
+       medium. Owner: module-dev. Remedy: change to
+       `userId: null` (system-initiated) or `userId: user.userId`
+       (where a user was provisioned) — split per handler.
+    2. **Stage 3 should remove the null branch in
+       `session-issue.ts:98`, not just sweep test literals.** ADR
+       0008 §2 explicitly calls for *eliminating* the null sentinel.
+       The current dual-accept is a bridge, not the target state.
+       Stage 3's scope as filed is "hygiene — replace
+       hard-coded `'_platform'` literals"; it should also include
+       "migrate all `principalId: null` test fixtures to
+       `PLATFORM_ROBOT_PRINCIPAL_ID` and drop the null branch from
+       the gate." Severity: low (architectural debt, not runtime
+       risk). Owner: module-dev (Stage 3). Remedy: update the
+       Stage 3 ticket's scope; the canary test in this file
+       (`platform-robot-principal.test.ts` last describe block)
+       will fail when null is dropped — that is the intended signal.
+    3. **Bootstrap upsert race (multi-replica).** The
+       `INSERT ... ON CONFLICT DO NOTHING RETURNING tenant_id` at
+       `bootstrap.ts:235–246` is correct under PK semantics — only
+       one row exists. The `RETURNING`-non-empty guard ensures the
+       info log fires from at-most-one replica per
+       seed event. No deadlock risk (single-row UPSERT, no other
+       writer touches `_platform`). Verified clean.
+    4. **`PlatformRobotPrincipal.tenantId` field utility.** The
+       `tenantId` field on the type is justified by
+       `bootstrapPlatformRobot(customTenantId)` for flows that emit
+       INTO a customer tenant (signup confirm provisioning a User
+       inside `<new-tenant>`). However, no current call site actually
+       uses `bootstrapPlatformRobot()` — every site imports
+       `PLATFORM_ROBOT_PRINCIPAL_ID` and inlines it. The constructor
+       + tenantId field are dead code as of this commit. Severity:
+       trivial. Owner: module-dev. Remedy: either delete
+       `bootstrapPlatformRobot` until a caller needs it, or migrate
+       the 10 sites to use it (so principal scoping is end-to-end).
+       No action this ticket.
+    5. **`PLATFORM_SUPPORT_ROLE` is NOT a slug literal.** The
+       ticket's Step 6 listed `apps/server/src/middleware/role-check.ts:45`
+       for slug replacement, but that line declares a ROLE name
+       (`'PlatformSupport'`), not the tenant slug. Implementer
+       correctly skipped it. Confirmed.
+    6. **Existing `principalId: null` test fixtures (~50 sites
+       across `modules/identity/test/{a2-acceptance,acceptance,
+       dispatch,handlers,session,password,unit/{user-create,
+       session-revoke,session-issue,invite-accept,oauth-token,
+       service-principal,bdd/password.steps}}.ts`)** are kept green
+       by the widened gate. These are the de-facto inventory for the
+       Stage 3 migration. Approximate count: 50+ occurrences across
+       12 files — larger than the originally-anticipated ~16 because
+       it includes unit-level test fixtures as well as scenario
+       tests. Audit emission coverage (per the implementer's 10
+       sentinel-replacement sites):
+         - signup.ts:324 (handleInviteAccept call) — covered by
+           new InviteAccepted test
+         - signup.ts:394 (handleInviteIssue call) — covered by new
+           InviteIssued test
+         - oauth.ts:237 (handleOAuthRevokeToken call) — partial
+           (null-envelope-on-unknown path covered; FOUND path
+           covered by source review of `oauth-token-revoke.ts:71-72`
+           + verbatim-propagation contract)
+         - identity.ts:163 (handleInviteAccept call) — same
+           handler as signup.ts:324, covered
+         - jit-provision.ts:218 (UserCreated emit) — covered
+         - jit-provision.ts:256 (MembershipCreated emit) — covered
+         - password-login.ts:177 (UserUpdated/AccountLocked) —
+           covered by new lockout + wrong_password tests
+         - password-login.ts:200 (LoginRejected) — covered (was
+           already covered by implementer for unknown_user;
+           wrong_password added)
+         - password-login.ts:305 (handleSessionIssue call,
+           success path) — covered by new success-attribution test
+         - invite-accept.ts:292 (handleSessionIssue call) —
+           covered by new InviteAccepted-follow assertion
+  Verdict on widened gate: **defensible as a STAGED bridge**, NOT
+  defensible as the steady state. The implementer made the right
+  call to land Stage 2 green; the gate's `null` branch must be
+  removed in Stage 3 to keep ADR 0008 §2's "eliminate null
+  sentinels" promise. Filing the action as a Stage 3 scope
+  expansion, not a Stage 2 blocker.
+  Ready for architect (Phase 3 invariant gate).
