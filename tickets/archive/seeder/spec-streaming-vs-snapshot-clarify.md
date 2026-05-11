@@ -1,9 +1,9 @@
 ---
 title: Clarify listScenarios snapshot-vs-stream semantics in seed-corpus spec
-status: review
+status: done
 type: spec
-owner: sdet
-phase: 2
+owner: architect
+phase: 5
 capability: specs/crosscut/seed-corpus.md
 adr:
 vision: [agentic-first]
@@ -90,3 +90,5 @@ completion. Set status: review and hand to sdet.
 - 2026-05-10: created from sdet + architect concerns on seeder Phase 1.4. Blocks Phase 1.5 contract tests.
 - 2026-05-10: spec-keeper picked **snapshot-at-iteration-start**. Rationale: fuzz reproducibility — a run's corpus view is fixed at start so concurrent mutations don't perturb a deterministic seed. Edited `specs/crosscut/seed-corpus.md` §4.1 with explicit semantic + rationale; updated `ports/src/seed-corpus.ts` `listScenarios` JSDoc to match. No code changes — the in-memory adapter already implements this semantic and sdet's regression test pins it. No follow-up ticket needed.
 - 2026-05-10: sdet Phase 2 adversarial review. Verdict: **clean with caveats**. Spec §4.1 wording is unambiguous and explicitly enumerates the excluded mutation kinds ("adds, removes, fs/sqlite writes"); port JSDoc on `ports/src/seed-corpus.ts` matches semantically. Caveats: (a) `specs/crosscut/seed-corpus.md` §4.1 line 91 retains the phrase "uniform streaming avoids buffering" — reads fine as a laziness/back-pressure claim but creates surface friction with the new "snapshot-at-iteration-start" wording two paragraphs down; consider rephrasing to "uniform async iteration avoids buffering" for full consistency (low severity, spec-keeper). (b) Cross-reference at §10 still calls `worker-source.ts` the "streaming-port shape this port mirrors"; harmless but same friction. (c) Pre-existing regression test at `adapters/seed-memory/test/contract.test.ts` line 336 carried a stale comment claiming "port spec ambiguous" — updated and expanded. **Tests added:** rewrote `listScenarios is snapshot-at-iteration-start: post-start adds are NOT observed` (now cites the pinned spec/JSDoc); added `post-start DELETES of not-yet-yielded entries are NOT observed` (pins the remove half of the "adds, removes, fs/sqlite writes" clause — otherwise an adapter could comply by handling adds but not deletes); added `snapshot is per-call: a NEW listScenarios() after a mutation DOES observe the mutation` (pins the documented re-call path). `pnpm safe vitest run adapters/seed-memory/test/contract.test.ts` → 22/22 pass. Ready for architect.
+- 2026-05-10 (architect Phase 3): clean. Snapshot-at-iteration-start semantic reinforces I3 determinism (a scenario run's corpus view is fixed at start, so fuzz reproducibility holds even with concurrent corpus edits). Port JSDoc at `ports/src/seed-corpus.ts:32-40` matches the spec; `adapters/seed-memory/src/in-memory-seed-corpus.ts:44` materialises the snapshot. Concern C3 (residual "uniform streaming" copy at line 91) is non-blocking. Ready for merge.
+- 2026-05-10: done. Merged via main lineage (eda4257 → 5985528 → 6270a36). Archived.
