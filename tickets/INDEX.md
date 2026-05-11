@@ -6,10 +6,6 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [intent-driver-lift-to-test-fabric](seeder/intent-driver-lift-to-test-fabric.md) — refactor — open — → port-adapter-dev (blocked on @atlas/test-fabric existing)
 
-## atlas-on-atlas/
-
-- [stage-2-platform-row](atlas-on-atlas/stage-2-platform-row.md) — refactor — review — → architect (post fix-pass)
-
 ## identity/
 
 - [auth-itest-preflight](identity/auth-itest-preflight.md) — test — scoped — → sdet

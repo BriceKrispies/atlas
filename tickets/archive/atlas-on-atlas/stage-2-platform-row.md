@@ -1,9 +1,9 @@
 ---
 title: Atlas-on-Atlas Stage 2 — _platform tenant row + PlatformRobotPrincipal
-status: review
+status: done
 type: refactor
 owner: architect
-phase: 3
+phase: 5
 capability:
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [atlas-on-atlas]
@@ -379,3 +379,34 @@ Update tickets/INDEX.md.
       bound userId. Flagged for sdet verification on this turn.
     - The 23-handler hygiene sweep (above) is a deferrable Stage 3
       candidate — not actioned here.
+- 2026-05-11 (architect Phase 3): **clean with concerns** — ready for
+  merge. All 12 invariants verified pass. I1: bootstrap runs in init
+  chain at `main.ts:170` before `serve` at `main.ts:191`. I2: bootstrap
+  upsert outside request lifecycle — defensible kernel boot primitive
+  per ADR 0008 §2 (equivalent in shape to `runMigrations`). I3: SQL
+  ON CONFLICT semantics + RETURNING-gated log = idempotent under
+  concurrent boots. I5: `bootCtx` derives from `createRootContext`
+  which generates correlationId — boot log is correlationId-stamped.
+  I7/I9/I10: all 10 sentinel-replacement emissions verified to include
+  `Tenant:${tenantId}` cache tags + per-resource tags. I12: bootstrap
+  state lives in `control_plane.tenants` (control-plane row, not a
+  projection); robot principal is a constant. Hexagonal layering
+  preserved; ADR 0008 four-leak grep returns 0 new hits in
+  `modules/**/src`. **Recursive-kernel verdict: advances the
+  principle.** Stage 2 takes the platform from imaginary (magic
+  string, no row) to real (control_plane row, typed principal, audit
+  envelopes stamping a real actor). The subject-vs-actor split fix-
+  pass correctly distinguishes 'who did this' from 'what is this
+  about'. **Concerns flagged for Stage 3 scope expansion** (NOT
+  blocking this ticket): (1) dual-accept null branch at
+  `session-issue.ts:97-99` is a defensible bridge guarded by the
+  sdet-authored canary test at `platform-robot-principal.test.ts:
+  525-545`, but Stage 3 MUST drop the null branch + migrate ~50+
+  test fixtures (`principalId: null` → `PLATFORM_ROBOT_PRINCIPAL_ID`)
+  to honor ADR 0008 §2's elimination commitment. (2) Projection
+  worker at `tenant-loop.ts:182-184` will pick up `_platform` on first
+  prod boot — verify dispatcher has platform-tenant entity-store
+  wiring before that boot. (3) `bootstrapPlatformRobot()` is exported
+  but unused — Stage 3 trivia.
+- 2026-05-11: done. Merged via main lineage (c6824b8 → 70087f7 → 31a826a).
+  Archived.
