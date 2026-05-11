@@ -32,6 +32,7 @@ import {
   identityDispatcher,
   IdentityError,
 } from '@atlas/identity';
+import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
 import { errorResponse } from '../middleware/errors.ts';
@@ -230,7 +231,10 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
       {
         tenantId,
         correlationId,
-        principalId: null,
+        // Public revoke endpoint — caller is the OAuth client (auth via
+        // client_id/secret), not a User. The bootstrap robot stands in
+        // as principal so audit gets a real actor (ADR 0008 §2).
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
         presentedToken: token,
       },
       eventStore,

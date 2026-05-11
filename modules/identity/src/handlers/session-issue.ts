@@ -1,4 +1,7 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import {
+  PLATFORM_ROBOT_PRINCIPAL_ID,
+  type EventEnvelope,
+} from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import type {
   AuthSessionDocument,
@@ -20,9 +23,13 @@ export interface SessionIssueCommand {
    * gate, any authenticated user in a stub-policy environment can mint
    * a session for an arbitrary `userId`. Until policy roles are
    * first-class, the handler fails closed when `principalId !== userId`.
-   * Pass `null` only from explicit privileged paths (password-login,
-   * invite-accept) where the calling principal is intentionally the
-   * unauthenticated front door.
+   *
+   * Pass `PLATFORM_ROBOT_PRINCIPAL_ID` (preferred) or `null` (legacy) from
+   * the unauthenticated front doors (password-login, invite-accept) where
+   * the calling principal is intentionally the bootstrap robot — the
+   * handler treats both as the "front-door" signal and skips the
+   * principal===userId check. Per ADR 0008 §2, new call sites should use
+   * the robot id so audit captures a real actor.
    */
   principalId: string | null;
   /** Whose session this is. Required (no anonymous sessions in A2). */
@@ -84,10 +91,13 @@ export async function handleSessionIssue(
   // Defense-in-depth: even if the policy engine is the stub adapter
   // (allow-all), reject session issuance when the calling principal
   // doesn't match the target user. The unauthenticated front doors
-  // (password-login, invite-accept) deliberately pass `principalId:
-  // null` because the principal IS the user being authenticated for
-  // the first time on this request.
-  if (cmd.principalId !== null && cmd.principalId !== cmd.userId) {
+  // (password-login, invite-accept) pass the bootstrap robot id
+  // (or `null`, legacy) because the principal IS the user being
+  // authenticated for the first time on this request — see ADR 0008 §2.
+  const isFrontDoorPrincipal =
+    cmd.principalId === null ||
+    cmd.principalId === PLATFORM_ROBOT_PRINCIPAL_ID;
+  if (!isFrontDoorPrincipal && cmd.principalId !== cmd.userId) {
     throw new IdentityError(
       'IDENTITY_INVALID',
       'session can only be issued for the calling principal',

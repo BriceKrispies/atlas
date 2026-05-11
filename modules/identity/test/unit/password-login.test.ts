@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import {
   handleUserCreate,
   handlePasswordSet,
@@ -245,6 +246,9 @@ describe('handlePasswordLogin — reject paths', () => {
     expect(payload.emailHash).toBeDefined();
     expect(result.user).toBeNull();
     expect(result.sessionResult).toBeUndefined();
+    // ADR 0008 §2: system-initiated audit captures the bootstrap robot
+    // as principal — never `null`.
+    expect(result.envelope.principalId).toBe(PLATFORM_ROBOT_PRINCIPAL_ID);
   });
 
   it('wrong_password: emits LoginRejected with email plaintext (user exists)', async () => {

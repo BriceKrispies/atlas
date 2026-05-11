@@ -33,6 +33,7 @@ import {
   listActiveSessionsForUser,
   IdentityError,
 } from '@atlas/identity';
+import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
 import { errorResponse, publicIdentityCode } from '../middleware/errors.ts';
@@ -156,7 +157,10 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         {
           tenantId,
           correlationId,
-          principalId: null,
+          // Public invite-accept — the token IS the authorization; the
+          // bootstrap robot stands in as the calling principal so audit
+          // captures a real actor (ADR 0008 §2).
+          principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
           presentedToken,
           acceptedEmail,
           ...(idpSubject !== null ? { primaryIdpSubject: idpSubject } : {}),

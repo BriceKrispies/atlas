@@ -1,4 +1,7 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import {
+  PLATFORM_ROBOT_PRINCIPAL_ID,
+  type EventEnvelope,
+} from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
@@ -169,7 +172,9 @@ export async function handlePasswordLogin(
         correlationId: cmd.correlationId,
         idempotencyKey: `identity.login.failure.${cmd.tenantId}.${user.userId}.${occurredAt}`,
         causationId: null,
-        principalId: null,
+        // Failed login — no User is authenticated; the platform robot
+        // is the audit actor (ADR 0008 §2).
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
         userId: null,
         cacheInvalidationTags: [
           `Tenant:${cmd.tenantId}`,
@@ -190,7 +195,9 @@ export async function handlePasswordLogin(
       correlationId: cmd.correlationId,
       idempotencyKey: `identity.login.reject.${cmd.tenantId}.${email}.${occurredAt}`,
       causationId: null,
-      principalId: null,
+      // Rejected login — no User is authenticated; the platform robot
+      // is the audit actor (ADR 0008 §2).
+      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
       userId: user?.userId ?? null,
       cacheInvalidationTags: [`Tenant:${cmd.tenantId}`],
       // PII reduction: for `unknown_user` rejects (user does not exist
@@ -291,10 +298,11 @@ export async function handlePasswordLogin(
       tenantId: cmd.tenantId,
       correlationId: cmd.correlationId,
       // Front-door authentication: the calling principal is the
-      // unauthenticated /login surface, not the user being identified.
-      // `null` opts out of the principal===userId assertion in
-      // handleSessionIssue.
-      principalId: null,
+      // unauthenticated /login surface (the platform robot), not the
+      // user being identified. `handleSessionIssue` recognises the
+      // robot id as the front-door signal and skips its
+      // principal===userId assertion (ADR 0008 §2).
+      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
       userId: updated.userId,
       ...(cmd.attemptIp !== undefined ? { ip: cmd.attemptIp } : {}),
       ...(cmd.attemptUserAgent !== undefined ? { userAgent: cmd.attemptUserAgent } : {}),

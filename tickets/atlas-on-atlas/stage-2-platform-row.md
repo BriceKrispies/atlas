@@ -1,9 +1,9 @@
 ---
 title: Atlas-on-Atlas Stage 2 — _platform tenant row + PlatformRobotPrincipal
-status: scoped
+status: review
 type: refactor
-owner: module-dev
-phase: 1
+owner: sdet
+phase: 2
 capability:
 adr: specs/decisions/0008-atlas-on-atlas.md
 vision: [atlas-on-atlas]
@@ -115,3 +115,82 @@ Update tickets/INDEX.md.
 ## Notes / log
 
 - 2026-05-10: created. Migrated from TASK.md "Atlas-on-Atlas Stage 2" entry.
+- 2026-05-11: implemented (module-dev). Slug kept as `_platform` per
+  ADR 0008 §1 — no rename, additive seeding only.
+  - Added `packages/platform-core/src/platform-tenant.ts` with
+    `PLATFORM_TENANT_ID = '_platform'`,
+    `PLATFORM_ROBOT_PRINCIPAL_ID = 'platform-robot:bootstrap'`,
+    `PlatformRobotPrincipal` interface (kind / principalId / tenantId —
+    no human-user fields), and `bootstrapPlatformRobot()`. Re-exported
+    from `@atlas/platform-core`.
+  - Bootstrap upsert in `apps/server/src/bootstrap.ts` after
+    `runMigrations` — `INSERT … ON CONFLICT (tenant_id) DO NOTHING
+    RETURNING tenant_id`. Logs `Server.Boot.PlatformTenantSeeded` only
+    when RETURNING is non-empty (first boot); silent on subsequent
+    boots. Idempotent by construction.
+  - Replaced 10 `principalId: null` sentinels (9 in ticket scope +
+    `modules/identity/src/handlers/invite-accept.ts:287` which the done
+    bar's grep would have flagged otherwise) with
+    `PLATFORM_ROBOT_PRINCIPAL_ID`.
+  - Widened `handleSessionIssue`'s front-door check
+    (`session-issue.ts:90`) to accept the robot id OR `null` as the
+    privileged-front-door signal — keeps the existing
+    `principal===userId` defense-in-depth gate intact for normal
+    callers. Doc updated.
+  - Replaced literal `'_platform'` in two source-doc comments:
+    `modules/identity/src/index.ts:4` and
+    `modules/identity/src/dispatch.ts:9`. Spec-doc literals left as
+    prose per ticket.
+  - Added `packages/platform-core/src/platform-tenant.test.ts` (5
+    shape assertions). Added an audit-capture assertion in
+    `modules/identity/test/unit/password-login.test.ts` — the
+    LoginRejected envelope's `principalId` is the robot id, not null.
+  - Done bar:
+    - `pnpm safe typecheck` — same set of pre-existing test-file
+      errors as on `main` (delta = 0). The ~16 brittle test failures
+      the ticket anticipated did NOT materialise; see failing-test
+      inventory below.
+    - `pnpm safe vitest run apps/server modules/identity packages/platform-core`:
+      - `apps/server` 108 passed / 4 skipped (12 files passed,
+        1 file skipped) — **no failures**.
+      - `modules/identity` 550 passed / 17 failed / 6 skipped /
+        29 todo. The 17 failures are all in
+        `modules/identity/test/security/*.test.ts` (RED scaffold
+        committed in `df14b4f`); none caused by Stage 2.
+      - `packages/platform-core` 95 passed (9 files).
+    - `pnpm safe deps:check` — 0 errors, 1 pre-existing
+      `no-orphans` warning (unrelated).
+    - `grep -rE "principalId:\\s*null" apps/server/src modules/*/src` →
+      0 hits.
+    - Bootstrap idempotency: verified by SQL semantics — `INSERT ON
+      CONFLICT (tenant_id) DO NOTHING` with `tenant_id` PK guarantees
+      at-most-one row; `RETURNING tenant_id` is empty on conflict, so
+      the info log fires once at most.
+  - **Failing-test inventory for Stage 3 follow-up:** *the predicted
+    ~16 brittle-test failures did NOT occur.* `identity-a7.test.ts`
+    (28+ `'_platform'` literals) and `repositories.test.ts` both pass
+    unchanged. The literal hard-coding remains a maintenance smell but
+    not a runtime break — Stage 3 should refactor for hygiene
+    (`getPlatformTenantId()` indirection), not for green build.
+    Files that hard-code `'_platform'` and should still be swept in
+    Stage 3:
+    - `apps/server/src/routes/repositories.test.ts` (1 literal)
+    - `apps/server/src/routes/identity-a7.test.ts` (28+ literals)
+    - (`apps/server/src/config.test.ts` matches `atlas_platform`
+      DB-user, NOT the `_platform` tenant slug — exclude from Stage 3)
+    - `adapters/node/test/_setup.ts`
+    - `apps/projection-worker/test/leader.test.ts`
+    - `tests/parity/policy-cedar-node.test.ts`
+    - `scripts/e2e-smoke.ts`, `scripts/dev-async.ts`,
+      `infra/docker/entrypoint-itest.sh`,
+      `infra/compose/pgadmin-pgpass`,
+      `infra/compose/pgadmin-servers.json`,
+      `scripts/db-lifecycle.sh`, `scripts/itest-lifecycle.sh`,
+      `Makefile`, `adapters/node/README.md`, `PORTS.md`,
+      `SYSTEM_MAP.md`, `README.md` (mostly docs/config — narrow the
+      sweep when scoping Stage 3).
+  - Noted but not fixed: `invite-accept.ts:287` was technically
+    outside the ticket scope but the done-bar grep would have flagged
+    it; updated it for consistency. Spec doc-literals in
+    `specs/domains/quotas/capabilities/object-types-per-tenant/README.md`
+    left as prose per ticket.

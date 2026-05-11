@@ -1,7 +1,8 @@
 /**
  * @atlas/identity — User, Membership, InviteToken on the L3 entity substrate.
  *
- * Storage: Users live in the platform-tenant partition (`tenantId='_platform'`);
+ * Storage: Users live in the platform-tenant partition (`tenantId` is
+ * `PLATFORM_TENANT_ID` from `@atlas/platform-core`);
  * Memberships are tenant-scoped; InviteTokens are tenant-scoped. The
  * Membership ↔ User link is encoded as a cross-partition relation
  * (`membership.user` edge).

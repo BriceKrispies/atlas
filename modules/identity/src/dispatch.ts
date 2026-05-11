@@ -6,7 +6,7 @@
  * `cacheTagDispatcher` — do not call cache here.
  *
  * Storage model:
- *   - User      → entities (`tenantId='_platform'`, type='User')
+ *   - User      → entities (`tenantId=PLATFORM_TENANT_ID`, type='User')
  *   - Membership→ entities (`tenantId=<tenant>`, type='Membership')
  *                 plus a `membership.user` edge in relations
  *   - InviteToken → entities (`tenantId=<tenant>`, type='InviteToken')

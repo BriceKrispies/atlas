@@ -53,7 +53,11 @@ import type {
   TenantStore,
 } from '@atlas/ports';
 import { setIdentityCrypto } from '@atlas/identity';
-import { reconcileEntityIndexes, UpcasterRegistry } from '@atlas/platform-core';
+import {
+  PLATFORM_TENANT_ID,
+  reconcileEntityIndexes,
+  UpcasterRegistry,
+} from '@atlas/platform-core';
 import { TenantHostCache } from './middleware/tenant-resolution.ts';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
 import {
@@ -219,6 +223,27 @@ export async function bootstrap(
 
   // Apply control-plane schema migrations. Idempotent; re-runs are no-ops.
   await runMigrations(controlPlaneSql, 'control-plane');
+
+  // Seed the platform-tenant row. Per ADR 0008 §1 + Stage 2 the platform
+  // is a real row in `control_plane.tenants` — code paths that used to
+  // hard-code `'_platform'` now read PLATFORM_TENANT_ID and expect a
+  // real row to exist (foreign keys, audit emits, principal middleware).
+  //
+  // Idempotent by construction: ON CONFLICT DO NOTHING on the primary
+  // key. The RETURNING clause is empty on subsequent boots, which is how
+  // we suppress the info log on re-boot.
+  const platformTenantInsert = await controlPlaneSql<{ tenant_id: string }[]>`
+    INSERT INTO control_plane.tenants (tenant_id, name, status, region)
+    VALUES (${PLATFORM_TENANT_ID}, 'Atlas Platform', 'active', NULL)
+    ON CONFLICT (tenant_id) DO NOTHING
+    RETURNING tenant_id
+  `;
+  if (platformTenantInsert.length > 0) {
+    deps.bootCtx.logger.info('platform-tenant row seeded', {
+      event: 'Server.Boot.PlatformTenantSeeded',
+      properties: { tenantId: PLATFORM_TENANT_ID },
+    });
+  }
 
   // In dev/sim every tenant shares the control-plane physical DB —
   // tenant isolation is enforced at the `tenant_id` column level on

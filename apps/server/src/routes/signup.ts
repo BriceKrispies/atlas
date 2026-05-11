@@ -36,6 +36,7 @@ import {
   handleSignupSubmit,
   TenancyError,
 } from '@atlas/tenancy';
+import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';
@@ -317,7 +318,10 @@ export function signupRoutes(state: AppState): Hono<{ Variables: ServerVariables
         {
           tenantId,
           correlationId,
-          principalId: null,
+          // Public signup confirm runs unauthenticated — the bootstrap
+          // robot is the calling principal so audit captures a real
+          // actor instead of `null` (ADR 0008 §2).
+          principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
           presentedToken,
           acceptedEmail,
         },
@@ -384,7 +388,10 @@ export async function issueInviteForTenant(
     {
       tenantId: input.tenantId,
       correlationId: input.correlationId,
-      principalId: null,
+      // Issued from the signup-approval pipeline; the calling actor is
+      // the bootstrap robot (not the new tenant's own admin, who only
+      // exists after the invite is redeemed).
+      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
       email: input.email,
       rolesOnAccept: ['admin'],
     },

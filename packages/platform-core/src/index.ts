@@ -48,6 +48,13 @@ export type {
 export { normalizeHost, tenantBaseUrl } from './tenant-urls.ts';
 export type { PrimaryCustomDomainLookup } from './tenant-urls.ts';
 
+export {
+  PLATFORM_TENANT_ID,
+  PLATFORM_ROBOT_PRINCIPAL_ID,
+  bootstrapPlatformRobot,
+} from './platform-tenant.ts';
+export type { PlatformRobotPrincipal } from './platform-tenant.ts';
+
 export { UpcasterRegistry, upcastToLatest } from './upcaster.ts';
 export type { Upcaster } from './upcaster.ts';
 

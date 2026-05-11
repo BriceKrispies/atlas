@@ -1,4 +1,7 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import {
+  PLATFORM_ROBOT_PRINCIPAL_ID,
+  type EventEnvelope,
+} from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
@@ -282,9 +285,11 @@ export async function handleInviteAccept(
       tenantId: cmd.tenantId,
       correlationId: cmd.correlationId,
       // Front-door redemption: the calling principal is the
-      // unauthenticated /invite/accept surface, not the user being
-      // provisioned. `null` opts out of the principal===userId assertion.
-      principalId: null,
+      // unauthenticated /invite/accept surface (the platform robot),
+      // not the user being provisioned. `handleSessionIssue` recognises
+      // the robot id as the front-door signal and skips the
+      // principal===userId assertion (ADR 0008 §2).
+      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
       userId: user.userId,
       ...(cmd.ip !== undefined ? { ip: cmd.ip } : {}),
       ...(cmd.userAgent !== undefined ? { userAgent: cmd.userAgent } : {}),

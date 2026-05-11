@@ -14,7 +14,10 @@
  * until the next refresh; that's the standard tradeoff.)
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import {
+  PLATFORM_ROBOT_PRINCIPAL_ID,
+  type EventEnvelope,
+} from '@atlas/platform-core';
 import type { EntityStore, EventStore } from '@atlas/ports';
 import { IdentityError, codes } from '../errors.ts';
 import type {
@@ -210,7 +213,9 @@ export async function handleJitProvision(
     {
       tenantId: cmd.tenantId,
       correlationId: cmd.correlationId,
-      principalId: null,
+      // JIT provisioning runs before any User exists for this subject;
+      // the bootstrap robot is the calling actor (ADR 0008 §2).
+      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
       email: cmd.claims.email ?? `${cmd.claims.sub}@unknown.invalid`,
       primaryIdpSubject: cmd.claims.sub,
       ...(cmd.claims.given_name !== undefined ? { givenName: cmd.claims.given_name } : {}),
@@ -246,7 +251,9 @@ export async function handleJitProvision(
     correlationId: cmd.correlationId,
     idempotencyKey: `identity.membership.create.${cmd.tenantId}.${userResult.document.userId}`,
     causationId: null,
-    principalId: null,
+    // System-initiated MembershipCreated on first JIT login —
+    // attributed to the bootstrap robot (ADR 0008 §2).
+    principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
     userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
