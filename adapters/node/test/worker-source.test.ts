@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { PostgresEventStore } from '../src/index.ts';
 import { PostgresWorkerSource } from '../src/worker-source.ts';
@@ -41,15 +42,18 @@ async function nextWithTimeout(
   iter: AsyncIterator<EventEnvelope>,
   ms: number,
 ): Promise<EventEnvelope | null> {
-  let timer: NodeJS.Timeout;
+  // Create the timer outside the Promise executor so `timer` is always
+  // initialised before clearTimeout runs — avoids the `timer!` non-null
+  // assertion the older `let timer; new Promise(executor)` shape required.
+  let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
+    timer = setTimeout(() => { resolve(null); }, ms);
   });
   const result = await Promise.race([
     iter.next().then((r) => (r.done ? null : r.value)),
     timeout,
   ]);
-  clearTimeout(timer!);
+  if (timer !== undefined) clearTimeout(timer);
   return result;
 }
 
@@ -72,10 +76,12 @@ if (HAS_DB) {
       const env = makeEnvelope('a');
       await store.append(env);
 
-      const received = await nextWithTimeout(iter, 1000);
-      expect(received).not.toBeNull();
-      expect(received!.eventId).toBe(env.eventId);
-      expect(typeof received!.seq).toBe('bigint');
+      const received = assertDefined(
+        await nextWithTimeout(iter, 1000),
+        'freshly-appended event must arrive within 1s',
+      );
+      expect(received.eventId).toBe(env.eventId);
+      expect(typeof received.seq).toBe('bigint');
 
       await sub.close();
     });
@@ -92,9 +98,11 @@ if (HAS_DB) {
 
       const sub1 = source.subscribe(TENANT, 0n);
       const iter1 = sub1.events()[Symbol.asyncIterator]();
-      const r1 = await nextWithTimeout(iter1, 1000);
-      expect(r1).not.toBeNull();
-      expect(r1!.eventId).toBe(env.eventId);
+      const r1 = assertDefined(
+        await nextWithTimeout(iter1, 1000),
+        'pre-subscribed event must drain on start within 1s',
+      );
+      expect(r1.eventId).toBe(env.eventId);
 
       await sub1.ack(stored.seq);
       await sub1.close();
@@ -105,7 +113,10 @@ if (HAS_DB) {
         WHERE tenant_id = ${TENANT} AND module_id = ${MODULE}
       `;
       expect(rows.length).toBe(1);
-      const cursor = BigInt(rows[0]!.last_seq as never);
+      const cursorRow = assertDefined(rows[0], 'we asserted rows.length === 1 above');
+      // BigInt() accepts string | number | bigint; the cast widens the
+      // last_seq union for the call-site without `as never`.
+      const cursor = BigInt(cursorRow.last_seq);
       expect(cursor).toBe(stored.seq);
 
       // Subscribe again from the cursor — no duplicate, but a NEW event
@@ -121,9 +132,11 @@ if (HAS_DB) {
       await new Promise((r) => setTimeout(r, 50));
       const env2 = makeEnvelope('c');
       await store.append(env2);
-      const r2 = await nextWithTimeout(iter2, 1000);
-      expect(r2).not.toBeNull();
-      expect(r2!.eventId).toBe(env2.eventId);
+      const r2 = assertDefined(
+        await nextWithTimeout(iter2, 1000),
+        'a post-cursor event must arrive on the resumed subscription within 1s',
+      );
+      expect(r2.eventId).toBe(env2.eventId);
 
       await sub2.close();
     });

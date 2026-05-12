@@ -72,9 +72,9 @@ export class AtlasTooltip extends AtlasElement {
   }
 
   private _findTrigger(): HTMLElement | null {
-    for (const child of Array.from(this.children)) {
+    for (const child of this.children) {
       if (child === this._bubble) continue;
-      return child as HTMLElement;
+      return child instanceof HTMLElement ? child : null;
     }
     return null;
   }

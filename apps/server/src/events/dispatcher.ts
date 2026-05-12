@@ -37,9 +37,10 @@ export function serverEventDispatcher(
 
     // 1. Page-create → projection.updated (mirrors worker.rs)
     if (envelope.eventType === 'ContentPages.PageCreateRequested') {
-      const payload = envelope.payload as { pageId?: unknown } | null;
+      const payload = envelope.payload;
       const pageId =
-        payload && typeof payload === 'object' && typeof payload.pageId === 'string'
+        payload && typeof payload === 'object' && !Array.isArray(payload) &&
+        'pageId' in payload && typeof payload.pageId === 'string'
           ? payload.pageId
           : '';
       if (pageId.length > 0) {

@@ -99,6 +99,18 @@ interface ServerSentEventLike {
   data: string;
 }
 
+/** Read `.message` from a thrown value without an unsafe cast. */
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+/** Narrow an arbitrary `Event` to the `MessageEvent`-shaped `{ data: string }`
+ *  that `EventSource` delivers. Used inside the SSE dispatch fanout. */
+function isMessageEventLike(e: Event): e is Event & { data: string } {
+  return typeof (e as { data?: unknown }).data === 'string'; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: Event is a DOM lib type; we read one optional property to type-test
+}
+
 /**
  * Pool of EventSources keyed by their tag-filter signature.
  *
@@ -152,16 +164,24 @@ function ensurePooledSource(tags: readonly string[]): PooledSource {
   // set is small (`projection.updated`, `cache.invalidated`), we attach
   // both up front.
   const dispatch = (e: Event): void => {
-    const msg = e as unknown as ServerSentEventLike;
-    let parsed: SerializedServerEvent;
+    // The DOM lib types `EventSource`'s callback as receiving `Event`, but
+    // at runtime it always delivers a `MessageEvent` with a string `data`.
+    // Narrow defensively rather than escape-hatching through `as unknown as`.
+    if (!isMessageEventLike(e)) return;
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(msg.data) as SerializedServerEvent;
+      parsed = JSON.parse(e.data);
     } catch {
       return;
     }
+    // The server emits SerializedServerEvent shapes; we hand the parsed
+    // value to subscribers as that type. Schema mismatches surface as
+    // runtime errors inside the subscriber's own typed access.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: parsed SSE JSON arrives untyped from the network
+    const typed = parsed as SerializedServerEvent;
     for (const cb of pooled.subscribers) {
       try {
-        cb(parsed);
+        cb(typed);
       } catch (err) {
         // One bad subscriber must not break the others. Route the
         // failure through the frontend telemetry pipeline instead of
@@ -170,7 +190,7 @@ function ensurePooledSource(tags: readonly string[]): PooledSource {
           eventName: 'Atlas.Listener.Threw',
           level: 'error',
           source: 'api-client.http.subscribeTags',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errMessage(err),
         });
       }
     }

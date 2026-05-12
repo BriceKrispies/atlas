@@ -12,5 +12,8 @@
     "@atlas/metrics": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/test-fixtures": "workspace:*"
   }
 }

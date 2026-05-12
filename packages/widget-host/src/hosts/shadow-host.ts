@@ -81,7 +81,7 @@ export async function mount({
         source: 'widget-host.shadow-host',
         widgetId: manifest.widgetId,
         instanceId,
-        'error.message': (err as Error)?.message ?? String(err),
+        'error.message': err instanceof Error ? err.message : String(err),
       });
     }
     try {

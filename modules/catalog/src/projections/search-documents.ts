@@ -1,7 +1,7 @@
 import type { SearchDocument } from '@atlas/platform-core';
 import type { CatalogStateStore, SearchEngine } from '@atlas/ports';
-import type { SeedPayload } from '../seed-types.ts';
 import { deterministicUuid } from '../ids.ts';
+import { readSeed } from '../internal/seed-state.ts';
 
 function display(raw: unknown): string | null {
   if (typeof raw === 'string') return raw;
@@ -18,7 +18,7 @@ export async function rebuildSearchDocuments(
 ): Promise<number> {
   const state = await catalogState.get(tenantId);
   if (!state) return 0;
-  const seed = state.payload as SeedPayload;
+  const seed = readSeed(state);
 
   const taxonomyPathByFamilyKey = new Map<string, string>();
   for (const tree of seed.taxonomyTrees) {

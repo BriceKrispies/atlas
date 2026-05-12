@@ -123,9 +123,13 @@ export function projectionStoreContract(makeStore: () => Promise<ProjectionStore
       await Promise.all(ops);
       const final = await store.get('race');
       // Some value in [0..9] must have won; no torn write.
-      expect(typeof final).toBe('number');
-      expect(final as number).toBeGreaterThanOrEqual(0);
-      expect(final as number).toBeLessThanOrEqual(9);
+      if (typeof final !== 'number') {
+        throw new Error(
+          `contract violation: ProjectionStore.set('race', number) followed by get() must return a number; got ${typeof final}`,
+        );
+      }
+      expect(final).toBeGreaterThanOrEqual(0);
+      expect(final).toBeLessThanOrEqual(9);
     });
   });
 }

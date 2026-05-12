@@ -7,7 +7,8 @@ import {
   readEvents,
   countEventsByIdempotencyKey,
 } from '../../../../support/idb-probe.ts';
-import type { IntentEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
+import type { IntentEnvelope, IntentPayload } from '@atlas/platform-core';
 import { newEventId } from '@atlas/catalog';
 import { badgeFamilySeed } from '@atlas/schemas';
 
@@ -17,8 +18,33 @@ interface BadgeSeedDoc {
   payload: unknown;
 }
 
+/**
+ * `badgeFamilySeed()` returns `unknown` because the generated JSON has
+ * no compile-time type. Validate the three fields the BDD harness reads
+ * and surface a contract-mismatch error at the boundary rather than
+ * letting a malformed seed file corrupt the test.
+ */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object';
+}
+
 function seedDoc(): BadgeSeedDoc {
-  return badgeFamilySeed() as BadgeSeedDoc;
+  const raw: unknown = badgeFamilySeed();
+  if (!isRecord(raw)) {
+    throw new Error('badgeFamilySeed: expected an object');
+  }
+  const packageKey = raw['packageKey'];
+  const version = raw['version'];
+  if (typeof packageKey !== 'string' || typeof version !== 'string') {
+    throw new Error('badgeFamilySeed: missing packageKey/version');
+  }
+  return { packageKey, version, payload: raw['payload'] };
+}
+
+/** Typed payload shape for the publish intent. */
+interface PublishPayload extends IntentPayload {
+  familyKey: string;
+  familyRevisionNumber: number;
 }
 
 function buildSeedEnvelope(
@@ -56,7 +82,7 @@ function buildPublishEnvelope(
   revisionNumber: number,
   idemKey: string,
   correlationId: string,
-): IntentEnvelope {
+): IntentEnvelope<PublishPayload> {
   return {
     eventId: newEventId(),
     eventType: 'Catalog.Family.PublishRequested',
@@ -220,36 +246,39 @@ When(
 Then(
   'a {string} event is emitted with revision {int}',
   async ({ simPage, world }, eventType: string, revision: number) => {
-    expect(world.lastCorrelationId).not.toBeNull();
-    const matches = await readEvents(simPage, {
-      type: eventType,
-      correlationId: world.lastCorrelationId!,
-    });
+    const correlationId = assertDefined(world.lastCorrelationId, 'lastCorrelationId set by a prior publish step');
+    const matches = await readEvents(simPage, { type: eventType, correlationId });
     expect(matches).toHaveLength(1);
-    const ev = matches[0]!;
-    expect((ev.payload as { revisionNumber?: number }).revisionNumber).toBe(revision);
+    const ev = assertDefined(matches[0], 'matches[0] guaranteed by the toHaveLength(1) above');
+    // Event payloads are `Record<string, unknown>` — read the typed
+    // field via an explicit lookup rather than a structural cast.
+    const payload: Record<string, unknown> = ev.payload;
+    expect(payload['revisionNumber']).toBe(revision);
   },
 );
 
 Then('the event carries the request correlationId', async ({ simPage, world }) => {
-  expect(world.lastCorrelationId).not.toBeNull();
+  const correlationId = assertDefined(world.lastCorrelationId, 'lastCorrelationId set by a prior publish step');
   const matches = await readEvents(simPage, {
     type: 'StructuredCatalog.FamilyPublished',
-    correlationId: world.lastCorrelationId!,
+    correlationId,
   });
   expect(matches.length).toBeGreaterThanOrEqual(1);
-  expect(matches[0]!.correlationId).toBe(world.lastCorrelationId);
+  const first = assertDefined(matches[0], 'matches[0] guaranteed by the length check above');
+  expect(first.correlationId).toBe(correlationId);
 });
 
 Then(
   'the event carries cache invalidation tags including {string} and {string}',
   async ({ simPage, world }, tagA: string, tagB: string) => {
+    const correlationId = assertDefined(world.lastCorrelationId, 'lastCorrelationId set by a prior publish step');
     const matches = await readEvents(simPage, {
       type: 'StructuredCatalog.FamilyPublished',
-      correlationId: world.lastCorrelationId!,
+      correlationId,
     });
     expect(matches).toHaveLength(1);
-    const tags = matches[0]!.cacheInvalidationTags ?? [];
+    const first = assertDefined(matches[0], 'matches[0] guaranteed by toHaveLength(1) above');
+    const tags = first.cacheInvalidationTags ?? [];
     // The tag templates use the real (uniquified) tenantId, not the alias.
     // Replace the alias prefix in the expected tag with the tenant id we
     // actually booted with — `Tenant:acme` → `Tenant:bdd-1-...`.
@@ -267,13 +296,14 @@ Then(
 Then(
   'exactly one {string} event exists for that idempotency key',
   async ({ simPage, world, tenantId }, eventType: string) => {
-    if (!world.lastEnvelope) throw new Error('no envelope set in world');
-    const payload = world.lastEnvelope.payload as unknown as {
-      familyKey: string;
-      familyRevisionNumber: number;
-    };
-    const familyKey = payload.familyKey;
-    const revision = payload.familyRevisionNumber;
+    const envelope = assertDefined(world.lastEnvelope, 'world.lastEnvelope set by a prior publish step');
+    // Payload is `IntentPayload` with an `[k]: unknown` index signature;
+    // read the fields directly and validate type.
+    const familyKey = envelope.payload['familyKey'];
+    const revision = envelope.payload['familyRevisionNumber'];
+    if (typeof familyKey !== 'string' || typeof revision !== 'number') {
+      throw new Error('publish envelope payload: missing familyKey/familyRevisionNumber');
+    }
     const handlerIdem = expectedHandlerIdempotencyKey(tenantId, familyKey, revision);
     const count = await countEventsByIdempotencyKey(simPage, eventType, handlerIdem);
     expect(count).toBe(1);
@@ -281,8 +311,8 @@ Then(
 );
 
 Then('the request is denied with code {string}', async ({ world }, code: string) => {
-  expect(world.lastSubmitFailure).not.toBeNull();
-  expect(world.lastSubmitFailure!.code).toBe(code);
+  const failure = assertDefined(world.lastSubmitFailure, 'world.lastSubmitFailure set by a prior failing submit');
+  expect(failure.code).toBe(code);
 });
 
 Then(

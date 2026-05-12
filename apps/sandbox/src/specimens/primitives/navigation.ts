@@ -1,14 +1,16 @@
 import { S } from '../_register.ts';
+import { customDetail, isValueDetail, must } from '../../internal/assert.ts';
+
+// `atlas-tabs` and `atlas-segmented-control` augment `HTMLElementTagNameMap`
+// in `@atlas/design`, so `document.createElement('atlas-tabs')` already
+// returns the typed element — no structural cast needed.
 
 S({
   id: 'tabs',
   name: 'Tabs',
   tag: 'atlas-tabs',
   mount: (demoEl, { onLog }) => {
-    const tabs = document.createElement('atlas-tabs') as HTMLElement & {
-      tabs: Array<{ value: string; label: string }>;
-      value: string;
-    };
+    const tabs = document.createElement('atlas-tabs');
     tabs.setAttribute('name', 'view');
     tabs.setAttribute('aria-label', 'View');
     tabs.tabs = [
@@ -19,13 +21,10 @@ S({
     ];
     tabs.value = 'preview';
     tabs.addEventListener('change', (ev) => {
-      onLog('change', (ev as CustomEvent).detail);
+      onLog('change', customDetail(ev, isValueDetail, 'atlas-tabs.change'));
     });
 
-    const stretched = document.createElement('atlas-tabs') as HTMLElement & {
-      tabs: Array<{ value: string; label: string }>;
-      value: string;
-    };
+    const stretched = document.createElement('atlas-tabs');
     stretched.setAttribute('name', 'size');
     stretched.setAttribute('stretch', '');
     stretched.setAttribute('size', 'sm');
@@ -47,8 +46,8 @@ S({
         <atlas-label>Stretched, size="sm"</atlas-label>
       </atlas-stack>
     `;
-    stack.children[0]!.appendChild(tabs);
-    stack.children[1]!.appendChild(stretched);
+    must(stack.children[0], 'tabs specimen: first child stack present').appendChild(tabs);
+    must(stack.children[1], 'tabs specimen: second child stack present').appendChild(stretched);
     demoEl.appendChild(stack);
     return () => stack.remove();
   },
@@ -61,14 +60,13 @@ S({
   tag: 'atlas-segmented-control',
   mount: (demoEl, { onLog }) => {
     function makeSeg(attrs: Record<string, string>, options: Array<{ value: string; label: string; disabled?: boolean }>, value?: string): HTMLElement {
-      const sc = document.createElement('atlas-segmented-control') as HTMLElement & {
-        options: unknown;
-        value: unknown;
-      };
+      const sc = document.createElement('atlas-segmented-control');
       for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v);
       sc.options = options;
       if (value !== undefined) sc.value = value;
-      sc.addEventListener('change', (ev) => onLog('change', (ev as CustomEvent).detail));
+      sc.addEventListener('change', (ev) =>
+        onLog('change', customDetail(ev, isValueDetail, 'atlas-segmented-control.change')),
+      );
       return sc;
     }
 
@@ -88,22 +86,22 @@ S({
         <atlas-label>Fully disabled</atlas-label>
       </atlas-stack>
     `;
-    stack.children[0]!.appendChild(makeSeg({ name: 'period', 'aria-label': 'Period' }, [
+    must(stack.children[0], 'segmented-control specimen: child 0').appendChild(makeSeg({ name: 'period', 'aria-label': 'Period' }, [
       { value: 'day', label: 'Day' },
       { value: 'week', label: 'Week' },
       { value: 'month', label: 'Month' },
     ], 'week'));
-    stack.children[1]!.appendChild(makeSeg({ name: 'density', size: 'sm', stretch: '', 'aria-label': 'Density' }, [
+    must(stack.children[1], 'segmented-control specimen: child 1').appendChild(makeSeg({ name: 'density', size: 'sm', stretch: '', 'aria-label': 'Density' }, [
       { value: 'compact', label: 'Compact' },
       { value: 'comfortable', label: 'Comfortable' },
       { value: 'spacious', label: 'Spacious' },
     ], 'comfortable'));
-    stack.children[2]!.appendChild(makeSeg({ name: 'plan', 'aria-label': 'Plan' }, [
+    must(stack.children[2], 'segmented-control specimen: child 2').appendChild(makeSeg({ name: 'plan', 'aria-label': 'Plan' }, [
       { value: 'free', label: 'Free' },
       { value: 'pro', label: 'Pro' },
       { value: 'enterprise', label: 'Enterprise', disabled: true },
     ], 'pro'));
-    stack.children[3]!.appendChild(makeSeg({ name: 'locked', disabled: '', 'aria-label': 'Locked' }, [
+    must(stack.children[3], 'segmented-control specimen: child 3').appendChild(makeSeg({ name: 'locked', disabled: '', 'aria-label': 'Locked' }, [
       { value: 'a', label: 'A' },
       { value: 'b', label: 'B' },
     ], 'a'));

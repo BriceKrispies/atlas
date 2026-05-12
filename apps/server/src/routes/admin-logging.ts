@@ -28,7 +28,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { isLogLevel, type LogLevel } from '@atlas/logging';
 import type { AppState } from '../bootstrap.ts';
-import { errorResponse } from '../middleware/errors.ts';
+import { errorResponse, errorMessage } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
 
@@ -74,7 +74,7 @@ async function readLevelBody(
     return errorResponse(
       c,
       'BAD_REQUEST',
-      `invalid JSON body: ${(e as Error).message}`,
+      `invalid JSON body: ${errorMessage(e)}`,
       400,
       correlationId,
     );

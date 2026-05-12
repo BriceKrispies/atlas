@@ -92,9 +92,9 @@ class AtlasChartFilter extends AtlasElement {
       if (!store || !this.field) return;
       const v = select.value;
       if (v === '') {
-        store.commit('clearFilter', { field: this.field });
+        store.commit({ kind: 'clearFilter', field: this.field });
       } else {
-        store.commit('setFilter', { field: this.field, op: this.op, value: v });
+        store.commit({ kind: 'setFilter', field: this.field, op: this.op, value: v });
       }
     });
 

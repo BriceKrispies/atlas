@@ -72,7 +72,7 @@ describe('filterRows', () => {
 
   it('custom filter uses provided matches()', () => {
     const out = filterRows(rows, { score: 15 }, [
-      { key: 'score', filter: { type: 'custom', matches: (f, v) => Number(v) < (f as number) } },
+      { key: 'score', filter: { type: 'custom', matches: (f, v) => Number(v) < Number(f) } },
     ]);
     expect(out.map((r) => r.id)).toEqual([1, 3]);
   });

@@ -26,7 +26,11 @@ function token(bytes = 16): string {
 
 function base64url(bytes: Uint8Array): string {
   let str = '';
-  for (let i = 0; i < bytes.length; i += 1) str += String.fromCharCode(bytes[i]!);
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+    if (byte === undefined) continue;
+    str += String.fromCharCode(byte);
+  }
   return globalThis
     .btoa(str)
     .replace(/\+/g, '-')

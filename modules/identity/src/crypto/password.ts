@@ -22,6 +22,7 @@
  */
 
 import { IdentityError, codes } from '../errors.ts';
+import { must } from '../internal/assert.ts';
 import { getIdentityCrypto } from './runtime.ts';
 
 const N = 16384;
@@ -75,7 +76,9 @@ interface Decoded {
 
 function b64Encode(bytes: Uint8Array): string {
   let str = '';
-  for (let i = 0; i < bytes.length; i += 1) str += String.fromCharCode(bytes[i]!);
+  for (let i = 0; i < bytes.length; i += 1) {
+    str += String.fromCharCode(must(bytes[i], 'b64Encode: index within bounds'));
+  }
   return globalThis.btoa(str);
 }
 
@@ -103,9 +106,9 @@ function decode(encoded: string): DecodeResult {
   if (segments.length !== 5 || segments[1] !== 'scrypt') {
     return { ok: false, reason: 'malformed_phc_envelope' };
   }
-  const params = segments[2]!;
-  const saltB64 = segments[3]!;
-  const hashB64 = segments[4]!;
+  const params = must(segments[2], 'decode: segments[2] present (length checked)');
+  const saltB64 = must(segments[3], 'decode: segments[3] present (length checked)');
+  const hashB64 = must(segments[4], 'decode: segments[4] present (length checked)');
   const paramMap: Record<string, number> = {};
   for (const kv of params.split(',')) {
     const [k, v] = kv.split('=');
@@ -116,7 +119,10 @@ function decode(encoded: string): DecodeResult {
     }
     paramMap[k] = n;
   }
-  if (!paramMap['N'] || !paramMap['r'] || !paramMap['p']) {
+  const nParam = paramMap['N'];
+  const rParam = paramMap['r'];
+  const pParam = paramMap['p'];
+  if (!nParam || !rParam || !pParam) {
     return { ok: false, reason: 'missing_required_params' };
   }
   let salt: Uint8Array;
@@ -135,9 +141,9 @@ function decode(encoded: string): DecodeResult {
   return {
     ok: true,
     value: {
-      N: paramMap['N']!,
-      r: paramMap['r']!,
-      p: paramMap['p']!,
+      N: nParam,
+      r: rParam,
+      p: pParam,
       salt,
       hash,
     },

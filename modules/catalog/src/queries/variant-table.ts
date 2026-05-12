@@ -6,6 +6,7 @@ import type {
   FilterValue,
 } from '../responses.ts';
 import { projectionKey } from '../projections/variant-matrix.ts';
+import { readProjection } from '../internal/projection-read.ts';
 
 function variantMatches(row: VariantRow, filters: Record<string, FilterValue>): boolean {
   for (const [attr, fv] of Object.entries(filters)) {
@@ -47,9 +48,9 @@ export async function queryVariantTable(
   params: VariantTableParams,
   projections: ProjectionStore,
 ): Promise<VariantTableResponse | null> {
-  const stored = (await projections.get(projectionKey(familyKey, tenantId))) as
-    | VariantTableResponse
-    | null;
+  const stored = readProjection<VariantTableResponse>(
+    await projections.get(projectionKey(familyKey, tenantId)),
+  );
   if (!stored) return null;
 
   const allRows = stored.rows ?? [];

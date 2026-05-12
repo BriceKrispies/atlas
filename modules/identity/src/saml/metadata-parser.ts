@@ -18,6 +18,12 @@ import type {
   SamlAttributeMappings,
   SamlNameIdFormat,
 } from '../types.ts';
+import {
+  asXmlRecord,
+  asXmlRecordArray,
+  asXmlString,
+  asXmlStringOrArray,
+} from './xml-narrow.ts';
 
 export interface ParsedIdpMetadata {
   /** SAML entityID. */
@@ -51,11 +57,6 @@ const NAMEID_FORMAT_MAP: Record<string, SamlNameIdFormat> = {
   'urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified': 'unspecified',
 };
 
-function arr<T>(v: T | T[] | undefined): T[] {
-  if (v === undefined) return [];
-  return Array.isArray(v) ? v : [v];
-}
-
 function pemFromBase64Cert(b64: string): string {
   // Normalize whitespace + wrap to 64-char lines.
   const compact = b64.replace(/\s+/g, '');
@@ -67,19 +68,27 @@ function pemFromBase64Cert(b64: string): string {
 }
 
 export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
-  let parsed: Record<string, unknown>;
+  let parsedRoot: Record<string, unknown> | undefined;
   try {
-    parsed = PARSER.parse(xml) as Record<string, unknown>;
+    parsedRoot = asXmlRecord(PARSER.parse(xml));
   } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
-      `metadata XML parse failed: ${(e as Error).message}`,
+      `metadata XML parse failed: ${message}`,
       400,
     );
   }
-  const ed = (parsed['EntityDescriptor'] ?? parsed['EntitiesDescriptor']) as
-    | Record<string, unknown>
-    | undefined;
+  if (!parsedRoot) {
+    throw new IdentityError(
+      codes.SAML_INVALID_METADATA,
+      'metadata XML did not parse to a document element',
+      400,
+    );
+  }
+  const ed =
+    asXmlRecord(parsedRoot['EntityDescriptor']) ??
+    asXmlRecord(parsedRoot['EntitiesDescriptor']);
   if (!ed) {
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
@@ -88,7 +97,7 @@ export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
     );
   }
   const entityId =
-    (ed['@_entityID'] as string | undefined) ?? (ed['@_entityId'] as string | undefined);
+    asXmlString(ed['@_entityID']) ?? asXmlString(ed['@_entityId']);
   if (!entityId) {
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
@@ -96,9 +105,7 @@ export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
       400,
     );
   }
-  const idpSsoDescriptor = ed['IDPSSODescriptor'] as
-    | Record<string, unknown>
-    | undefined;
+  const idpSsoDescriptor = asXmlRecord(ed['IDPSSODescriptor']);
   if (!idpSsoDescriptor) {
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
@@ -107,43 +114,32 @@ export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
     );
   }
   // ----- SSO URL: prefer POST binding, fall back to Redirect -------
-  const ssoServices = arr(
-    idpSsoDescriptor['SingleSignOnService'] as
-      | Record<string, unknown>
-      | Record<string, unknown>[]
-      | undefined,
+  const ssoServices = asXmlRecordArray(idpSsoDescriptor['SingleSignOnService']);
+  const post = ssoServices.find((s) => asXmlString(s['@_Binding']) === POST_BINDING);
+  const redirect = ssoServices.find(
+    (s) => asXmlString(s['@_Binding']) === REDIRECT_BINDING,
   );
-  const post = ssoServices.find((s) => s['@_Binding'] === POST_BINDING);
-  const redirect = ssoServices.find((s) => s['@_Binding'] === REDIRECT_BINDING);
   const chosen = post ?? redirect ?? ssoServices[0];
-  if (!chosen || !chosen['@_Location']) {
+  const chosenLocation = chosen ? asXmlString(chosen['@_Location']) : undefined;
+  if (!chosen || !chosenLocation) {
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
       'no SingleSignOnService/@Location in metadata',
       400,
     );
   }
-  const ssoUrl = chosen['@_Location'] as string;
+  const ssoUrl = chosenLocation;
 
-  const sloServices = arr(
-    idpSsoDescriptor['SingleLogoutService'] as
-      | Record<string, unknown>
-      | Record<string, unknown>[]
-      | undefined,
-  );
-  const sloUrl =
-    (sloServices[0]?.['@_Location'] as string | undefined) ?? undefined;
+  const sloServices = asXmlRecordArray(idpSsoDescriptor['SingleLogoutService']);
+  const sloUrl = sloServices[0]
+    ? asXmlString(sloServices[0]['@_Location'])
+    : undefined;
 
   // ----- Signing cert: KeyDescriptor where use="signing" (or use omitted) ---
-  const keyDescriptors = arr(
-    idpSsoDescriptor['KeyDescriptor'] as
-      | Record<string, unknown>
-      | Record<string, unknown>[]
-      | undefined,
-  );
+  const keyDescriptors = asXmlRecordArray(idpSsoDescriptor['KeyDescriptor']);
   const signingKD =
-    keyDescriptors.find((k) => k['@_use'] === 'signing') ??
-    keyDescriptors.find((k) => k['@_use'] === undefined) ??
+    keyDescriptors.find((k) => asXmlString(k['@_use']) === 'signing') ??
+    keyDescriptors.find((k) => asXmlString(k['@_use']) === undefined) ??
     keyDescriptors[0];
   if (!signingKD) {
     throw new IdentityError(
@@ -152,9 +148,9 @@ export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
       400,
     );
   }
-  const keyInfo = signingKD['KeyInfo'] as Record<string, unknown> | undefined;
-  const x509Data = keyInfo?.['X509Data'] as Record<string, unknown> | undefined;
-  const x509Cert = x509Data?.['X509Certificate'] as string | undefined;
+  const keyInfo = asXmlRecord(signingKD['KeyInfo']);
+  const x509Data = asXmlRecord(keyInfo?.['X509Data']);
+  const x509Cert = asXmlString(x509Data?.['X509Certificate']);
   if (!x509Cert) {
     throw new IdentityError(
       codes.SAML_INVALID_METADATA,
@@ -165,9 +161,8 @@ export function parseIdpMetadata(xml: string): ParsedIdpMetadata {
   const signingCertPem = pemFromBase64Cert(x509Cert);
 
   // ----- NameID format ---------------------------------------------
-  const nameIds = arr(
-    idpSsoDescriptor['NameIDFormat'] as string | string[] | undefined,
-  );
+  const nameIdsRaw = asXmlStringOrArray(idpSsoDescriptor['NameIDFormat']) ?? [];
+  const nameIds = Array.isArray(nameIdsRaw) ? nameIdsRaw : [nameIdsRaw];
   const matchedNid = nameIds
     .map((n) => NAMEID_FORMAT_MAP[n])
     .filter((v): v is SamlNameIdFormat => v !== undefined)[0] ?? 'unspecified';

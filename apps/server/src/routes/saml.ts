@@ -26,7 +26,7 @@ import {
 } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
-import { errorResponse } from '../middleware/errors.ts';
+import { errorResponse, errorMessage } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
 
@@ -69,7 +69,7 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
         properties: {
           tenantId,
           route: 'saml.metadata',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
@@ -126,7 +126,7 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
         properties: {
           tenantId,
           route: 'saml.initiate',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
@@ -191,7 +191,7 @@ export function samlRoutes(state: AppState): Hono<{ Variables: ServerVariables }
         properties: {
           tenantId,
           route: 'saml.acs',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);

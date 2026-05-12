@@ -46,19 +46,76 @@ class FakeWindow {
   }
 }
 
+/** The transport only ever touches `iframe.contentWindow` — see
+ *  `packages/widget-host/src/transport/postmessage.ts`. We model only
+ *  that slice so each call-site can pass a structurally-typed fake
+ *  without an `as unknown as HTMLIFrameElement` escape hatch. */
+interface FakeContentWindow {
+  postedMessages: unknown[];
+  postMessage: (m: unknown) => void;
+}
 interface FakeIframe {
-  contentWindow: { postedMessages: unknown[]; postMessage: (m: unknown) => void };
+  contentWindow: FakeContentWindow;
 }
 
 function makeIframe(): FakeIframe {
   const messages: unknown[] = [];
-  const win = {
+  const win: FakeContentWindow = {
     postedMessages: messages,
-    postMessage: (m: unknown) => {
+    postMessage: (m: unknown): void => {
       messages.push(m);
     },
   };
   return { contentWindow: win };
+}
+
+/** Single boundary cast: the transport's signature requires the full
+ *  DOM `HTMLIFrameElement`, but it only reads `.contentWindow`. linkedom
+ *  + this test's FakeWindow give us a structurally-compatible shape; we
+ *  funnel every call through this helper so the cast lives in one place. */
+function asIframe(fake: FakeIframe): HTMLIFrameElement {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; transport only reads iframe.contentWindow, the FakeIframe matches that slice structurally.
+  return fake as unknown as HTMLIFrameElement;
+}
+
+/** Narrow vi.fn() mock call arg (`unknown[][]`) to a known wire-protocol
+ *  shape without escape-hatch casts. Throws with a useful message if the
+ *  call wasn't made — replaces `mock.calls[0]![0] as T` patterns. */
+function firstCallArg<T>(
+  mock: { mock: { calls: ReadonlyArray<ReadonlyArray<unknown>> } },
+  guard: (v: unknown) => v is T,
+  label: string,
+): T {
+  const calls = mock.mock.calls;
+  if (calls.length === 0) {
+    throw new Error(`Test invariant: ${label} mock was not called`);
+  }
+  const first = calls[0];
+  if (!first || first.length === 0) {
+    throw new Error(`Test invariant: ${label} mock call had no args`);
+  }
+  const arg = first[0];
+  if (!guard(arg)) {
+    throw new Error(
+      `Test invariant: ${label} mock arg did not match expected shape (got ${typeof arg})`,
+    );
+  }
+  return arg;
+}
+
+interface LogCallArg {
+  level: string;
+  args: ReadonlyArray<unknown>;
+}
+function isLogCallArg(v: unknown): v is LogCallArg {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'level' in v &&
+    'args' in v &&
+    typeof (v as { level: unknown }).level === 'string' &&
+    Array.isArray((v as { args: unknown }).args)
+  );
 }
 
 let prevWindow: unknown;
@@ -83,7 +140,7 @@ describe('createPostMessageTransport — source filter', () => {
     const onReady = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -100,7 +157,7 @@ describe('createPostMessageTransport — source filter', () => {
     const onReady = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -118,7 +175,7 @@ describe('createPostMessageTransport — malformed envelopes', () => {
     const onReady = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -136,7 +193,7 @@ describe('createPostMessageTransport — malformed envelopes', () => {
     const onLog = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish,
       onCapabilityInvoke,
@@ -156,7 +213,7 @@ describe('createPostMessageTransport — malformed envelopes', () => {
     const onReady = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -171,7 +228,7 @@ describe('createPostMessageTransport — message dispatch', () => {
     const onPublish = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish,
       onCapabilityInvoke: vi.fn(),
@@ -187,7 +244,7 @@ describe('createPostMessageTransport — message dispatch', () => {
     const onCapabilityInvoke = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish: vi.fn(),
       onCapabilityInvoke,
@@ -214,7 +271,7 @@ describe('createPostMessageTransport — log envelope (LogEnvelope)', () => {
     const onLog = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -229,10 +286,7 @@ describe('createPostMessageTransport — log envelope (LogEnvelope)', () => {
       source: iframe.contentWindow,
     });
     expect(onLog).toHaveBeenCalledTimes(1);
-    const arg = onLog.mock.calls[0]![0] as {
-      level: string;
-      args: string[];
-    };
+    const arg = firstCallArg(onLog, isLogCallArg, 'onLog');
     expect(arg.level).toBe('warn');
     // Args are coerced to string per the contract.
     expect(arg.args[0]).toBe('oops');
@@ -243,7 +297,7 @@ describe('createPostMessageTransport — log envelope (LogEnvelope)', () => {
     const onLog = vi.fn();
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -253,13 +307,14 @@ describe('createPostMessageTransport — log envelope (LogEnvelope)', () => {
       data: { kind: 'log', level: 'fatal', args: ['x'] },
       source: iframe.contentWindow,
     });
-    expect(onLog.mock.calls[0]![0].level).toBe('info');
+    const arg = firstCallArg(onLog, isLogCallArg, 'onLog');
+    expect(arg.level).toBe('info');
   });
 
   it('drops "log" envelopes silently when onLog is not provided', () => {
     const iframe = makeIframe();
     createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -278,7 +333,7 @@ describe('createPostMessageTransport — send + dispose', () => {
   it('send() forwards an envelope to iframe.contentWindow.postMessage', () => {
     const iframe = makeIframe();
     const t = createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady: vi.fn(),
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -296,7 +351,7 @@ describe('createPostMessageTransport — send + dispose', () => {
     const onReady = vi.fn();
     const iframe = makeIframe();
     const t = createPostMessageTransport({
-      iframe: iframe as unknown as HTMLIFrameElement,
+      iframe: asIframe(iframe),
       onReady,
       onPublish: vi.fn(),
       onCapabilityInvoke: vi.fn(),
@@ -311,4 +366,3 @@ describe('createPostMessageTransport — send + dispose', () => {
     expect(onReady).not.toHaveBeenCalled();
   });
 });
-

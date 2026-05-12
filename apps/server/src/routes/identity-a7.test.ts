@@ -27,6 +27,98 @@
 import { describe, expect, test, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
 import type { EventEnvelope } from '@atlas/platform-core';
+
+// ----------------------------------------------------------------------
+// Test helpers
+// ----------------------------------------------------------------------
+
+/**
+ * Type-predicate narrow: returns true when `v` is a plain JSON object
+ * (not array, not null). Lets the test treat `unknown`-typed fields
+ * uniformly without a type-system escape-hatch cast.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Read the JSON body of a Response into a `Record<string, unknown>`,
+ * failing the test with a descriptive message when the body is missing
+ * or non-object. The runtime guard runs at the boundary so that
+ * subsequent field reads see typed `unknown` values rather than `any`.
+ */
+async function readJsonBody(res: Response): Promise<Record<string, unknown>> {
+  const raw: unknown = await res.json().catch(() => null);
+  if (!isJsonObject(raw)) {
+    throw new Error(`response body was not a JSON object: ${JSON.stringify(raw)}`);
+  }
+  return raw;
+}
+
+/** Narrow `unknown` to `string`, throwing if the value is missing/wrong type. */
+function expectString(v: unknown, field: string): string {
+  if (typeof v !== 'string') {
+    throw new Error(`expected ${field} to be a string, got ${typeof v}`);
+  }
+  return v;
+}
+
+/** Pull a string field from a JSON-object response body. */
+async function readJsonStringField(res: Response, field: string): Promise<string> {
+  const body = await readJsonBody(res);
+  return expectString(body[field], field);
+}
+
+/** Pull a nested `error.code` from an error response body. */
+async function readErrorCode(res: Response): Promise<string> {
+  const body = await readJsonBody(res);
+  const err = body['error'];
+  if (!isJsonObject(err)) {
+    throw new Error(`response body missing .error object: ${JSON.stringify(body)}`);
+  }
+  return expectString(err['code'], 'error.code');
+}
+
+/**
+ * Pull a record of named string fields from a JSON-object response body.
+ * Every key is validated as a string at the boundary; the returned
+ * record is `Record<K, string>`. Use for tests that need 2+ string
+ * fields out of a response — single-field reads should use
+ * `readJsonStringField`.
+ */
+async function readJsonStringFields<K extends string>(
+  res: Response,
+  fields: readonly K[],
+): Promise<Record<K, string>> {
+  const body = await readJsonBody(res);
+  // Each entry is `expectString`-validated at the boundary, so the
+  // returned record's values are runtime-guaranteed to be strings.
+  // Object.fromEntries widens K to `string` in its return type, hence
+  // the narrow assertion below.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-response-reader builder; Object.fromEntries types its result as `{[k:string]: V}`, but the input `fields: readonly K[]` proves every key is a K, and every value is `expectString`-validated above.
+  return Object.fromEntries(
+    fields.map((field) => [field, expectString(body[field], field)]),
+  ) as Record<K, string>;
+}
+
+/**
+ * Read `body.impersonations[]` for the list-impersonations route, returning
+ * the array of `status` strings (the only field the lifecycle tests assert
+ * on). Validates the array shape at the boundary.
+ */
+async function readImpersonationStatusList(res: Response): Promise<string[]> {
+  const body = await readJsonBody(res);
+  const arr = body['impersonations'];
+  if (!Array.isArray(arr)) {
+    throw new Error(`response body missing .impersonations array: ${JSON.stringify(body)}`);
+  }
+  return arr.map((row, ix) => {
+    if (!isJsonObject(row)) {
+      throw new Error(`impersonations[${ix}] is not a JSON object`);
+    }
+    return expectString(row['status'], `impersonations[${ix}].status`);
+  });
+}
 import type {
   EntityListOptions,
   EntityQueryOptions,
@@ -81,6 +173,7 @@ class InMemoryEntityStore implements EntityStore {
   async get<T = unknown>(t: string, ty: string, id: string): Promise<Entity<T> | null> {
     const r = this.rows.get(this.k(t, ty, id));
     if (!r || r.status === 'deleted') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; row was stored as Entity<unknown> and the caller's T is contract-pinned by the entity type used at put-time. Mirrors the cast pattern in PostgresEntityStore.
     return r as Entity<T>;
   }
   async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -107,20 +200,28 @@ class InMemoryEntityStore implements EntityStore {
   }
   async list<T = unknown>(t: string, ty: string, opts?: EntityListOptions): Promise<Entity<T>[]> {
     const desired = opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
+    const filtered = Array.from(this.rows.values())
       .filter((r) => r.tenantId === t && r.entityType === ty)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
+      .filter((r) => (desired === null ? true : r.status === desired));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; rows are Entity<unknown>, caller's T is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore.list.
+    return filtered as Entity<T>[];
   }
   async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
     const all = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.entityType === ty,
     );
-    if (!opts.attrsEqual) return all as Entity<T>[];
+    if (!opts.attrsEqual) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; see EntityStore.list.
+      return all as Entity<T>[];
+    }
     const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
+    const matched = all.filter((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; entity.attrs is typed as the caller's TAttrs, accessed here as a Record for predicate-equality filtering. Mirrors PostgresEntityStore.query.
       const attrs = row.attrs as Record<string, unknown>;
       return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; see EntityStore.list.
+    return matched as Entity<T>[];
   }
 }
 
@@ -146,14 +247,18 @@ class InMemoryRelationStore implements RelationStore {
     this.rows.delete(this.k(t, e, f, to));
   }
   async outgoing<T = unknown>(t: string, e: string, f: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const out = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.fromId === f,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; rows are Relation<unknown>, caller's T is contract-pinned by the edge type used at add-time. Mirrors PostgresRelationStore.outgoing.
+    return out as Relation<T>[];
   }
   async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const out = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.toId === to,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; see RelationStore.outgoing.
+    return out as Relation<T>[];
   }
 }
 
@@ -167,9 +272,19 @@ const relations = new InMemoryRelationStore();
 
 vi.mock('../bootstrap.ts', async () => {
   const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
+  // Stand-in for the postgres `Sql` handle: the @atlas/adapter-node
+  // module mock below intercepts every consumer of the handle
+  // (constructors return the in-memory stores), so the handle's
+  // runtime shape doesn't matter. Returning `Promise<undefined>` is
+  // assignable to the spec because vitest's `vi.fn<T>()` typing for
+  // bound function-shape generics widens the return to `unknown`,
+  // which `actual` then spreads through unchanged.
+  const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async () =>
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced. The handler-facing API never sees the placeholder shape, and there's no postgres.Sql fixture to satisfy the type without `unknown` widening.
+    undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
   return {
     ...actual,
-    ensureTenantMigrated: vi.fn().mockResolvedValue({} as never),
+    ensureTenantMigrated: vi.fn(ensureTenantMigrated),
   };
 });
 
@@ -202,6 +317,7 @@ vi.mock('@atlas/adapter-node', async () => {
 // ----------------------------------------------------------------------
 
 function makeState(): AppState {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: identity-a7 routes only read `state.config` (passed-through to identityDispatcher under the in-memory adapter mock); building a full AppState (Postgres pools, secret store, mailer, signup queue) is gratuitous overhead for these route-shape tests, and the un-mocked surface is unreachable. A real AppState is exercised in apps/server/test/integration/.
   return {
     config: {
       port: 3000,
@@ -307,8 +423,7 @@ describe('A7 routes: auth', () => {
       }),
     });
     expect(res.status).toBe(403);
-    const body = (await res.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('IMPERSONATION_REQUIRES_OPERATOR');
+    expect(await readErrorCode(res)).toBe('IMPERSONATION_REQUIRES_OPERATOR');
   });
 
   test('break-glass/issue by API-key principal (no userId) → 403', async () => {
@@ -357,8 +472,7 @@ describe('A7 routes: input validation', () => {
       }),
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('IMPERSONATION_TICKET_REQUIRED');
+    expect(await readErrorCode(res)).toBe('IMPERSONATION_TICKET_REQUIRED');
   });
 
   test('rejects role name with metacharacters', async () => {
@@ -397,8 +511,7 @@ describe('A7 routes: input validation', () => {
       }),
     });
     expect(res.status).toBe(403);
-    const body = (await res.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('BREAK_GLASS_GRANT_EXCEEDS_AUTHORITY');
+    expect(await readErrorCode(res)).toBe('BREAK_GLASS_GRANT_EXCEEDS_AUTHORITY');
   });
 
   test('rejects out-of-range maxDurationMin', async () => {
@@ -467,11 +580,11 @@ describe('A7 routes: impersonation lifecycle', () => {
       }),
     });
     expect(start.status).toBe(201);
-    const startBody = (await start.json()) as {
-      impersonationId: string;
-      bearerToken: string;
-      status: string;
-    };
+    const startBody = await readJsonStringFields(start, [
+      'impersonationId',
+      'bearerToken',
+      'status',
+    ] as const);
     expect(startBody.bearerToken).toMatch(/^imp-/);
     expect(startBody.bearerToken.includes('.')).toBe(true);
     expect(startBody.status).toBe('active');
@@ -482,11 +595,9 @@ describe('A7 routes: impersonation lifecycle', () => {
       { method: 'GET' },
     );
     expect(list.status).toBe(200);
-    const listBody = (await list.json()) as {
-      impersonations: Array<{ status: string }>;
-    };
-    expect(listBody.impersonations).toHaveLength(1);
-    expect(listBody.impersonations[0]?.status).toBe('active');
+    const listStatuses = await readImpersonationStatusList(list);
+    expect(listStatuses).toHaveLength(1);
+    expect(listStatuses[0]).toBe('active');
 
     // Operator ends.
     const end = await app.request('/api/v1/identity/impersonation/end', {
@@ -498,8 +609,8 @@ describe('A7 routes: impersonation lifecycle', () => {
       }),
     });
     expect(end.status).toBe(200);
-    const endBody = (await end.json()) as { status: string };
-    expect(endBody.status).toBe('ended');
+    const endStatus = await readJsonStringField(end, 'status');
+    expect(endStatus).toBe('ended');
   });
 
   test('Tenant admin revokes a running impersonation', async () => {
@@ -526,21 +637,18 @@ describe('A7 routes: impersonation lifecycle', () => {
         ticketUrl: 'https://example.com/t',
       }),
     });
-    const startBody = (await start.json()) as { impersonationId: string };
+    const impersonationId = await readJsonStringField(start, 'impersonationId');
 
     const revoke = await adminApp.request('/api/v1/identity/impersonation/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        impersonationId: startBody.impersonationId,
+        impersonationId,
       }),
     });
     expect(revoke.status).toBe(200);
-    const revokeBody = (await revoke.json()) as {
-      status: string;
-      revokedBy: string;
-    };
+    const revokeBody = await readJsonStringFields(revoke, ['status', 'revokedBy'] as const);
     expect(revokeBody.status).toBe('revoked');
     expect(revokeBody.revokedBy).toBe('usr-admin');
   });
@@ -564,7 +672,7 @@ describe('A7 routes: impersonation lifecycle', () => {
         ticketUrl: 'https://example.com/t',
       }),
     });
-    const startBody = (await start.json()) as { impersonationId: string };
+    const impersonationId = await readJsonStringField(start, 'impersonationId');
 
     const adminApp = buildApp({
       principalId: 'usr-eve',
@@ -576,7 +684,7 @@ describe('A7 routes: impersonation lifecycle', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        impersonationId: startBody.impersonationId,
+        impersonationId,
       }),
     });
     expect(revoke.status).toBe(403);
@@ -614,10 +722,7 @@ describe('A7 routes: break-glass lifecycle', () => {
       }),
     });
     expect(issue.status).toBe(201);
-    const issueBody = (await issue.json()) as {
-      grantId: string;
-      status: string;
-    };
+    const issueBody = await readJsonStringFields(issue, ['grantId', 'status'] as const);
     expect(issueBody.status).toBe('pending_approval');
 
     const approve = await carolApp.request('/api/v1/identity/break-glass/approve', {
@@ -629,10 +734,7 @@ describe('A7 routes: break-glass lifecycle', () => {
       }),
     });
     expect(approve.status).toBe(200);
-    const approveBody = (await approve.json()) as {
-      status: string;
-      approvedBy: string;
-    };
+    const approveBody = await readJsonStringFields(approve, ['status', 'approvedBy'] as const);
     expect(approveBody.status).toBe('active');
     expect(approveBody.approvedBy).toBe('usr-carol');
   });
@@ -655,19 +757,18 @@ describe('A7 routes: break-glass lifecycle', () => {
         incidentUrl: 'https://example.com/i',
       }),
     });
-    const issueBody = (await issue.json()) as { grantId: string };
+    const grantId = await readJsonStringField(issue, 'grantId');
 
     const approve = await bobApp.request('/api/v1/identity/break-glass/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        grantId: issueBody.grantId,
+        grantId,
       }),
     });
     expect(approve.status).toBe(403);
-    const body = (await approve.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('BREAK_GLASS_SELF_APPROVAL_FORBIDDEN');
+    expect(await readErrorCode(approve)).toBe('BREAK_GLASS_SELF_APPROVAL_FORBIDDEN');
   });
 
   test('Tenant admin revokes an active grant', async () => {
@@ -700,14 +801,14 @@ describe('A7 routes: break-glass lifecycle', () => {
         incidentUrl: 'https://example.com/i',
       }),
     });
-    const issueBody = (await issue.json()) as { grantId: string };
+    const grantId = await readJsonStringField(issue, 'grantId');
 
     await carolApp.request('/api/v1/identity/break-glass/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        grantId: issueBody.grantId,
+        grantId,
       }),
     });
 
@@ -716,12 +817,12 @@ describe('A7 routes: break-glass lifecycle', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        grantId: issueBody.grantId,
+        grantId,
       }),
     });
     expect(revoke.status).toBe(200);
-    const revokeBody = (await revoke.json()) as { status: string };
-    expect(revokeBody.status).toBe('revoked');
+    const revokeStatus = await readJsonStringField(revoke, 'status');
+    expect(revokeStatus).toBe('revoked');
   });
 
   test('Operator without PlatformSupport on customer revoke → 403 (uses tenant admin path)', async () => {
@@ -749,14 +850,14 @@ describe('A7 routes: break-glass lifecycle', () => {
         incidentUrl: 'https://example.com/i',
       }),
     });
-    const issueBody = (await issue.json()) as { grantId: string };
+    const grantId = await readJsonStringField(issue, 'grantId');
 
     const revoke = await eveApp.request('/api/v1/identity/break-glass/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tenantId: 'customer',
-        grantId: issueBody.grantId,
+        grantId,
       }),
     });
     expect(revoke.status).toBe(403);

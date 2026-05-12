@@ -1,4 +1,6 @@
 import { S } from '../_register.ts';
+import { AtlasToastProvider } from '@atlas/design/atlas-toast.ts';
+import { customDetail, isElement, isHtmlElement, isIdDetail, must } from '../../internal/assert.ts';
 
 S({
   id: 'tooltip',
@@ -40,6 +42,15 @@ S({
   ],
 });
 
+/**
+ * `close` events from `atlas-dialog` / `atlas-drawer` carry a free-form
+ * `detail` (often `{ returnValue?: string }`). Pass through whatever
+ * shape was emitted — the specimen logs it as-is.
+ */
+function readCloseDetail(ev: Event): unknown {
+  return ev instanceof CustomEvent ? (ev.detail ?? {}) : {};
+}
+
 S({
   id: 'dialog',
   name: 'Dialog',
@@ -47,10 +58,7 @@ S({
   mount: (demoEl, { onLog }) => {
     const btn = document.createElement('atlas-button');
     btn.textContent = 'Open dialog';
-    const dialog = document.createElement('atlas-dialog') as HTMLElement & {
-      open: () => void;
-      close: (v?: string) => void;
-    };
+    const dialog = document.createElement('atlas-dialog');
     dialog.setAttribute('heading', 'Delete this project?');
     dialog.innerHTML = `
       <atlas-stack gap="sm">
@@ -69,13 +77,12 @@ S({
     demoEl.appendChild(btn);
     demoEl.appendChild(dialog);
     btn.addEventListener('click', () => dialog.open());
-    dialog.addEventListener('close', (ev) =>
-      onLog('close', (ev as CustomEvent).detail ?? {}),
-    );
+    dialog.addEventListener('close', (ev) => onLog('close', readCloseDetail(ev)));
     demoEl.addEventListener('click', (ev) => {
-      const t = ev.target as Element | null;
-      if (t?.closest('[data-dialog-cancel]')) dialog.close('cancel');
-      if (t?.closest('[data-dialog-confirm]')) dialog.close('confirm');
+      const t = ev.target;
+      if (!isElement(t)) return;
+      if (t.closest('[data-dialog-cancel]')) dialog.close('cancel');
+      if (t.closest('[data-dialog-confirm]')) dialog.close('confirm');
     });
     return () => {
       btn.remove();
@@ -91,16 +98,16 @@ S({
   tag: 'atlas-drawer',
   mount: (demoEl, { onLog }) => {
     function makeDrawer(side: string): { trigger: HTMLElement; drawer: HTMLElement } {
-      const trigger = document.createElement('atlas-button') as HTMLElement;
+      const trigger = document.createElement('atlas-button');
       trigger.setAttribute('variant', 'secondary');
       trigger.setAttribute('size', 'sm');
       trigger.textContent = `Open ${side}`;
-      const drawer = document.createElement('atlas-drawer') as HTMLElement & {
-        open: () => void;
-        close: (v?: string) => void;
-      };
+      const drawer = document.createElement('atlas-drawer');
       drawer.setAttribute('side', side);
-      drawer.setAttribute('heading', `${side[0]!.toUpperCase()}${side.slice(1)} drawer`);
+      // `side` originates from a fixed string-literal list below; the
+      // first char is always defined.
+      const initial = must(side[0], 'drawer specimen: side is a non-empty string').toUpperCase();
+      drawer.setAttribute('heading', `${initial}${side.slice(1)} drawer`);
       drawer.innerHTML = `
         <atlas-stack gap="sm">
           <atlas-text>
@@ -120,13 +127,12 @@ S({
       `;
       trigger.addEventListener('click', () => drawer.open());
       drawer.addEventListener('click', (ev) => {
-        const t = ev.target as Element | null;
-        if (t?.closest('[data-drawer-cancel]')) drawer.close('cancel');
-        if (t?.closest('[data-drawer-apply]')) drawer.close('apply');
+        const t = ev.target;
+        if (!isElement(t)) return;
+        if (t.closest('[data-drawer-cancel]')) drawer.close('cancel');
+        if (t.closest('[data-drawer-apply]')) drawer.close('apply');
       });
-      drawer.addEventListener('close', (ev) =>
-        onLog(`${side}.close`, (ev as CustomEvent).detail ?? {}),
-      );
+      drawer.addEventListener('close', (ev) => onLog(`${side}.close`, readCloseDetail(ev)));
       return { trigger, drawer };
     }
 
@@ -147,31 +153,30 @@ S({
   configVariants: [{ name: 'default', config: {} }],
 });
 
+type ToastTone = 'info' | 'success' | 'warning' | 'danger';
+const TOAST_TONES: readonly ToastTone[] = ['info', 'success', 'warning', 'danger'];
+
+function isToastTone(v: unknown): v is ToastTone {
+  return typeof v === 'string' && (TOAST_TONES as readonly string[]).includes(v);
+}
+
 S({
   id: 'toast',
   name: 'Toast',
   tag: 'atlas-toast',
   mount: (demoEl, { onLog }) => {
     // Provider needs a body-level mount; attach once if not already.
-    let provider = document.querySelector('atlas-toast-provider') as HTMLElement | null;
-    if (!provider) {
-      provider = document.createElement('atlas-toast-provider');
-      document.body.appendChild(provider);
+    // `document.querySelector` returns the typed element via the
+    // `HTMLElementTagNameMap` augmentation, so no cast required.
+    // `AtlasToastProvider.show` auto-installs a provider on `<body>` if
+    // none exists; we still ensure one is mounted up-front so the
+    // specimen's behaviour matches a real app.
+    if (!document.querySelector('atlas-toast-provider')) {
+      document.body.appendChild(document.createElement('atlas-toast-provider'));
     }
-    const ToastProvider = customElements.get('atlas-toast-provider') as
-      | (typeof HTMLElement & {
-          show: (opts: {
-            message: string;
-            tone?: 'info' | 'success' | 'warning' | 'danger';
-            heading?: string;
-            duration?: number;
-            action?: { label: string; onClick?: () => void };
-          }) => HTMLElement;
-        })
-      | undefined;
 
-    function fire(opts: { tone: 'info' | 'success' | 'warning' | 'danger'; message: string; heading?: string }): void {
-      ToastProvider?.show({
+    function fire(opts: { tone: ToastTone; message: string; heading?: string }): void {
+      AtlasToastProvider.show({
         ...opts,
         duration: 4000,
       });
@@ -191,19 +196,20 @@ S({
       <atlas-button data-action="with-action" variant="secondary" size="sm">With action</atlas-button>
     `;
     row.addEventListener('click', (ev) => {
-      const target = ev.target as Element | null;
-      const btn = target?.closest('atlas-button') as HTMLElement | null;
-      if (!btn) return;
-      const tone = btn.dataset['tone'] as 'info' | 'success' | 'warning' | 'danger' | undefined;
-      if (tone) {
-        fire({ tone, heading: `${tone} heading`, message: `This is an example ${tone} toast.` });
+      const target = ev.target;
+      if (!isElement(target)) return;
+      const btnEl = target.closest('atlas-button');
+      if (!isHtmlElement(btnEl)) return;
+      const toneAttr: unknown = btnEl.dataset['tone'];
+      if (isToastTone(toneAttr)) {
+        fire({ tone: toneAttr, heading: `${toneAttr} heading`, message: `This is an example ${toneAttr} toast.` });
         return;
       }
-      const action = btn.dataset['action'];
+      const action = btnEl.dataset['action'];
       if (action === 'pin') {
-        ToastProvider?.show({ tone: 'info', message: 'Pinned — dismiss manually.', duration: 0 });
+        AtlasToastProvider.show({ tone: 'info', message: 'Pinned — dismiss manually.', duration: 0 });
       } else if (action === 'with-action') {
-        ToastProvider?.show({
+        AtlasToastProvider.show({
           tone: 'success',
           message: 'Saved to drafts.',
           action: { label: 'Undo', onClick: () => onLog('undo', {}) },
@@ -221,13 +227,10 @@ S({
   name: 'CommandPalette',
   tag: 'atlas-command-palette',
   mount: (demoEl, { onLog }) => {
-    const trigger = document.createElement('atlas-button') as HTMLElement;
+    const trigger = document.createElement('atlas-button');
     trigger.innerHTML = 'Open palette &nbsp; <atlas-kbd size="xs">⌘</atlas-kbd> <atlas-kbd size="xs">K</atlas-kbd>';
 
-    const palette = document.createElement('atlas-command-palette') as HTMLElement & {
-      items: unknown;
-      open: () => void;
-    };
+    const palette = document.createElement('atlas-command-palette');
     palette.items = [
       { id: 'go.pages', label: 'Go to Pages', hint: 'g p', group: 'Navigate', keywords: ['nav', 'content'] },
       { id: 'go.badges', label: 'Go to Badges', hint: 'g b', group: 'Navigate' },
@@ -242,8 +245,7 @@ S({
 
     trigger.addEventListener('click', () => palette.open());
     palette.addEventListener('select', (ev) => {
-      const detail = (ev as CustomEvent<{ id: string }>).detail;
-      onLog('select', detail);
+      onLog('select', customDetail(ev, isIdDetail, 'atlas-command-palette.select'));
     });
 
     // Keyboard shortcut scoped to the demo container so it doesn't

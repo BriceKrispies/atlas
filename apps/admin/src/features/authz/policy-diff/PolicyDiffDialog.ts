@@ -9,6 +9,26 @@ import { getPolicy, listPolicies, type PolicySummary } from '@atlas/api-client';
 import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 
+/** Extract the message string from an unknown thrown value. */
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Read a finite `rightVersion` number out of a CustomEvent detail, or
+ * return null if the event isn't a CustomEvent / the field is missing
+ * or non-numeric. Used at the `authz-open-diff` event boundary.
+ */
+function readRightVersion(ev: Event): number | null {
+  if (!(ev instanceof CustomEvent)) return null;
+  const detail: unknown = ev.detail;
+  if (detail === null || typeof detail !== 'object' || !('rightVersion' in detail)) {
+    return null;
+  }
+  const v: unknown = detail.rightVersion;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 interface DiffState {
   open: boolean;
   versions: readonly PolicySummary[];
@@ -70,8 +90,7 @@ class PolicyDiffDialog extends AtlasSurface {
   }
 
   private _onOpen = (e: Event): void => {
-    const detail = (e as CustomEvent<{ rightVersion?: number }>).detail ?? {};
-    void this._open(detail.rightVersion ?? null);
+    void this._open(readRightVersion(e));
   };
 
   private async _open(rightVersion: number | null): Promise<void> {
@@ -107,7 +126,7 @@ class PolicyDiffDialog extends AtlasSurface {
       this._state = {
         ...this._state,
         loading: false,
-        loadError: (e as Error).message,
+        loadError: errorMessage(e),
       };
     }
     this._rerender();
@@ -153,10 +172,15 @@ class PolicyDiffDialog extends AtlasSurface {
   }
 
   private _renderDiff(): HTMLElement {
+    // <atlas-diff> reads its two sides from the `before` / `after`
+    // attributes — see packages/design/src/atlas-diff.ts. The prior
+    // `.left` / `.right` property assignment was a typo against a
+    // non-existent API, which silently dropped both texts on the floor;
+    // the diff rendered empty regardless of which versions were picked.
     const diff = document.createElement('atlas-diff');
     diff.setAttribute('name', 'diff');
-    (diff as unknown as { left: string; right: string }).left = this._state.leftText;
-    (diff as unknown as { left: string; right: string }).right = this._state.rightText;
+    diff.setAttribute('before', this._state.leftText);
+    diff.setAttribute('after', this._state.rightText);
     return diff;
   }
 
@@ -171,9 +195,12 @@ class PolicyDiffDialog extends AtlasSurface {
     input.setAttribute('label', label);
     input.setAttribute('type', 'number');
     if (value !== null) input.setAttribute('value', String(value));
-    input.addEventListener('change', (e: Event) => {
-      const v = (e.target as unknown as { value?: string } | null)?.value;
-      const n = v !== undefined ? Number(v) : NaN;
+    input.addEventListener('change', () => {
+      // Read the value off the captured `input` reference rather than
+      // `e.target` — `input` is already typed as AtlasInput via the
+      // HTMLElementTagNameMap augmentation in @atlas/design, so no
+      // narrowing of the event target is required.
+      const n = Number(input.value);
       if (Number.isFinite(n)) onChange(n);
     });
     return input;
@@ -190,7 +217,7 @@ class PolicyDiffDialog extends AtlasSurface {
       }
       this._rerender();
     } catch (e) {
-      this._state = { ...this._state, loadError: (e as Error).message };
+      this._state = { ...this._state, loadError: errorMessage(e) };
       this._rerender();
     }
   }

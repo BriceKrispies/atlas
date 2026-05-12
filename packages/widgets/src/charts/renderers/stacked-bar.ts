@@ -40,8 +40,12 @@ export function renderStackedBar(opts: StackedBarRendererOptions): SVGGElement {
   series.forEach((s, i) => {
     for (const p of s.values) {
       const key = keyOfX(p.x);
-      if (!byX.has(key)) byX.set(key, { x: p.x, parts: [] });
-      byX.get(key)!.parts.push({ seriesIdx: i, value: p.y, name: s.name });
+      let entry = byX.get(key);
+      if (!entry) {
+        entry = { x: p.x, parts: [] };
+        byX.set(key, entry);
+      }
+      entry.parts.push({ seriesIdx: i, value: p.y, name: s.name });
     }
   });
 

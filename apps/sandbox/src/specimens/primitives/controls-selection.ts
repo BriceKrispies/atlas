@@ -142,7 +142,7 @@ S({
       { value: 'archived', label: 'Archived', disabled: true },
     ];
     sel.addEventListener('change', (ev) => {
-      onLog('change', (ev as CustomEvent).detail);
+      onLog('change', ev instanceof CustomEvent ? ev.detail : null);
     });
     el.appendChild(sel);
     return () => {};

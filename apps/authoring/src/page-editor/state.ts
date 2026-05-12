@@ -205,7 +205,7 @@ const VALID_TABS: { left: ReadonlySet<string>; right: ReadonlySet<string>; botto
   bottom: new Set<BottomPanelTab>(['issues', 'history', 'preview-device']),
 };
 
-function isValidTabFor(panel: PanelId, tab: string): boolean {
+function isValidTabFor(panel: PanelId, tab: string): tab is AnyPanelTab {
   return VALID_TABS[panel].has(tab);
 }
 
@@ -465,7 +465,7 @@ export class PageEditorController {
     const current = this._panels[panel];
     const next = open === undefined ? !current.open : !!open;
     if (current.open === next) return;
-    this._panels = { ...this._panels, [panel]: { ...current, open: next } } as PanelsState;
+    this._panels = { ...this._panels, [panel]: { ...current, open: next } } satisfies PanelsState;
     this._recordCommit('panelToggle', { panel, open: next });
     this._emit();
   }
@@ -478,7 +478,7 @@ export class PageEditorController {
     const clamped = clampSize(panel, size);
     const current = this._panels[panel];
     if (current.size === clamped) return;
-    this._panels = { ...this._panels, [panel]: { ...current, size: clamped } } as PanelsState;
+    this._panels = { ...this._panels, [panel]: { ...current, size: clamped } } satisfies PanelsState;
     this._recordCommit('panelResize', { panel, size: clamped });
     this._emit();
   }
@@ -487,14 +487,14 @@ export class PageEditorController {
    * Switch the active tab in a panel. Validates the tab against the panel's
    * vocabulary; unknown tabs are rejected without committing.
    */
-  setPanelTab(panel: PanelId, tab: AnyPanelTab): void {
+  setPanelTab(panel: PanelId, tab: string): void {
     if (!isValidTabFor(panel, tab)) return;
     const current = this._panels[panel];
     if (current.tab === tab) return;
     this._panels = {
       ...this._panels,
       [panel]: { ...current, tab },
-    } as PanelsState;
+    } satisfies PanelsState;
     this._recordCommit('panelTab', { panel, tab });
     this._emit();
   }
@@ -602,22 +602,16 @@ export class PageEditorController {
   }): Promise<{ ok: boolean; reason?: string }> {
     const editor = this._editor;
     if (!editor) return { ok: false, reason: 'editor-not-ready' };
-    if (typeof (editor as { move?: unknown }).move !== 'function') {
-      return { ok: false, reason: 'move-not-supported' };
-    }
     this._setStatus('saving');
     try {
       // Call through the editor reference so `this` stays bound to the
       // EditorAPI instance (its `move` reads `this._isEditable()`).
-      const editorWithMove = editor as unknown as {
-        move: (a: { instanceId: string; region: string; index?: number }) => Promise<{ ok: boolean; reason?: string }>;
-      };
       const callArgs: { instanceId: string; region: string; index?: number } = {
         instanceId: args.instanceId,
         region: args.toRegion,
       };
       if (args.toIndex !== undefined) callArgs.index = args.toIndex;
-      const res = await editorWithMove.move(callArgs);
+      const res = await editor.move(callArgs);
       if (res.ok) {
         const patch: Record<string, unknown> = {
           instanceId: args.instanceId,
@@ -681,9 +675,16 @@ export class PageEditorController {
   }
 
   async undo(): Promise<boolean> {
-    const frame = await this._history.undo((doc) =>
-      this._wrapped.save(this.pageId, doc as PageDocument),
-    );
+    // HistoryStack.undo passes `PageDocument | null` (null means "before
+    // the first captured frame"). The wrapped store can't accept null —
+    // if we ever land here with null, the editor was undone past the
+    // seeded baseline, which is a programming bug not a user state.
+    const frame = await this._history.undo(async (doc) => {
+      if (doc === null) {
+        throw new Error('page-editor undo: cannot replay a null document');
+      }
+      await this._wrapped.save(this.pageId, doc);
+    });
     if (frame) {
       this._recordCommit('undo', {});
       this._setStatus('saved');
@@ -743,13 +744,20 @@ export class PageEditorController {
         // subscriber must not break the others; we surface the failure
         // through the frontend telemetry pipeline instead of bypassing
         // the logging contract.
+        const codeRaw: unknown =
+          err !== null && typeof err === 'object'
+            ? (err as { code?: unknown }).code
+            : undefined;
+        const errorCode = typeof codeRaw === 'string' ? codeRaw : 'unknown';
+        const errorMessage =
+          err instanceof Error ? err.message : String(err);
         emitTelemetry({
           eventName: 'Atlas.Listener.Threw',
           surfaceId: this.surfaceId,
           source: 'authoring.page-editor.state',
           pageId: this.pageId,
-          'error.code': (err as { code?: string })?.code ?? 'unknown',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.code': errorCode,
+          'error.message': errorMessage,
         });
       }
     }

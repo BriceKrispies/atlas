@@ -48,3 +48,7 @@ packages/schemas/src/generated/
 # dependency-cruiser graph output
 deps.html
 deps.svg
+
+# Quality-tooling caches and reports
+.lycheecache
+coverage/

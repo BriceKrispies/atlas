@@ -31,6 +31,17 @@
  */
 
 import { describe, test, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
+
+/**
+ * Boundary reader for parity-test JSON responses. T is the wire contract
+ * the endpoint (Keycloak realm or apps/server route) is known to return;
+ * we narrow `any` to `T` once here instead of at every call site.
+ */
+async function readJsonAs<T>(res: Response): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTTP parity test — T is the endpoint's contracted response shape (Keycloak OIDC discovery / token / apps/server whoami).
+  return (await res.json()) as T;
+}
 
 const keycloakBaseUrl = process.env['KEYCLOAK_BASE_URL'];
 const serverBaseUrl = process.env['NODE_PARITY_BASE_URL'];
@@ -64,7 +75,7 @@ async function fetchDiscovery(): Promise<{
 }> {
   const url = `${keycloakBaseUrl}/realms/${REALM}/.well-known/openid-configuration`;
   const res = await fetch(url, { method: 'GET' });
-  const body = (await res.json()) as DiscoveryDoc;
+  const body = await readJsonAs<DiscoveryDoc>(res);
   return { status: res.status, body };
 }
 
@@ -84,7 +95,7 @@ async function mintClientCredentialsToken(): Promise<TokenResponse> {
     const text = await res.text();
     throw new Error(`Token mint failed (${res.status}): ${text}`);
   }
-  return (await res.json()) as TokenResponse;
+  return readJsonAs<TokenResponse>(res);
 }
 
 const dKeycloak = keycloakBaseUrl ? describe : describe.skip;
@@ -101,7 +112,12 @@ dKeycloak('[node] keycloak parity', () => {
     // use — otherwise tokens minted via this endpoint will fail issuer
     // verification at the server side.
     const u = new URL(body.issuer);
-    const configured = new URL(keycloakBaseUrl as string);
+    const configured = new URL(
+      assertDefined(
+        keycloakBaseUrl,
+        'KEYCLOAK_BASE_URL must be set — the dKeycloak describe gate guarantees this',
+      ),
+    );
     // Compare host:port; protocol may differ between dev (http) and
     // production (https) and is not a parity concern here.
     expect(u.host).toBe(configured.host);
@@ -141,10 +157,10 @@ dKeycloak('[node] keycloak parity', () => {
         return;
       }
       expect(res.status).toBe(200);
-      const body = (await res.json()) as {
+      const body = await readJsonAs<{
         principalId?: string;
         tenantId?: string;
-      };
+      }>(res);
       // The realm export bakes a tenant_id hardcoded-claim mapper on
       // atlas-s2s with value tenant-itest-001 (see atlas-realm.json).
       // The middleware extracts that into the principal.

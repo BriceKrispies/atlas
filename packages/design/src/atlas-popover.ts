@@ -2,6 +2,59 @@ import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, uid } from './util.ts';
 
 /**
+ * Capability probe for the Popover API on a host element. Uses
+ * `Reflect.get` rather than a structural cast so the type-system never
+ * has to claim that an arbitrary `HTMLElement` carries a `showPopover`
+ * member — the browser may not implement it yet.
+ */
+type PopoverHostElement = HTMLElement & {
+  showPopover: () => void;
+  hidePopover: () => void;
+};
+
+function supportsPopover(el: HTMLElement): el is PopoverHostElement {
+  return (
+    typeof Reflect.get(el, 'showPopover') === 'function' &&
+    typeof Reflect.get(el, 'hidePopover') === 'function'
+  );
+}
+
+/**
+ * Capability probe at the prototype level — answers "does this user
+ * agent expose the Popover API at all?" without a structural cast on
+ * the prototype object.
+ */
+function popoverApiAvailable(): boolean {
+  return (
+    typeof Reflect.get(HTMLElement.prototype, 'showPopover') === 'function'
+  );
+}
+
+function parseTrigger(raw: string | null): Trigger {
+  switch (raw) {
+    case 'hover':
+    case 'click':
+    case 'manual':
+      return raw;
+    default:
+      return 'click';
+  }
+}
+
+function parsePlacement(raw: string | null): Placement {
+  switch (raw) {
+    case 'top':
+    case 'bottom':
+    case 'start':
+    case 'end':
+    case 'auto':
+      return raw;
+    default:
+      return 'bottom';
+  }
+}
+
+/**
  * <atlas-popover> — non-modal hover/click card. Sits between
  * <atlas-tooltip> (text-only, hover, position) and <atlas-dialog>
  * (modal, focus-trapped). Use this for richer pinned content (a help
@@ -183,7 +236,7 @@ export class AtlasPopover extends AtlasElement {
     surface.setAttribute('role', 'group');
     surface.setAttribute('aria-labelledby', `${this._surfaceId}-anchor`);
     surface.setAttribute('data-part', 'surface');
-    if (typeof (HTMLElement.prototype as unknown as { showPopover?: unknown }).showPopover === 'function') {
+    if (popoverApiAvailable()) {
       surface.setAttribute('popover', 'manual');
     }
 
@@ -223,7 +276,7 @@ export class AtlasPopover extends AtlasElement {
       el.removeEventListener('focusin', this._onAnchorFocusIn);
       el.removeEventListener('focusout', this._onAnchorFocusOut);
     }
-    const mode = ((this.getAttribute('trigger') as Trigger) || 'click') as Trigger;
+    const mode = parseTrigger(this.getAttribute('trigger'));
     const els = this._anchorEls();
     for (const el of els) {
       // Annotate the anchor with an id the surface points to via
@@ -268,7 +321,14 @@ export class AtlasPopover extends AtlasElement {
     else {
       // Allow the focus to traverse into the surface without dismissing.
       requestAnimationFrame(() => {
-        const active = (this.getRootNode() as Document).activeElement;
+        const root = this.getRootNode();
+        // `getRootNode` returns Document or ShadowRoot — both carry an
+        // `activeElement` getter, so type the lookup against their
+        // common shape instead of a static narrowing cast.
+        const active =
+          root instanceof Document || root instanceof ShadowRoot
+            ? root.activeElement
+            : null;
         if (active instanceof Node && this._surface?.contains(active)) return;
         this.close();
       });
@@ -309,17 +369,13 @@ export class AtlasPopover extends AtlasElement {
   }
 
   private _tryShowPopover(el: HTMLElement): void {
-    const fn = (el as unknown as { showPopover?: () => void }).showPopover;
-    if (typeof fn === 'function') {
-      try { fn.call(el); } catch { /* already shown */ }
-    }
+    if (!supportsPopover(el)) return;
+    try { el.showPopover(); } catch { /* already shown */ }
   }
 
   private _tryHidePopover(el: HTMLElement): void {
-    const fn = (el as unknown as { hidePopover?: () => void }).hidePopover;
-    if (typeof fn === 'function') {
-      try { fn.call(el); } catch { /* already hidden */ }
-    }
+    if (!supportsPopover(el)) return;
+    try { el.hidePopover(); } catch { /* already hidden */ }
   }
 
   private _attachOpenListeners(): void {
@@ -339,7 +395,10 @@ export class AtlasPopover extends AtlasElement {
   private _handleDocPointerDown(e: PointerEvent): void {
     if (!this.isOpen) return;
     const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
-    if (path.includes(this._surface as EventTarget)) return;
+    // `_surface` is HTMLElement | null; HTMLElement is an EventTarget so
+    // `path.includes` accepts it directly when present.
+    const surface = this._surface;
+    if (surface && path.includes(surface)) return;
     // Anchor click is a toggle, not a dismiss — let its handler decide.
     for (const a of this._anchorEls()) if (path.includes(a)) return;
     this.close();
@@ -378,7 +437,7 @@ export class AtlasPopover extends AtlasElement {
     const vh = window.innerHeight;
     const offset = Number(this.getAttribute('offset') ?? '8') || 8;
 
-    const placement = ((this.getAttribute('placement') as Placement) || 'bottom') as Placement;
+    const placement = parsePlacement(this.getAttribute('placement'));
     const resolved = this._resolvePlacement(placement, rect, sw, sh, vw, vh, offset);
 
     let top = 0;

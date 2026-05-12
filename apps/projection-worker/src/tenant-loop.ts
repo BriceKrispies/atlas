@@ -432,7 +432,6 @@ async function runWithRetry(
   let attempt = 0;
   let delayMs = BACKOFF_INITIAL_MS;
   // Loop until success or dead-letter.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       await dispatch(event);

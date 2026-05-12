@@ -1,4 +1,9 @@
-import type { EventEnvelope, IntentEnvelope, Logger } from '@atlas/platform-core';
+import type {
+  EventEnvelope,
+  IntentEnvelope,
+  IntentPayload,
+  Logger,
+} from '@atlas/platform-core';
 import type { EventStore } from './event-store.ts';
 import type { CatalogStateStore } from './catalog-state-store.ts';
 
@@ -28,8 +33,22 @@ export interface HandlerResult {
   follow: ReadonlyArray<EventEnvelope>;
 }
 
-export interface IntentHandler {
-  handle(ctx: IntentHandlerContext, envelope: IntentEnvelope): Promise<HandlerResult>;
+/**
+ * Generic intent handler.
+ *
+ * `TPayload` defaults to `IntentPayload` so existing handlers
+ * (`async (ctx, envelope) => …` with `envelope.payload` typed as
+ * `IntentPayload`) continue to compile unchanged. Modules with a
+ * typed payload union — see `modules/identity/src/intents.ts` —
+ * specialise per-action so the registry's closures receive the
+ * narrowed shape directly instead of re-parsing the payload at
+ * runtime.
+ */
+export interface IntentHandler<TPayload extends IntentPayload = IntentPayload> {
+  handle(
+    ctx: IntentHandlerContext,
+    envelope: IntentEnvelope<TPayload>,
+  ): Promise<HandlerResult>;
 }
 
 export interface HandlerRegistry {

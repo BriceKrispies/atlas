@@ -60,6 +60,7 @@ import {
   type AppState,
 } from '../bootstrap.ts';
 import { serverEventDispatcher } from '../events/dispatcher.ts';
+import { errorMessage } from './errors.ts';
 
 function newAuditId(): string {
   return `audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -114,7 +115,7 @@ function instrumentDispatcher(
           dispatcher: name,
           eventType: envelope.eventType,
           eventId: envelope.eventId,
-          error: (e as Error).message,
+          error: errorMessage(e),
         },
       });
       throw e;
@@ -164,8 +165,12 @@ function buildAsyncNoopDispatch(
  * stub-mode deployments.
  */
 function isBundleCache(engine: PolicyEngine): engine is PolicyEngine & CedarBundleCache {
-  const e = engine as unknown as Partial<CedarBundleCache>;
-  return typeof e.invalidate === 'function' && typeof e.invalidateAll === 'function';
+  // `PolicyEngine` doesn't declare the bundle-cache methods — read them
+  // through `Reflect.get` so the probe stays inside `unknown` and we
+  // don't smuggle the cedar shape in via a structural cast.
+  const invalidate: unknown = Reflect.get(engine, 'invalidate');
+  const invalidateAll: unknown = Reflect.get(engine, 'invalidateAll');
+  return typeof invalidate === 'function' && typeof invalidateAll === 'function';
 }
 
 export interface RequestBundle {

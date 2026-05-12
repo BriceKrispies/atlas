@@ -17,86 +17,45 @@ import type {
   EntityTypeRow,
   FieldRow,
   IndexDeclarationRow,
-  RegistryOrigin,
+  JsonValue,
 } from '@atlas/platform-core';
 import type { EntityTypeRegistry } from '@atlas/ports';
 import type postgres from 'postgres';
 
-interface EntityTypeDbRow {
-  entity_type: string;
-  tenant_id: string | null;
-  schema_version: number;
-  json_schema: unknown;
-  origin: string;
-  package_id: string | null;
-  created_at: string;
-}
-
-interface FieldDbRow {
-  entity_type: string;
-  tenant_id: string | null;
-  field_path: string;
-  data_type: string;
-  label: string | null;
-  help_text: string | null;
-  is_required: boolean;
-  default_value: unknown;
-  constraints: unknown;
-  origin: string;
-  package_id: string | null;
-  created_at: string;
-}
-
-interface IndexDbRow {
-  entity_type: string;
-  tenant_id: string | null;
-  index_name: string;
-  field_paths: unknown;
-  is_unique: boolean;
-  where_clause: unknown;
-  origin: string;
-  package_id: string | null;
-  created_at: string;
-}
-
-function entityTypeRow(r: EntityTypeDbRow): EntityTypeRow {
-  return {
-    entity_type: r.entity_type,
-    tenant_id: r.tenant_id,
-    schema_version: r.schema_version,
-    json_schema: r.json_schema as EntityTypeRow['json_schema'],
-    origin: r.origin as RegistryOrigin,
-    package_id: r.package_id,
-    created_at: r.created_at,
-  };
-}
-
-function fieldRow(r: FieldDbRow): FieldRow {
-  return {
-    entity_type: r.entity_type,
-    tenant_id: r.tenant_id,
-    field_path: r.field_path,
-    data_type: r.data_type,
-    label: r.label,
-    help_text: r.help_text,
-    is_required: r.is_required,
-    default_value: r.default_value as FieldRow['default_value'],
-    constraints: r.constraints as FieldRow['constraints'],
-    origin: r.origin as RegistryOrigin,
-    package_id: r.package_id,
-    created_at: r.created_at,
-  };
+/**
+ * DB row shape for `control_plane.index_registry`. Identical to
+ * `IndexDeclarationRow` except `field_paths` is a raw `JsonValue` —
+ * postgres.js parses the JSONB column, but `string[]` is narrower than
+ * what JSONB allows on the wire, so we keep the wider type at the
+ * trust boundary and narrow it inside `indexRow()`.
+ *
+ * For the entity-type / field rows, the typed-row generic on `sql<…>`
+ * matches the domain row exactly: `json_schema` / `default_value` /
+ * `constraints` are JSONB columns (postgres.js parses → `JsonValue`),
+ * and `origin` is enforced by a DB-level CHECK constraint
+ * (`'platform' | 'tenant' | 'package'`) so the enum type holds without
+ * a runtime check on the read path.
+ */
+interface IndexDbRow extends Omit<IndexDeclarationRow, 'field_paths'> {
+  field_paths: JsonValue;
 }
 
 function indexRow(r: IndexDbRow): IndexDeclarationRow {
+  // JSONB array — narrow to string[] defensively (the DB column is
+  // typed JSONB rather than text[] so non-string entries are theoretically
+  // representable; the writer never produces them, but the reader stays
+  // permissive).
+  const fieldPaths = Array.isArray(r.field_paths)
+    ? r.field_paths.filter((p): p is string => typeof p === 'string')
+    : [];
   return {
     entity_type: r.entity_type,
     tenant_id: r.tenant_id,
     index_name: r.index_name,
-    field_paths: Array.isArray(r.field_paths) ? (r.field_paths as string[]) : [],
+    field_paths: fieldPaths,
     is_unique: r.is_unique,
-    where_clause: r.where_clause as IndexDeclarationRow['where_clause'],
-    origin: r.origin as RegistryOrigin,
+    where_clause: r.where_clause,
+    origin: r.origin,
     package_id: r.package_id,
     created_at: r.created_at,
   };
@@ -111,7 +70,7 @@ export class PostgresEntityTypeRegistry implements EntityTypeRegistry {
   ): Promise<EntityTypeRow | null> {
     // Prefer the tenant-specific row; fall back to platform default.
     // Single round-trip via DISTINCT ON.
-    const rows = await this.sql<EntityTypeDbRow[]>`
+    const rows = await this.sql<EntityTypeRow[]>`
       SELECT DISTINCT ON (entity_type)
         entity_type, tenant_id, schema_version, json_schema,
         origin, package_id, created_at
@@ -121,12 +80,11 @@ export class PostgresEntityTypeRegistry implements EntityTypeRegistry {
       ORDER BY entity_type, tenant_id NULLS LAST
       LIMIT 1
     `;
-    const row = rows[0];
-    return row ? entityTypeRow(row) : null;
+    return rows[0] ?? null;
   }
 
   async listEntityTypes(tenantId: string): Promise<EntityTypeRow[]> {
-    const rows = await this.sql<EntityTypeDbRow[]>`
+    return this.sql<EntityTypeRow[]>`
       SELECT DISTINCT ON (entity_type)
         entity_type, tenant_id, schema_version, json_schema,
         origin, package_id, created_at
@@ -134,7 +92,6 @@ export class PostgresEntityTypeRegistry implements EntityTypeRegistry {
       WHERE tenant_id = ${tenantId} OR tenant_id IS NULL
       ORDER BY entity_type, tenant_id NULLS LAST
     `;
-    return rows.map(entityTypeRow);
   }
 
   async listFields(
@@ -142,7 +99,7 @@ export class PostgresEntityTypeRegistry implements EntityTypeRegistry {
     tenantId: string,
   ): Promise<FieldRow[]> {
     // Per field_path: tenant override wins; otherwise platform default.
-    const rows = await this.sql<FieldDbRow[]>`
+    return this.sql<FieldRow[]>`
       SELECT DISTINCT ON (entity_type, field_path)
         entity_type, tenant_id, field_path, data_type, label, help_text,
         is_required, default_value, constraints, origin, package_id, created_at
@@ -151,7 +108,6 @@ export class PostgresEntityTypeRegistry implements EntityTypeRegistry {
         AND (tenant_id = ${tenantId} OR tenant_id IS NULL)
       ORDER BY entity_type, field_path, tenant_id NULLS LAST
     `;
-    return rows.map(fieldRow);
   }
 
   async listIndexes(

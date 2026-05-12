@@ -63,7 +63,7 @@ class AtlasChartDrilldown extends AtlasElement {
         btn.setAttribute('key', String(crumb.depth));
         btn.textContent = crumb.label;
         btn.addEventListener('click', () => {
-          store?.commit('popDrilldown', { toDepth: crumb.depth });
+          store?.commit({ kind: 'popDrilldown', toDepth: crumb.depth });
         });
         this.appendChild(btn);
       }

@@ -22,6 +22,7 @@
 
 import { emitTelemetry } from '@atlas/core';
 
+import { isHtmlElement } from '../internal/assert.ts';
 import type { DragSource, Point } from './types.ts';
 
 const DEFAULT_ACTIVATION_DISTANCE = 4; // px
@@ -87,9 +88,10 @@ export class PointerSensor {
 
   constructor({ root, activationDistance, callbacks }: PointerSensorOptions) {
     this._root = root ?? (typeof document !== 'undefined' ? document : null);
-    this._threshold = Number.isFinite(activationDistance)
-      ? (activationDistance as number)
-      : DEFAULT_ACTIVATION_DISTANCE;
+    this._threshold =
+      typeof activationDistance === 'number' && Number.isFinite(activationDistance)
+        ? activationDistance
+        : DEFAULT_ACTIVATION_DISTANCE;
     this._cb = callbacks;
     this._onPointerDown = this.__onPointerDown.bind(this);
     this._onPointerMove = this.__onPointerMove.bind(this);
@@ -113,21 +115,33 @@ export class PointerSensor {
   attach(): void {
     if (this._attached || !this._root) return;
     this._attached = true;
-    const root = this._root;
-    root.addEventListener('pointerdown', this._onPointerDown as EventListener, { passive: false });
+    const root = this._rootAsListener();
+    root.addEventListener('pointerdown', this._onPointerDown, { passive: false });
     // Swallow native HTML5 dragstart ONLY on registered source elements, in
     // case one of them renders a nested node that browsers think is
     // draggable by default (e.g. <img>).
-    root.addEventListener('dragstart', this._onDragStart as EventListener, true);
+    root.addEventListener('dragstart', this._onDragStart, true);
   }
 
   detach(): void {
     if (!this._attached || !this._root) return;
     this._attached = false;
-    const root = this._root;
-    root.removeEventListener('pointerdown', this._onPointerDown as EventListener);
-    root.removeEventListener('dragstart', this._onDragStart as EventListener, true);
+    const root = this._rootAsListener();
+    root.removeEventListener('pointerdown', this._onPointerDown);
+    root.removeEventListener('dragstart', this._onDragStart, true);
     this._teardownGlobal();
+  }
+
+  /**
+   * `_root` is typed `HTMLElement | Document` so callers can pass either; the
+   * union, however, drops the typed `addEventListener` overloads (each side
+   * has its own EventMap). Narrowing to `Document` here restores the typed
+   * overload chain — both halves of the union physically share the methods
+   * we use, so this is a documentation cast, not a behaviour change.
+   */
+  private _rootAsListener(): Document {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTMLElement|Document union drops typed addEventListener overloads; both halves share the methods we call.
+    return this._root as Document;
   }
 
   /** Hard-cancel an in-flight drag (e.g. programmatic abort, view change). */
@@ -152,19 +166,21 @@ export class PointerSensor {
     const path = typeof ev.composedPath === 'function' ? ev.composedPath() : null;
     if (path && path.length) {
       for (const node of path) {
-        if (node && (node as Node).nodeType === 1) {
-          const src = this._sources.get(node as HTMLElement);
+        if (isHtmlElement(node)) {
+          const src = this._sources.get(node);
           if (src) return src;
         }
       }
       return null;
     }
     // Fallback: light-DOM ancestor walk.
-    let node: Node | null = ev.target as Node | null;
+    let node: Node | null = ev.target instanceof Node ? ev.target : null;
     while (node && node.nodeType === 1) {
-      const src = this._sources.get(node as HTMLElement);
-      if (src) return src;
-      node = (node as Node).parentNode;
+      if (node instanceof HTMLElement) {
+        const src = this._sources.get(node);
+        if (src) return src;
+      }
+      node = node.parentNode;
     }
     return null;
   }
@@ -174,7 +190,11 @@ export class PointerSensor {
     if (this._armed) return;
     const source = this._findSourceForEvent(ev);
     if (!source) return;
-    if (source.activator && !source.activator.contains(ev.target as Node)) return;
+    if (
+      source.activator &&
+      (!(ev.target instanceof Node) || !source.activator.contains(ev.target))
+    )
+      return;
     const origin: Point = { x: ev.clientX, y: ev.clientY };
     const ok = this._cb.onArm?.({ source, origin, event: ev });
     if (ok === false) return;
@@ -220,7 +240,7 @@ export class PointerSensor {
               eventName: 'atlas.dnd.setPointerCapture.failed',
               level: 'debug',
               source: 'page-templates.dnd.sensor',
-              'error.message': (err as Error)?.message ?? String(err),
+              'error.message': err instanceof Error ? err.message : String(err),
             });
           }
         }
@@ -284,16 +304,16 @@ export class PointerSensor {
     const path = typeof ev.composedPath === 'function' ? ev.composedPath() : null;
     if (path && path.length) {
       for (const node of path) {
-        if (node && (node as Node).nodeType === 1 && this._sources.has(node as HTMLElement)) {
+        if (isHtmlElement(node) && this._sources.has(node)) {
           ev.preventDefault();
           return;
         }
       }
       return;
     }
-    let node: Node | null = ev.target as Node | null;
+    let node: Node | null = ev.target instanceof Node ? ev.target : null;
     while (node && node.nodeType === 1) {
-      if (this._sources.has(node as HTMLElement)) {
+      if (node instanceof HTMLElement && this._sources.has(node)) {
         ev.preventDefault();
         return;
       }
@@ -328,7 +348,7 @@ export class PointerSensor {
           eventName: 'atlas.dnd.releasePointerCapture.failed',
           level: 'debug',
           source: 'page-templates.dnd.sensor',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': err instanceof Error ? err.message : String(err),
         });
       }
     }

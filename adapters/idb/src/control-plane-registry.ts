@@ -47,7 +47,6 @@ export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
           // Followups: ditto for the IDB sim adapter once a second sim
           // module lands. Today only one module owns each action, so the
           // warning fires only on a manifest authoring mistake.
-          // eslint-disable-next-line no-console
           console.warn(
             `[control-plane-registry] duplicate actionId "${a.actionId}": ` +
               `previously declared by "${ownerByAction.get(a.actionId) ?? '<unknown>'}", ` +

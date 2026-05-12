@@ -1,0 +1,36 @@
+# Atlas HTTP server — minimal TypeScript runtime image.
+#
+# Build context is the repo root:
+#   podman build -f infra/docker/Dockerfile.server -t atlas/server:dev .
+#
+# Runs `apps/server` (Hono on @hono/node-server) via tsx. No bundling step,
+# no separate build stage — the runtime carries the workspace source and
+# tsx executes TypeScript directly. This is "bare minimum"; trade-offs:
+#   - Image ships TS source + tsx (~3 MB) — fine for our scale.
+#   - Source changes rebuild in seconds, not minutes.
+#   - When we outgrow this, swap in a bundler stage (esbuild/tsup) without
+#     touching the surrounding compose / orchestration.
+#
+# Filtered pnpm install (`--filter @atlas/server...`) installs only the
+# workspace closure that `apps/server` actually depends on, so the image
+# doesn't pull in admin/authoring/sandbox/sim Vite tooling.
+
+FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# .dockerignore filters node_modules, .git, dist/, specs/, tests/, etc.
+COPY . .
+
+# Install only the @atlas/server dependency closure (dev deps included —
+# tsx is a devDependency).
+RUN pnpm install --filter "@atlas/server..." --frozen-lockfile && \
+    chown -R node:node /app
+
+USER node
+EXPOSE 3000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=6 \
+    CMD wget -qO- http://localhost:3000/healthz >/dev/null 2>&1 || exit 1
+
+CMD ["pnpm", "--filter", "@atlas/server", "start"]

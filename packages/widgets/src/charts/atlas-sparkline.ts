@@ -95,15 +95,21 @@ class AtlasSparkline extends AtlasElement {
 function normalize(next: unknown): number[] {
   if (!Array.isArray(next)) return [];
   const out: number[] = [];
-  for (const item of next) {
-    if (item == null) continue;
-    if (typeof item === 'number') out.push(item);
-    else if (typeof item === 'object' && (item as { y?: unknown }).y != null) {
-      out.push(Number((item as { y: unknown }).y));
-    } else {
-      const n = Number(item);
-      if (Number.isFinite(n)) out.push(n);
+  for (const rawItem of next as unknown[]) {
+    if (rawItem == null) continue;
+    if (typeof rawItem === 'number') {
+      out.push(rawItem);
+      continue;
     }
+    if (typeof rawItem === 'object' && 'y' in rawItem) {
+      const y = (rawItem as { y: unknown }).y;
+      if (y != null) {
+        out.push(Number(y));
+        continue;
+      }
+    }
+    const n = Number(rawItem);
+    if (Number.isFinite(n)) out.push(n);
   }
   return out.filter((n) => Number.isFinite(n));
 }

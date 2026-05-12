@@ -53,7 +53,6 @@ class NullSink implements TelemetrySink {
  */
 export class ConsoleJsonSink implements TelemetrySink {
   write(event: TelemetryEvent): void {
-    // eslint-disable-next-line no-console -- dev-only sink; see file header
     console.debug('[telemetry]', event);
   }
 }
@@ -88,13 +87,18 @@ export class BeaconHttpSink implements TelemetrySink {
     this.endpoint = opts.endpoint;
     this.maxBatch = opts.maxBatch ?? 32;
     this.flushIntervalMs = opts.flushIntervalMs ?? 2000;
+    // Fall back to a `fetch`-shaped function that throws on use, rather
+    // than `as unknown as typeof fetch`. The signature matches `fetch`
+    // structurally so no cast is required.
+    const noFetch: typeof fetch = (
+      _input: URL | RequestInfo,
+      _init?: RequestInit,
+    ): Promise<Response> => {
+      throw new Error('BeaconHttpSink: no fetch available');
+    };
     this.fetchImpl =
       opts.fetch ??
-      (typeof fetch !== 'undefined'
-        ? fetch.bind(globalThis)
-        : (() => {
-            throw new Error('BeaconHttpSink: no fetch available');
-          }) as unknown as typeof fetch);
+      (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : noFetch);
 
     if (typeof window !== 'undefined') {
       // pagehide is the reliable terminal event on mobile + desktop.
@@ -196,10 +200,15 @@ export function getTelemetrySink(): TelemetrySink {
  * active sink. Never throws — telemetry must not break the page.
  */
 export function emitTelemetry(event: Omit<TelemetryEvent, 'timestamp'> & { timestamp?: string }): void {
+  // Build the stamped event field-by-field so the result satisfies
+  // `TelemetryEvent` structurally without going through `unknown`. The
+  // index signature on `TelemetryEvent` (`[key: string]: unknown`) used
+  // to defeat spread-based typing; constructing explicitly avoids that.
   const stamped: TelemetryEvent = {
     ...event,
+    eventName: event.eventName,
     timestamp: event.timestamp ?? new Date().toISOString(),
-  } as TelemetryEvent;
+  };
   try {
     _sink.write(stamped);
   } catch {

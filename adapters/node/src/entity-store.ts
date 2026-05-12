@@ -20,6 +20,7 @@ import type {
   EntityWriteInput,
 } from '@atlas/ports';
 import type postgres from 'postgres';
+import { jsonParam } from './seeds/sql-json.ts';
 
 interface EntityRow {
   tenant_id: string;
@@ -32,14 +33,35 @@ interface EntityRow {
   updated_at: string;
 }
 
+function toEntityStatus(raw: string): EntityStatus {
+  // Defensive narrow at the DB boundary. The `entities.status` column is
+  // CHECK-constrained to the same three values in the migration; any
+  // surprise here is a schema-drift bug, not a runtime fall-through.
+  switch (raw) {
+    case 'active':
+    case 'archived':
+    case 'deleted':
+      return raw;
+    default:
+      throw new Error(`entity row carries unknown status: ${raw}`);
+  }
+}
+
 function rowToEntity<TAttrs>(row: EntityRow): Entity<TAttrs> {
   return {
     tenantId: row.tenant_id,
     entityType: row.entity_type,
     entityId: row.entity_id,
     schemaVersion: row.schema_version,
+    // Boundary: `attrs` is JSONB on disk and `unknown` in the row type.
+    // The contract is "callers know their entity_type's attrs schema and
+    // pass the matching `TAttrs`" — same shape as the `idb` adapter's
+    // mirror (`adapters/idb/src/entity-store.ts:29`). Per-entity-type
+    // validation happens in the entity-wrapper layer in `@atlas/identity`
+    // / `@atlas/content-pages`.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: per-row JSONB `attrs` is opaque to the adapter; caller supplies `TAttrs` matching the entity_type's registered schema
     attrs: row.attrs as TAttrs,
-    status: row.status as EntityStatus,
+    status: toEntityStatus(row.status),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -91,7 +113,7 @@ export class PostgresEntityStore implements EntityStore {
         ${input.entityType},
         ${input.entityId},
         ${version},
-        ${this.sql.json(input.attrs as never)},
+        ${jsonParam(this.sql, input.attrs)},
         ${status},
         now()
       )
@@ -175,7 +197,7 @@ export class PostgresEntityStore implements EntityStore {
         }
         ${
           containment
-            ? this.sql`AND attrs @> ${this.sql.json(containment as never)}::jsonb`
+            ? this.sql`AND attrs @> ${jsonParam(this.sql, containment)}::jsonb`
             : this.sql``
         }
         ${after === '' ? this.sql`` : this.sql`AND entity_id > ${after}`}

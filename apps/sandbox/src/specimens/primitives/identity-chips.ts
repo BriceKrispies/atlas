@@ -259,7 +259,7 @@ S({
     if (Array.isArray(cfg.values)) el.values = cfg.values;
     el.style.maxWidth = '480px';
     el.addEventListener('change', (ev) => {
-      onLog('change', (ev as CustomEvent).detail);
+      onLog('change', ev instanceof CustomEvent ? ev.detail : null);
     });
     demoEl.appendChild(el);
     return () => el.remove();

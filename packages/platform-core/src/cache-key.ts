@@ -166,7 +166,9 @@ function buildVaryHash(
   // Sort by key alphabetically — mirrors Rust's BTreeMap iteration order.
   const sortedKeys = Array.from(sorted.keys()).sort();
   for (const k of sortedKeys) {
-    repr.push(`${k}=${sorted.get(k)!}`);
+    const v = sorted.get(k);
+    if (v === undefined) continue;
+    repr.push(`${k}=${v}`);
   }
 
   return `vary(${repr.join(',')})`;

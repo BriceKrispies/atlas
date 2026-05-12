@@ -224,9 +224,8 @@ export abstract class PageEditorPanelElement extends AtlasSurface {
     if (!this._bodyEl) return;
     // The shell injects a `<div data-tab="…">` per tab; show only the
     // active one. This is a Light-DOM panel so we control children directly.
-    const slots = this._bodyEl.querySelectorAll('[data-tab]');
-    for (const node of slots) {
-      const el = node as HTMLElement;
+    const slots = this._bodyEl.querySelectorAll<HTMLElement>('[data-tab]');
+    for (const el of slots) {
       el.style.display = el.getAttribute('data-tab') === this._activeTab ? '' : 'none';
     }
   }

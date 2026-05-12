@@ -22,6 +22,7 @@ import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import '@atlas/design';
 import { CATEGORIES, type Category } from './registry/index.ts';
 import type { ResolvedSpecimen } from './specimen-types.ts';
+import { must, isElement, isHtmlElement, customDetail, isValueDetail } from './internal/assert.ts';
 
 const styles = `
   :host {
@@ -102,11 +103,17 @@ export class AtlasSandboxSidebar extends AtlasElement {
   private _activeSpecimenId: string | null = null;
   private _searchValue = '';
   private _built = false;
+  /** Non-null view of the shadow root, captured right after attachShadow().
+   *  Mirrors the pattern in `sandbox-app.ts`: avoids the `this.shadowRoot
+   *  as unknown as ShadowRoot` cast that the no-double-cast rule blocks. */
+  private readonly _root: ShadowRoot;
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(this.shadowRoot as unknown as ShadowRoot);
+    // attachShadow({mode:'open'}) both sets this.shadowRoot and returns
+    // it; capture the return value so we have a typed, non-null handle.
+    this._root = this.attachShadow({ mode: 'open' });
+    adoptAtlasStyles(this._root);
   }
 
   get specimens(): readonly ResolvedSpecimen[] {
@@ -153,7 +160,7 @@ export class AtlasSandboxSidebar extends AtlasElement {
 
   private _build(): void {
     if (this._built) return;
-    const root = this.shadowRoot as ShadowRoot;
+    const root = this._root;
     root.innerHTML = `
       <style>${styles}</style>
       <div class="header" part="header">
@@ -171,10 +178,14 @@ export class AtlasSandboxSidebar extends AtlasElement {
     this._renderCategories();
     const cats = root.querySelector('[data-role="category-switcher"]');
     cats?.addEventListener('click', (e) => {
-      const target = e.target as Element | null;
-      const item = target?.closest('atlas-nav-item.cat') as HTMLElement | null;
-      if (!item) return;
-      const next = item.dataset['value'] as Category | undefined;
+      if (!isElement(e.target)) return;
+      const item = e.target.closest('atlas-nav-item.cat');
+      if (!isHtmlElement(item)) return;
+      const raw = item.dataset['value'];
+      // Narrow string → Category by lookup against the typed registry.
+      const next = raw === undefined
+        ? undefined
+        : CATEGORIES.find((c) => c.id === raw)?.id;
       if (!next || next === this._activeCategory) return;
       this._activeCategory = next;
       this._syncCategoryBar();
@@ -188,16 +199,22 @@ export class AtlasSandboxSidebar extends AtlasElement {
       );
     });
 
-    const search = root.querySelector(
-      'atlas-search-input[name="specimen-search"]',
-    ) as HTMLElement & { value: string };
+    // <atlas-search-input> is registered in HTMLElementTagNameMap (see
+    // packages/design/src/atlas-search-input.ts), so querying by the bare
+    // tag returns the typed AtlasSearchInput class with its `.value`
+    // setter directly. A compound selector (`tag[attr=…]`) would fall
+    // back to Element, so we filter the attribute imperatively.
+    const search = must(
+      root.querySelector('atlas-search-input'),
+      'sidebar: <atlas-search-input> just rendered into shadow root',
+    );
     if (this._searchValue) search.value = this._searchValue;
     // Live sidebar filter: refresh the specimen list per keystroke.
     // Phase 2a moved per-keystroke semantics onto `input`; `change`
     // now fires only on blur/commit.
     search.addEventListener('input', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
-      const v = detail.value ?? '';
+      const detail = customDetail(ev, isValueDetail, 'sidebar.search-input');
+      const v = detail.value;
       if (v === this._searchValue) return;
       this._searchValue = v;
       this._renderList();
@@ -212,9 +229,9 @@ export class AtlasSandboxSidebar extends AtlasElement {
 
     const scroll = root.querySelector('[data-role="scroll"]');
     scroll?.addEventListener('click', (e) => {
-      const target = e.target as Element | null;
-      const item = target?.closest('atlas-nav-item.item') as HTMLElement | null;
-      if (!item) return;
+      if (!isElement(e.target)) return;
+      const item = e.target.closest('atlas-nav-item.item');
+      if (!isHtmlElement(item)) return;
       const id = item.dataset['id'];
       if (!id) return;
       this.dispatchEvent(
@@ -231,7 +248,7 @@ export class AtlasSandboxSidebar extends AtlasElement {
   }
 
   private _renderCategories(): void {
-    const cats = this.shadowRoot?.querySelector('[data-role="category-switcher"]');
+    const cats = this._root.querySelector('[data-role="category-switcher"]');
     if (!cats) return;
     let html = '<atlas-nav label="Categories">';
     for (const c of CATEGORIES) {
@@ -243,40 +260,40 @@ export class AtlasSandboxSidebar extends AtlasElement {
   }
 
   private _syncCategoryBar(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    for (const el of Array.from(root.querySelectorAll('atlas-nav-item.cat'))) {
-      const item = el as HTMLElement;
-      const isActive = item.dataset['value'] === this._activeCategory;
-      item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      if (isActive) item.setAttribute('active', '');
-      else item.removeAttribute('active');
+    // querySelectorAll with a compound selector (`tag.class`) falls back
+    // to Element in TS's lib types — the HTMLElementTagNameMap match only
+    // hits bare tags. Filter through `isHtmlElement` so we can read
+    // `dataset` and call `setAttribute` without a structural cast.
+    for (const el of this._root.querySelectorAll('atlas-nav-item.cat')) {
+      if (!isHtmlElement(el)) continue;
+      const isActive = el.dataset['value'] === this._activeCategory;
+      el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      if (isActive) el.setAttribute('active', '');
+      else el.removeAttribute('active');
     }
   }
 
   private _syncSearchInput(): void {
-    const input = this.shadowRoot?.querySelector(
-      'atlas-search-input[name="specimen-search"]',
-    ) as (HTMLElement & { value: string }) | null;
+    // Bare-tag query so HTMLElementTagNameMap resolves to AtlasSearchInput.
+    const input = this._root.querySelector('atlas-search-input');
     if (input && input.value !== this._searchValue) input.value = this._searchValue;
   }
 
   private _syncSelection(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    for (const el of Array.from(root.querySelectorAll('atlas-nav-item.item'))) {
-      const item = el as HTMLElement;
-      const isActive = item.dataset['id'] === this._activeSpecimenId;
-      item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      if (isActive) item.setAttribute('active', '');
-      else item.removeAttribute('active');
+    // See `_syncCategoryBar` for the rationale behind the
+    // `isHtmlElement` filter on a compound selector.
+    for (const el of this._root.querySelectorAll('atlas-nav-item.item')) {
+      if (!isHtmlElement(el)) continue;
+      const isActive = el.dataset['id'] === this._activeSpecimenId;
+      el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      if (isActive) el.setAttribute('active', '');
+      else el.removeAttribute('active');
     }
   }
 
   private _renderList(): void {
     if (!this._built) return;
-    const root = this.shadowRoot as ShadowRoot;
-    const scroll = root.querySelector('[data-role="scroll"]');
+    const scroll = this._root.querySelector('[data-role="scroll"]');
     if (!scroll) return;
 
     const visible = this._specimens.filter(

@@ -1,4 +1,5 @@
 import { AtlasElement } from '@atlas/core';
+import { isElement, isHtmlElement } from './internal/assert.ts';
 import { adoptSheet, createSheet } from './util.ts';
 
 /**
@@ -191,7 +192,13 @@ export class AtlasJsonView extends AtlasElement {
       return;
     }
     try {
-      this._data = JSON.parse(raw) as JsonValue;
+      const parsed: unknown = JSON.parse(raw);
+      // `JsonValue` is the structural shape of any JSON-parseable value;
+      // `JSON.parse` returns exactly that at runtime. The renderer
+      // (`_renderNode`) defends against any concrete shape (arrays vs
+      // objects vs primitives), so the cast captures truth.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON.parse returns the structural JsonValue shape by definition; renderer handles every branch defensively
+      this._data = parsed as JsonValue;
     } catch {
       this._data = null;
     }
@@ -313,15 +320,21 @@ export class AtlasJsonView extends AtlasElement {
       const childUl = document.createElement('ul');
       childUl.className = 'children';
       li.appendChild(childUl);
-      if (isArray) {
-        const arr = value;
-        for (let i = 0; i < arr.length; i++) {
-          this._renderNode(childUl, arr[i] as JsonValue, `${path}.${i}`, String(i), depth + 1);
+      if (Array.isArray(value)) {
+        // Re-test inline so TS narrows `value`'s element type to
+        // `JsonValue` (the union member that's an array). The
+        // const-bound `isArray` above doesn't reach into the type
+        // checker as a narrower.
+        for (let i = 0; i < value.length; i++) {
+          const item = value[i];
+          if (item === undefined) continue;
+          this._renderNode(childUl, item, `${path}.${i}`, String(i), depth + 1);
         }
-      } else {
-        const obj = value as Record<string, JsonValue>;
-        for (const k of Object.keys(obj)) {
-          const v = obj[k];
+      } else if (value !== null && typeof value === 'object') {
+        // Same re-test pattern: narrow to the object branch of the
+        // JsonValue union without a cast.
+        for (const k of Object.keys(value)) {
+          const v = value[k];
           if (v === undefined) continue;
           this._renderNode(childUl, v, `${path}.${k}`, k, depth + 1);
         }
@@ -359,28 +372,29 @@ export class AtlasJsonView extends AtlasElement {
   }
 
   private _onClick(ev: Event): void {
-    const target = ev.target as Element | null;
-    if (!target) return;
-    const moreBtn = target.closest('button.more') as HTMLButtonElement | null;
-    if (moreBtn && moreBtn.dataset['action'] === 'string-toggle') {
+    if (!isElement(ev.target)) return;
+    const target = ev.target;
+    const moreBtn = target.closest('button.more');
+    if (moreBtn instanceof HTMLButtonElement && moreBtn.dataset['action'] === 'string-toggle') {
       const path = moreBtn.dataset['path'] ?? '';
       if (this._state.expandedStrings.has(path)) this._state.expandedStrings.delete(path);
       else this._state.expandedStrings.add(path);
       this._render();
       return;
     }
-    const row = target.closest('.row.toggleable') as HTMLElement | null;
-    if (!row) return;
-    const li = row.parentElement as HTMLLIElement | null;
-    if (!li) return;
+    const row = target.closest('.row.toggleable');
+    if (!isHtmlElement(row)) return;
+    const li = row.parentElement;
+    if (!(li instanceof HTMLLIElement)) return;
     const path = li.dataset['path'] ?? '';
     this._togglePath(path);
     li.focus();
   }
 
   private _onKey(ev: KeyboardEvent): void {
-    const target = ev.target as HTMLElement | null;
-    if (!target || target.getAttribute('role') !== 'treeitem') return;
+    if (!isHtmlElement(ev.target)) return;
+    const target = ev.target;
+    if (target.getAttribute('role') !== 'treeitem') return;
     const path = target.dataset['path'] ?? '';
     const expandable = target.hasAttribute('aria-expanded');
     const expanded = target.getAttribute('aria-expanded') === 'true';
@@ -393,8 +407,8 @@ export class AtlasJsonView extends AtlasElement {
       } else if (expandable && expanded) {
         ev.preventDefault();
         // Move to first child if any.
-        const firstChild = target.querySelector('ul.children > [role="treeitem"]') as HTMLElement | null;
-        firstChild?.focus();
+        const firstChild = target.querySelector('ul.children > [role="treeitem"]');
+        if (isHtmlElement(firstChild)) firstChild.focus();
       }
     } else if (ev.key === 'ArrowLeft') {
       if (expandable && expanded) {
@@ -403,8 +417,8 @@ export class AtlasJsonView extends AtlasElement {
         this._focusByPath(path);
       } else {
         // Move to parent
-        const parent = target.parentElement?.closest('[role="treeitem"]') as HTMLElement | null;
-        if (parent) {
+        const parent = target.parentElement?.closest('[role="treeitem"]');
+        if (isHtmlElement(parent)) {
           ev.preventDefault();
           parent.focus();
         }

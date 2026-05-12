@@ -1,26 +1,41 @@
 /**
  * Flat ESLint config for the Atlas TypeScript workspace.
  *
- * Two rule sets live here:
+ * Three layers of rules, in this order:
  *
- * 1. Widget isolation rules (@atlas/eslint-plugin-widgets) for files under
- *    bundles/<name>/src/widgets/. The framework (packages/core,
- *    packages/widget-host, packages/design) implements the APIs those
- *    rules ban and is exempt by scope.
+ * 1. Type-safety baseline. Prevents agents from reaching for `any`,
+ *    `Function`/`Object`/`{}` type annotations, `@ts-ignore`, `eval`,
+ *    object-literal type assertions, and the `X as unknown as Y`
+ *    double-cast escape hatch. Every rule is `error` — no warnings.
  *
- * 2. Port-boundary rule (Chunk 1 of the TS rewrite). Domain code
- *    (`modules/*`) and the ingress pipeline (`packages/ingress`)
- *    must depend only on `@atlas/ports` + `@atlas/platform-core` + their
- *    siblings — NEVER on a concrete adapter. Apps wire concrete adapters,
- *    so they are exempt.
+ * 2. Widget isolation (`@atlas/eslint-plugin-widgets`) for files under
+ *    `bundles/<name>/src/widgets/`. The framework (`packages/core`,
+ *    `packages/widget-host`, `packages/design`) implements the APIs
+ *    those rules ban and is exempt by scope.
+ *
+ * 3. Hexagonal-architecture import boundaries. Domain code
+ *    (`modules/*`) and the ingress pipeline (`packages/ingress`) must
+ *    depend only on `@atlas/ports` + `@atlas/platform-core` + siblings
+ *    — never on a concrete adapter. Adapters confine third-party
+ *    drivers (`postgres.js`, `nodemailer`). Ports may not import
+ *    adapters or domain modules.
  *
  * `pnpm lint` runs eslint against this config.
  */
 
 import atlasWidgets from '@atlas/eslint-plugin-widgets';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 
 export default [
+  {
+    // Stale `// eslint-disable-*` comments (for rules that aren't
+    // configured anymore) become errors, not warnings — matching the
+    // "every type-safety problem is an error" bar.
+    linterOptions: {
+      reportUnusedDisableDirectives: 'error',
+    },
+  },
   {
     ignores: [
       '**/node_modules/**',
@@ -33,8 +48,130 @@ export default [
       // pre-refactor copies of the codebase under different paths
       // (`packages/adapters-node/...`) that fail current rules.
       '.claude/**',
+      // Generated BDD spec files (Playwright-BDD generator output).
+      '.features-gen/**',
+      // Out-of-tsconfig files that the type-aware rules can't see. The
+      // type-safety baseline still applies via the non-type-aware rules;
+      // type-aware unsafe-* checks are skipped for these by ignoring
+      // them here. Consider adding to a tsconfig include if these grow
+      // a typed surface worth checking.
+      'tests/integration/**',
+      'scripts/**',
+      'test-setup/**',
+      '**/vitest.config.ts',
+      '**/playwright.bdd.config.ts',
+      'adapters/policy-cedar/bin/**',
+      'packages/openapi/scripts/**',
+      // Per-app `test/` folders are intentionally outside the app's
+      // tsconfig `include` (the per-app tsconfigs cover `src/` only;
+      // vitest discovers them via the root vitest config). Type-aware
+      // lint can't see them here. They're still lint-checked via the
+      // non-type-aware rules through the root tsconfig.
+      'apps/server/test/**',
+      'apps/projection-worker/test/**',
+      'apps/atlasctl/test/**',
     ],
   },
+
+  // ── (1) Type-safety baseline ────────────────────────────────────────
+  //
+  // Applied to ALL .ts/.tsx files. Test files get the strictness too;
+  // legitimate test-fixture casts (adversarial validators, etc.) must
+  // carry a categorised `// eslint-disable-next-line <rule> --
+  // <category>: <reason>` justification.
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+      'atlas-widgets': atlasWidgets,
+    },
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // Stop `: any` annotations re-entering.
+      '@typescript-eslint/no-explicit-any': [
+        'error',
+        { ignoreRestArgs: false, fixToUnknown: false },
+      ],
+
+      // `<Foo>x` is banned; only `x as Foo` is allowed. Object-literal
+      // assertions (`{ foo: 1 } as Foo`) are banned outright — they
+      // hide missing required fields. Use `satisfies Foo` instead.
+      '@typescript-eslint/consistent-type-assertions': [
+        'error',
+        { assertionStyle: 'as', objectLiteralTypeAssertions: 'never' },
+      ],
+
+      // @ts-* directives must carry a description; `ts-ignore` and
+      // `ts-nocheck` are hard-banned.
+      '@typescript-eslint/ban-ts-comment': [
+        'error',
+        {
+          'ts-expect-error': 'allow-with-description',
+          'ts-ignore': true,
+          'ts-nocheck': true,
+          'ts-check': false,
+          minimumDescriptionLength: 10,
+        },
+      ],
+
+      // Forbid `Function`, `Object`, `{}` as type annotations.
+      '@typescript-eslint/no-restricted-types': [
+        'error',
+        {
+          types: {
+            Function: {
+              message:
+                'Use a typed signature like `(arg: T) => R` instead of `Function`.',
+            },
+            Object: {
+              message:
+                'Use `Record<string, unknown>` or a concrete shape instead of `Object`.',
+            },
+            '{}': {
+              message:
+                'Use `Record<string, unknown>`, `object`, or a concrete shape instead of `{}`.',
+            },
+          },
+        },
+      ],
+
+      // No eval, no implied-eval.
+      'no-eval': 'error',
+      '@typescript-eslint/no-implied-eval': 'error',
+
+      // Custom rule: ban `X as unknown as Y` double-casts. Bypass with
+      // `// eslint-disable-next-line atlas-widgets/no-double-cast --
+      // boundary: <reason>` at known boundary sites (linkedom DOM shim,
+      // cedar-wasm CJS module, postgres.js parameter widening,
+      // adversarial test fixture).
+      'atlas-widgets/no-double-cast': 'error',
+
+      // Type-aware unsafe assertions and operations on `any`. All error.
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+
+      // Non-null assertions in source code must be replaced with an
+      // explicit narrow (`if (!x) throw …`) or a guarded access
+      // (`x?.foo`). The few legitimate set-then-get / post-length-check
+      // sites can suppress per-line with a justification comment OR use
+      // a typed `must<T>(v, msg)` / `assertDefined<T>(v, msg)` helper.
+      '@typescript-eslint/no-non-null-assertion': 'error',
+    },
+  },
+
+  // ── (2) Widget isolation rules ─────────────────────────────────────
   {
     files: ['bundles/*/src/widgets/**/*.ts'],
     plugins: { 'atlas-widgets': atlasWidgets },
@@ -49,11 +186,10 @@ export default [
       'atlas-widgets/no-ui-blocking': 'error',
     },
   },
+
+  // ── (3) Hexagonal-architecture import boundaries ───────────────────
   {
-    files: [
-      'modules/*/**/*.ts',
-      'packages/ingress/**/*.ts',
-    ],
+    files: ['modules/*/**/*.ts', 'packages/ingress/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2023,
@@ -126,11 +262,7 @@ export default [
     // single-package change. Modules and apps reach for it through
     // the Mailer port (constructed via createMailer in bootstrap).
     files: ['**/*.ts'],
-    ignores: [
-      'adapters/node/**',
-      'tests/**',
-      'scripts/**',
-    ],
+    ignores: ['adapters/node/**', 'tests/**', 'scripts/**'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2023,

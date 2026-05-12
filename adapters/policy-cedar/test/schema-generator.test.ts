@@ -18,6 +18,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   ATLAS_NAMESPACE,
   CedarPolicyEngine,
@@ -53,7 +54,7 @@ describe('generateCedarSchema — pure shape', () => {
 
   test('emits User + every declared resource as entity types', () => {
     const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const ns = schema[ATLAS_NAMESPACE]!;
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
     expect(Object.keys(ns.entityTypes).sort()).toEqual(
       [USER_ENTITY_TYPE, 'Family', 'Variant'].sort(),
     );
@@ -61,7 +62,7 @@ describe('generateCedarSchema — pure shape', () => {
 
   test('emits every declared action with appliesTo wired to User + resource', () => {
     const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const ns = schema[ATLAS_NAMESPACE]!;
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
     expect(Object.keys(ns.actions).sort()).toEqual([
       'Catalog.Family.Publish',
       'Catalog.Family.Read',
@@ -80,7 +81,8 @@ describe('generateCedarSchema — pure shape', () => {
     // closing the shape is gated on module manifests declaring an
     // attribute schema (Chunk 6c+1).
     const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const user = schema[ATLAS_NAMESPACE]!.entityTypes[USER_ENTITY_TYPE]!;
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+    const user = assertDefined(ns.entityTypes[USER_ENTITY_TYPE], 'generator always emits a User entity type');
     expect(user).toEqual({});
   });
 
@@ -92,7 +94,8 @@ describe('generateCedarSchema — pure shape', () => {
       actions: [{ actionId: 'X.Foo.Do', resourceType: 'Foo' }],
     };
     const schema = generateCedarSchema([partial]);
-    expect(schema[ATLAS_NAMESPACE]!.entityTypes['Foo']).toBeDefined();
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+    expect(ns.entityTypes['Foo']).toBeDefined();
   });
 
   test('merges multiple manifests (same resource type collapses to one)', () => {
@@ -105,11 +108,12 @@ describe('generateCedarSchema — pure shape', () => {
       actions: [{ actionId: 'M2.Shared.Write', resourceType: 'Shared' }],
     };
     const schema = generateCedarSchema([a, b]);
-    expect(Object.keys(schema[ATLAS_NAMESPACE]!.entityTypes).sort()).toEqual([
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+    expect(Object.keys(ns.entityTypes).sort()).toEqual([
       USER_ENTITY_TYPE,
       'Shared',
     ].sort());
-    expect(Object.keys(schema[ATLAS_NAMESPACE]!.actions).sort()).toEqual([
+    expect(Object.keys(ns.actions).sort()).toEqual([
       'M1.Shared.Read',
       'M2.Shared.Write',
     ]);
@@ -117,9 +121,9 @@ describe('generateCedarSchema — pure shape', () => {
 
   test('empty manifests still produce a User entity (the namespace stays valid)', () => {
     const schema = generateCedarSchema([]);
-    expect(schema[ATLAS_NAMESPACE]).toBeDefined();
-    expect(schema[ATLAS_NAMESPACE]!.entityTypes[USER_ENTITY_TYPE]).toBeDefined();
-    expect(Object.keys(schema[ATLAS_NAMESPACE]!.actions)).toHaveLength(0);
+    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+    expect(ns.entityTypes[USER_ENTITY_TYPE]).toBeDefined();
+    expect(Object.keys(ns.actions)).toHaveLength(0);
   });
 });
 

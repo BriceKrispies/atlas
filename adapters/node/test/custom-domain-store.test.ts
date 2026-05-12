@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import postgres from 'postgres';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { PostgresCustomDomainStore, runMigrations } from '../src/index.ts';
 import { TEST_DB_URL, HAS_DB } from './_setup.ts';
 
@@ -32,7 +33,7 @@ if (!HAS_DB) {
       // Dedicated connection for this suite (the shared `freshSql` setup
       // truncates tenant tables, but we want to drive control_plane.* on
       // the same DB).
-      sql = postgres(TEST_DB_URL!, { max: 2, prepare: false });
+      sql = postgres(assertDefined(TEST_DB_URL, 'HAS_DB guard ensures TEST_DB_URL is set'), { max: 2, prepare: false });
       await runMigrations(sql, 'control-plane');
     });
 
@@ -62,8 +63,7 @@ if (!HAS_DB) {
       expect(added.isPrimary).toBe(false);
 
       const got = await store.getByHostname('community.acme.test');
-      expect(got).not.toBeNull();
-      expect(got!.tenantId).toBe(TENANT_A);
+      expect(assertDefined(got, 'community.acme.test was just added').tenantId).toBe(TENANT_A);
     });
 
     it('getByHostname does not return disabled rows', async () => {
@@ -84,8 +84,7 @@ if (!HAS_DB) {
 
       await store.add({ hostname: 'a2.acme.test', tenantId: TENANT_A, isPrimary: true });
       const primary = await store.getPrimary(TENANT_A);
-      expect(primary).not.toBeNull();
-      expect(primary!.hostname).toBe('a2.acme.test');
+      expect(assertDefined(primary, 'a2.acme.test was just promoted to primary').hostname).toBe('a2.acme.test');
     });
 
     it('add with isPrimary=true demotes the previous primary', async () => {
@@ -93,10 +92,10 @@ if (!HAS_DB) {
       await store.add({ hostname: 'new.acme.test', tenantId: TENANT_A, isPrimary: true });
 
       const primary = await store.getPrimary(TENANT_A);
-      expect(primary!.hostname).toBe('new.acme.test');
+      expect(assertDefined(primary, 'new.acme.test is the latest primary').hostname).toBe('new.acme.test');
 
       const old = await store.getByHostname('old.acme.test');
-      expect(old!.isPrimary).toBe(false);
+      expect(assertDefined(old, 'old.acme.test row stays for audit even after demotion').isPrimary).toBe(false);
     });
 
     it('list returns rows for one tenant only', async () => {
@@ -109,11 +108,11 @@ if (!HAS_DB) {
 
       expect(a).toHaveLength(2);
       // Primary first
-      expect(a[0]!.isPrimary).toBe(true);
+      expect(assertDefined(a[0], 'list(A) has 2 rows so [0] exists').isPrimary).toBe(true);
       expect(a.map((r) => r.hostname).sort()).toEqual(['one.acme.test', 'two.acme.test']);
 
       expect(b).toHaveLength(1);
-      expect(b[0]!.hostname).toBe('one.b.test');
+      expect(assertDefined(b[0], 'list(B) has 1 row so [0] exists').hostname).toBe('one.b.test');
     });
 
     it('disable clears the primary flag', async () => {
@@ -126,8 +125,9 @@ if (!HAS_DB) {
       // The row stays for audit. list() still surfaces it (any status).
       const all = await store.list(TENANT_A);
       expect(all).toHaveLength(1);
-      expect(all[0]!.status).toBe('disabled');
-      expect(all[0]!.isPrimary).toBe(false);
+      const only = assertDefined(all[0], 'list(A) has 1 row so [0] exists');
+      expect(only.status).toBe('disabled');
+      expect(only.isPrimary).toBe(false);
     });
   });
 }

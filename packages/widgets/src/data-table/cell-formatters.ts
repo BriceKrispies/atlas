@@ -5,22 +5,28 @@
  *
  * A column's `format` may be:
  *   - a built-in string key ('text' | 'date' | 'number' | 'currency' | 'status')
- *   - a function (value, row) → string | Node
+ *   - a function (value, row) → string | Node — typed to the column's V
  *   - undefined, in which case `text` is used.
  */
 
 import type { Row } from '../data-source/types.ts';
-import type { ColumnConfig } from './data-table-core.ts';
+import type { AnyColumn, CellFormatterFn } from './data-table-core.ts';
 
-export type CellFormatterFn<R extends Row = Row> = (value: unknown, row: R) => string | Node;
+export type { CellFormatterFn };
 
 export function formatCell<R extends Row>(
   value: unknown,
   row: R,
-  column: ColumnConfig<R> | undefined,
+  column: AnyColumn<R> | undefined,
 ): string | Node {
   const fmt = column?.format;
-  if (typeof fmt === 'function') return (fmt as CellFormatterFn<R>)(value, row);
+  if (typeof fmt === 'function') {
+    // The column's CellFormatterFn was declared with a specific V; the core
+    // dispatches values as `unknown` because it doesn't know per-column V
+    // at this layer. AnyColumn<R> = Column<R, unknown>, so fmt's signature
+    // is already (value: unknown, row: R) — no cast needed.
+    return fmt(value, row);
+  }
   switch (fmt) {
     case 'date':     return formatDate(value);
     case 'number':   return formatNumber(value);
@@ -33,7 +39,14 @@ export function formatCell<R extends Row>(
 
 export function formatDate(value: unknown): string {
   if (value == null || value === '') return '';
-  const d = value instanceof Date ? value : new Date(value as string | number);
+  let d: Date;
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value === 'string' || typeof value === 'number') {
+    d = new Date(value);
+  } else {
+    return String(value);
+  }
   if (Number.isNaN(d.getTime())) return String(value);
   try {
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });

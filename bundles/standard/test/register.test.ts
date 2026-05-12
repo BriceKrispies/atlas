@@ -1,68 +1,65 @@
 /**
  * Register test for @atlas/bundle-standard.
  *
- * Sets up a linkedom DOM so `AtlasSurface.define(...)` works headlessly,
- * constructs a fresh WidgetRegistry, runs registerAllWidgets, and
- * asserts that every advertised widgetId is present + has a manifest
- * that passes validateManifest. Also checks the bundle manifest's
- * provides.widgets list against the set of registered ids.
+ * Linkedom DOM globals (window/document/HTMLElement/customElements/Node/
+ * NodeFilter/createTreeWalker shim) are installed by the project-wide
+ * vitest setup at `test-setup/linkedom-shims.ts` — see vitest.config.ts.
+ * No inline shim needed here.
+ *
+ * Constructs a fresh WidgetRegistry, runs registerAllWidgets, and asserts
+ * that every advertised widgetId is present + has a manifest that passes
+ * validateManifest. Also checks the bundle manifest's provides.widgets
+ * list against the set of registered ids.
  */
 
 import { test, expect } from 'vitest';
-import { parseHTML } from 'linkedom';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-
-// --- browser-ish globals BEFORE loading @atlas/core or widget modules
-const dom = parseHTML(
-  '<!doctype html><html><head></head><body></body></html>',
-);
-const g = globalThis as unknown as Record<string, unknown>;
-g['window'] = dom.window;
-g['document'] = dom.document;
-g['HTMLElement'] = dom.HTMLElement;
-g['DocumentFragment'] = dom.DocumentFragment;
-g['customElements'] = dom.customElements;
-g['Node'] = dom.Node;
-g['NodeFilter'] = (dom as unknown as { NodeFilter?: unknown }).NodeFilter ?? { SHOW_ELEMENT: 1 };
-if (!g['structuredClone']) {
-  g['structuredClone'] = (v: unknown): unknown => JSON.parse(JSON.stringify(v));
-}
-
-// linkedom lacks createTreeWalker; @atlas/core's html helper needs it
-// to attach event bindings. Mirror the shim used in widget-host's
-// dry-run.
-interface TreeWalkable {
-  children?: Iterable<TreeWalkable>;
-}
-const doc = dom.document as unknown as { createTreeWalker?: unknown };
-if (typeof doc.createTreeWalker !== 'function') {
-  doc.createTreeWalker = (root: TreeWalkable) => {
-    const elements: TreeWalkable[] = [];
-    const walk = (el: TreeWalkable): void => {
-      elements.push(el);
-      for (const child of el.children ?? []) walk(child);
-    };
-    for (const child of root.children ?? []) walk(child);
-    let i = -1;
-    return {
-      nextNode(): TreeWalkable | null {
-        i += 1;
-        return i < elements.length ? (elements[i] ?? null) : null;
-      },
-    };
-  };
-}
-
-const { WidgetRegistry, validateManifest } = await import('@atlas/widget-host');
-const announcements = await import('../src/widgets/announcements/index.ts');
-const messaging = await import('../src/widgets/messaging/index.ts');
-const uploader = await import('../src/widgets/spreadsheet-uploader/index.ts');
-const { registerAllWidgets } = await import('../src/register.ts');
+import { WidgetRegistry, validateManifest } from '@atlas/widget-host';
+import * as announcements from '../src/widgets/announcements/index.ts';
+import * as messaging from '../src/widgets/messaging/index.ts';
+import * as uploader from '../src/widgets/spreadsheet-uploader/index.ts';
+import { registerAllWidgets } from '../src/register.ts';
 
 interface BundleManifestDoc {
   provides?: { widgets?: string[] };
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Narrow the parsed bundle.manifest.json to a typed view. Throws a
+ * test-invariant error if the document doesn't match the documented shape
+ * — the file is checked-in and machine-readable, so a shape mismatch is a
+ * test-author bug at scope time, not runtime data we have to validate.
+ */
+function asBundleManifest(v: unknown): BundleManifestDoc {
+  if (!isRecord(v)) {
+    throw new Error(
+      'Test invariant violation: bundle.manifest.json did not parse to an object',
+    );
+  }
+  const provides = v['provides'];
+  if (provides == null) return {};
+  if (!isRecord(provides)) {
+    throw new Error(
+      'Test invariant violation: bundle manifest `provides` is not an object',
+    );
+  }
+  const widgets = provides['widgets'];
+  if (widgets === undefined) return { provides: {} };
+  if (
+    !Array.isArray(widgets) ||
+    !widgets.every((w): w is string => typeof w === 'string')
+  ) {
+    throw new Error(
+      'Test invariant violation: bundle manifest `provides.widgets` is not a string[]',
+    );
+  }
+  return { provides: { widgets } };
 }
 
 test('registerAllWidgets populates every advertised widget and bundle manifest matches', async () => {
@@ -87,7 +84,8 @@ test('registerAllWidgets populates every advertised widget and bundle manifest m
 
   const here = dirname(fileURLToPath(import.meta.url));
   const manifestPath = resolve(here, '..', 'src', 'bundle.manifest.json');
-  const bundleManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as BundleManifestDoc;
+  const parsed: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const bundleManifest = asBundleManifest(parsed);
 
   const declared = bundleManifest.provides?.widgets ?? [];
   const expected = [

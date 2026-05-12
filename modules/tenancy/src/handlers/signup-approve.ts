@@ -158,7 +158,7 @@ export async function handleSignupApprove(
       if (!tenant) {
         throw new TenancyError(
           codes.TENANT_ALREADY_EXISTS,
-          `tenant create failed: ${(e as Error).message}`,
+          `tenant create failed: ${e instanceof Error ? e.message : String(e)}`,
           409,
         );
       }

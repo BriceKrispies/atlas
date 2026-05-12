@@ -60,7 +60,18 @@ export interface RedactOptions {
 /**
  * Recursively redact sensitive keys + sensitive() wrappers.
  * Returns a new structure; never mutates input.
+ *
+ * Overload: when the input is a plain `Record<string, unknown>` (the
+ * `LogFields.properties` shape), the output is the same shape — the
+ * function walks and rebuilds the top level as a new object. This lets
+ * callers assign the result back to a `Record<string, unknown>` field
+ * without re-narrowing.
  */
+export function redact(
+  value: Readonly<Record<string, unknown>>,
+  options?: RedactOptions,
+): Record<string, unknown>;
+export function redact(value: unknown, options?: RedactOptions): unknown;
 export function redact(value: unknown, options: RedactOptions = {}): unknown {
   const keys = new Set<string>(DEFAULT_SENSITIVE_KEYS);
   if (options.extraKeys !== undefined) {
@@ -73,15 +84,22 @@ function walk(value: unknown, keys: ReadonlySet<string>, seen: WeakSet<object>):
   if (value === null || value === undefined) return value;
   if (isSensitive(value)) return REDACTED;
   if (typeof value !== 'object') return value;
-  if (seen.has(value as object)) return '[Circular]';
-  seen.add(value as object);
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
 
   if (Array.isArray(value)) {
     return value.map((item) => walk(item, keys, seen));
   }
 
+  // After the typeof + array guards, value is a plain non-null,
+  // non-array object — walking its enumerable keys is the redaction
+  // contract. `Object.entries` on `object` types as `[string, any][]`,
+  // which would trip no-unsafe-* rules; cast to a typed record view of
+  // the same runtime value at this one boundary.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: redaction walks enumerable keys of any plain object; runtime guards above pin shape
+  const entries = Object.entries(value as Record<string, unknown>);
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+  for (const [k, v] of entries) {
     if (keys.has(k.toLowerCase())) {
       out[k] = REDACTED;
     } else {

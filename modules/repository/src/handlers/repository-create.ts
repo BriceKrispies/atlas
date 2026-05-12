@@ -101,7 +101,10 @@ export async function handleRepositoryCreate(
     description,
   };
 
-  const envelope: EventEnvelope = {
+  const envelope: EventEnvelope<
+    'Repository.Created',
+    RepositoryCreatedPayload
+  > = {
     eventId: newEventId(),
     eventType: REPOSITORY_CREATED_EVENT_TYPE,
     schemaId: REPOSITORY_CREATED_SCHEMA_ID,

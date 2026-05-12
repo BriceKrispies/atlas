@@ -5,6 +5,8 @@
  * tokens attached (common during unit tests in Node/linkedom).
  */
 
+import { must } from '../internal/assert.ts';
+
 const DEFAULTS: readonly string[] = [
   '#2563eb', '#16a34a', '#d97706', '#dc2626',
   '#9333ea', '#0891b2', '#ca8a04', '#64748b',
@@ -23,14 +25,15 @@ export function paletteColors(el: Element | null | undefined, count: number = 8)
   const out: string[] = [];
   for (let i = 0; i < count; i++) {
     const fromVar = styles?.getPropertyValue(`--atlas-chart-color-${i + 1}`).trim();
-    out.push(fromVar || (DEFAULTS[i % DEFAULTS.length] as string));
+    out.push(fromVar || must(DEFAULTS[i % DEFAULTS.length], 'modulo-indexed DEFAULTS slot'));
   }
   return out;
 }
 
 /** Convenience: fetch a single color by 1-based index. */
 export function paletteColor(el: Element | null | undefined, index: number): string {
-  return paletteColors(el, Math.max(8, index))[index - 1] as string;
+  const colors = paletteColors(el, Math.max(8, index));
+  return must(colors[index - 1], `paletteColors generated index ${index - 1}`);
 }
 
 export function gridColor(el: Element | null | undefined): string {

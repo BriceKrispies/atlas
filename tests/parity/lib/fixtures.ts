@@ -9,7 +9,16 @@ export interface BadgeFamilySeedDoc {
 }
 
 export function loadBadgeFamilySeed(): BadgeFamilySeedDoc {
-  return badgeFamilySeed() as BadgeFamilySeedDoc;
+  const raw = badgeFamilySeed();
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('badgeFamilySeed() returned non-object');
+  }
+  const packageKey = 'packageKey' in raw && typeof raw.packageKey === 'string'
+    ? raw.packageKey : '';
+  const version = 'version' in raw && typeof raw.version === 'string'
+    ? raw.version : '';
+  const payload = 'payload' in raw ? raw.payload : null;
+  return { packageKey, version, payload };
 }
 
 export function buildSeedIntent(

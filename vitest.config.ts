@@ -93,5 +93,32 @@ export default defineConfig({
       'tests/integration/**',
       'tests/blackbox/**',
     ],
+    // Coverage is report-only for now: surfaced in CI as an LCOV artifact
+    // and printed locally via `pnpm coverage`. No thresholds are gated yet
+    // — gather a baseline first, then introduce per-module floors.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov', 'json-summary'],
+      reportsDirectory: './coverage',
+      include: [
+        'modules/*/src/**/*.ts',
+        'adapters/*/src/**/*.ts',
+        'ports/src/**/*.ts',
+        'packages/*/src/**/*.ts',
+        'apps/server/src/**/*.ts',
+        'apps/projection-worker/src/**/*.ts',
+        'apps/atlasctl/src/**/*.ts',
+      ],
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/*.test.ts',
+        '**/test/**',
+        '**/tests/**',
+        '**/index.ts',
+        '**/types.ts',
+        '**/generated/**',
+      ],
+    },
   },
 });

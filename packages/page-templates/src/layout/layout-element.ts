@@ -19,15 +19,10 @@ export class AtlasLayoutElement extends AtlasElement {
 
   private _layout: LayoutDocument | null = null;
 
-  // AtlasElement has its own `_applyTestId`; keep as internal helper.
-  private _applyTestIdSafe(): void {
-    (this as unknown as { _applyTestId?: () => void })._applyTestId?.();
-  }
-
   override connectedCallback(): void {
     // Bypass AtlasElement's reactive render path — this element mutates
     // its own light-DOM children imperatively in response to `.layout`.
-    this._applyTestIdSafe();
+    this._applyTestId();
     ensureLayoutStyles(this);
     this._apply();
   }
@@ -62,7 +57,6 @@ export class AtlasLayoutElement extends AtlasElement {
     if (!doc) return;
     const result = validateLayoutDocument(doc);
     if (!result.ok) {
-      // eslint-disable-next-line no-console
       console.error('[atlas-layout] invalid layout document', result.errors);
       return;
     }
@@ -80,8 +74,8 @@ export class AtlasLayoutElement extends AtlasElement {
       this.querySelector(':scope > widget-host') ?? this;
 
     const existing = new Map<string, HTMLElement>();
-    for (const sec of host.querySelectorAll(':scope > section[data-slot]')) {
-      existing.set(sec.getAttribute('data-slot') ?? '', sec as HTMLElement);
+    for (const sec of host.querySelectorAll<HTMLElement>(':scope > section[data-slot]')) {
+      existing.set(sec.getAttribute('data-slot') ?? '', sec);
     }
 
     for (const slot of doc.slots) {

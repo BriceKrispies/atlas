@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   DEFAULT_RISK_ACK_WINDOW_SECONDS,
   DEFAULT_RISK_POLICY,
@@ -143,7 +144,9 @@ describe('acknowledgeStepUp', () => {
     const session = fakeSession();
     const updated = acknowledgeStepUp(session);
     expect(updated.riskAcknowledgedUntil).toBeDefined();
-    const ack = new Date(updated.riskAcknowledgedUntil!).getTime();
+    const ack = new Date(
+      assertDefined(updated.riskAcknowledgedUntil, 'just acked'),
+    ).getTime();
     expect(ack).toBeGreaterThan(Date.now());
     // Default window 5 minutes — clamp to a generous range to avoid flake.
     expect(ack - Date.now()).toBeLessThanOrEqual(
@@ -161,7 +164,9 @@ describe('acknowledgeStepUp', () => {
   it('honours a custom window', () => {
     const session = fakeSession();
     const updated = acknowledgeStepUp(session, 10);
-    const ack = new Date(updated.riskAcknowledgedUntil!).getTime();
+    const ack = new Date(
+      assertDefined(updated.riskAcknowledgedUntil, 'just acked'),
+    ).getTime();
     expect(ack - Date.now()).toBeLessThanOrEqual(11_000);
     expect(ack - Date.now()).toBeGreaterThan(8_000);
   });

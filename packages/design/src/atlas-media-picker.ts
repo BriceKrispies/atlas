@@ -1,12 +1,16 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
 import { BREAKPOINTS } from './breakpoints.ts';
-import './atlas-dialog.ts';
-import './atlas-drawer.ts';
-import './atlas-bottom-sheet.ts';
+import { readDetailValue } from './internal/assert.ts';
+import { AtlasDialog } from './atlas-dialog.ts';
+import { AtlasDrawer } from './atlas-drawer.ts';
+import { AtlasBottomSheet } from './atlas-bottom-sheet.ts';
 import './atlas-search-input.ts';
-import './atlas-tabs.ts';
+import { AtlasTabs } from './atlas-tabs.ts';
 import './atlas-button.ts';
+
+/** Union of the three overlay shells the picker can mount into. */
+type PickerOverlay = AtlasDialog | AtlasDrawer | AtlasBottomSheet;
 
 /**
  * `<atlas-media-picker>` — browser for previously-uploaded media.
@@ -135,6 +139,17 @@ const FILTER_TABS: ReadonlyArray<{ value: FilterTab; label: string }> = [
   { value: 'video', label: 'Videos' },
   { value: 'doc',   label: 'Docs' },
 ];
+
+/**
+ * Narrow an arbitrary string to a known `FilterTab`. Falls back to `'all'`
+ * for any unknown value — the source is a CustomEvent payload from a child
+ * `<atlas-tabs>`, so unrecognised values shouldn't be silently treated as
+ * one of the typed branches.
+ */
+function toFilterTab(v: string): FilterTab {
+  if (v === 'image' || v === 'video' || v === 'doc' || v === 'all') return v;
+  return 'all';
+}
 
 // Inner-shell stylesheet adopted into the dialog/drawer body. Targets the
 // elements rendered inside the slotted body so they pick up tokens.
@@ -285,9 +300,9 @@ export class AtlasMediaPicker extends AtlasElement {
   private _previewStrip: HTMLSpanElement | null = null;
 
   // Inner overlay refs
-  private _overlay: HTMLElement | null = null;
+  private _overlay: PickerOverlay | null = null;
   private _gridEl: HTMLDivElement | null = null;
-  private _tabsEl: HTMLElement | null = null;
+  private _tabsEl: AtlasTabs | null = null;
   private _searchEl: HTMLElement | null = null;
   private _emptyEl: HTMLElement | null = null;
   private _doneBtn: HTMLElement | null = null;
@@ -307,8 +322,16 @@ export class AtlasMediaPicker extends AtlasElement {
    * state.
    */
   setItems(items: readonly MediaItem[]): void {
-    if (!Array.isArray(items)) return;
-    this._items = items.map((it) => ({ ...it }));
+    // Defensive runtime guard against hosts that pass non-arrays. We
+    // can't use `Array.isArray(items)` because it widens `readonly T[]`
+    // to `any[]`; check the length property and iterator instead and let
+    // the parameter type narrow the element shape.
+    if (items == null || typeof (items as { length?: unknown }).length !== 'number') {
+      return;
+    }
+    const next: MediaItem[] = [];
+    for (const it of items) next.push({ ...it });
+    this._items = next;
     if (this._built) this._renderGrid();
   }
 
@@ -467,7 +490,7 @@ export class AtlasMediaPicker extends AtlasElement {
       case 'media-type':
         // Default tab follows the requested type.
         this._filter = this._defaultTabForType();
-        if (this._tabsEl) (this._tabsEl as unknown as { value: string }).value = this._filter;
+        if (this._tabsEl) this._tabsEl.value = this._filter;
         if (this._gridEl) this._renderGrid();
         this._fireRequest();
         break;
@@ -522,17 +545,19 @@ export class AtlasMediaPicker extends AtlasElement {
     const hasBottomSheet =
       typeof customElements !== 'undefined' &&
       customElements.get('atlas-bottom-sheet') !== undefined;
-    const tag = useDialog
-      ? 'atlas-dialog'
-      : hasBottomSheet
-        ? 'atlas-bottom-sheet'
-        : 'atlas-drawer';
-    const overlay = document.createElement(tag) as HTMLElement & {
-      open: () => void;
-      close: (v?: string) => void;
-    };
+    // `document.createElement<K>(tag)` narrows by `HTMLElementTagNameMap`
+    // when given a string-literal tag, which is why we branch on the tag
+    // here rather than holding a single computed string.
+    let overlay: PickerOverlay;
+    if (useDialog) {
+      overlay = document.createElement('atlas-dialog');
+    } else if (hasBottomSheet) {
+      overlay = document.createElement('atlas-bottom-sheet');
+    } else {
+      overlay = document.createElement('atlas-drawer');
+    }
     overlay.setAttribute('heading', this.getAttribute('label') || 'Choose media');
-    if (!useDialog && tag === 'atlas-drawer') {
+    if (!useDialog && overlay instanceof AtlasDrawer) {
       overlay.setAttribute('side', 'bottom');
       overlay.setAttribute('size', 'lg');
     } else {
@@ -551,10 +576,7 @@ export class AtlasMediaPicker extends AtlasElement {
     search.setAttribute('aria-label', 'Search media');
     if (this._query) search.setAttribute('value', this._query);
 
-    const tabs = document.createElement('atlas-tabs') as HTMLElement & {
-      tabs: typeof FILTER_TABS;
-      value: string | null;
-    };
+    const tabs = document.createElement('atlas-tabs');
     tabs.setAttribute('aria-label', 'Filter media');
     tabs.tabs = FILTER_TABS;
     tabs.value = this._filter;
@@ -612,16 +634,15 @@ export class AtlasMediaPicker extends AtlasElement {
 
     // Wire events
     search.addEventListener('input', (ev) => {
-      const detail = (ev as unknown as CustomEvent<{ value: string }>).detail;
-      this._query = detail?.value ?? '';
+      this._query = readDetailValue(ev) ?? '';
       this._page = 1;
       this._renderGrid();
       this._fireRequest();
     });
     tabs.addEventListener('change', (ev) => {
-      const v = (ev as CustomEvent<{ value: string }>).detail?.value;
+      const v = readDetailValue(ev);
       if (!v) return;
-      this._filter = (v as FilterTab) ?? 'all';
+      this._filter = toFilterTab(v);
       this._page = 1;
       this._renderGrid();
       this._fireRequest();
@@ -653,9 +674,8 @@ export class AtlasMediaPicker extends AtlasElement {
   }
 
   private _closeOverlay(): void {
-    const ov = this._overlay as (HTMLElement & { close: (v?: string) => void }) | null;
-    if (!ov) return;
-    ov.close('dismiss');
+    if (!this._overlay) return;
+    this._overlay.close('dismiss');
   }
 
   private _teardownOverlay(): void {
@@ -748,8 +768,9 @@ export class AtlasMediaPicker extends AtlasElement {
   }
 
   private _onTileClick(ev: Event): void {
-    const target = ev.target as Element | null;
-    const tile = target?.closest<HTMLButtonElement>('.picker-tile');
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    const tile = target.closest<HTMLButtonElement>('.picker-tile');
     if (!tile) return;
     const id = tile.dataset['id'];
     if (!id) return;
@@ -780,8 +801,9 @@ export class AtlasMediaPicker extends AtlasElement {
     if (!grid) return;
     const tiles = Array.from(grid.querySelectorAll<HTMLButtonElement>('.picker-tile'));
     if (tiles.length === 0) return;
-    const current = ev.target as HTMLElement | null;
-    const tile = current?.closest<HTMLButtonElement>('.picker-tile');
+    const current = ev.target;
+    if (!(current instanceof Element)) return;
+    const tile = current.closest<HTMLButtonElement>('.picker-tile');
     if (!tile) return;
     const idx = tiles.indexOf(tile);
     if (idx < 0) return;

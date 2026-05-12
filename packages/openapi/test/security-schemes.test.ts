@@ -23,10 +23,12 @@ describe('buildSecuritySchemes', () => {
 
   it('debugPrincipal documents the test-auth bypass', () => {
     const schemes = buildSecuritySchemes('operator');
-    const dp = schemes['debugPrincipal'] as Record<string, unknown>;
-    expect(dp['type']).toBe('apiKey');
-    expect(dp['in']).toBe('header');
-    expect(dp['name']).toBe('X-Debug-Principal');
-    expect(String(dp['description']).toLowerCase()).toContain('dev');
+    const dp = schemes['debugPrincipal'];
+    if (!dp || typeof dp !== 'object') throw new Error('debugPrincipal scheme missing');
+    const record: Record<string, unknown> = { ...dp };
+    expect(record['type']).toBe('apiKey');
+    expect(record['in']).toBe('header');
+    expect(record['name']).toBe('X-Debug-Principal');
+    expect(String(record['description']).toLowerCase()).toContain('dev');
   });
 });

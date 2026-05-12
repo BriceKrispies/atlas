@@ -61,6 +61,15 @@ const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const SLOT_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 /**
+ * Type-guard narrowing an unknown to an indexable record. The validator
+ * uses this at every nested object layer so we never reach for `as` casts
+ * mid-validation. Arrays return false because we treat them separately.
+ */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
  * Validate a layout document.
  */
 export function validateLayoutDocument(doc: unknown): LayoutValidationResult {
@@ -69,37 +78,46 @@ export function validateLayoutDocument(doc: unknown): LayoutValidationResult {
     errors.push({ path, message });
   };
 
-  if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) {
+  if (!isRecord(doc)) {
     return { ok: false, errors: [{ path: '', message: 'must be an object' }] };
   }
-  const d = doc as Record<string, unknown>;
-
-  if (typeof d['layoutId'] !== 'string' || (d['layoutId'] as string).length === 0) {
+  const d = doc;
+  const layoutId = d['layoutId'];
+  if (typeof layoutId !== 'string' || layoutId.length === 0) {
     push('layoutId', 'must be a non-empty string');
   }
-  if (typeof d['version'] !== 'string' || !SEMVER_RE.test(d['version'] as string)) {
+  const version = d['version'];
+  if (typeof version !== 'string' || !SEMVER_RE.test(version)) {
     push('version', 'must match MAJOR.MINOR.PATCH');
   }
-  if (d['displayName'] != null && typeof d['displayName'] !== 'string') {
+  const displayName = d['displayName'];
+  if (displayName != null && typeof displayName !== 'string') {
     push('displayName', 'must be a string when present');
   }
-  if (d['description'] != null && typeof d['description'] !== 'string') {
+  const description = d['description'];
+  if (description != null && typeof description !== 'string') {
     push('description', 'must be a string when present');
   }
 
   // Grid
   const grid = d['grid'];
-  if (grid == null || typeof grid !== 'object') {
+  let gridColumns: number | undefined;
+  if (!isRecord(grid)) {
     push('grid', 'must be an object');
   } else {
-    const g = grid as Record<string, unknown>;
-    if (!Number.isInteger(g['columns']) || (g['columns'] as number) < 1) {
+    const g = grid;
+    const columns = g['columns'];
+    if (typeof columns !== 'number' || !Number.isInteger(columns) || columns < 1) {
       push('grid.columns', 'must be an integer >= 1');
+    } else {
+      gridColumns = columns;
     }
-    if (typeof g['rowHeight'] !== 'number' || !((g['rowHeight'] as number) > 0)) {
+    const rowHeight = g['rowHeight'];
+    if (typeof rowHeight !== 'number' || !(rowHeight > 0)) {
       push('grid.rowHeight', 'must be a positive number');
     }
-    if (typeof g['gap'] !== 'number' || (g['gap'] as number) < 0) {
+    const gap = g['gap'];
+    if (typeof gap !== 'number' || gap < 0) {
       push('grid.gap', 'must be a number >= 0');
     }
   }
@@ -110,46 +128,49 @@ export function validateLayoutDocument(doc: unknown): LayoutValidationResult {
     push('slots', 'must be an array');
   } else {
     const seen = new Set<string>();
-    const columns =
-      grid && typeof grid === 'object'
-        ? (grid as Record<string, unknown>)['columns']
-        : undefined;
     for (let i = 0; i < slots.length; i++) {
-      const s = slots[i] as unknown;
+      const s: unknown = slots[i];
       const base = `slots[${i}]`;
-      if (s == null || typeof s !== 'object') {
+      if (!isRecord(s)) {
         push(base, 'must be an object');
         continue;
       }
-      const slot = s as Record<string, unknown>;
-      if (typeof slot['name'] !== 'string' || !SLOT_NAME_RE.test(slot['name'] as string)) {
+      const slot = s;
+      const name = slot['name'];
+      if (typeof name !== 'string' || !SLOT_NAME_RE.test(name)) {
         push(`${base}.name`, 'must match /^[a-zA-Z][a-zA-Z0-9_-]*$/');
-      } else if (seen.has(slot['name'] as string)) {
-        push(`${base}.name`, `duplicate slot name "${slot['name'] as string}"`);
+      } else if (seen.has(name)) {
+        push(`${base}.name`, `duplicate slot name "${name}"`);
       } else {
-        seen.add(slot['name'] as string);
+        seen.add(name);
       }
-      if (!Number.isInteger(slot['col']) || (slot['col'] as number) < 1) {
+      const col = slot['col'];
+      if (typeof col !== 'number' || !Number.isInteger(col) || col < 1) {
         push(`${base}.col`, 'must be an integer >= 1');
       }
-      if (!Number.isInteger(slot['row']) || (slot['row'] as number) < 1) {
+      const row = slot['row'];
+      if (typeof row !== 'number' || !Number.isInteger(row) || row < 1) {
         push(`${base}.row`, 'must be an integer >= 1');
       }
-      if (!Number.isInteger(slot['colSpan']) || (slot['colSpan'] as number) < 1) {
+      const colSpan = slot['colSpan'];
+      if (typeof colSpan !== 'number' || !Number.isInteger(colSpan) || colSpan < 1) {
         push(`${base}.colSpan`, 'must be an integer >= 1');
       }
-      if (!Number.isInteger(slot['rowSpan']) || (slot['rowSpan'] as number) < 1) {
+      const rowSpan = slot['rowSpan'];
+      if (typeof rowSpan !== 'number' || !Number.isInteger(rowSpan) || rowSpan < 1) {
         push(`${base}.rowSpan`, 'must be an integer >= 1');
       }
       if (
-        Number.isInteger(columns) &&
-        Number.isInteger(slot['col']) &&
-        Number.isInteger(slot['colSpan']) &&
-        (slot['col'] as number) + (slot['colSpan'] as number) - 1 > (columns as number)
+        typeof gridColumns === 'number' &&
+        typeof col === 'number' &&
+        Number.isInteger(col) &&
+        typeof colSpan === 'number' &&
+        Number.isInteger(colSpan) &&
+        col + colSpan - 1 > gridColumns
       ) {
         push(
           `${base}`,
-          `extends beyond grid.columns (col=${slot['col'] as number}, colSpan=${slot['colSpan'] as number}, columns=${columns as number})`,
+          `extends beyond grid.columns (col=${col}, colSpan=${colSpan}, columns=${gridColumns})`,
         );
       }
     }

@@ -227,12 +227,9 @@ export async function handleSessionRefresh(
         401,
       );
       // Attach the events so test/integration callers can inspect
-      // without re-reading the event store. Untyped escape hatch — the
-      // standard route layer just catches the error and returns 401.
-      (error as unknown as { events?: EventEnvelope[] }).events = [
-        ...follow,
-        anomaly,
-      ];
+      // without re-reading the event store. The standard route layer
+      // just catches the error and returns 401.
+      error.events = [...follow, anomaly];
       throw error;
   }
   // Otherwise: matchesCurrent, OR matchesPrevious within grace —

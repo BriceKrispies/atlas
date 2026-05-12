@@ -133,13 +133,16 @@ export async function assertCommitted(
   );
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function matchesShape(commit: unknown, shape: CommitShape): boolean {
-  if (!commit || typeof commit !== 'object') return false;
-  const c = commit as { intent?: unknown; patch?: unknown };
-  if (shape.intent !== undefined && c.intent !== shape.intent) return false;
+  if (!isPlainObject(commit)) return false;
+  if (shape.intent !== undefined && commit['intent'] !== shape.intent) return false;
   if (shape.patch !== undefined) {
-    if (!c.patch || typeof c.patch !== 'object') return false;
-    const commitPatch = c.patch as Record<string, unknown>;
+    const commitPatch = commit['patch'];
+    if (!isPlainObject(commitPatch)) return false;
     for (const [k, v] of Object.entries(shape.patch)) {
       if (!deepEqual(commitPatch[k], v)) return false;
     }
@@ -155,13 +158,11 @@ function deepEqual(a: unknown, b: unknown): boolean {
     if (a.length !== b.length) return false;
     return a.every((v, i) => deepEqual(v, b[i]));
   }
-  if (typeof a === 'object' && typeof b === 'object') {
-    const ao = a as Record<string, unknown>;
-    const bo = b as Record<string, unknown>;
-    const ak = Object.keys(ao);
-    const bk = Object.keys(bo);
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
     if (ak.length !== bk.length) return false;
-    return ak.every((k) => deepEqual(ao[k], bo[k]));
+    return ak.every((k) => deepEqual(a[k], b[k]));
   }
   return false;
 }

@@ -30,6 +30,7 @@
 
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
+import { readDetailValue } from '@atlas/design/internal/assert.ts';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import { registerTestState, makeCommit, type CommitRecord } from '@atlas/test-state';
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
@@ -45,6 +46,11 @@ import type {
 } from '../state.ts';
 import type { WrappedPageStore } from '../history.ts';
 import { DEVICES, deviceFrame, type DeviceFrame } from './devices.ts';
+
+/** Type-guard for the PreviewDevice union — accepts the segmented-control's raw value. */
+function isPreviewDevice(v: string): v is PreviewDevice {
+  return v === 'mobile' || v === 'tablet' || v === 'desktop';
+}
 
 interface ContentPageElement extends HTMLElement {
   pageId?: string;
@@ -170,7 +176,7 @@ export class PageEditorPreviewElement extends AtlasSurface {
   private _contentPage: ContentPageElement | null = null;
   private _frameEl: HTMLElement | null = null;
   private _stageEl: HTMLElement | null = null;
-  private _segmented: (HTMLElement & { options?: unknown; value?: string | null }) | null = null;
+  private _segmented: HTMLElementTagNameMap['atlas-segmented-control'] | null = null;
   private _readout: HTMLElement | null = null;
   private _lastSnapshot: PageEditorStateSnapshot | null = null;
   private _lastCommit: CommitRecord | null = null;
@@ -183,9 +189,12 @@ export class PageEditorPreviewElement extends AtlasSurface {
 
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(this.shadowRoot as unknown as ShadowRoot);
-    adoptAtlasWidgetStyles(this.shadowRoot as unknown as ShadowRoot);
+    // Capture the shadow root from `attachShadow`'s return value so we
+    // don't have to launder `this.shadowRoot` (ShadowRoot | null) through
+    // a double cast.
+    const root = this.attachShadow({ mode: 'open' });
+    adoptAtlasStyles(root);
+    adoptAtlasWidgetStyles(root);
   }
 
   /** Setter so the shell can inject the controller imperatively. */
@@ -258,7 +267,12 @@ export class PageEditorPreviewElement extends AtlasSurface {
   }
 
   private _renderShell(): void {
-    const root = this.shadowRoot as ShadowRoot;
+    // The constructor always attaches an open shadow root; bail loudly if
+    // that invariant is somehow broken instead of laundering through a cast.
+    const root = this.shadowRoot;
+    if (!root) {
+      throw new Error('page-editor-preview: shadowRoot missing after attachShadow');
+    }
     root.innerHTML = `
       <style>${styles}\n${templatesCssText}</style>
       <atlas-box data-role="toolbar" name="toolbar">
@@ -275,21 +289,26 @@ export class PageEditorPreviewElement extends AtlasSurface {
       </atlas-box>
     `;
 
-    const segmented = root.querySelector('atlas-segmented-control[name="device"]') as
-      (HTMLElement & { options: unknown; value: string | null }) | null;
+    // Use the typed generic so the result narrows to AtlasSegmentedControl
+    // (via the HTMLElementTagNameMap augmentation in @atlas/design) —
+    // bracketed attribute selectors lose that mapping otherwise, falling
+    // back to `Element` and requiring an `as` cast for `.value` / `.options`.
+    const segmented = root.querySelector<HTMLElementTagNameMap['atlas-segmented-control']>(
+      'atlas-segmented-control[name="device"]',
+    );
     if (segmented) {
       segmented.options = DEVICES.map((d) => ({ value: d.id, label: d.label }));
       segmented.value = this._controller?.getSnapshot().device ?? 'desktop';
       segmented.addEventListener('change', (ev) => {
-        const value = (ev as CustomEvent<{ value: string }>).detail?.value;
-        if (!value) return;
-        this._handleDeviceChange(value as PreviewDevice);
+        const value = readDetailValue(ev);
+        if (value === undefined || !isPreviewDevice(value)) return;
+        this._handleDeviceChange(value);
       });
     }
     this._segmented = segmented;
-    this._readout = root.querySelector('atlas-text[name="frame-width-readout"]') as HTMLElement | null;
-    this._frameEl = root.querySelector('atlas-box[data-role="frame"]') as HTMLElement | null;
-    this._stageEl = root.querySelector('atlas-box[data-role="stage"]') as HTMLElement | null;
+    this._readout = root.querySelector<HTMLElement>('atlas-text[name="frame-width-readout"]');
+    this._frameEl = root.querySelector<HTMLElement>('atlas-box[data-role="frame"]');
+    this._stageEl = root.querySelector<HTMLElement>('atlas-box[data-role="stage"]');
 
     // Mount the inner content-page once.
     this._mountContentPage();
@@ -396,3 +415,9 @@ export class PageEditorPreviewElement extends AtlasSurface {
 }
 
 AtlasElement.define('page-editor-preview', PageEditorPreviewElement);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'page-editor-preview': PageEditorPreviewElement;
+  }
+}

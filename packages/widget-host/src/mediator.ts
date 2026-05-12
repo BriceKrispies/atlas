@@ -80,7 +80,7 @@ export class WidgetMediator {
         eventName: 'atlas.widget.mediator.onTrace.threw',
         level: 'error',
         source: 'widget-host.mediator',
-        'error.message': (err as Error)?.message ?? String(err),
+        'error.message': err instanceof Error ? err.message : String(err),
       });
     }
   }
@@ -151,7 +151,7 @@ export class WidgetMediator {
                 source: 'widget-host.mediator',
                 topic,
                 instanceId: sub.instanceId,
-                'error.message': (err as Error)?.message ?? String(err),
+                'error.message': err instanceof Error ? err.message : String(err),
               });
             });
         } catch (err) {
@@ -161,7 +161,7 @@ export class WidgetMediator {
             source: 'widget-host.mediator',
             topic,
             instanceId: sub.instanceId,
-            'error.message': (err as Error)?.message ?? String(err),
+            'error.message': err instanceof Error ? err.message : String(err),
           });
         }
       }

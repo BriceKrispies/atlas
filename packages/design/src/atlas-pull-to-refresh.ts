@@ -188,8 +188,9 @@ export class AtlasPullToRefresh extends AtlasElement {
       for (const el of assigned) {
         // Wire each slotted element so its click triggers refresh,
         // regardless of whether it's an atlas-button or a raw element.
-        if ((el as HTMLElement & { _ptrBound?: boolean })._ptrBound) continue;
-        (el as HTMLElement & { _ptrBound?: boolean })._ptrBound = true;
+        const bound = el as Element & { _ptrBound?: boolean };
+        if (bound._ptrBound) continue;
+        bound._ptrBound = true;
         el.addEventListener('click', () => {
           if (this.disabled || this.busy) return;
           this._dispatchRefresh();

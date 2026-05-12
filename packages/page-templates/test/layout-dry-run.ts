@@ -3,17 +3,8 @@
  * and <atlas-layout> rendering in a linkedom DOM.
  */
 
-import { parseHTML } from 'linkedom';
-
-const dom = parseHTML('<!doctype html><html><head></head><body></body></html>');
-(globalThis as unknown as Record<string, unknown>)['window'] = dom.window;
-(globalThis as unknown as Record<string, unknown>)['document'] = dom.document;
-(globalThis as unknown as Record<string, unknown>)['HTMLElement'] = dom.HTMLElement;
-(globalThis as unknown as Record<string, unknown>)['customElements'] = dom.customElements;
-(globalThis as unknown as Record<string, unknown>)['Node'] = dom.Node;
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = ((v: unknown) => JSON.parse(JSON.stringify(v))) as typeof structuredClone;
-}
+import { document } from './_lib/setup.ts';
+import { must } from '../src/internal/assert.ts';
 
 const {
   validateLayoutDocument,
@@ -113,13 +104,12 @@ async function testInMemoryStore_roundTrip(): Promise<void> {
   const doc = emptyLayoutDocument({ layoutId: 'my-layout' });
   doc.slots.push({ name: 'main', col: 1, row: 1, colSpan: 12, rowSpan: 2 });
   await store.save('my-layout', doc);
-  const back = await store.get('my-layout');
-  assert(back, 'found');
-  assertEq(back!.layoutId, 'my-layout', 'id preserved');
-  assertEq(back!.slots.length, 1, 'slots preserved');
-  back!.slots.push({ name: 'x', col: 1, row: 1, colSpan: 1, rowSpan: 1 });
-  const again = await store.get('my-layout');
-  assertEq(again!.slots.length, 1, "store wasn't mutated by caller");
+  const back = must(await store.get('my-layout'), 'just saved my-layout');
+  assertEq(back.layoutId, 'my-layout', 'id preserved');
+  assertEq(back.slots.length, 1, 'slots preserved');
+  back.slots.push({ name: 'x', col: 1, row: 1, colSpan: 1, rowSpan: 1 });
+  const again = must(await store.get('my-layout'), 'still present');
+  assertEq(again.slots.length, 1, "store wasn't mutated by caller");
 }
 
 async function testValidatingStore_rejectsInvalid(): Promise<void> {
@@ -166,25 +156,28 @@ function testRegistry_registerAndGet(): void {
   };
   reg.register(doc);
   assert(reg.has('r'), 'registered');
-  const back = reg.get('r');
-  assertEq(back!.layoutId, 'r', 'get returns same id');
-  back!.slots = [];
-  const again = reg.get('r');
-  assertEq(again!.slots.length, 1, 'registry clone preserves stored value');
+  const back = must(reg.get('r'), 'just registered r');
+  assertEq(back.layoutId, 'r', 'get returns same id');
+  back.slots = [];
+  const again = must(reg.get('r'), 'still registered');
+  assertEq(again.slots.length, 1, 'registry clone preserves stored value');
 }
 
 function testPresets_allValid(): void {
   for (const doc of presetLayouts) {
     const res = validateLayoutDocument(doc);
-    assert(res.ok, `preset ${doc.layoutId} invalid: ${JSON.stringify((res as { errors?: unknown }).errors)}`);
+    const errs = res.ok ? undefined : res.errors;
+    assert(res.ok, `preset ${doc.layoutId} invalid: ${JSON.stringify(errs)}`);
   }
   assertEq(presetLayouts.length, 6, 'six presets shipped');
 }
 
 // ---- <atlas-layout> rendering ---------------------------------------
 
+type AtlasLayoutEl = HTMLElement & { layout?: unknown };
+
 function testAtlasLayout_createsPositionedSections(): void {
-  const el = document.createElement('atlas-layout') as HTMLElement & { layout?: unknown };
+  const el = document.createElement('atlas-layout') as AtlasLayoutEl;
   document.body.appendChild(el);
   el.layout = {
     layoutId: 'render-test',
@@ -198,11 +191,13 @@ function testAtlasLayout_createsPositionedSections(): void {
   };
   const sections = el.querySelectorAll(':scope > section[data-slot]');
   assertEq(sections.length, 3, 'three sections rendered');
-  const header = el.querySelector(':scope > section[data-slot="header"]') as HTMLElement | null;
-  assert(header, 'header section exists');
+  const header = must(
+    el.querySelector<HTMLElement>(':scope > section[data-slot="header"]'),
+    'header section just rendered',
+  );
   assert(
-    header!.style.gridColumn.includes('1') && header!.style.gridColumn.includes('span 12'),
-    `header grid-column set (got "${header!.style.gridColumn}")`,
+    header.style.gridColumn.includes('1') && header.style.gridColumn.includes('span 12'),
+    `header grid-column set (got "${header.style.gridColumn}")`,
   );
   assert(
     el.style.gridTemplateColumns.includes('repeat(12'),
@@ -213,7 +208,7 @@ function testAtlasLayout_createsPositionedSections(): void {
 }
 
 function testAtlasLayout_addAndRemoveSlots(): void {
-  const el = document.createElement('atlas-layout') as HTMLElement & { layout?: unknown };
+  const el = document.createElement('atlas-layout') as AtlasLayoutEl;
   document.body.appendChild(el);
   el.layout = {
     layoutId: 't',
@@ -264,12 +259,11 @@ async function main(): Promise<void> {
   testPresets_allValid();
   testAtlasLayout_createsPositionedSections();
   testAtlasLayout_addAndRemoveSlots();
-  // eslint-disable-next-line no-console
   console.log('OK');
 }
 
 main().catch((err: unknown) => {
-  // eslint-disable-next-line no-console
-  console.error('FAIL:', (err as Error | undefined)?.stack ?? err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error('FAIL:', stack ?? err);
   process.exit(1);
 });

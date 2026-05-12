@@ -1,4 +1,10 @@
 import { S } from '../_register.ts';
+import {
+  customDetail,
+  isValueDetail,
+  parseMountConfig,
+  v,
+} from '../../internal/assert.ts';
 
 /* -------------------- atlas-diff specimens -------------------- */
 
@@ -49,8 +55,14 @@ S({
   id: 'diff',
   name: 'Diff',
   tag: 'atlas-diff',
-  mount: (demoEl, { config }) => {
-    const cfg = config as { size: 'small' | 'large'; view: 'unified' | 'split' };
+  mount: (demoEl, ctx) => {
+    // Sandbox mount-config arrives as `Record<string, unknown>`. Narrow
+    // each known field through `parseMountConfig` — unknown / wrongly-
+    // typed fields fall through to the defaults below.
+    const cfg = parseMountConfig<{ size: string; view: string }>(ctx.config, {
+      size: v.string,
+      view: v.string,
+    });
     const el = document.createElement('atlas-diff');
     if (cfg.size === 'large') {
       el.setAttribute('before', LARGE.before);
@@ -59,7 +71,7 @@ S({
       el.setAttribute('before', SMALL_BEFORE);
       el.setAttribute('after', SMALL_AFTER);
     }
-    el.setAttribute('view', cfg.view);
+    el.setAttribute('view', cfg.view ?? 'unified');
     el.setAttribute('language', 'javascript');
     demoEl.appendChild(el);
     return () => el.remove();
@@ -124,8 +136,10 @@ S({
   id: 'json-view',
   name: 'JsonView',
   tag: 'atlas-json-view',
-  mount: (demoEl, { config }) => {
-    const cfg = config as { variant: 'simple' | 'deep' | 'large' | 'long' };
+  mount: (demoEl, ctx) => {
+    const cfg = parseMountConfig<{ variant: string }>(ctx.config, {
+      variant: v.string,
+    });
     const el = document.createElement('atlas-json-view') as HTMLElement & { data: unknown };
     if (cfg.variant === 'simple') el.data = SIMPLE_OBJECT;
     else if (cfg.variant === 'deep') el.data = DEEP_OBJECT;
@@ -144,19 +158,33 @@ S({
 
 /* -------------------- atlas-activity specimens -------------------- */
 
+type ActivityMode = 'streaming' | 'success' | 'error' | 'cancelable';
+
+function asActivityMode(s: string | undefined): ActivityMode {
+  switch (s) {
+    case 'success':
+    case 'error':
+    case 'cancelable':
+      return s;
+    default:
+      return 'streaming';
+  }
+}
+
 S({
   id: 'activity',
   name: 'Activity',
   tag: 'atlas-activity',
   mount: (demoEl, { config, onLog }) => {
-    const cfg = config as { mode: 'streaming' | 'success' | 'error' | 'cancelable' };
+    const cfg = parseMountConfig<{ mode: string }>(config, { mode: v.string });
+    const mode = asActivityMode(cfg.mode);
     const el = document.createElement('atlas-activity') as HTMLElement & {
       cancelable: boolean;
     };
-    el.setAttribute('title', titleFor(cfg.mode));
-    el.setAttribute('started-at', new Date(Date.now() - randomBackoff(cfg.mode)).toISOString());
-    el.setAttribute('status', initialStatus(cfg.mode));
-    if (cfg.mode === 'cancelable' || cfg.mode === 'streaming') el.setAttribute('cancelable', '');
+    el.setAttribute('title', titleFor(mode));
+    el.setAttribute('started-at', new Date(Date.now() - randomBackoff(mode)).toISOString());
+    el.setAttribute('status', initialStatus(mode));
+    if (mode === 'cancelable' || mode === 'streaming') el.setAttribute('cancelable', '');
     demoEl.appendChild(el);
 
     el.addEventListener('cancel', () => {
@@ -167,7 +195,7 @@ S({
 
     let logTimer: number | null = null;
     let lineNo = 0;
-    if (cfg.mode === 'streaming' || cfg.mode === 'cancelable') {
+    if (mode === 'streaming' || mode === 'cancelable') {
       const lines = [
         '→ resolving plan…',
         '→ reading 4 files',
@@ -178,7 +206,7 @@ S({
       ];
       const writeLine = (): void => {
         if (lineNo >= lines.length) {
-          if (cfg.mode === 'streaming') {
+          if (mode === 'streaming') {
             el.setAttribute('status', 'success');
             el.setAttribute('ended-at', new Date().toISOString());
           }
@@ -192,12 +220,12 @@ S({
         logTimer = window.setTimeout(writeLine, 800);
       };
       logTimer = window.setTimeout(writeLine, 400);
-    } else if (cfg.mode === 'success') {
+    } else if (mode === 'success') {
       const log = document.createElement('atlas-text');
       log.setAttribute('variant', 'mono');
       log.textContent = '✓ All steps completed in 4.2s';
       el.appendChild(log);
-    } else if (cfg.mode === 'error') {
+    } else if (mode === 'error') {
       const log = document.createElement('atlas-text');
       log.setAttribute('variant', 'mono');
       log.textContent = '✗ Failed in step 3: permission denied (cap=write:content)';
@@ -239,12 +267,13 @@ S({
   name: 'ConsentBanner',
   tag: 'atlas-consent-banner',
   mount: (demoEl, { config, onLog }) => {
-    const cfg = config as { severity: 'info' | 'warning' | 'danger' };
+    const cfg = parseMountConfig<{ severity: string }>(config, { severity: v.string });
+    const severity = cfg.severity ?? 'info';
     const el = document.createElement('atlas-consent-banner');
-    el.setAttribute('severity', cfg.severity);
-    el.setAttribute('title', titleForSeverity(cfg.severity));
+    el.setAttribute('severity', severity);
+    el.setAttribute('title', titleForSeverity(severity));
     el.innerHTML = `
-      <atlas-text>${descriptionForSeverity(cfg.severity)}</atlas-text>
+      <atlas-text>${descriptionForSeverity(severity)}</atlas-text>
       <atlas-stack slot="details" gap="xs">
         <atlas-text variant="small" variant-x="muted">Tool: <atlas-code>backend.write</atlas-code></atlas-text>
         <atlas-text variant="small">Capability scope: <atlas-code>tenant:acme/content/*</atlas-code></atlas-text>
@@ -299,14 +328,37 @@ S({
       grid.appendChild(tile);
     }
     grid.addEventListener('change', (ev) => {
-      const detail = (ev as CustomEvent<{ value: string[] }>).detail;
-      onLog('change', detail);
+      onLog('change', customDetail(ev, isValueArrayDetail, 'atlas-capability-grid.change'));
     });
     demoEl.appendChild(grid);
     return () => grid.remove();
   },
   configVariants: [{ name: 'default', config: {} }],
 });
+
+/** Validator: `{ value: string[] }`. */
+function isValueArrayDetail(d: unknown): d is { value: string[] } {
+  if (typeof d !== 'object' || d === null) return false;
+  const val: unknown = (d as { value?: unknown }).value;
+  return Array.isArray(val) && val.every((x) => typeof x === 'string');
+}
+
+/** Validator: `{ query: string; type: string }`. */
+function isQueryTypeDetail(d: unknown): d is { query: string; type: string } {
+  if (typeof d !== 'object' || d === null) return false;
+  const obj = d as { query?: unknown; type?: unknown };
+  return typeof obj.query === 'string' && typeof obj.type === 'string';
+}
+
+/** Validator: `{ value: string | string[] }`. */
+function isValueStringOrArrayDetail(
+  d: unknown,
+): d is { value: string | string[] } {
+  if (typeof d !== 'object' || d === null) return false;
+  const val: unknown = (d as { value?: unknown }).value;
+  if (typeof val === 'string') return true;
+  return Array.isArray(val) && val.every((x) => typeof x === 'string');
+}
 
 /* -------------------- atlas-resource-picker specimens -------------------- */
 
@@ -326,17 +378,24 @@ S({
   name: 'ResourcePicker',
   tag: 'atlas-resource-picker',
   mount: (demoEl, { config, onLog }) => {
-    const cfg = config as { multiple: boolean };
+    const cfg = parseMountConfig<{ multiple: boolean }>(config, {
+      multiple: v.boolean,
+    });
+    const multiple = cfg.multiple ?? false;
     const trigger = document.createElement('atlas-button');
-    trigger.textContent = cfg.multiple ? 'Pick pages…' : 'Pick a page';
+    trigger.textContent = multiple ? 'Pick pages…' : 'Pick a page';
     const picker = document.createElement('atlas-resource-picker') as HTMLElement & {
       open: () => void;
       setResults: (items: Array<{ id: string; label: string; description?: string }>) => void;
     };
     picker.setAttribute('resource-type', 'page');
-    if (cfg.multiple) picker.setAttribute('multiple', '');
+    if (multiple) picker.setAttribute('multiple', '');
     picker.addEventListener('request-results', (ev) => {
-      const { query, type } = (ev as CustomEvent<{ query: string; type: string }>).detail;
+      const { query, type } = customDetail(
+        ev,
+        isQueryTypeDetail,
+        'atlas-resource-picker.request-results',
+      );
       onLog('request-results', { query, type });
       const q = query.toLowerCase();
       const filtered = MOCK_RESOURCES
@@ -346,8 +405,10 @@ S({
       picker.setResults(filtered);
     });
     picker.addEventListener('change', (ev) => {
-      const detail = (ev as CustomEvent<{ value: string | string[] }>).detail;
-      onLog('change', detail);
+      onLog(
+        'change',
+        customDetail(ev, isValueStringOrArrayDetail, 'atlas-resource-picker.change'),
+      );
     });
     trigger.addEventListener('click', () => picker.open());
     demoEl.appendChild(trigger);

@@ -11,21 +11,37 @@ const dom = parseHTML(
   '<!doctype html><html><head></head><body></body></html>',
 );
 
-// linkedom's window/document types don't match the DOM lib exactly; we
-// cast through `unknown` to install them as globals for the duration of
-// the test.
-const g = globalThis as unknown as Record<string, unknown>;
-g['window'] = dom.window;
-g['document'] = dom.document;
-g['HTMLElement'] = dom.HTMLElement;
-g['DocumentFragment'] = dom.DocumentFragment;
-g['customElements'] = dom.customElements;
-g['Node'] = dom.Node;
-const linkedomNodeFilter = (dom as unknown as { NodeFilter?: unknown })
-  .NodeFilter;
-g['NodeFilter'] = linkedomNodeFilter ?? { SHOW_ELEMENT: 1 };
-if (typeof g['structuredClone'] !== 'function') {
-  g['structuredClone'] = (v: unknown): unknown =>
+// linkedom's window/document types don't match the DOM lib exactly. We
+// install them as globals through a typed mutator so the call sites are
+// strongly typed even though the underlying mutation crosses a boundary.
+interface GlobalInstallSlots {
+  window: unknown;
+  document: unknown;
+  HTMLElement: unknown;
+  DocumentFragment: unknown;
+  customElements: unknown;
+  Node: unknown;
+  NodeFilter: unknown;
+  structuredClone: unknown;
+}
+// eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; installing parsed-DOM objects as globals so subsequent module imports see them.
+const g = globalThis as unknown as Partial<GlobalInstallSlots> & Record<string, unknown>;
+g.window = dom.window;
+g.document = dom.document;
+g.HTMLElement = dom.HTMLElement;
+g.DocumentFragment = dom.DocumentFragment;
+g.customElements = dom.customElements;
+g.Node = dom.Node;
+// linkedom exposes NodeFilter only on some builds. Probe via a typed
+// reader instead of an `as unknown as` chain at the use-site.
+function readMaybeNodeFilter(d: unknown): unknown {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const probe: { NodeFilter?: unknown } = d as { NodeFilter?: unknown };
+  return probe.NodeFilter;
+}
+g.NodeFilter = readMaybeNodeFilter(dom) ?? { SHOW_ELEMENT: 1 };
+if (typeof g.structuredClone !== 'function') {
+  g.structuredClone = (v: unknown): unknown =>
     JSON.parse(JSON.stringify(v)) as unknown;
 }
 
@@ -37,19 +53,15 @@ interface TreeWalkerLike {
 interface MinimalElement {
   children?: Iterable<MinimalElement>;
 }
-if (
-  typeof (globalThis.document as unknown as {
-    createTreeWalker?: unknown;
-  }).createTreeWalker !== 'function'
-) {
-  (
-    globalThis.document as unknown as {
-      createTreeWalker: (root: MinimalElement) => TreeWalkerLike;
-    }
-  ).createTreeWalker = (root: MinimalElement): TreeWalkerLike => {
-    const elements: Element[] = [];
+interface CreateTreeWalkerHost {
+  createTreeWalker?: ((root: MinimalElement) => TreeWalkerLike) | unknown;
+}
+const docForShim: CreateTreeWalkerHost = globalThis.document;
+if (typeof docForShim.createTreeWalker !== 'function') {
+  docForShim.createTreeWalker = (root: MinimalElement): TreeWalkerLike => {
+    const elements: MinimalElement[] = [];
     const walk = (el: MinimalElement): void => {
-      elements.push(el as unknown as Element);
+      elements.push(el);
       for (const child of el.children ?? []) walk(child);
     };
     for (const child of root.children ?? []) walk(child);
@@ -57,7 +69,10 @@ if (
     return {
       nextNode(): Element | null {
         i += 1;
-        return i < elements.length ? (elements[i] ?? null) : null;
+        const next = i < elements.length ? elements[i] : undefined;
+        if (!next) return null;
+        // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; treewalker shim returns linkedom element nodes shaped as the DOM Element our consumers expect.
+        return next as unknown as Element;
       },
     };
   };
@@ -73,6 +88,7 @@ const {
 } = pkg;
 
 import type { WidgetManifest, WidgetContext } from '../src/types.ts';
+import type { WidgetRegistry as WidgetRegistryType } from '../src/registry.ts';
 
 // A stub widget extending AtlasSurface. We can't meaningfully exercise
 // AtlasSurface's reactive render() in linkedom, so we extend the raw
@@ -160,12 +176,14 @@ const manifest: WidgetManifest = {
 // markup; we register a tag here purely to satisfy the headless DOM.
 customElements.define(
   'demo-stub-widget',
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; customElements.define expects the lib.dom CustomElementConstructor signature, but our StubWidget extends linkedom's HTMLElement which is structurally compatible at runtime.
   StubWidget as unknown as CustomElementConstructor,
 );
 
 const registry = new WidgetRegistry();
 registry.register({
   manifest,
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; the registry types its element ctor against lib.dom HTMLElement, but at runtime we register a linkedom-backed subclass.
   element: StubWidget as unknown as new () => HTMLElement,
 });
 
@@ -181,6 +199,42 @@ async function waitMicrotasks(n: number = 5): Promise<void> {
   }
 }
 
+interface WidgetHostElement extends HTMLElement {
+  registry: WidgetRegistryType;
+  principal: unknown;
+  tenantId: string;
+  correlationId: string;
+  capabilities: Record<string, (args: unknown) => Promise<unknown>>;
+  layout: unknown;
+}
+
+/** Narrows `document.createElement('widget-host')` to the host element's
+ *  surface contract. The lib.dom `createElement` signature returns
+ *  `HTMLElement` for unknown tag names; this writes the augmentation
+ *  shape in one place so call-sites stay free of escape-hatch casts. */
+function createWidgetHostElement(): WidgetHostElement {
+  const el = document.createElement('widget-host');
+  // Attach the augmentation shape; el is a plain HTMLElement until the
+  // host class upgrades it, then these properties are read by the host.
+  const capabilities: Record<string, (args: unknown) => Promise<unknown>> = {};
+  const seed: Omit<WidgetHostElement, keyof HTMLElement> = {
+    registry,
+    principal: undefined,
+    tenantId: '',
+    correlationId: '',
+    capabilities,
+    layout: undefined,
+  };
+  return Object.assign(el, seed);
+}
+
+interface RequestResult {
+  ok?: boolean;
+}
+function isRequestResult(v: unknown): v is RequestResult {
+  return typeof v === 'object' && v !== null;
+}
+
 async function main(): Promise<void> {
   // moduleDefaultRegistry is a separate instance; make sure it's empty.
   assert(
@@ -188,14 +242,7 @@ async function main(): Promise<void> {
     'module default registry should not know demo.stub',
   );
 
-  const host = document.createElement('widget-host') as HTMLElement & {
-    registry: typeof registry;
-    principal: unknown;
-    tenantId: string;
-    correlationId: string;
-    capabilities: Record<string, (args: unknown) => Promise<unknown>>;
-    layout: unknown;
-  };
+  const host = createWidgetHostElement();
   host.registry = registry;
   host.principal = { id: 'u_test', roles: [] };
   host.tenantId = 't_test';
@@ -229,7 +276,10 @@ async function main(): Promise<void> {
     }
     for (const child of node.children ?? []) scan(child);
   };
-  scan(host as unknown as ChildrenNode);
+  // The host is structurally a ChildrenNode (HTMLElement has .children);
+  // re-typing through a local variable avoids the inline assertion.
+  const hostAsChildrenNode: ChildrenNode = host;
+  scan(hostAsChildrenNode);
 
   assert(stub, 'stub widget should be present in host DOM');
   const stubNode: StubWidget = stub;
@@ -239,9 +289,9 @@ async function main(): Promise<void> {
   assert(stubNode.assertionsDone, 'stub assertions should complete');
 
   // 1. demo.noop capability worked.
-  const reqResult = stubNode.requestResult as { ok?: boolean } | null;
+  const reqResult = stubNode.requestResult;
   assert(
-    reqResult !== null && reqResult?.ok === true,
+    isRequestResult(reqResult) && reqResult.ok === true,
     `demo.noop should resolve with { ok: true }, got ${JSON.stringify(stubNode.requestResult)}`,
   );
 

@@ -1,6 +1,6 @@
 import type { CatalogStateStore, ProjectionStore } from '@atlas/ports';
-import type { SeedPayload } from '../seed-types.ts';
 import { deterministicUuid } from '../ids.ts';
+import { readSeed } from '../internal/seed-state.ts';
 
 export function projectionKey(familyKey: string, tenantId: string): string {
   return `catalog:family-detail:${familyKey}:${tenantId}`;
@@ -13,7 +13,7 @@ export async function rebuildFamilyDetail(
 ): Promise<Array<{ familyKey: string; payload: unknown }>> {
   const state = await catalogState.get(tenantId);
   if (!state) return [];
-  const seed = state.payload as SeedPayload;
+  const seed = readSeed(state);
   const attrTypeByKey = new Map<string, string>();
   for (const a of seed.attributeDefinitions ?? []) {
     attrTypeByKey.set(a.key, a.dataType);

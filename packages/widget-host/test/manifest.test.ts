@@ -142,7 +142,7 @@ describe('validateManifest — extra properties', () => {
     const r = validateManifest({
       ...valid,
       surprise: 'pikachu',
-    } as object);
+    } satisfies object);
     expect(r.ok).toBe(false);
   });
 });

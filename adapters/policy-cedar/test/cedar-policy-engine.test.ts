@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from 'vitest';
 import { policyEngineContract } from '@atlas/contract-tests';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 import {
   BundledFixtureLoader,
@@ -187,8 +188,8 @@ describe('CedarPolicyEngine — real Cedar semantics', () => {
     });
     expect(decision.effect).toBe('permit');
     expect(Array.isArray(decision.matchedPolicies)).toBe(true);
-    expect(decision.reasons).toBeDefined();
-    expect(decision.reasons!.length).toBeGreaterThan(0);
+    const reasons = assertDefined(decision.reasons, 'decision.reasons populated for matched permit');
+    expect(reasons.length).toBeGreaterThan(0);
   });
 
   test('cache invalidation: invalidate(tenantId) drops cached bundle', async () => {

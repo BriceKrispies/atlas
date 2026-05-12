@@ -11,6 +11,16 @@
  *                 plus a `membership.user` edge in relations
  *   - InviteToken → entities (`tenantId=<tenant>`, type='InviteToken')
  *                   plus optional `invite.user` edge on accept
+ *
+ * **Typed-envelope contract.** Envelopes are narrowed to
+ * `IdentityEventEnvelope` (see `./events.ts`) via the `isIdentityEvent`
+ * type guard. After narrowing each `switch` arm receives the
+ * specific payload shape — no `payload as Record<string, unknown>`,
+ * no `document as XDocument` cast ladder, and no runtime
+ * "no payload.document — handler emit-site bug" throw: events that
+ * legitimately carry no document declare a payload shape that doesn't
+ * have one, so the cases that lack a `document` field simply don't
+ * reach for it.
  */
 
 import type { EventEnvelope, Logger } from '@atlas/platform-core';
@@ -20,22 +30,6 @@ import type {
   EventDispatcher,
   RelationStore,
 } from '@atlas/ports';
-import type {
-  ApiKeyDocument,
-  AuditExportConfigDocument,
-  AuthFactorDocument,
-  AuthSessionDocument,
-  IdentityProviderDocument,
-  InviteTokenDocument,
-  MembershipDocument,
-  MfaBypassDocument,
-  OAuthAccessTokenDocument,
-  RecoveryCodeDocument,
-  SamlSpKeyDocument,
-  ScimTokenDocument,
-  ServicePrincipalDocument,
-  UserDocument,
-} from './types.ts';
 import { putUserEntity } from './entities/user.ts';
 import { putMembershipEntity } from './entities/membership.ts';
 import { putInviteTokenEntity } from './entities/invite-token.ts';
@@ -54,6 +48,7 @@ import {
   linkInviteToUser,
   linkMembershipToUser,
 } from './entities/relations.ts';
+import { isIdentityEvent, type IdentityEventEnvelope } from './events.ts';
 
 export interface IdentityDispatchContext {
   entities: EntityStore;
@@ -68,101 +63,15 @@ export interface IdentityDispatchContext {
   logger?: Logger;
 }
 
-/**
- * Events that are appended + dispatched but legitimately carry no
- * `payload.document`. These are audit-only or batch-metadata events;
- * the dispatcher returns early without touching projections.
- *
- * Anything NOT in this allowlist that lands here without a document
- * is a bug — handler emit-site dropped the document field. We throw
- * so the failure is visible at dispatch time rather than silently
- * leaving projections stale.
- */
-const EVENTS_WITHOUT_DOCUMENT: ReadonlySet<string> = new Set([
-  // Audit-only diagnostic event — refresh-token reuse / suspicious
-  // refresh patterns. The corresponding RevokeAllForUser flow emits
-  // SessionEnded events that DO carry documents.
-  'Identity.SessionAnomaly',
-  // Batch-metadata events — handlers eager-write the per-code rows,
-  // so the dispatcher has nothing extra to persist from the event.
-  'Identity.RecoveryCodesGenerated',
-  'Identity.RecoveryCodesRegenerated',
-]);
-
-// All Phase A2 service-credential events. Each carries a merged
-// document on `payload.document`; dispatcher persists.
-const A2_KEY_EVENTS: ReadonlySet<string> = new Set([
-  'Identity.ApiKeyCreated',
-  'Identity.ApiKeyRotated',
-  'Identity.ApiKeyRevoked',
-  'Identity.ServicePrincipalCreated',
-  'Identity.ServicePrincipalScopesChanged',
-  'Identity.ServicePrincipalDisabled',
-  'Identity.OAuthTokenIssued',
-  'Identity.OAuthTokenRevoked',
-]);
-
-const HANDLED_EVENT_TYPES = new Set([
-  'Identity.UserCreated',
-  'Identity.UserUpdated',
-  'Identity.AccountLocked',
-  'Identity.PasswordChanged',
-  'Identity.MembershipCreated',
-  'Identity.InviteIssued',
-  'Identity.InviteAccepted',
-  // Phase A2 — session lifecycle.
-  'Identity.SessionIssued',
-  'Identity.SessionRefreshed',
-  'Identity.SessionEnded',
-  // SessionAnomaly is emitted but carries no document — see below.
-  'Identity.SessionAnomaly',
-  // Phase A3.7 — group-claim → role reconciliation on JWT login.
-  'Identity.MembershipRolesChanged',
-  // Phase A2.7-A2.9 — service credentials.
-  'Identity.ApiKeyCreated',
-  'Identity.ApiKeyRotated',
-  'Identity.ApiKeyRevoked',
-  'Identity.ServicePrincipalCreated',
-  'Identity.ServicePrincipalScopesChanged',
-  'Identity.ServicePrincipalDisabled',
-  'Identity.OAuthTokenIssued',
-  'Identity.OAuthTokenRevoked',
-  // Phase A3 — federated OIDC.
-  'Identity.IdentityProviderConfigured',
-  'Identity.IdentityProviderActivated',
-  'Identity.IdentityProviderDisabled',
-  'Identity.IdentityProviderRotatedJwks',
-  // Phase A4 — SCIM tokens.
-  'Identity.ScimTokenEnabled',
-  'Identity.ScimTokenRotated',
-  'Identity.ScimTokenRevoked',
-  // Phase A4.8 — audit-export config.
-  'Identity.AuditExportConfigured',
-  'Identity.AuditExportActivated',
-  'Identity.AuditExportDisabled',
-  // Phase A5.7 — session MFA promotion event.
-  'Identity.SessionMfaSatisfied',
-  // Phase A5 — MFA stack.
-  'Identity.AuthFactorEnrolled',
-  'Identity.AuthFactorRevoked',
-  'Identity.MfaChallengeSucceeded',
-  'Identity.MfaAnomaly',
-  'Identity.MfaLockout',
-  'Identity.RecoveryCodesGenerated',
-  'Identity.RecoveryCodesRegenerated',
-  'Identity.RecoveryCodeConsumed',
-  'Identity.MfaBypassIssued',
-  'Identity.MfaBypassUsed',
-  // Phase A6 — SAML SP key lifecycle.
-  'Identity.SamlSpKeyGenerated',
-  'Identity.SamlSpKeyRotated',
-]);
-
 export async function dispatchIdentityEvent(
   envelope: EventEnvelope,
   ctx: IdentityDispatchContext,
 ): Promise<void> {
-  if (!HANDLED_EVENT_TYPES.has(envelope.eventType)) return;
+  // Type-guard narrows the wide `EventEnvelope` to the typed
+  // discriminated union. Events outside the union (e.g.
+  // `Identity.LoginRejected` audit events, anything in another
+  // domain) early-return without touching projections.
+  if (!isIdentityEvent(envelope)) return;
 
   // Single debug breadcrumb per dispatched event. Logger is opt-in
   // via the context — sim / unit tests pass nothing and stay silent.
@@ -174,142 +83,177 @@ export async function dispatchIdentityEvent(
     },
   });
 
-  // Events legitimately without a document (audit-only / batch
-  // metadata). Early-return so projections stay untouched.
-  if (EVENTS_WITHOUT_DOCUMENT.has(envelope.eventType)) return;
+  await dispatchTypedIdentityEvent(envelope, ctx);
+}
 
-  const payload = envelope.payload as Record<string, unknown>;
-  const document = payload['document'] as
-    | UserDocument
-    | MembershipDocument
-    | InviteTokenDocument
-    | AuthSessionDocument
-    | ApiKeyDocument
-    | ServicePrincipalDocument
-    | OAuthAccessTokenDocument
-    | IdentityProviderDocument
-    | ScimTokenDocument
-    | AuditExportConfigDocument
-    | AuthFactorDocument
-    | RecoveryCodeDocument
-    | MfaBypassDocument
-    | SamlSpKeyDocument
-    | undefined;
-  if (!document) {
-    // Hard failure: event type is in HANDLED_EVENT_TYPES, not in the
-    // EVENTS_WITHOUT_DOCUMENT allowlist, but the emit-site forgot to
-    // attach `payload.document`. Silently dropping leaves projections
-    // stale — surface it instead so the bug shows up immediately
-    // rather than as inexplicably-missing read-model rows.
-    throw new Error(
-      `dispatchIdentityEvent: ${envelope.eventType} (eventId=${envelope.eventId ?? 'unset'}) has no payload.document and is not in EVENTS_WITHOUT_DOCUMENT — handler emit-site bug`,
-    );
-  }
+/**
+ * Exhaustive switch over the typed `IdentityEventEnvelope` union.
+ *
+ * The `_exhaustive: never` arm is the compile-time safety net: when
+ * a new event variant is added to the union, this switch fails to
+ * type-check until the corresponding `case` lands here. That replaces
+ * the previous runtime `EVENTS_WITHOUT_DOCUMENT` allow-list +
+ * "no payload.document — emit-site bug" throw.
+ */
+async function dispatchTypedIdentityEvent(
+  envelope: IdentityEventEnvelope,
+  ctx: IdentityDispatchContext,
+): Promise<void> {
+  switch (envelope.eventType) {
+    // ----- Phase A1 — users + memberships + invites -----------------
+    case 'Identity.UserCreated':
+    case 'Identity.UserUpdated':
+    case 'Identity.AccountLocked':
+    case 'Identity.PasswordChanged': {
+      // All four event types carry the same merged-User payload shape.
+      // The event-type discrimination lives at the *audit* layer (event
+      // log carries the semantic event); the dispatcher just persists.
+      await putUserEntity(
+        ctx.entities,
+        envelope.payload.document,
+        envelope.tenantId,
+      );
+      return;
+    }
+    case 'Identity.MembershipCreated': {
+      const m = envelope.payload.document;
+      await putMembershipEntity(ctx.entities, m);
+      await linkMembershipToUser(ctx.relations, m.tenantId, m.userId);
+      return;
+    }
+    case 'Identity.MembershipRolesChanged': {
+      // A3.7: roles reconciled from JWT group claim. Just upsert the
+      // merged document; the relation is unchanged.
+      await putMembershipEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.InviteIssued': {
+      await putInviteTokenEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.InviteAccepted': {
+      const t = envelope.payload.document;
+      await putInviteTokenEntity(ctx.entities, t);
+      if (t.acceptedUserId) {
+        await linkInviteToUser(
+          ctx.relations,
+          t.tenantId,
+          t.tokenId,
+          t.acceptedUserId,
+        );
+      }
+      return;
+    }
 
-  if (
-    envelope.eventType === 'Identity.UserCreated' ||
-    envelope.eventType === 'Identity.UserUpdated' ||
-    envelope.eventType === 'Identity.AccountLocked' ||
-    envelope.eventType === 'Identity.PasswordChanged'
-  ) {
-    // All four event types carry the same merged-User payload shape.
-    // The event-type discrimination lives at the *audit* layer (event
-    // log carries the semantic event); the dispatcher just persists.
-    await putUserEntity(ctx.entities, document as UserDocument, envelope.tenantId);
-  } else if (envelope.eventType === 'Identity.MembershipCreated') {
-    const m = document as MembershipDocument;
-    await putMembershipEntity(ctx.entities, m);
-    await linkMembershipToUser(ctx.relations, m.tenantId, m.userId);
-  } else if (envelope.eventType === 'Identity.MembershipRolesChanged') {
-    // A3.7: roles reconciled from JWT group claim. Just upsert the
-    // merged document; the relation is unchanged.
-    await putMembershipEntity(ctx.entities, document as MembershipDocument);
-  } else if (envelope.eventType === 'Identity.InviteIssued') {
-    await putInviteTokenEntity(ctx.entities, document as InviteTokenDocument);
-  } else if (envelope.eventType === 'Identity.InviteAccepted') {
-    const t = document as InviteTokenDocument;
-    await putInviteTokenEntity(ctx.entities, t);
-    if (t.acceptedUserId) {
-      await linkInviteToUser(
-        ctx.relations,
-        t.tenantId,
-        t.tokenId,
-        t.acceptedUserId,
-      );
+    // ----- Phase A2 — sessions --------------------------------------
+    case 'Identity.SessionIssued':
+    case 'Identity.SessionRefreshed':
+    case 'Identity.SessionEnded':
+    case 'Identity.SessionMfaSatisfied': {
+      // All four carry the merged AuthSession document; the dispatcher
+      // just persists. Status discrimination lives at the audit layer.
+      await putSessionEntity(ctx.entities, envelope.payload.document);
+      return;
     }
-  } else if (
-    envelope.eventType === 'Identity.SessionIssued' ||
-    envelope.eventType === 'Identity.SessionRefreshed' ||
-    envelope.eventType === 'Identity.SessionEnded' ||
-    envelope.eventType === 'Identity.SessionMfaSatisfied'
-  ) {
-    // All four carry the merged AuthSession document; the dispatcher
-    // just persists. Status discrimination lives at the audit layer.
-    await putSessionEntity(ctx.entities, document as AuthSessionDocument);
-  } else if (A2_KEY_EVENTS.has(envelope.eventType)) {
-    if (
-      envelope.eventType.startsWith('Identity.ApiKey')
-    ) {
-      await putApiKeyEntity(ctx.entities, document as ApiKeyDocument);
-    } else if (envelope.eventType.startsWith('Identity.ServicePrincipal')) {
-      await putServicePrincipalEntity(
-        ctx.entities,
-        document as ServicePrincipalDocument,
-      );
-    } else if (envelope.eventType.startsWith('Identity.OAuth')) {
-      await putOAuthTokenEntity(
-        ctx.entities,
-        document as OAuthAccessTokenDocument,
-      );
+    case 'Identity.SessionAnomaly': {
+      // Audit-only diagnostic event — refresh-token reuse / suspicious
+      // refresh patterns. The corresponding RevokeAllForUser flow emits
+      // SessionEnded events that DO carry documents. Nothing to persist.
+      return;
     }
-  } else if (envelope.eventType.startsWith('Identity.ScimToken')) {
-    // ScimToken Enabled / Rotated / Revoked all carry the merged
-    // ScimToken document.
-    await putScimTokenEntity(ctx.entities, document as ScimTokenDocument);
-  } else if (envelope.eventType.startsWith('Identity.IdentityProvider')) {
-    // All four IDP events (Configured / Activated / Disabled /
-    // RotatedJwks) carry a merged IdentityProviderDocument. Persist.
-    await putIdentityProviderEntity(
-      ctx.entities,
-      document as IdentityProviderDocument,
-    );
-  } else if (envelope.eventType.startsWith('Identity.AuditExport')) {
-    // AuditExport Configured / Activated / Disabled. Run-level
-    // events come from the worker (A4.9) and bypass this dispatcher.
-    await putAuditExportConfig(
-      ctx.entities,
-      document as AuditExportConfigDocument,
-    );
-  } else if (
-    envelope.eventType === 'Identity.AuthFactorEnrolled' ||
-    envelope.eventType === 'Identity.AuthFactorRevoked' ||
-    envelope.eventType === 'Identity.MfaChallengeSucceeded' ||
-    envelope.eventType === 'Identity.MfaAnomaly' ||
-    envelope.eventType === 'Identity.MfaLockout'
-  ) {
-    // All five factor-touching events carry the merged AuthFactor
-    // document. RecoveryCode + MfaBypass are separate entities; their
-    // dispatcher branches land below.
-    await putAuthFactorEntity(ctx.entities, document as AuthFactorDocument);
-  } else if (envelope.eventType === 'Identity.RecoveryCodeConsumed') {
-    // Per-code event with a single document. RecoveryCodesGenerated /
-    // Regenerated emit batch metadata (no `document`) — the handler
-    // eager-writes the per-code rows since we can't reconstruct them
-    // from the batch event alone.
-    await putRecoveryCodeEntity(
-      ctx.entities,
-      document as RecoveryCodeDocument,
-    );
-  } else if (
-    envelope.eventType === 'Identity.MfaBypassIssued' ||
-    envelope.eventType === 'Identity.MfaBypassUsed'
-  ) {
-    await putMfaBypassEntity(ctx.entities, document as MfaBypassDocument);
-  } else if (
-    envelope.eventType === 'Identity.SamlSpKeyGenerated' ||
-    envelope.eventType === 'Identity.SamlSpKeyRotated'
-  ) {
-    await putSamlSpKeyEntity(ctx.entities, document as SamlSpKeyDocument);
+
+    // ----- Phase A2.7-A2.9 — service credentials --------------------
+    case 'Identity.ApiKeyCreated':
+    case 'Identity.ApiKeyRotated':
+    case 'Identity.ApiKeyRevoked': {
+      await putApiKeyEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.ServicePrincipalCreated':
+    case 'Identity.ServicePrincipalScopesChanged':
+    case 'Identity.ServicePrincipalDisabled': {
+      await putServicePrincipalEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.OAuthTokenIssued':
+    case 'Identity.OAuthTokenRevoked': {
+      await putOAuthTokenEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+
+    // ----- Phase A3 — federated OIDC --------------------------------
+    case 'Identity.IdentityProviderConfigured':
+    case 'Identity.IdentityProviderActivated':
+    case 'Identity.IdentityProviderDisabled':
+    case 'Identity.IdentityProviderRotatedJwks': {
+      await putIdentityProviderEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+
+    // ----- Phase A4 — SCIM tokens + audit export --------------------
+    case 'Identity.ScimTokenEnabled':
+    case 'Identity.ScimTokenRotated':
+    case 'Identity.ScimTokenRevoked': {
+      await putScimTokenEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.AuditExportConfigured':
+    case 'Identity.AuditExportActivated':
+    case 'Identity.AuditExportDisabled': {
+      // AuditExport Configured / Activated / Disabled. Run-level
+      // events come from the worker (A4.9) and bypass this dispatcher.
+      await putAuditExportConfig(ctx.entities, envelope.payload.document);
+      return;
+    }
+
+    // ----- Phase A5 — MFA stack -------------------------------------
+    case 'Identity.AuthFactorEnrolled':
+    case 'Identity.AuthFactorRevoked':
+    case 'Identity.MfaChallengeSucceeded':
+    case 'Identity.MfaAnomaly':
+    case 'Identity.MfaLockout': {
+      // All five factor-touching events carry the merged AuthFactor
+      // document. RecoveryCode + MfaBypass are separate entities; their
+      // dispatcher branches land below.
+      await putAuthFactorEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.RecoveryCodesGenerated':
+    case 'Identity.RecoveryCodesRegenerated': {
+      // Batch-metadata events — handlers eager-write the per-code rows,
+      // so the dispatcher has nothing extra to persist from the event.
+      return;
+    }
+    case 'Identity.RecoveryCodeConsumed': {
+      // Per-code event with a single document. RecoveryCodesGenerated /
+      // Regenerated emit batch metadata (no `document`) — the handler
+      // eager-writes the per-code rows since we can't reconstruct them
+      // from the batch event alone.
+      await putRecoveryCodeEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+    case 'Identity.MfaBypassIssued':
+    case 'Identity.MfaBypassUsed': {
+      await putMfaBypassEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+
+    // ----- Phase A6 — SAML SP key lifecycle -------------------------
+    case 'Identity.SamlSpKeyGenerated':
+    case 'Identity.SamlSpKeyRotated': {
+      await putSamlSpKeyEntity(ctx.entities, envelope.payload.document);
+      return;
+    }
+
+    default: {
+      // Compile-time exhaustiveness check. When a new variant is
+      // added to `IdentityEventEnvelope`, this assignment fails to
+      // type-check until the corresponding `case` lands above. That
+      // replaces the previous runtime "no payload.document — emit-site
+      // bug" throw with a build-time gate.
+      const _exhaustive: never = envelope;
+      return _exhaustive;
+    }
   }
 }
 

@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleSessionIssue,
   handleSessionRefresh,
@@ -177,7 +178,10 @@ describe('handleSessionRefresh — error paths not covered by session.test.ts', 
       fx.entities,
     );
     await dispatchAll(fx);
-    const r1 = r1Result.plaintextRefreshToken!;
+    const r1 = assertDefined(
+      r1Result.plaintextRefreshToken,
+      'rotation result always carries the new plaintext refresh token',
+    );
 
     await handleSessionRefresh(
       {
@@ -286,7 +290,10 @@ describe('handleSessionRefresh — ring cap', () => {
         fx.entities,
       );
       await dispatchAll(fx);
-      current = r.plaintextRefreshToken!;
+      current = assertDefined(
+        r.plaintextRefreshToken,
+        'rotation result always carries the new plaintext refresh token',
+      );
     }
     const finalRow = await fx.entities.get<AuthSessionDocument>(
       fx.tenantId,

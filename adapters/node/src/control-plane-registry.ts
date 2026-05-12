@@ -72,7 +72,6 @@ export class PostgresControlPlaneRegistry implements ControlPlaneRegistry {
           // smell (two modules claiming the same action). We don't throw
           // because the bundle ships in production and we'd rather degrade
           // than crash boot.
-          // eslint-disable-next-line no-console
           console.warn(
             `[control-plane-registry] duplicate actionId "${a.actionId}": ` +
               `previously declared by "${ownerByAction.get(a.actionId) ?? '<unknown>'}", ` +

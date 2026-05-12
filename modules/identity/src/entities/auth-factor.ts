@@ -13,7 +13,12 @@
  */
 
 import type { EntityStore } from '@atlas/ports';
-import type { AuthFactorDocument, AuthFactorKind } from '../types.ts';
+import type {
+  AuthFactorDocument,
+  AuthFactorKind,
+  WebAuthnFactorAttrs,
+} from '../types.ts';
+import { must } from '../internal/assert.ts';
 
 export const AUTH_FACTOR_ENTITY_TYPE = 'AuthFactor';
 export const AUTH_FACTOR_LATEST_VERSION = 1;
@@ -111,11 +116,19 @@ export async function findFactorByCredentialId(
       AUTH_FACTOR_ENTITY_TYPE,
       { attrsEqual: {} },
     );
-    matches = all.filter((r) => {
-      const a = r.attrs as { attrs?: { credentialId?: string } };
-      return a.attrs?.credentialId === credentialId;
-    });
+    matches = all.filter((r) => isWebAuthnAttrs(r.attrs.attrs) && r.attrs.attrs.credentialId === credentialId);
   }
   if (matches.length === 0) return null;
-  return matches[0]!.attrs;
+  return must(matches[0], 'matches.length > 0 just checked').attrs;
+}
+
+/**
+ * Discriminator helper for `AuthFactorDocument.attrs` — narrows the
+ * sub-type union to `WebAuthnFactorAttrs`. The shape carries
+ * `credentialId`, which TOTP attrs do not.
+ */
+function isWebAuthnAttrs(
+  a: AuthFactorDocument['attrs'],
+): a is WebAuthnFactorAttrs {
+  return 'credentialId' in a && typeof a.credentialId === 'string';
 }

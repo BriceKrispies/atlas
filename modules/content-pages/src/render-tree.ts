@@ -69,13 +69,34 @@ export async function buildRenderTree(
         createdAt: doc.createdAt,
       },
     });
-    return out as RenderTree;
+    if (!isRenderTree(out)) {
+      throw new Error('plugin output is not a valid RenderTree (missing version/nodes)');
+    }
+    return out;
   } catch (e) {
     logger?.warn('Render-tree plugin failed; using default tree', {
       event: 'content-pages.render-tree.plugin-failed',
-      error: { code: 'RENDER_TREE_PLUGIN_FAILED', message: (e as Error).message },
+      error: {
+        code: 'RENDER_TREE_PLUGIN_FAILED',
+        message: e instanceof Error ? e.message : String(e),
+      },
       properties: { pluginRef: doc.pluginRef, pageId: doc.pageId },
     });
     return defaultRenderTree(doc.title, doc.slug);
   }
+}
+
+/**
+ * Minimal structural guard for plugin output. Plugins own the deep shape
+ * of `nodes`; we only require the top-level `version: number` +
+ * `nodes: unknown[]` invariants so the projection won't write garbage
+ * into the render-tree entity. A shape mismatch falls back to the
+ * default tree via the catch in `buildRenderTree`.
+ */
+function isRenderTree(v: unknown): v is RenderTree {
+  if (typeof v !== 'object' || v === null) return false;
+  const candidate = v as { version?: unknown; nodes?: unknown };
+  return (
+    typeof candidate.version === 'number' && Array.isArray(candidate.nodes)
+  );
 }

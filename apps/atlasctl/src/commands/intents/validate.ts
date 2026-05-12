@@ -5,6 +5,7 @@ import { getSchemaValidator } from '@atlas/schemas';
 import { envelopeSchema, ENVELOPE_SCHEMA_ID } from '../../envelope-schema.ts';
 import { emitResult, type OutputFlags } from '../../output.ts';
 import { newCorrelationId } from '../../correlation.ts';
+import { asRecord, errorMessage, readString } from '../../json.ts';
 
 export interface ValidateOptions {
   file: string;
@@ -38,8 +39,10 @@ export function runValidate(opts: ValidateOptions, flags: OutputFlags): number {
   // Envelope-level validation passed. Try action-specific payload schema if
   // one is bundled in @atlas/schemas. Missing payload schema is not a hard
   // failure — emit a warning and let the server reject if appropriate.
-  const envelope = raw.value as Record<string, unknown>;
-  const schemaId = typeof envelope['schemaId'] === 'string' ? envelope['schemaId'] : '';
+  // (`asRecord` cannot return null here: the envelope validator above
+  // requires the value to be an object.)
+  const envelope = asRecord(raw.value) ?? {};
+  const schemaId = readString(envelope, 'schemaId') ?? '';
   const payloadValidator = schemaId !== '' ? getSchemaValidator(schemaId, 1) : null;
 
   const warnings: string[] = [];
@@ -80,12 +83,12 @@ function readJson(path: string): ReadJsonResult {
   try {
     text = path === '-' ? readStdinSync() : readFileSync(path, 'utf-8');
   } catch (e) {
-    return { ok: false, message: `failed to read ${path}: ${(e as Error).message}` };
+    return { ok: false, message: `failed to read ${path}: ${errorMessage(e)}` };
   }
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (e) {
-    return { ok: false, message: `invalid JSON in ${path}: ${(e as Error).message}` };
+    return { ok: false, message: `invalid JSON in ${path}: ${errorMessage(e)}` };
   }
 }
 

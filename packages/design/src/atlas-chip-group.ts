@@ -116,8 +116,9 @@ export class AtlasChipGroup extends AtlasElement {
   }
 
   private _handleChipChange(e: Event): void {
-    const target = e.target as HTMLElement | null;
-    if (!target || target.tagName.toLowerCase() !== 'atlas-chip') return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.tagName.toLowerCase() !== 'atlas-chip') return;
     if (target.parentElement !== this) return;
 
     const mode = this._mode();
@@ -195,9 +196,15 @@ export class AtlasChipGroup extends AtlasElement {
     const enabled = this._chips().filter((c) => !c.hasAttribute('disabled'));
     if (enabled.length === 0) return;
     // Find which chip currently owns focus (or contains the active element
-    // through its shadow root).
-    const active = (this.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
-    const idx = enabled.findIndex((c) => c === active || c.contains(active));
+    // through its shadow root). `getRootNode()` returns `Node`; only
+    // Document and ShadowRoot expose `activeElement`, and the result is
+    // an Element (not necessarily HTMLElement), so narrow with a guard
+    // rather than blind casts.
+    const root = this.getRootNode();
+    const rawActive =
+      root instanceof Document || root instanceof ShadowRoot ? root.activeElement : null;
+    const active = rawActive instanceof HTMLElement ? rawActive : null;
+    const idx = enabled.findIndex((c) => c === active || (active != null && c.contains(active)));
     if (idx < 0) return;
 
     let next = -1;

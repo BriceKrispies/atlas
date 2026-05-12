@@ -58,6 +58,28 @@ interface MountEntryArgs {
   entry: LayoutEntry;
 }
 
+/**
+ * Extract `.message` from an `unknown` caught value without an unsafe
+ * narrowing assertion. Mirrors the standard `err instanceof Error` guard
+ * the codebase uses elsewhere in this file.
+ */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Invariant assertion for "the caller's precondition guarantees this is
+ * non-null." Throws with a named invariant rather than returning
+ * `undefined` and surprising the caller far downstream — keeps the
+ * call site free of `!` non-null assertions.
+ */
+function must<T>(v: T | null | undefined, invariant: string): T {
+  if (v == null) {
+    throw new Error(`Invariant violation: ${invariant}`);
+  }
+  return v;
+}
+
 function selectHost(isolation: string): HostMountFn {
   switch (isolation) {
     case 'inline':
@@ -192,7 +214,7 @@ export class WidgetHostElement extends AtlasElement {
         telemetry('atlas.widget.unmount.threw', {
           instanceId,
           correlationId: this.correlationId,
-          message: (err as Error)?.message ?? String(err),
+          message: errMessage(err),
         }, 'error');
       }
       telemetry('atlas.widget.unmount', {
@@ -287,11 +309,11 @@ export class WidgetHostElement extends AtlasElement {
     // <atlas-layout>) so its inline grid positioning survives. Create a
     // section on the fly for any slot name that doesn't have one yet.
     const existing = new Map<string, HTMLElement>();
-    for (const sec of this.querySelectorAll(
+    for (const sec of this.querySelectorAll<HTMLElement>(
       ':scope > section[data-slot]',
     )) {
       const name = sec.getAttribute('data-slot');
-      if (name) existing.set(name, sec as HTMLElement);
+      if (name) existing.set(name, sec);
       sec.textContent = '';
     }
 
@@ -427,7 +449,7 @@ export class WidgetHostElement extends AtlasElement {
         instanceId,
         correlationId: this.correlationId,
         phase: 'incremental',
-        message: (err as Error)?.message ?? String(err),
+        message: errMessage(err),
       }, 'error');
     }
     try {
@@ -493,7 +515,7 @@ export class WidgetHostElement extends AtlasElement {
     try {
       hostStrategy = selectHost(isolation);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errMessage(err);
       this._renderWidgetError(slotEl, msg, instanceId);
       telemetry('atlas.widget.error', {
         widgetId,
@@ -510,11 +532,18 @@ export class WidgetHostElement extends AtlasElement {
     cellContainer.setAttribute('data-widget-instance-id', instanceId);
     slotEl.appendChild(cellContainer);
 
+    // `_mountEntry` is only reachable after `_mountAll` (or the
+    // `applyMutation` precondition) has populated mediator + bridge; the
+    // `must()` calls turn an unreachable code path into a named invariant
+    // rather than a silent non-null assertion.
+    const mediator = must(this._mediator, '_mediator set before _mountEntry');
+    const bridge = must(this._bridge, '_bridge set before _mountEntry');
+
     try {
-      this._mediator!.registerInstance(instanceId, manifest);
-      this._bridge!.registerInstance(instanceId, manifest);
+      mediator.registerInstance(instanceId, manifest);
+      bridge.registerInstance(instanceId, manifest);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errMessage(err);
       this._renderWidgetError(cellContainer, msg, instanceId);
       telemetry('atlas.widget.error', {
         widgetId,
@@ -532,8 +561,8 @@ export class WidgetHostElement extends AtlasElement {
       correlationId: this.correlationId,
       locale: this.locale,
       theme: this.theme,
-      mediator: this._mediator!,
-      bridge: this._bridge!,
+      mediator,
+      bridge,
       widgetInstanceId: instanceId,
       widgetManifest: manifest,
     });
@@ -544,7 +573,7 @@ export class WidgetHostElement extends AtlasElement {
 
     const onError = (err: unknown): void => {
       mountFailed = true;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errMessage(err);
       this._renderWidgetError(cellContainer, msg, instanceId);
       telemetry('atlas.widget.error', {
         widgetId,
@@ -618,7 +647,7 @@ export class WidgetHostElement extends AtlasElement {
             instanceId,
             correlationId: this.correlationId,
             phase: 'tracker-closure',
-            message: (err as Error)?.message ?? String(err),
+            message: errMessage(err),
           }, 'error');
         }
       },

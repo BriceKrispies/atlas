@@ -28,12 +28,15 @@ export type MockCapabilitySpec = Record<string, MockCapabilityRule[]>;
 
 export type CapabilityFn = (args: unknown) => Promise<unknown>;
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function argsMatch(match: Record<string, unknown> | undefined, args: unknown): boolean {
   if (!match || typeof match !== 'object') return true;
-  if (!args || typeof args !== 'object') return false;
-  const a = args as Record<string, unknown>;
+  if (!isRecord(args)) return false;
   for (const [k, v] of Object.entries(match)) {
-    if (a[k] !== v) return false;
+    if (args[k] !== v) return false;
   }
   return true;
 }

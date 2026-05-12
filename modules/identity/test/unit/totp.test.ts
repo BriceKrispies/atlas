@@ -19,6 +19,7 @@ import {
   DEFAULT_IDENTITY_POLICY,
   type TotpFactorAttrs,
   type AuthFactorDocument,
+  type WebAuthnFactorAttrs,
 } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 
@@ -45,9 +46,15 @@ function codeFor(
   factor: AuthFactorDocument,
   fx: ReturnType<typeof newFixture>,
 ): string {
-  const attrs = factor.attrs as TotpFactorAttrs;
-  const secret = decryptSecret(attrs.encryptedSecret, fx.tenantId, fx.secrets);
+  if (!isTotpAttrs(factor.attrs)) {
+    throw new Error('Test fixture invariant: factor under test is not a TOTP factor');
+  }
+  const secret = decryptSecret(factor.attrs.encryptedSecret, fx.tenantId, fx.secrets);
   return hotp(secret, Math.floor(Date.now() / 1000 / 30));
+}
+
+function isTotpAttrs(a: AuthFactorDocument['attrs']): a is TotpFactorAttrs {
+  return 'encryptedSecret' in a && typeof a.encryptedSecret === 'string';
 }
 
 describe('handleTotpEnroll', () => {
@@ -77,7 +84,7 @@ describe('handleTotpEnroll', () => {
     const r = await enroll(fx);
     const docJson = JSON.stringify(r.document);
     expect(docJson).not.toContain(r.plaintextBase32);
-    const eventJson = JSON.stringify(fx.events.events, (_k, v) =>
+    const eventJson = JSON.stringify(fx.events.events, (_k, v: unknown) =>
       typeof v === 'bigint' ? v.toString() : v,
     );
     expect(eventJson).not.toContain(r.plaintextBase32);
@@ -152,7 +159,14 @@ describe('handleTotpChallenge — error paths', () => {
 
   it('rejects challenge against a non-totp factor with MFA_FACTOR_NOT_FOUND', async () => {
     const fx = newFixture();
-    // Manually inject a factor with kind=webauthn.
+    // Manually inject a factor with kind=webauthn. Use a valid
+    // WebAuthnFactorAttrs shape; this test exercises the
+    // non-totp rejection path so the inner values don't matter.
+    const webauthnAttrs: WebAuthnFactorAttrs = {
+      credentialId: 'fake',
+      publicKey: 'fake',
+      signCount: 0,
+    };
     await fx.entities.put<AuthFactorDocument>({
       tenantId: fx.tenantId,
       entityType: 'AuthFactor',
@@ -161,8 +175,8 @@ describe('handleTotpChallenge — error paths', () => {
         factorId: 'fct-webauthn',
         tenantId: fx.tenantId,
         userId: 'user-1',
-        kind: 'webauthn',
-        attrs: { publicKey: 'fake', credentialId: 'fake', counter: 0 } as never,
+        kind: 'webauthn_mfa',
+        attrs: webauthnAttrs,
         status: 'active',
         name: 'security key',
         enrolledAt: new Date().toISOString(),

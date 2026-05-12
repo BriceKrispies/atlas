@@ -20,39 +20,23 @@ import { serverEventDispatcher } from '../events/dispatcher.ts';
 import { eventsRoutes } from './events.ts';
 import { principalMiddleware, type ServerVariables } from '../middleware/principal.ts';
 import { executionContextMiddleware } from '../middleware/execution-context.ts';
-import {
-  CollectorSink,
-  InMemoryLevelController,
-  LogPipeline,
-} from '@atlas/logging';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventEnvelope } from '@atlas/platform-core';
+import { buildFakeAppState } from '../../test/lib/factories.ts';
 
+/**
+ * Build an `AppState` for the events SSE route test. We lean on
+ * `buildFakeAppState` for the standard fields (config, log pipeline,
+ * throw-on-access proxies for everything the route doesn't read) and
+ * override `serverEvents` with a real `ServerEventBroadcast` because
+ * the route subscribes to it for fan-out.
+ */
 function makeState(broadcast: ServerEventBroadcast): AppState {
-  const config = {
-    port: 3000,
-    controlPlaneDbUrl: 'postgres://unused',
-    oidc: { issuerUrl: '', jwksUrl: '', audience: '' },
-    testAuth: { enabled: true, debugEndpoints: false },
-    tenantId: 'default-tenant',
-    rustLog: '',
-    environment: 'test' as const,
-    policyEngine: 'stub' as const,
-  };
-  const levelController = new InMemoryLevelController('debug');
-  const logPipeline = new LogPipeline([new CollectorSink()], levelController);
-  return {
-    config,
-    logPipeline,
-    levelController,
-    controlPlaneSql: null as never,
-    tenantDb: null as never,
-    controlPlaneRegistry: null as never,
-    jwks: null,
-    migratedTenants: new Set<string>(),
-    policyEngine: null as never,
-    wasmHost: null as never,
-    serverEvents: broadcast,
-  } as unknown as AppState;
+  const { state } = buildFakeAppState({ tenantId: 'default-tenant' });
+  // AppState fields are `readonly`; rebuild a new shallow copy with
+  // `serverEvents` overridden. Spreading preserves the typed proxies
+  // installed by `buildFakeAppState` for the unused adapter fields.
+  return { ...state, serverEvents: broadcast };
 }
 
 function buildApp(state: AppState): Hono<{ Variables: ServerVariables }> {
@@ -73,7 +57,10 @@ async function readFrames(
   expected: number,
   timeoutMs = 1000,
 ): Promise<Array<{ event: string; data: string; id: string }>> {
-  const reader = res.body!.getReader();
+  const reader = assertDefined(
+    res.body,
+    'SSE response must have a body to stream',
+  ).getReader();
   const decoder = new TextDecoder();
   const frames: Array<{ event: string; data: string; id: string }> = [];
   let buffer = '';
@@ -118,6 +105,20 @@ async function readFrames(
   return frames;
 }
 
+/**
+ * Parse an SSE `data:` payload (`JSON.parse` returns `any`) and narrow to
+ * `Record<string, unknown>` via a runtime check. Tests then index by
+ * string key without further casts — each `expect(data[key])` reads an
+ * `unknown` slot, which is what the assertions consume.
+ */
+function parseDataObject(raw: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`expected JSON object frame, got ${typeof parsed}`);
+  }
+  return Object.fromEntries(Object.entries(parsed));
+}
+
 describe('GET /api/v1/events', () => {
   let broadcast: ServerEventBroadcast;
   let app: Hono<{ Variables: ServerVariables }>;
@@ -159,7 +160,7 @@ describe('GET /api/v1/events', () => {
     if (!frame) throw new Error('unreachable');
     expect(frame.event).toBe('projection.updated');
     expect(frame.id).toBe('1');
-    const data = JSON.parse(frame.data) as Record<string, unknown>;
+    const data = parseDataObject(frame.data);
     expect(data['eventType']).toBe('projection.updated');
     expect(data['resourceType']).toBe('page');
     expect(data['resourceId']).toBe('page-42');
@@ -198,7 +199,7 @@ describe('GET /api/v1/events', () => {
     expect(frames).toHaveLength(1);
     const first = frames[0];
     if (!first) throw new Error('unreachable');
-    const data = JSON.parse(first.data) as Record<string, unknown>;
+    const data = parseDataObject(first.data);
     expect(data['resourceId']).toBe('page-mine');
   });
 

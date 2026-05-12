@@ -121,7 +121,8 @@ describe('SingleFlight', () => {
       if (!r.ok) {
         // All waiters see the same error message (Rust semantics:
         // String error cloned to all callers).
-        expect((r.e as Error).message).toBe('computation failed');
+        const message = r.e instanceof Error ? r.e.message : String(r.e);
+        expect(message).toBe('computation failed');
       }
     }
   });

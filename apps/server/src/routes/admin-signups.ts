@@ -41,6 +41,17 @@ function readString(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+/** Type guard for plain JSON objects (not arrays, not null). */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Narrow a thrown value to a printable message. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function requireAdmin(
   _state: AppState,
   c: AppCtx,
@@ -111,7 +122,19 @@ export function adminSignupRoutes(
     const correlationId = correlationIdFor(c);
     const denied = requireAdmin(state, c, correlationId);
     if (denied) return denied;
+    // `requireAdmin` guarantees a principal — but TS can't track that
+    // across the helper boundary. Re-read + explicit null guard avoids
+    // a non-null assertion and keeps the type narrowed in this scope.
     const principal = c.get('principal');
+    if (!principal) {
+      return errorResponse(
+        c,
+        'PRINCIPAL_INVALID',
+        'authentication required',
+        401,
+        correlationId,
+      );
+    }
     const signupId = c.req.param('id');
     if (!signupId) {
       return errorResponse(
@@ -126,7 +149,7 @@ export function adminSignupRoutes(
       const result = await handleSignupApprove(
         {
           signupId,
-          principalId: principal!.principalId,
+          principalId: principal.principalId,
           correlationId,
         },
         {
@@ -204,7 +227,18 @@ export function adminSignupRoutes(
     const correlationId = correlationIdFor(c);
     const denied = requireAdmin(state, c, correlationId);
     if (denied) return denied;
+    // See approve route — `requireAdmin` already established this is set,
+    // but the type system needs the explicit re-narrow.
     const principal = c.get('principal');
+    if (!principal) {
+      return errorResponse(
+        c,
+        'PRINCIPAL_INVALID',
+        'authentication required',
+        401,
+        correlationId,
+      );
+    }
     const signupId = c.req.param('id');
     if (!signupId) {
       return errorResponse(
@@ -215,31 +249,31 @@ export function adminSignupRoutes(
         correlationId,
       );
     }
-    interface Body {
-      reason?: unknown;
-    }
-    let body: Body = {};
+    // Body is OPTIONAL on this route. On parse failure / non-object we
+    // fall back to `{}` (default reason). The warn log preserves the
+    // diagnostic the previous version emitted.
+    let rawBody: unknown = {};
     try {
-      body = (await c.req.json()) as Body;
+      rawBody = await c.req.json();
     } catch (e) {
-      // Allow empty body — default reason.
       c.get('ctx').logger.warn('admin signup deny body parse failed; using default reason', {
         event: 'AdminSignup.Deny.BodyParseFailed',
         properties: {
-          principalId: principal!.principalId,
-          tenantId: principal!.tenantId,
+          principalId: principal.principalId,
+          tenantId: principal.tenantId,
           signupId,
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
     }
-    const reason = readString(body.reason) ?? 'denied by admin';
+    const body: Record<string, unknown> = isJsonObject(rawBody) ? rawBody : {};
+    const reason = readString(body['reason']) ?? 'denied by admin';
     try {
       const result = await handleSignupDeny(
         {
           signupId,
           reason,
-          principalId: principal!.principalId,
+          principalId: principal.principalId,
           correlationId,
         },
         { signupRequests: state.signupRequests, logger: c.get('ctx').logger },

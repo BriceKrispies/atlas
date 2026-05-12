@@ -10,6 +10,40 @@ import type {
   AuthFactorDocument,
   WebAuthnFactorAttrs,
 } from '../types.ts';
+
+/**
+ * Type guard: `attrs` matches the WebAuthn variant of the discriminated
+ * union. `kind === 'passkey' | 'webauthn_mfa'` discriminates `attrs` in
+ * the stored shape but TS doesn't propagate that narrowing through the
+ * `factor.kind` check, so this guard does the runtime probe.
+ *
+ * The probe checks `credentialId` (string) — the field that
+ * distinguishes WebAuthn from TOTP attrs. A factor whose `kind` says
+ * WebAuthn but whose `attrs` doesn't carry `credentialId` is a
+ * persisted-shape invariant violation.
+ */
+function isWebAuthnAttrs(
+  attrs: AuthFactorDocument['attrs'],
+): attrs is WebAuthnFactorAttrs {
+  return 'credentialId' in attrs && typeof attrs.credentialId === 'string';
+}
+
+function readWebAuthnAttrs(factor: AuthFactorDocument): WebAuthnFactorAttrs {
+  if (!isWebAuthnAttrs(factor.attrs)) {
+    throw new IdentityError(
+      codes.WEBAUTHN_VERIFICATION_FAILED,
+      `factor ${factor.factorId} (kind=${factor.kind}) is missing WebAuthn attrs`,
+      500,
+    );
+  }
+  return factor.attrs;
+}
+
+/** Narrow a caught `unknown` to its `Error.message`. */
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
 import { newEventId } from '../ids.ts';
 import {
   deleteWebAuthnChallenge,
@@ -72,8 +106,8 @@ export async function handleWebAuthnAssertBegin(
     );
     allow = factors
       .map((f) => {
-        const a = f.attrs as WebAuthnFactorAttrs;
-        return a.credentialId ? { id: a.credentialId } : null;
+        if (!isWebAuthnAttrs(f.attrs)) return null;
+        return f.attrs.credentialId ? { id: f.attrs.credentialId } : null;
       })
       .filter((v): v is { id: string } => v !== null);
   }
@@ -196,7 +230,7 @@ export async function handleWebAuthnAssertFinish(
     );
   }
 
-  const wAttrs = factor.attrs as WebAuthnFactorAttrs;
+  const wAttrs = readWebAuthnAttrs(factor);
   let verification;
   try {
     verification = await verifyAuthenticationResponse({
@@ -214,7 +248,7 @@ export async function handleWebAuthnAssertFinish(
   } catch (e) {
     throw new IdentityError(
       codes.WEBAUTHN_VERIFICATION_FAILED,
-      `assertion verification failed: ${(e as Error).message}`,
+      `assertion verification failed: ${errorMessage(e)}`,
       401,
     );
   }

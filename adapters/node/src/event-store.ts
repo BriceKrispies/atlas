@@ -17,6 +17,8 @@ import { IngressError, type EventEnvelope } from '@atlas/platform-core';
 import type { EventStore, StoredEvent } from '@atlas/ports';
 import type postgres from 'postgres';
 
+import { jsonParam } from './seeds/sql-json.ts';
+
 interface EventRow {
   event_id: string;
   event_type: string;
@@ -88,17 +90,18 @@ export class PostgresEventStore implements EventStore {
         ${envelope.causationId ?? null},
         ${envelope.principalId ?? null},
         ${envelope.userId ?? null},
-        ${this.sql.json(envelope.payload as never)},
-        ${tags as unknown as string[] | null}
+        ${jsonParam(this.sql, envelope.payload)},
+        ${tags === null ? this.sql`NULL` : this.sql.array(tags)}
       )
       ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
       RETURNING event_id, seq
     `;
-    if (inserted.length > 0) {
+    const insertedRow = inserted[0];
+    if (insertedRow) {
       return {
         ...envelope,
-        eventId: inserted[0]!.event_id,
-        seq: toBigInt(inserted[0]!.seq),
+        eventId: insertedRow.event_id,
+        seq: toBigInt(insertedRow.seq),
       };
     }
     // Idempotency hit — return the existing record with full row data.
@@ -111,7 +114,8 @@ export class PostgresEventStore implements EventStore {
         AND idempotency_key = ${envelope.idempotencyKey}
       LIMIT 1
     `;
-    if (existing.length === 0) {
+    const existingRow = existing[0];
+    if (!existingRow) {
       // Rare race: INSERT was a no-op (someone else won the conflict) but
       // the follow-up SELECT also returned nothing. Surface as the
       // canonical `STORAGE_FAILED` so the boundary middleware in
@@ -123,7 +127,7 @@ export class PostgresEventStore implements EventStore {
         '',
       );
     }
-    return rowToEnvelope(existing[0]!);
+    return rowToEnvelope(existingRow);
   }
 
   async findByIdempotencyKey(

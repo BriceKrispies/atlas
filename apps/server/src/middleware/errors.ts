@@ -70,6 +70,18 @@ export interface ErrorEnvelope {
   };
 }
 
+/**
+ * Narrow an unknown thrown value to a human-readable string. `instanceof
+ * Error` covers the common case; any other shape falls back to `String(v)`.
+ * Use for catch-block-to-log-property paths so routes never blind-cast a
+ * caught `unknown` to `Error` (the type-assertion ESLint rule forbids
+ * that — throwables in JS can be anything).
+ */
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function newSupportId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -101,6 +113,28 @@ export function errorResponse(
 ): Response {
   return c.json(
     errorEnvelope(code, message, correlationId),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: Hono types ContentfulStatusCode as a narrow string-union of valid status codes; status arrives as a runtime `number` from module/handler error classes. We accept the cast at this single chokepoint so callers don't each pay for it.
+    status as ContentfulStatusCode,
+  );
+}
+
+/**
+ * Variant of `errorResponse` that takes a pre-built envelope. Used when
+ * the caller needs to log the envelope's `supportId` BEFORE responding
+ * so the log line and the user-facing supportId match (the A7 routes
+ * pair every failure with this contract — see `routes/identity-a7.ts`).
+ *
+ * Pays the `ContentfulStatusCode` cast in one place so callers don't
+ * each repeat it.
+ */
+export function jsonErrorEnvelope(
+  c: Context,
+  envelope: ErrorEnvelope,
+  status: number,
+): Response {
+  return c.json(
+    envelope,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: see errorResponse() — same Hono ContentfulStatusCode impedance.
     status as ContentfulStatusCode,
   );
 }

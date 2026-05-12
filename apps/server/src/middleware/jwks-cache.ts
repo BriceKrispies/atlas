@@ -63,8 +63,8 @@ export class JwksCache {
       !existing ||
       uriChanged ||
       (wantsRefetch && refetchAllowed);
-    if (!shouldRebuild) {
-      return existing!.resolver;
+    if (existing && !shouldRebuild) {
+      return existing.resolver;
     }
     const resolver = createRemoteJWKSet(new URL(jwksUri));
     this.entries.set(k, { resolver, fetchedAt: now, jwksUri });

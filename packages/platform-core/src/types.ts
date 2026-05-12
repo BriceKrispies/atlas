@@ -1,6 +1,19 @@
-export interface EventEnvelope {
+/**
+ * Generic event envelope.
+ *
+ * `TType` and `TPayload` are generic so consumers that know the event
+ * type at compile time (e.g. a module's typed event union — see
+ * `modules/identity/src/events.ts`) get exhaustive narrowing via
+ * discriminated-union switches. Defaults preserve the historical
+ * `EventEnvelope` (string `eventType`, `unknown` payload) so existing
+ * consumers compile unchanged.
+ */
+export interface EventEnvelope<
+  TType extends string = string,
+  TPayload = unknown,
+> {
   eventId: string;
-  eventType: string;
+  eventType: TType;
   schemaId: string;
   schemaVersion: number;
   occurredAt: string;
@@ -26,7 +39,7 @@ export interface EventEnvelope {
    * platform-side cleanup job uses it to gate row-level deletes.
    */
   retentionTag?: string;
-  payload: unknown;
+  payload: TPayload;
   /**
    * Per-tenant monotonic sequence number, populated by the EventStore on
    * append. Workers consume events in seq order using a per-(module,
@@ -42,7 +55,19 @@ export interface EventEnvelope {
   seq?: bigint;
 }
 
-export interface IntentEnvelope {
+/**
+ * Generic intent envelope.
+ *
+ * `TPayload` defaults to `IntentPayload` so the historical
+ * `IntentEnvelope` shape — used by `apps/server` ingress, every other
+ * module's handler closures, and the test harness — keeps compiling
+ * unchanged. Modules that have introduced typed payload unions (see
+ * `modules/identity/src/intents.ts`) can specialise to get
+ * field-level narrowing in their handler registry without the
+ * `payload as Record<string, unknown>` cast + `readString`/`readNumber`
+ * shim ladder.
+ */
+export interface IntentEnvelope<TPayload extends IntentPayload = IntentPayload> {
   eventId?: string;
   eventType: string;
   schemaId: string;
@@ -54,7 +79,7 @@ export interface IntentEnvelope {
   causationId?: string | null;
   principalId?: string | null;
   userId?: string | null;
-  payload: IntentPayload;
+  payload: TPayload;
 }
 
 export interface IntentPayload {
@@ -113,14 +138,12 @@ export interface CacheSetOptions {
 /**
  * A server-side event published to connected clients via SSE or WebSocket.
  *
- * Mirrors `crates/ingress/src/events.rs::ServerEvent`. Intentionally
- * minimal: clients receive the event type and resource identifiers, then
- * query the API for full data if needed.
+ * Intentionally minimal: clients receive the event type and resource
+ * identifiers, then query the API for full data if needed.
  *
  * `tenantId` is used by the SSE handler to filter the per-subscriber
- * stream. The Rust counterpart marks it `#[serde(skip)]` so it never
- * leaves the server; the TS handler likewise omits it from the wire
- * payload before serialising.
+ * stream and is omitted from the wire payload before serialising — it
+ * never leaves the server.
  */
 export interface ServerEvent {
   /** Domain event type (e.g., "projection.updated", "cache.invalidated") */
@@ -146,10 +169,9 @@ export interface ServerEvent {
 }
 
 /**
- * Analytics event matching the Rust `AnalyticsEvent` shape
- * (`crates/core/src/types.rs`), surfaced for the TS `AnalyticsStore` port.
+ * Analytics event shape surfaced for the `AnalyticsStore` port.
  *
- * `occurredAt` is an ISO-8601 timestamp string (the TS surface uses
+ * `occurredAt` is an ISO-8601 timestamp string (the surface uses
  * lexicographic comparison for time-window filters; ISO-8601 sorts the
  * same way chronologically).
  */

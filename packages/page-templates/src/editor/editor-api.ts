@@ -131,14 +131,20 @@ export function freshInstanceId(widgetId: string | null | undefined): string {
  * out of scope; widget schemas in this repo are flat.
  */
 function schemaDefaults(schema: unknown): Record<string, unknown> {
-  if (!schema || typeof schema !== 'object') return {};
-  const props = (schema as { properties?: unknown }).properties;
-  if (!props || typeof props !== 'object') return {};
+  if (schema === null || typeof schema !== 'object' || !('properties' in schema)) {
+    return {};
+  }
+  const props: unknown = schema.properties;
+  if (props === null || typeof props !== 'object') return {};
   const out: Record<string, unknown> = {};
-  for (const key of Object.keys(props as Record<string, unknown>)) {
-    const prop = (props as Record<string, unknown>)[key];
-    if (prop && typeof prop === 'object' && 'default' in (prop as object)) {
-      out[key] = (prop as { default: unknown }).default;
+  // `props` is an unknown object; index reads via Reflect.get keep the
+  // value typed as `unknown` (avoids both `as Record<…>` casts and the
+  // implicit `any` from Object.entries on an `object`).
+  for (const key of Object.keys(props)) {
+    const prop: unknown = Reflect.get(props, key);
+    if (prop !== null && typeof prop === 'object' && 'default' in prop) {
+      const def: unknown = prop.default;
+      out[key] = def;
     }
   }
   return out;
@@ -219,52 +225,66 @@ export class EditorAPI {
   /**
    * Pure validation — would this call succeed right now? Handy for
    * highlighting drop zones without performing the mutation.
+   *
+   * Overloads bind each `op` literal to its matching args shape, so the
+   * call site is type-checked. The implementation routes through the
+   * already-typed `add` / `move` / `update` / `remove` paths without
+   * persisting (rolls back after each dry-run).
    */
+  can(op: 'add', args: AddArgs): ApiResult;
+  can(op: 'move', args: MoveArgs): ApiResult;
+  can(op: 'update', args: UpdateArgs): ApiResult;
+  can(op: 'remove', args: RemoveArgs): ApiResult;
   can(op: ApiOp, args: AddArgs | MoveArgs | UpdateArgs | RemoveArgs): ApiResult {
     if (!this._isEditable()) return { ok: false, reason: 'not-editable' };
+    const preDoc = this._controller.doc;
+    const result = this._dryRun(op, args);
+    if (result === null) return { ok: false, reason: 'invalid-entry' };
+    if (result.ok) this._controller.setDoc(preDoc); // roll back dry-run
+    return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+  }
+
+  /**
+   * Apply the matching controller primitive without rolling back. The
+   * caller (`can`) handles the rollback. Args are routed by `op` using
+   * `in` narrowing on the discriminating fields so no `as` casts are
+   * needed; if the op/args pair doesn't fit any branch we return null
+   * and the caller maps that to `invalid-entry`.
+   */
+  private _dryRun(
+    op: ApiOp,
+    args: AddArgs | MoveArgs | UpdateArgs | RemoveArgs,
+  ): ApplyResult | null {
     switch (op) {
-      case 'add': {
-        const addArgs = args as AddArgs;
-        const entry = {
-          widgetId: addArgs.widgetId,
-          instanceId: addArgs.instanceId ?? freshInstanceId(addArgs.widgetId),
-          config: addArgs.config ?? {},
-        };
-        // Dry-run: ask the controller without committing. We clone the
-        // doc ourselves so we don't accidentally mutate the live one via
-        // a bug.
-        const preDoc = this._controller.doc;
-        const result = this._controller.applyAdd({
-          entry,
-          region: addArgs.region,
-          ...(addArgs.index !== undefined ? { index: addArgs.index } : {}),
+      case 'add':
+        if (!('widgetId' in args) || !('region' in args)) return null;
+        return this._controller.applyAdd({
+          entry: {
+            widgetId: args.widgetId,
+            instanceId: args.instanceId ?? freshInstanceId(args.widgetId),
+            config: args.config ?? {},
+          },
+          region: args.region,
+          ...(args.index !== undefined ? { index: args.index } : {}),
         });
-        if (result.ok) this._controller.setDoc(preDoc); // roll back
-        return result.ok ? { ok: true } : { ok: false, reason: result.reason };
-      }
-      case 'move': {
-        const moveArgs = args as MoveArgs;
-        const preDoc = this._controller.doc;
-        const result = this._controller.applyMove(moveArgs);
-        if (result.ok) this._controller.setDoc(preDoc);
-        return result.ok ? { ok: true } : { ok: false, reason: result.reason };
-      }
-      case 'update': {
-        const updArgs = args as UpdateArgs;
-        const preDoc = this._controller.doc;
-        const result = this._controller.applyUpdate(updArgs);
-        if (result.ok) this._controller.setDoc(preDoc);
-        return result.ok ? { ok: true } : { ok: false, reason: result.reason };
-      }
-      case 'remove': {
-        const remArgs = args as RemoveArgs;
-        const preDoc = this._controller.doc;
-        const result = this._controller.applyRemove(remArgs);
-        if (result.ok) this._controller.setDoc(preDoc);
-        return result.ok ? { ok: true } : { ok: false, reason: result.reason };
-      }
+      case 'move':
+        if (!('instanceId' in args) || !('region' in args)) return null;
+        return this._controller.applyMove({
+          instanceId: args.instanceId,
+          region: args.region,
+          ...(args.index !== undefined ? { index: args.index } : {}),
+        });
+      case 'update':
+        if (!('instanceId' in args) || !('config' in args)) return null;
+        return this._controller.applyUpdate({
+          instanceId: args.instanceId,
+          config: args.config,
+        });
+      case 'remove':
+        if (!('instanceId' in args)) return null;
+        return this._controller.applyRemove({ instanceId: args.instanceId });
       default:
-        return { ok: false, reason: 'invalid-entry' };
+        return null;
     }
   }
 
@@ -353,7 +373,7 @@ export class EditorAPI {
         ...(result.to !== undefined ? { to: result.to } : {}),
       });
     } catch (err) {
-      const message = (err as Error | undefined)?.message ?? String(err);
+      const message = err instanceof Error ? err.message : String(err);
       this._announce(`Save failed: ${message}`);
       this._telemetry('atlas.content-page.save.error', { message });
       return { ok: false, reason: 'persist-failed', message };

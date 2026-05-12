@@ -101,7 +101,6 @@ export interface SimFixtures {
 }
 
 export const test = base.extend<SimFixtures>({
-  // eslint-disable-next-line no-empty-pattern
   tenantId: async ({}, use) => {
     await use(uniqueTenantId('bdd'));
   },
@@ -117,7 +116,6 @@ export const test = base.extend<SimFixtures>({
     await deleteSimDb(page, tenantId);
   },
 
-  // eslint-disable-next-line no-empty-pattern
   world: async ({}, use) => {
     const w = createWorld();
     await use(w);
@@ -140,7 +138,6 @@ export const test = base.extend<SimFixtures>({
     await use(fn);
   },
 
-  // eslint-disable-next-line no-empty-pattern
   mintedTenants: async ({}, use) => {
     const list: AdditionalTenant[] = [];
     await use(list);

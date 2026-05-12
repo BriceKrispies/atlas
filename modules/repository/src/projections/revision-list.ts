@@ -26,6 +26,12 @@ import type { RepositoryRevisionStore } from '@atlas/ports';
 import { REPOSITORY_UPLOADED_EVENT_TYPE } from '../events.ts';
 import type { RepositoryUploadedPayload } from '../types.ts';
 
+function isRepositoryUploadedEvent(
+  envelope: EventEnvelope,
+): envelope is EventEnvelope<'Repository.Uploaded', RepositoryUploadedPayload> {
+  return envelope.eventType === REPOSITORY_UPLOADED_EVENT_TYPE;
+}
+
 /**
  * Apply a single envelope to the revision-metadata read-model.
  * No-op for events outside the consumed set, or when the metadata row
@@ -35,8 +41,8 @@ export async function applyRevisionList(
   envelope: EventEnvelope,
   revisions: RepositoryRevisionStore,
 ): Promise<void> {
-  if (envelope.eventType !== REPOSITORY_UPLOADED_EVENT_TYPE) return;
-  const payload = envelope.payload as RepositoryUploadedPayload;
+  if (!isRepositoryUploadedEvent(envelope)) return;
+  const payload = envelope.payload;
 
   const existing = await revisions.getMetadata(
     envelope.tenantId,

@@ -1,6 +1,29 @@
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { applyPatch, diff, keyOf } from '../src/data-source/patch.ts';
 import type { RowPatch } from '../src/data-source/types.ts';
+
+/**
+ * Narrow a RowPatch to its `remove` branch. Throws if the patch isn't a
+ * remove — used so callers can read `.rowKey` without an `as` cast.
+ */
+function asRemove<R extends Record<string, unknown>>(
+  p: RowPatch<R>,
+): Extract<RowPatch<R>, { type: 'remove' }> {
+  if (p.type !== 'remove') throw new Error(`expected RowPatch.type='remove', got '${p.type}'`);
+  return p;
+}
+
+/**
+ * Narrow a RowPatch to its `upsert` branch. Throws if the patch isn't an
+ * upsert — used so callers can read `.row` without an `as` cast.
+ */
+function asUpsert<R extends Record<string, unknown>>(
+  p: RowPatch<R>,
+): Extract<RowPatch<R>, { type: 'upsert' }> {
+  if (p.type !== 'upsert') throw new Error(`expected RowPatch.type='upsert', got '${p.type}'`);
+  return p;
+}
 
 describe('patch helpers', () => {
   it('keyOf handles string field, function, and id fallback', () => {
@@ -51,21 +74,22 @@ describe('patch helpers', () => {
   it('diff detects removed rows', () => {
     const patches = diff([{ id: 1 }, { id: 2 }], [{ id: 1 }], 'id');
     expect(patches.length).toBe(1);
-    expect(patches[0]!.type).toBe('remove');
-    expect((patches[0] as { type: 'remove'; rowKey: unknown }).rowKey).toBe(2);
+    const first = assertDefined(patches[0], 'diff should emit one remove patch');
+    expect(asRemove(first).rowKey).toBe(2);
   });
 
   it('diff detects added rows', () => {
     const patches = diff([{ id: 1 }], [{ id: 1 }, { id: 2 }], 'id');
     expect(patches.length).toBe(1);
-    expect(patches[0]!.type).toBe('upsert');
-    expect((patches[0] as { type: 'upsert'; row: unknown }).row).toEqual({ id: 2 });
+    const first = assertDefined(patches[0], 'diff should emit one upsert patch');
+    expect(asUpsert(first).row).toEqual({ id: 2 });
   });
 
   it('diff detects updated rows via shallow equality', () => {
     const patches = diff([{ id: 1, t: 'a' }], [{ id: 1, t: 'b' }], 'id');
     expect(patches.length).toBe(1);
-    expect(patches[0]!.type).toBe('upsert');
+    const first = assertDefined(patches[0], 'diff should emit one upsert patch');
+    expect(first.type).toBe('upsert');
   });
 
   it('diff is empty when rows are shallowly equal', () => {
@@ -74,16 +98,25 @@ describe('patch helpers', () => {
   });
 
   it('diff round-trip via applyPatch reproduces next', () => {
-    type Row = { id: number; t: string };
-    const prev: Row[] = [{ id: 1, t: 'a' }, { id: 2, t: 'b' }];
-    const next: Row[] = [{ id: 2, t: 'b' }, { id: 3, t: 'c' }];
-    const patches: RowPatch[] = diff(prev, next, 'id');
-    const applied = patches.reduce<Row[]>(
-      (rows, p) => applyPatch(rows, p, 'id') as Row[],
+    interface RoundTripRow extends Record<string, unknown> {
+      id: number;
+      t: string;
+    }
+    const prev: RoundTripRow[] = [
+      { id: 1, t: 'a' },
+      { id: 2, t: 'b' },
+    ];
+    const next: RoundTripRow[] = [
+      { id: 2, t: 'b' },
+      { id: 3, t: 'c' },
+    ];
+    const patches: RowPatch<RoundTripRow>[] = diff(prev, next, 'id');
+    const applied = patches.reduce<RoundTripRow[]>(
+      (rows, p) => applyPatch(rows, p, 'id'),
       prev,
     );
     // Order can differ because applyPatch appends; normalize before comparing.
-    const sort = (rs: Row[]): Row[] => rs.slice().sort((a, b) => a.id - b.id);
+    const sort = (rs: RoundTripRow[]): RoundTripRow[] => rs.slice().sort((a, b) => a.id - b.id);
     expect(sort(applied)).toEqual(sort(next));
   });
 });

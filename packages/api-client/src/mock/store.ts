@@ -114,10 +114,12 @@ export function subscribe(
   eventType: string,
   callback: BackendEventCallback
 ): Unsubscribe {
-  if (!listeners.has(eventType)) {
-    listeners.set(eventType, new Set());
+  let set = listeners.get(eventType);
+  if (!set) {
+    set = new Set();
+    listeners.set(eventType, set);
   }
-  listeners.get(eventType)!.add(callback);
+  set.add(callback);
   return () => {
     listeners.get(eventType)?.delete(callback);
   };

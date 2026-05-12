@@ -34,8 +34,9 @@ const VALID_ENVIRONMENTS: ReadonlyArray<AtlasEnvironment> = [
 ];
 
 function parseEnvironment(raw: string | undefined): AtlasEnvironment {
-  if (raw && (VALID_ENVIRONMENTS as readonly string[]).includes(raw)) {
-    return raw as AtlasEnvironment;
+  if (!raw) return 'development';
+  for (const env of VALID_ENVIRONMENTS) {
+    if (env === raw) return env;
   }
   return 'development';
 }

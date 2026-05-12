@@ -18,6 +18,19 @@ import {
 } from '../crypto/totp.ts';
 import { getAuthFactorEntity } from '../entities/auth-factor.ts';
 
+/**
+ * Runtime guard narrowing `AuthFactorDocument['attrs']` to the TOTP
+ * sub-shape. The `attrs` union (`TotpFactorAttrs | WebAuthnFactorAttrs`)
+ * is not discriminated by the parent `kind` field, so callers that have
+ * already asserted `kind === 'totp'` still need a structural guard to
+ * narrow without a type assertion.
+ */
+function isTotpAttrs(
+  a: AuthFactorDocument['attrs'],
+): a is TotpFactorAttrs {
+  return 'encryptedSecret' in a && typeof a.encryptedSecret === 'string';
+}
+
 // =====================================================================
 // Enroll (begin + finish).
 // =====================================================================
@@ -187,14 +200,24 @@ export async function handleTotpChallenge(
       401,
     );
   }
-  const totpAttrs = factor.attrs as TotpFactorAttrs;
+  // `kind === 'totp'` was already checked above; narrow `attrs` to the
+  // TOTP sub-shape via a runtime guard (the `attrs` union is not
+  // discriminated by `kind` at the type level).
+  if (!isTotpAttrs(factor.attrs)) {
+    throw new IdentityError(
+      codes.MFA_FACTOR_NOT_FOUND,
+      `factor ${cmd.factorId} has non-TOTP attrs despite kind=totp`,
+      500,
+    );
+  }
+  const totpAttrs = factor.attrs;
   let secret: Uint8Array;
   try {
     secret = decryptSecret(totpAttrs.encryptedSecret, cmd.tenantId, secrets);
   } catch (e) {
     throw new IdentityError(
       codes.MFA_CHALLENGE_INVALID,
-      `failed to decrypt TOTP secret: ${(e as Error).message}`,
+      `failed to decrypt TOTP secret: ${e instanceof Error ? e.message : String(e)}`,
       500,
     );
   }

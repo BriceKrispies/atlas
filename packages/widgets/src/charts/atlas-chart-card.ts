@@ -88,24 +88,22 @@ class AtlasChartCard extends AtlasElement {
 
     // Listen for chart point-click to commit selection or drilldown.
     this.addEventListener('point-click', (ev: Event) => {
-      const detail = (ev as CustomEvent).detail as {
-        seriesId?: string;
-        seriesIdx?: number;
-        index?: number;
-      } | null ?? {};
+      const detail = readPointClickDetail(ev);
       const seriesId = detail.seriesId ?? this._seriesIdFor(detail.seriesIdx);
       if (seriesId == null) return;
       // If we have a drilldown dataset for this series, drill in.
       if (this.store?._drilldowns && this.store._drilldowns[seriesId]) {
-        this.store.commit('pushDrilldown', {
+        this.store.commit({
+          kind: 'pushDrilldown',
           level: this.store.drilldownStack.length,
           label: seriesId,
           value: seriesId,
         });
       } else {
-        this.store?.commit('selectSeries', {
+        this.store?.commit({
+          kind: 'selectSeries',
           seriesId,
-          pointIndex: Number.isFinite(detail.index) ? detail.index : null,
+          pointIndex: Number.isFinite(detail.index) ? (detail.index ?? null) : null,
         });
       }
     });
@@ -122,11 +120,34 @@ class AtlasChartCard extends AtlasElement {
 
   _seriesIdFor(idx: number | undefined): string | null {
     const data = this.store?.data;
-    if (!data?.series || !Number.isFinite(idx)) return null;
-    const s = data.series[idx!];
+    if (!data?.series || idx === undefined || !Number.isFinite(idx)) return null;
+    const s = data.series[idx];
     if (!s) return null;
     return (s.id ?? s.name) as string;
   }
+}
+
+interface PointClickDetail {
+  seriesId?: string;
+  seriesIdx?: number;
+  index?: number;
+}
+
+function readPointClickDetail(ev: Event): PointClickDetail {
+  if (!(ev instanceof CustomEvent)) return {};
+  const detail: unknown = ev.detail;
+  if (typeof detail !== 'object' || detail === null) return {};
+  const out: PointClickDetail = {};
+  if ('seriesId' in detail && typeof detail.seriesId === 'string') {
+    out.seriesId = detail.seriesId;
+  }
+  if ('seriesIdx' in detail && typeof detail.seriesIdx === 'number') {
+    out.seriesIdx = detail.seriesIdx;
+  }
+  if ('index' in detail && typeof detail.index === 'number') {
+    out.index = detail.index;
+  }
+  return out;
 }
 
 AtlasElement.define('atlas-chart-card', AtlasChartCard);

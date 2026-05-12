@@ -19,6 +19,7 @@ import {
   PAGE_RENDER_TREE_ENTITY_TYPE,
   PAGE_RENDER_TREE_LATEST_VERSION,
 } from '@atlas/content-pages';
+import { jsonParam } from './sql-json.ts';
 
 const PAGE_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -67,9 +68,9 @@ export async function seedContentPagesEntityTypes(
       (entity_type, tenant_id, schema_version, json_schema, origin)
     VALUES
       (${PAGE_ENTITY_TYPE}, NULL, ${PAGE_LATEST_VERSION},
-       ${sql.json(PAGE_JSON_SCHEMA as never)}, 'platform'),
+       ${jsonParam(sql, PAGE_JSON_SCHEMA)}, 'platform'),
       (${PAGE_RENDER_TREE_ENTITY_TYPE}, NULL, ${PAGE_RENDER_TREE_LATEST_VERSION},
-       ${sql.json(PAGE_RENDER_TREE_JSON_SCHEMA as never)}, 'platform')
+       ${jsonParam(sql, PAGE_RENDER_TREE_JSON_SCHEMA)}, 'platform')
     ON CONFLICT (entity_type, tenant_id) DO NOTHING
   `;
 
@@ -103,9 +104,9 @@ export async function seedContentPagesEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${PAGE_ENTITY_TYPE}, NULL, 'slug',
-       ${sql.json(['slug'] as never)}, TRUE, NULL, 'platform'),
+       ${jsonParam(sql, ['slug'])}, TRUE, NULL, 'platform'),
       (${PAGE_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform')
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 }

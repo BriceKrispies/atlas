@@ -53,7 +53,8 @@ d('[node] idempotency parity', () => {
       expect(r.eventId.length).toBeGreaterThan(0);
       eventIds.push(r.eventId);
     }
-    const first = eventIds[0]!;
+    const first = eventIds[0];
+    if (first === undefined) throw new Error('expected at least one eventId');
     for (const id of eventIds) {
       expect(id).toBe(first);
     }

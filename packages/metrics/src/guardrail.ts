@@ -54,7 +54,7 @@ export interface GuardrailOptions {
   readonly ticket?: string;
 }
 
-interface GuardrailLogPayload {
+interface GuardrailLogPayload extends Record<string, unknown> {
   event: 'guardrail';
   kind: string;
   id: string;
@@ -136,7 +136,7 @@ export function guardrail(
       // Per `specs/crosscut/logging.md`: structured warn record on the
       // active context. Equivalent to Rust's
       // `tracing::warn!(event="guardrail", ...)`.
-      sink.warn('guardrail', payload as unknown as Record<string, unknown>);
+      sink.warn('guardrail', payload);
     } catch {
       // A broken logger must not crash a guardrail-emitting code path.
     }

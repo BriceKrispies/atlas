@@ -8,6 +8,7 @@
  */
 
 import { test, expect, readEditorState, assertCommitted } from '@atlas/test-fixtures';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { Page } from '@playwright/test';
 
 const ROUTE = '#/block-editor';
@@ -20,12 +21,44 @@ const SEEDED_KEY = `editor:${SEEDED_ID}`;
 const action = (key: string): string => `[data-testid="${SEEDED_KEY}.action.${key}"]`;
 const block = (id: string): string => `[data-testid="${SEEDED_KEY}.block.${id}"]`;
 
+// ── typed snapshot shapes ──────────────────────────────────────────
+
+interface BlockEntry {
+  blockId: string;
+  type: string;
+  config?: { formats?: string[] };
+}
+interface EditorSnapshot {
+  surfaceId: string;
+  document: { blocks: BlockEntry[] };
+  selection: string | null;
+  dirty: boolean;
+  lastCommit: { at: number; intent: string } | null;
+}
+
+/**
+ * Boundary: `readEditorState` returns `unknown` by design (the
+ * test-state registry is shape-erased). The block-editor surface
+ * reader is part of the surface's spec — its snapshot shape is fixed
+ * by the controller and reasserted by every test that reads it. One
+ * justified narrowing here keeps all call sites clean.
+ */
+async function readEditor(page: Page, id: string): Promise<EditorSnapshot | null> {
+  const snap = await readEditorState(page, id);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the block-editor surface shape is contract-pinned by its controller.
+  return snap as EditorSnapshot | null;
+}
+
+async function readEditorOrThrow(page: Page, id: string): Promise<EditorSnapshot> {
+  return assertDefined(await readEditor(page, id), `editor snapshot for ${id}`);
+}
+
 async function openSeeded(page: Page): Promise<void> {
   await page.goto(`/${ROUTE}`);
   await page.locator(ROUTE_SURFACE).waitFor();
   // The seeded variant is the default; just wait for the editor to register.
   await expect
-    .poll(async () => ((await readEditorState(page, SEEDED_ID)) as { surfaceId?: string } | null)?.surfaceId)
+    .poll(async () => (await readEditor(page, SEEDED_ID))?.surfaceId)
     .toBe(SEEDED_KEY);
 }
 
@@ -34,7 +67,7 @@ async function openEmpty(page: Page): Promise<void> {
   await page.locator(ROUTE_SURFACE).waitFor();
   await page.locator(`${ROUTE_SURFACE} >> [data-testid="authoring.block-editor.empty"]`).click();
   await expect
-    .poll(async () => ((await readEditorState(page, EMPTY_ID)) as { surfaceId?: string } | null)?.surfaceId)
+    .poll(async () => (await readEditor(page, EMPTY_ID))?.surfaceId)
     .toBe(`editor:${EMPTY_ID}`);
 }
 
@@ -56,11 +89,9 @@ test.describe('authoring.block-editor — states', () => {
 
   test('switching to empty remounts the editor under editor:empty', async ({ page }) => {
     await openEmpty(page);
-    const state = (await readEditorState(page, EMPTY_ID)) as
-      { document: { blocks: unknown[] }; selection: unknown } | null;
-    expect(state).not.toBeNull();
-    expect(state!.document.blocks).toEqual([]);
-    expect(state!.selection).toBeNull();
+    const state = await readEditorOrThrow(page, EMPTY_ID);
+    expect(state.document.blocks).toEqual([]);
+    expect(state.selection).toBeNull();
   });
 });
 
@@ -69,11 +100,7 @@ test.describe('authoring.block-editor — states', () => {
 test.describe('authoring.block-editor — seeded committed-state', () => {
   test('initial snapshot exposes the seeded blocks', async ({ page }) => {
     await openSeeded(page);
-    const state = (await readEditorState(page, SEEDED_ID)) as {
-      document: { blocks: Array<{ blockId: string }> };
-      dirty: boolean;
-      selection: unknown;
-    };
+    const state = await readEditorOrThrow(page, SEEDED_ID);
     expect(state.document.blocks.map((b) => b.blockId)).toEqual([
       'seed-heading', 'seed-text', 'seed-list',
     ]);
@@ -84,11 +111,9 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
   test('insertBlock commits and grows the document', async ({ page }) => {
     await openSeeded(page);
     await page.click(action('insert-text'));
-    const state = (await readEditorState(page, SEEDED_ID)) as {
-      document: { blocks: Array<{ type: string }> };
-    };
+    const state = await readEditorOrThrow(page, SEEDED_ID);
     expect(state.document.blocks).toHaveLength(4);
-    expect(state.document.blocks[3]!.type).toBe('text');
+    expect(assertDefined(state.document.blocks[3], 'block at index 3 after insert').type).toBe('text');
   });
 
   test('clicking a block commits setSelection', async ({ page }) => {
@@ -98,7 +123,7 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
       intent: 'setSelection',
       patch: { blockId: 'seed-list' },
     });
-    const state = (await readEditorState(page, SEEDED_ID)) as { selection: unknown };
+    const state = await readEditorOrThrow(page, SEEDED_ID);
     expect(state.selection).toBe('seed-list');
   });
 
@@ -110,9 +135,7 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
       intent: 'moveBlock',
       patch: { blockId: 'seed-list', from: 2, to: 1 },
     });
-    const state = (await readEditorState(page, SEEDED_ID)) as {
-      document: { blocks: Array<{ blockId: string }> };
-    };
+    const state = await readEditorOrThrow(page, SEEDED_ID);
     expect(state.document.blocks.map((b) => b.blockId)).toEqual([
       'seed-heading', 'seed-list', 'seed-text',
     ]);
@@ -126,11 +149,12 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
       intent: 'applyFormatting',
       patch: { blockId: 'seed-text', format: 'bold' },
     });
-    const st = (await readEditorState(page, SEEDED_ID)) as {
-      document: { blocks: Array<{ blockId: string; config?: { formats?: string[] } }> };
-    };
-    const text = st.document.blocks.find((b) => b.blockId === 'seed-text');
-    expect(text!.config?.formats).toEqual(['bold']);
+    const st = await readEditorOrThrow(page, SEEDED_ID);
+    const text = assertDefined(
+      st.document.blocks.find((b) => b.blockId === 'seed-text'),
+      'seed-text block after applyFormatting',
+    );
+    expect(text.config?.formats).toEqual(['bold']);
   });
 
   test('remove commits removeBlock and clears selection', async ({ page }) => {
@@ -141,10 +165,7 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
       intent: 'removeBlock',
       patch: { blockId: 'seed-text' },
     });
-    const st = (await readEditorState(page, SEEDED_ID)) as {
-      document: { blocks: Array<{ blockId: string }> };
-      selection: unknown;
-    };
+    const st = await readEditorOrThrow(page, SEEDED_ID);
     expect(st.document.blocks.map((b) => b.blockId)).toEqual([
       'seed-heading', 'seed-list',
     ]);
@@ -154,23 +175,29 @@ test.describe('authoring.block-editor — seeded committed-state', () => {
   test('save clears the dirty flag', async ({ page }) => {
     await openSeeded(page);
     await page.click(action('insert-text'));
-    expect(((await readEditorState(page, SEEDED_ID)) as { dirty: boolean }).dirty).toBe(true);
+    expect((await readEditorOrThrow(page, SEEDED_ID)).dirty).toBe(true);
 
     // Save is a host-app concern, not a controller intent — the toolbar
     // calls markClean() directly. Observable contract is the dirty flag.
     await page.click(action('save'));
     await expect
-      .poll(async () => ((await readEditorState(page, SEEDED_ID)) as { dirty: boolean }).dirty)
+      .poll(async () => (await readEditorOrThrow(page, SEEDED_ID)).dirty)
       .toBe(false);
   });
 
   test('move-up at top is a no-op (no moveBlock commit)', async ({ page }) => {
     await openSeeded(page);
     await page.click(block('seed-heading'));
-    const before = ((await readEditorState(page, SEEDED_ID)) as { lastCommit: { at: number; intent: string } }).lastCommit;
+    const before = assertDefined(
+      (await readEditorOrThrow(page, SEEDED_ID)).lastCommit,
+      'lastCommit after initial selection',
+    );
     await page.click(action('move-up'));
     await page.waitForTimeout(50);
-    const after = ((await readEditorState(page, SEEDED_ID)) as { lastCommit: { at: number; intent: string } }).lastCommit;
+    const after = assertDefined(
+      (await readEditorOrThrow(page, SEEDED_ID)).lastCommit,
+      'lastCommit after no-op move-up',
+    );
     expect(after.intent).toBe('setSelection');
     expect(after.at).toBe(before.at);
   });

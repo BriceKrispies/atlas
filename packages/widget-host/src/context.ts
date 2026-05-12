@@ -76,7 +76,6 @@ export function buildContext({
           /* fall through to console */
         }
       }
-      // eslint-disable-next-line no-console
       console[level](prefix, ...args);
     };
 

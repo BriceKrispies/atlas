@@ -2,6 +2,15 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchEngine } from '@atlas/ports';
 
+/** Narrows `arr[i]` to `T` for contract assertions where length was just asserted. */
+function at<T>(arr: readonly T[], i: number, label: string): T {
+  const v = arr[i];
+  if (v === undefined) {
+    throw new Error(`SearchEngine contract: expected ${label}[${i}] to be defined`);
+  }
+  return v;
+}
+
 interface MakeDocOptions {
   documentId?: string;
   documentType?: string;
@@ -50,7 +59,7 @@ export function searchEngineContract(makeEngine: () => Promise<SearchEngine>): v
       );
       const results = await engine.search('anniversary', 'tenant-a', 'user:any');
       expect(results.length).toBe(1);
-      expect(results[0]!.documentId).toBe('fam-anniv');
+      expect(at(results, 0, 'results').documentId).toBe('fam-anniv');
     });
 
     test('search returns ranked results, descending by relevance', async () => {
@@ -170,7 +179,7 @@ export function searchEngineContract(makeEngine: () => Promise<SearchEngine>): v
       );
       const r = await engine.search('anniversary', 'tenant-up', 'user:any');
       expect(r.length).toBe(1);
-      expect(r[0]!.fields['title']).toBe('anniversary reissue');
+      expect(at(r, 0, 'r').fields['title']).toBe('anniversary reissue');
     });
 
     test('[error-shape] empty query returns [] (no error, no implicit "match-all")', async () => {
@@ -242,7 +251,7 @@ export function searchEngineContract(makeEngine: () => Promise<SearchEngine>): v
       const b = await engine.search('anniversary', 'tenant-b', 'user:any');
       expect(a).toEqual([]);
       expect(b.length).toBe(1);
-      expect(b[0]!.documentId).toBe('shared-id');
+      expect(at(b, 0, 'b').documentId).toBe('shared-id');
     });
 
     test('search filter matches across documentType: family + variant in the same tenant', async () => {

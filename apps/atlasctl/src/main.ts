@@ -26,6 +26,7 @@ import {
 } from './commands/logging.ts';
 import type { OutputFlags } from './output.ts';
 import type { ClientOptions } from './client.ts';
+import { errorMessage } from './json.ts';
 
 interface GlobalOpts {
   json?: boolean;
@@ -394,7 +395,12 @@ function pickScope(o: {
     ['correlation', o.correlation ?? null],
   ] as const;
   const set = candidates.filter(([, v]) => v !== null);
-  if (set.length === 0) {
+  // Destructure with a default sentinel and treat `count` as the
+  // authoritative cardinality. This routes around the `set[0]!`
+  // non-null assertion: if the array is empty `picked` falls back to
+  // the sentinel and we return the "required" error.
+  const [picked] = set;
+  if (picked === undefined) {
     return new Error(
       'one of --global, --module <id>, --tenant <id>, --correlation <id> is required',
     );
@@ -404,7 +410,7 @@ function pickScope(o: {
       'exactly one of --global, --module, --tenant, --correlation may be set',
     );
   }
-  const [name, value] = set[0]!;
+  const [name, value] = picked;
   const result: PickedScope = { scope: name };
   if (name !== 'global') {
     if (value === null || value === '') {
@@ -431,7 +437,8 @@ function pickClearScope(o: {
     ['correlation', o.correlation ?? null],
   ] as const;
   const set = candidates.filter(([, v]) => v !== null);
-  if (set.length === 0) {
+  const [picked] = set;
+  if (picked === undefined) {
     return new Error(
       'one of --module <id>, --tenant <id>, --correlation <id> is required',
     );
@@ -441,7 +448,7 @@ function pickClearScope(o: {
       'exactly one of --module, --tenant, --correlation may be set',
     );
   }
-  const [name, value] = set[0]!;
+  const [name, value] = picked;
   if (value === null || value === '') {
     return new Error(`--${name} requires an id`);
   }
@@ -457,7 +464,7 @@ function tenantFromDebugPrincipal(value: string | undefined): string | undefined
 }
 
 function printSetupError(e: unknown, asJson: boolean): void {
-  const message = e instanceof AuthError ? e.message : (e as Error).message;
+  const message = e instanceof AuthError ? e.message : errorMessage(e);
   if (asJson) {
     process.stdout.write(
       `${JSON.stringify({ status: 'error', errorCode: 'SETUP', message })}\n`,
@@ -472,7 +479,7 @@ main(process.argv).then(
     process.exit(code);
   },
   (e: unknown) => {
-    process.stderr.write(`fatal: ${(e as Error).message}\n`);
+    process.stderr.write(`fatal: ${errorMessage(e)}\n`);
     process.exit(2);
   },
 );

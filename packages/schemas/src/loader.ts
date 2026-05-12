@@ -72,16 +72,39 @@ export function getSchemaValidator(schemaId: string, _version: number): Validate
 }
 
 /**
+ * Subset of the manifest shape consumers care about. Generated manifest
+ * JSON carries more fields (`manifestVersion`, `displayName`, `verb`,
+ * `auditLevel`, `moduleType`, `capabilities`, `events`, `projections`,
+ * `migrations`); we narrow to the fields the action catalog + Cedar
+ * schema generator actually read. Keep in sync with
+ * `adapters/policy-cedar/src/schema-generator.ts:ModuleManifest`.
+ */
+export interface ManifestAction {
+  actionId: string;
+  resourceType: string;
+}
+
+export interface ManifestResource {
+  resourceType: string;
+}
+
+export interface ModuleManifest {
+  moduleId?: string;
+  actions?: ManifestAction[];
+  resources?: ManifestResource[];
+}
+
+/**
  * The bundled per-module manifests, in deterministic order. Each manifest
  * declares the actions / resources / events / projections / migrations
  * owned by exactly one module. Consumers that need the full registry
  * (action catalog, Cedar schema generation, etc.) should iterate this
  * array; deduplication semantics on collision live in the consumer.
  */
-const MODULE_MANIFESTS: ReadonlyArray<unknown> = [
-  authzManifest,
-  contentPagesManifest,
-  structuredCatalogManifest,
+const MODULE_MANIFESTS: ReadonlyArray<ModuleManifest> = [
+  authzManifest as ModuleManifest,
+  contentPagesManifest as ModuleManifest,
+  structuredCatalogManifest as ModuleManifest,
 ];
 
 /**
@@ -89,7 +112,7 @@ const MODULE_MANIFESTS: ReadonlyArray<unknown> = [
  * preferred accessor — `moduleManifest()` (singular) is retained only
  * for backwards compatibility and returns a *merged* view.
  */
-export function moduleManifests(): ReadonlyArray<unknown> {
+export function moduleManifests(): ReadonlyArray<ModuleManifest> {
   return MODULE_MANIFESTS;
 }
 

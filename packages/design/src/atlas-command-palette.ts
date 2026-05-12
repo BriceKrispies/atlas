@@ -117,11 +117,10 @@ export class AtlasCommandPalette extends AtlasElement {
     input.addEventListener('input', () => this._filterAndRender(input.value));
     input.addEventListener('keydown', (ev) => this._onKey(ev));
     list.addEventListener('click', (ev) => {
-      const btn = (ev.target as Element)?.closest('[data-palette-item]') as
-        | HTMLElement
-        | null;
-      if (!btn) return;
-      const idx = Number(btn.dataset['index']);
+      if (!(ev.target instanceof Element)) return;
+      const candidate = ev.target.closest('[data-palette-item]');
+      if (!(candidate instanceof HTMLElement)) return;
+      const idx = Number(candidate.dataset['index']);
       this._commit(idx);
     });
     d.addEventListener('close', () => {
@@ -204,8 +203,10 @@ export class AtlasCommandPalette extends AtlasElement {
   private _scrollActiveIntoView(): void {
     const active = this._list?.querySelector(
       '[data-palette-item][aria-selected="true"]',
-    ) as HTMLElement | null;
-    active?.scrollIntoView({ block: 'nearest' });
+    );
+    if (active instanceof HTMLElement) {
+      active.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   private _onKey(ev: KeyboardEvent): void {

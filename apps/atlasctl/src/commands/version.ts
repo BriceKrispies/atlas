@@ -4,18 +4,17 @@ import { dirname, join } from 'node:path';
 import { ENVELOPE_SCHEMA_ID } from '../envelope-schema.ts';
 import { emitResult, type OutputFlags } from '../output.ts';
 import { newCorrelationId } from '../correlation.ts';
-
-interface PackageManifest {
-  version?: string;
-}
+import { asRecord, readString } from '../json.ts';
 
 function readClientVersion(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // src/commands/version.ts → ../../package.json
   const pkgPath = join(here, '..', '..', 'package.json');
   const raw = readFileSync(pkgPath, 'utf-8');
-  const parsed = JSON.parse(raw) as PackageManifest;
-  return parsed.version ?? '0.0.0';
+  const parsed: unknown = JSON.parse(raw);
+  const rec = asRecord(parsed);
+  if (!rec) return '0.0.0';
+  return readString(rec, 'version') ?? '0.0.0';
 }
 
 export function runVersion(flags: OutputFlags): void {

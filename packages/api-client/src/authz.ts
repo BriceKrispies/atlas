@@ -30,12 +30,43 @@ export interface PolicyDetail extends PolicySummary {
 
 export async function listPolicies(): Promise<readonly PolicySummary[]> {
   const result = await backend.query('/policies');
-  return (result as readonly PolicySummary[] | null) ?? [];
+  if (result === null || result === undefined) return [];
+  if (!Array.isArray(result)) {
+    throw new Error('listPolicies: expected array response from /policies');
+  }
+  // The contract is checked against the wire schema upstream; here we
+  // only guarantee the array shape and let TS infer the element type
+  // through the declared return type. Each element is opaque to us.
+  return result.filter(isPolicySummary);
 }
 
 export async function getPolicy(version: number): Promise<PolicyDetail | null> {
   const result = await backend.query(`/policies/${version}`);
-  return (result as PolicyDetail | null) ?? null;
+  if (result === null || result === undefined) return null;
+  if (!isPolicyDetail(result)) {
+    throw new Error(`getPolicy: response for /policies/${version} is not a PolicyDetail`);
+  }
+  return result;
+}
+
+function isPolicySummary(v: unknown): v is PolicySummary {
+  if (typeof v !== 'object' || v === null) return false;
+  // After the null/object narrowing, indexing with `in` + Reflect.get
+  // gives a typed `unknown` read for each field without a structural
+  // downcast on `v`.
+  return (
+    'tenantId' in v && typeof Reflect.get(v, 'tenantId') === 'string' &&
+    'version' in v && typeof Reflect.get(v, 'version') === 'number' &&
+    'status' in v && typeof Reflect.get(v, 'status') === 'string'
+  );
+}
+
+function isPolicyDetail(v: unknown): v is PolicyDetail {
+  return (
+    isPolicySummary(v) &&
+    'cedarText' in v &&
+    typeof Reflect.get(v, 'cedarText') === 'string'
+  );
 }
 
 export async function createPolicy(input: {

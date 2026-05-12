@@ -37,7 +37,8 @@ export function sha256Hex(input: string | Uint8Array, crypto: CryptoSha256Shape)
   const digest = crypto.sha256(input);
   let hex = '';
   for (let i = 0; i < digest.length; i += 1) {
-    const b = digest[i] as number;
+    const b = digest[i];
+    if (b === undefined) continue;
     hex += b.toString(16).padStart(2, '0');
   }
   return hex;

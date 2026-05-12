@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
+import type { LogEvent } from '@atlas/logging';
+import type { CollectorSink } from '@atlas/logging';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 
 const RESERVED_TOP_LEVEL_KEYS = [
@@ -25,6 +28,14 @@ const RESERVED_TOP_LEVEL_KEYS = [
   'properties',
 ];
 
+/** First emitted event — invariant-asserted so callers can read fields. */
+function firstEvent(collector: CollectorSink): LogEvent {
+  return assertDefined(
+    collector.events[0],
+    'expected at least one log event in collector',
+  );
+}
+
 describe('LogEvent schema stability', () => {
   it('emitted event uses ONLY reserved top-level keys', () => {
     const rig = makeTestRig();
@@ -33,7 +44,7 @@ describe('LogEvent schema stability', () => {
       event: 'Test.X.Y',
       properties: { nope: 1, another: 2 },
     });
-    const e = rig.collector.events[0]!;
+    const e = firstEvent(rig.collector);
     const keys = Object.keys(e);
     for (const k of keys) {
       expect(RESERVED_TOP_LEVEL_KEYS).toContain(k);
@@ -46,17 +57,19 @@ describe('LogEvent schema stability', () => {
     ctx.logger.info('test', {
       properties: { foo: 'bar', count: 7 },
     });
-    const e = rig.collector.events[0]!;
+    const e = firstEvent(rig.collector);
     expect(e.properties).toEqual({ foo: 'bar', count: 7 });
-    expect((e as unknown as Record<string, unknown>)['foo']).toBeUndefined();
-    expect((e as unknown as Record<string, unknown>)['count']).toBeUndefined();
+    // The caller-supplied keys must NOT appear at top level. `in` returns
+    // a boolean and works against any object — no unsafe cast needed.
+    expect('foo' in e).toBe(false);
+    expect('count' in e).toBe(false);
   });
 
   it('absent optional fields are not present in the emitted event', () => {
     const rig = makeTestRig();
     const ctx = makeTestContext({ pipeline: rig.pipeline });
     ctx.logger.info('test');
-    const e = rig.collector.events[0]!;
+    const e = firstEvent(rig.collector);
     // userId, sessionId, etc. were never set on the context — should be absent.
     expect('userId' in e).toBe(false);
     expect('sessionId' in e).toBe(false);
@@ -86,7 +99,7 @@ describe('LogEvent schema stability', () => {
       durationMs: 12,
       properties: { attemptCount: 3 },
     });
-    const e = rig.collector.events[0]!;
+    const e = firstEvent(rig.collector);
     expect(e.userId).toBe('u-1');
     expect(e.sessionId).toBe('s-1');
     expect(e.moduleId).toBe('identity');
@@ -107,9 +120,14 @@ describe('LogEvent schema stability', () => {
     ctx.logger.info('multi\nline\nmessage', {
       properties: { trace: 'one\ntwo' },
     });
-    const e = rig.collector.events[0]!;
+    const e = firstEvent(rig.collector);
     const serialized = JSON.stringify(e);
-    expect(() => JSON.parse(serialized)).not.toThrow();
+    // Round-trip parses back without throwing. JSON.parse returns unknown
+    // and we don't read the result — the assertion is that the operation
+    // succeeds, so discard the value.
+    expect(() => {
+      JSON.parse(serialized);
+    }).not.toThrow();
     // Once stringified, the embedded newlines are escaped.
     expect(serialized.includes('\n')).toBe(false); // no raw newlines in JSON
     expect(serialized.includes('\\n')).toBe(true); // escaped

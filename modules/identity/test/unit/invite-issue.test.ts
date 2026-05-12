@@ -83,7 +83,7 @@ describe('handleInviteIssue — happy path', () => {
       fx.events,
     );
     // `seq` is a BigInt — stringify with a replacer.
-    const eventJson = JSON.stringify(fx.events.events, (_k, v) =>
+    const eventJson = JSON.stringify(fx.events.events, (_k, v: unknown) =>
       typeof v === 'bigint' ? v.toString() : v,
     );
     expect(eventJson).not.toContain(result.plaintextToken);

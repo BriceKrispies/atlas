@@ -38,7 +38,7 @@ function envelope(seq: bigint, eventId = `evt-${seq}`): EventEnvelope {
 function fakeStore(events: EventEnvelope[]): EventStore {
   return {
     async append(env: EventEnvelope): Promise<StoredEvent> {
-      return { ...env, seq: env.seq ?? 0n } as StoredEvent;
+      return { ...env, seq: env.seq ?? 0n } satisfies StoredEvent;
     },
     async getEvent(eventId: string): Promise<EventEnvelope | null> {
       return events.find((e) => e.eventId === eventId) ?? null;
@@ -149,10 +149,12 @@ describe('settleEvents', () => {
       if (env.eventId === 'evt-boom') throw original;
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- vitest's expect.stringContaining returns `any` by design; the matchObject API expects asymmetric matchers
+    const messageMatcher: string = expect.stringContaining('evt-boom');
     await expect(
       settleEvents({ eventStore: store, dispatch, tenantId: 't1' }),
     ).rejects.toMatchObject({
-      message: expect.stringContaining('evt-boom'),
+      message: messageMatcher,
       cause: original,
     });
 

@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve as pathResolve } from 'node:path';
 import { create as tarCreate } from 'tar';
 import { request, type ClientOptions } from '../client.ts';
+import { asRecord, errorMessage, readString } from '../json.ts';
 import { emitResult, type OutputFlags } from '../output.ts';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB — Phase 1 cap.
@@ -63,7 +64,7 @@ export async function runPush(
   try {
     tarBytes = await buildTarball(dirAbs);
   } catch (e) {
-    return fail(client, flags, `tar failed: ${(e as Error).message}`, 'TAR_FAILED');
+    return fail(client, flags, `tar failed: ${errorMessage(e)}`, 'TAR_FAILED');
   }
 
   // Step 3 — size guard.
@@ -247,20 +248,18 @@ function fail(
 }
 
 function extractErrorCode(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null) return undefined;
-  const b = body as Record<string, unknown>;
-  if (typeof b['code'] === 'string') return b['code'];
-  if (typeof b['errorCode'] === 'string') return b['errorCode'];
-  return undefined;
+  const b = asRecord(body);
+  if (b === null) return undefined;
+  return readString(b, 'code') ?? readString(b, 'errorCode') ?? undefined;
 }
 
 function describeError(body: unknown): string {
-  if (typeof body !== 'object' || body === null) {
+  const b = asRecord(body);
+  if (b === null) {
     return typeof body === 'string' ? body : '(no body)';
   }
-  const b = body as Record<string, unknown>;
-  const msg = typeof b['message'] === 'string' ? b['message'] : '';
-  const code = typeof b['code'] === 'string' ? b['code'] : '';
+  const msg = readString(b, 'message') ?? '';
+  const code = readString(b, 'code') ?? '';
   if (msg !== '' && code !== '') return `[${code}] ${msg}`;
   if (msg !== '') return msg;
   if (code !== '') return code;
@@ -268,9 +267,8 @@ function describeError(body: unknown): string {
 }
 
 function readStringField(body: unknown, key: string): string | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const v = (body as Record<string, unknown>)[key];
-  return typeof v === 'string' ? v : null;
+  const obj = asRecord(body);
+  return obj === null ? null : readString(obj, key);
 }
 
 interface CreateEnvArgs {
@@ -370,21 +368,24 @@ interface RepoLite {
 
 export function readRepoArray(body: unknown): RepoLite[] {
   // Tolerant: accept either a bare array or { items: [...] } / { repositories: [...] }.
-  let arr: unknown;
-  if (Array.isArray(body)) arr = body;
-  else if (typeof body === 'object' && body !== null) {
-    const o = body as Record<string, unknown>;
-    if (Array.isArray(o['items'])) arr = o['items'];
-    else if (Array.isArray(o['repositories'])) arr = o['repositories'];
-    else if (Array.isArray(o['data'])) arr = o['data'];
+  let arr: readonly unknown[] | null = null;
+  if (Array.isArray(body)) {
+    arr = body;
+  } else {
+    const o = asRecord(body);
+    if (o !== null) {
+      if (Array.isArray(o['items'])) arr = o['items'];
+      else if (Array.isArray(o['repositories'])) arr = o['repositories'];
+      else if (Array.isArray(o['data'])) arr = o['data'];
+    }
   }
-  if (!Array.isArray(arr)) return [];
+  if (arr === null) return [];
   const out: RepoLite[] = [];
   for (const e of arr) {
-    if (typeof e !== 'object' || e === null) continue;
-    const r = e as Record<string, unknown>;
-    const id = typeof r['repoId'] === 'string' ? r['repoId'] : null;
-    const slug = typeof r['repoSlug'] === 'string' ? r['repoSlug'] : null;
+    const r = asRecord(e);
+    if (r === null) continue;
+    const id = readString(r, 'repoId');
+    const slug = readString(r, 'repoSlug');
     if (id !== null && slug !== null) out.push({ repoId: id, repoSlug: slug });
   }
   return out;

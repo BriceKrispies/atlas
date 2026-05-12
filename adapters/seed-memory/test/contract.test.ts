@@ -168,6 +168,7 @@ describe('InMemorySeedCorpus — adapter-local regressions', () => {
         handle: 'seed-tenant',
       },
     };
-    expect(validate!(sampleIntent)).toBe(true);
+    if (!validate) throw new Error('validator should be non-null');
+    expect(validate(sampleIntent)).toBe(true);
   });
 });

@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleJitProvision,
   IdentityError,
@@ -39,7 +40,7 @@ function idp(overrides: Partial<IdentityProviderDocument> = {}): IdentityProvide
     createdAt: '2026-05-01T00:00:00Z',
     updatedAt: '2026-05-01T00:00:00Z',
     ...overrides,
-  } as IdentityProviderDocument;
+  } satisfies IdentityProviderDocument;
 }
 
 describe('handleJitProvision — provisions on first login', () => {
@@ -75,12 +76,18 @@ describe('handleJitProvision — provisions on first login', () => {
     expect(membershipCreated).toBeDefined();
 
     // I10 — every event carries the tenant tag, plus the per-user tag.
-    assertEventTags(userCreated!, [`Tenant:${fx.tenantId}`, `User:${result.user.userId}`]);
-    assertEventTags(membershipCreated!, [
-      `Tenant:${fx.tenantId}`,
-      `User:${result.user.userId}`,
-      `Membership:${fx.tenantId}:${result.user.userId}`,
-    ]);
+    assertEventTags(
+      assertDefined(userCreated, 'expect.toBeDefined() just asserted UserCreated emitted'),
+      [`Tenant:${fx.tenantId}`, `User:${result.user.userId}`],
+    );
+    assertEventTags(
+      assertDefined(membershipCreated, 'expect.toBeDefined() just asserted MembershipCreated emitted'),
+      [
+        `Tenant:${fx.tenantId}`,
+        `User:${result.user.userId}`,
+        `Membership:${fx.tenantId}:${result.user.userId}`,
+      ],
+    );
   });
 });
 

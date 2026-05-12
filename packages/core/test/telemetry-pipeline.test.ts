@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   setTelemetrySink,
   getTelemetrySink,
@@ -20,6 +21,31 @@ import {
   type TelemetrySink,
   type TelemetryEvent,
 } from '../src/telemetry-pipeline.ts';
+
+// ── helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Narrows a `vi.spyOn(console, 'debug')` call argument (typed as `unknown`
+ * by vitest because `console.debug` accepts `...unknown[]`) into a
+ * TelemetryEvent the producer guarantees we wrote. Throws on shape
+ * mismatch so a regression in the sink fails the test loudly instead of
+ * masking it through a bare cast.
+ */
+function isTelemetryEvent(value: unknown): value is TelemetryEvent {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('eventName' in value) || !('timestamp' in value)) return false;
+  // `in` narrowed `value` to `object & Record<'eventName' | 'timestamp', unknown>`.
+  return typeof value.eventName === 'string' && typeof value.timestamp === 'string';
+}
+
+function asTelemetryEvent(value: unknown): TelemetryEvent {
+  if (!isTelemetryEvent(value)) {
+    throw new Error(
+      `Test invariant violation: expected TelemetryEvent, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
 
 beforeEach(() => {
   setTelemetrySink(null);
@@ -56,8 +82,9 @@ describe('emitTelemetry', () => {
     setTelemetrySink({ write: (e) => written.push(e) });
     emitTelemetry({ eventName: 'Test.Stamp' });
     expect(written.length).toBe(1);
-    expect(typeof written[0]!.timestamp).toBe('string');
-    expect(() => new Date(written[0]!.timestamp).toISOString()).not.toThrow();
+    const first = assertDefined(written[0], 'emit appended one event');
+    expect(typeof first.timestamp).toBe('string');
+    expect(() => new Date(first.timestamp).toISOString()).not.toThrow();
   });
 
   it('preserves a caller-supplied timestamp', () => {
@@ -67,7 +94,8 @@ describe('emitTelemetry', () => {
       eventName: 'Test.Pre',
       timestamp: '2026-01-01T00:00:00.000Z',
     });
-    expect(written[0]!.timestamp).toBe('2026-01-01T00:00:00.000Z');
+    const first = assertDefined(written[0], 'emit appended one event');
+    expect(first.timestamp).toBe('2026-01-01T00:00:00.000Z');
   });
 
   it('forwards extra properties verbatim', () => {
@@ -79,9 +107,10 @@ describe('emitTelemetry', () => {
       correlationId: 'c1',
       foo: 'bar',
     });
-    expect(written[0]!.surfaceId).toBe('s1');
-    expect(written[0]!.correlationId).toBe('c1');
-    expect(written[0]!['foo']).toBe('bar');
+    const first = assertDefined(written[0], 'emit appended one event');
+    expect(first.surfaceId).toBe('s1');
+    expect(first.correlationId).toBe('c1');
+    expect(first['foo']).toBe('bar');
   });
 
   it('swallows errors thrown by sink.write — never crashes the caller', () => {
@@ -101,8 +130,9 @@ describe('ConsoleJsonSink', () => {
     setTelemetrySink(sink);
     emitTelemetry({ eventName: 'Test.Console', surfaceId: 's' });
     expect(debugSpy).toHaveBeenCalledTimes(1);
-    expect(debugSpy.mock.calls[0]![0]).toBe('[telemetry]');
-    const ev = debugSpy.mock.calls[0]![1] as TelemetryEvent;
+    const call = assertDefined(debugSpy.mock.calls[0], 'one console.debug call');
+    expect(call[0]).toBe('[telemetry]');
+    const ev = asTelemetryEvent(call[1]);
     expect(ev.eventName).toBe('Test.Console');
     expect(ev.surfaceId).toBe('s');
     debugSpy.mockRestore();
@@ -110,16 +140,57 @@ describe('ConsoleJsonSink', () => {
 });
 
 describe('BeaconHttpSink', () => {
+  /**
+   * BeaconHttpSink's `fetch` option is typed `typeof fetch`, whose return
+   * is `Promise<Response>`. `Response` is a Node 18+ global, so we can
+   * construct it for the fake — the sink doesn't read the body, only the
+   * call args. The fake's signature matches `typeof fetch` structurally
+   * (both overloads accept `RequestInfo | URL` + optional `RequestInit`).
+   */
   function makeFetchSpy(): {
     fetch: typeof fetch;
     calls: Array<{ url: string; body: unknown }>;
   } {
     const calls: Array<{ url: string; body: unknown }> = [];
-    const fetch = vi.fn(async (url: unknown, init?: { body?: unknown }) => {
+    const fetch: typeof globalThis.fetch = async (
+      url: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
       calls.push({ url: String(url), body: init?.body });
-      return { ok: true } as unknown as Response;
-    }) as unknown as typeof globalThis.fetch;
+      return new Response('{}', { status: 200 });
+    };
     return { fetch, calls };
+  }
+
+  function parseBatchBody(body: unknown): {
+    events: Array<{ eventName: string }>;
+  } {
+    const parsed: unknown = JSON.parse(String(body));
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('events' in parsed) ||
+      !Array.isArray(parsed.events)
+    ) {
+      throw new Error(
+        `Test invariant violation: expected { events: [...] }, got ${String(body)}`,
+      );
+    }
+    const events: unknown[] = parsed.events;
+    const validated: Array<{ eventName: string }> = events.map((e) => {
+      if (
+        typeof e !== 'object' ||
+        e === null ||
+        !('eventName' in e) ||
+        typeof e.eventName !== 'string'
+      ) {
+        throw new Error(
+          `Test invariant violation: event missing eventName: ${JSON.stringify(e)}`,
+        );
+      }
+      return { eventName: e.eventName };
+    });
+    return { events: validated };
   }
 
   it('buffers writes and flushes when maxBatch is reached', () => {
@@ -138,9 +209,8 @@ describe('BeaconHttpSink', () => {
     emitTelemetry({ eventName: 'C' }); // hits maxBatch
     expect(calls.length).toBe(1);
 
-    const body = JSON.parse(String(calls[0]!.body)) as {
-      events: Array<{ eventName: string }>;
-    };
+    const call = assertDefined(calls[0], 'one fetch call after maxBatch');
+    const body = parseBatchBody(call.body);
     expect(body.events.map((e) => e.eventName)).toEqual(['A', 'B', 'C']);
   });
 
@@ -161,9 +231,8 @@ describe('BeaconHttpSink', () => {
     sink.flushSync();
     // sendBeacon may or may not be present; fallback path uses fetch.
     if (calls.length > 0) {
-      const body = JSON.parse(String(calls[0]!.body)) as {
-        events: Array<{ eventName: string }>;
-      };
+      const call = assertDefined(calls[0], 'fallback fetch call recorded');
+      const body = parseBatchBody(call.body);
       expect(body.events.length).toBe(2);
     }
   });
@@ -194,9 +263,9 @@ describe('BeaconHttpSink', () => {
   });
 
   it('a fetch rejection on flushAsync does not propagate', () => {
-    const failing = vi.fn(async () => {
+    const failing: typeof globalThis.fetch = async (): Promise<Response> => {
       throw new Error('network down');
-    }) as unknown as typeof fetch;
+    };
     const sink = new BeaconHttpSink({
       endpoint: '/x',
       maxBatch: 1,

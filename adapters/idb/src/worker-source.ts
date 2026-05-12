@@ -73,8 +73,8 @@ class IdbWorkerSubscription implements WorkerSubscription {
         return {
           async next(): Promise<IteratorResult<EventEnvelope>> {
             while (true) {
-              if (self.queue.length > 0) {
-                const value = self.queue.shift() as StoredEvent;
+              const value = self.queue.shift();
+              if (value !== undefined) {
                 return { value, done: false };
               }
               if (self.closed) {

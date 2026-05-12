@@ -38,38 +38,77 @@ interface AtlasTestApi {
   keys: () => string[];
 }
 
+/**
+ * Single audited type-system boundary for this suite.
+ *
+ * `@atlas/test-state` is the package whose entire job is to bridge a
+ * loosely-typed JS DOM (`window.__atlasTest`) to a typed test API.
+ * Verifying that bridge in unit tests requires three escape hatches that
+ * have no safer typed expression:
+ *
+ *   1. Reading `import.meta.env` to stamp DEV=true/false. `ImportMeta`
+ *      in tsconfig types `env` as `ImportMetaEnv | undefined` with
+ *      readonly DEV — we MUST mutate it before re-importing the SUT.
+ *   2. Re-importing `../src/index.ts` after `vi.resetModules()`. The
+ *      dynamic import returns `unknown`; we know what we exported.
+ *   3. Reading the `window.__atlasTest` property that the SUT installs
+ *      onto `globalThis.window` (in the JSDOM/happy-dom env).
+ *
+ * All three are bona-fide test-harness boundaries; consolidating them
+ * here gives the file ONE justified suppression instead of seven.
+ */
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast --
+   boundary: test-state's job is to bridge a JS global to a typed API;
+   verifying that bridge requires controlled type-system escapes. */
+function stampMetaEnv(env: Record<string, unknown>): void {
+  const meta = import.meta as { env?: Record<string, unknown> };
+  meta.env = { ...(meta.env ?? {}), ...env };
+}
+
+function clearMetaEnvKey(key: string): void {
+  const meta = import.meta as { env?: Record<string, unknown> };
+  if (meta.env) delete meta.env[key];
+}
+
+async function importSut(): Promise<TestStateModule> {
+  vi.resetModules();
+  return (await import('../src/index.ts')) as unknown as TestStateModule;
+}
+
+function getWindowSlot(): { window?: { __atlasTest?: AtlasTestApi } } {
+  return globalThis as unknown as { window?: { __atlasTest?: AtlasTestApi } };
+}
+/* eslint-enable @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast */
+
 async function loadInDevMode(): Promise<TestStateModule> {
   // Stamp DEV=true onto import.meta.env so the module's gate flips.
   // Vitest evaluates the module at import time; we must do this BEFORE
   // the import resolves.
-  const meta = import.meta as unknown as { env: Record<string, unknown> };
-  meta.env = { ...(meta.env ?? {}), ['DEV']: true };
-  vi.resetModules();
-  return (await import('../src/index.ts')) as unknown as TestStateModule;
+  stampMetaEnv({ DEV: true });
+  return importSut();
 }
 
 async function loadInProdMode(): Promise<TestStateModule> {
-  const meta = import.meta as unknown as { env?: Record<string, unknown> };
-  meta.env = { ...(meta.env ?? {}), ['DEV']: false };
-  vi.resetModules();
-  return (await import('../src/index.ts')) as unknown as TestStateModule;
+  stampMetaEnv({ DEV: false });
+  return importSut();
 }
 
 function getApi(): AtlasTestApi {
-  const w = globalThis as unknown as { window: { __atlasTest?: AtlasTestApi } };
-  const api = w.window.__atlasTest;
+  const slot = getWindowSlot();
+  if (!slot.window) throw new Error('window not installed in test env');
+  const api = slot.window.__atlasTest;
   if (!api) throw new Error('__atlasTest API not installed');
   return api;
 }
 
 beforeEach(() => {
   // Reset the window slot so each test starts from a clean install.
-  const w = globalThis as unknown as { window: { __atlasTest?: AtlasTestApi } };
-  if (w.window) {
+  const slot = getWindowSlot();
+  if (slot.window) {
     try {
-      delete (w.window as { __atlasTest?: unknown }).__atlasTest;
+      delete slot.window.__atlasTest;
     } catch {
-      Object.defineProperty(w.window, '__atlasTest', {
+      Object.defineProperty(slot.window, '__atlasTest', {
         value: undefined,
         configurable: true,
         writable: true,
@@ -79,8 +118,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  const meta = import.meta as unknown as { env?: Record<string, unknown> };
-  if (meta.env) delete meta.env['DEV'];
+  clearMetaEnvKey('DEV');
   vi.resetModules();
 });
 
@@ -175,7 +213,7 @@ describe('error handling', () => {
     mod.registerTestState('chart:bad', () => {
       throw new Error('reader-failed');
     });
-    const snapshot = getApi().getState() as Record<string, { error?: string }>;
+    const snapshot = getApi().getState();
     expect(snapshot['chart:bad']).toEqual({
       error: 'Error: reader-failed',
     });

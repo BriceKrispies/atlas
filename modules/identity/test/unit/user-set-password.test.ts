@@ -112,7 +112,7 @@ describe('handlePasswordSet — happy path', () => {
       fx.entities,
     );
     expect(JSON.stringify(result.document)).not.toContain(STRONG);
-    const eventJson = JSON.stringify(fx.events.events, (_k, v) =>
+    const eventJson = JSON.stringify(fx.events.events, (_k, v: unknown) =>
       typeof v === 'bigint' ? v.toString() : v,
     );
     expect(eventJson).not.toContain(STRONG);
@@ -163,8 +163,9 @@ describe('handlePasswordSet — happy path', () => {
     ).toBe(true);
     expect(
       result.follow.every((e) => {
-        const p = e.payload as { reason?: string };
-        return p.reason === 'password_changed';
+        const p = e.payload;
+        if (typeof p !== 'object' || p === null) return false;
+        return (p as { reason?: unknown }).reason === 'password_changed';
       }),
     ).toBe(true);
   });

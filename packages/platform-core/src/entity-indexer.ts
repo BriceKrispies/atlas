@@ -33,16 +33,18 @@ export function indexNameFor(decl: {
  */
 export function jsonbPathExpr(path: string): string {
   const parts = path.split('.').filter((p) => p.length > 0);
-  if (parts.length === 0) {
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (first === undefined || last === undefined) {
     throw new Error(`invalid empty index path`);
   }
   if (parts.length === 1) {
     // attrs->>'familyKey'
-    return `(attrs->>${quoteLiteral(parts[0]!)})`;
+    return `(attrs->>${quoteLiteral(first)})`;
   }
   // attrs->'metadata'->>'priority'
   const head = parts.slice(0, -1).map((p) => `->${quoteLiteral(p)}`).join('');
-  const tail = `->>${quoteLiteral(parts[parts.length - 1]!)}`;
+  const tail = `->>${quoteLiteral(last)}`;
   return `(attrs${head}${tail})`;
 }
 

@@ -25,6 +25,54 @@ import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import { registerTestState } from '@atlas/test-state';
+
+/**
+ * Narrow a generic `Event` to a typed `CustomEvent<D>` at the listener boundary.
+ * `addEventListener` doesn't carry the detail type from the event-name string,
+ * so handlers receive `Event` and must narrow. Using a single helper avoids
+ * scattered `as CustomEvent<…>` assertions across the shell.
+ */
+function asCustomEvent<D>(ev: Event): CustomEvent<D> | null {
+  if (!(ev instanceof CustomEvent)) return null;
+  // CustomEvent generic is erased at runtime; the caller declares the expected
+  // detail shape and is responsible for tolerating malformed details. This is
+  // the canonical event-listener boundary.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: CustomEvent<unknown>→<D> at listener call-site; runtime check is `instanceof CustomEvent`.
+  return ev as CustomEvent<D>;
+}
+
+/**
+ * Invariant guard for "this can't be null at this call-site". Mirrors the
+ * `must<T>` helper in `@atlas/page-templates/internal/assert` but lives
+ * here so the authoring app doesn't reach into another package's internals.
+ */
+function must<T>(v: T | null | undefined, invariant: string): T {
+  if (v == null) throw new Error(`Invariant violation: ${invariant}`);
+  return v;
+}
+
+/**
+ * Resolve the active TemplateRegistry for the shell — falls back to the
+ * package-default registry. The module default is the `TemplateRegistry`
+ * class from `@atlas/page-templates`; its `list()` returns a slightly
+ * narrower row shape than the shell's local `TemplateRegistry` interface
+ * (under exactOptionalPropertyTypes). A thin adapter — not a cast —
+ * presents the registry through the shell's local shape.
+ */
+function resolveTemplateRegistry(
+  injected: TemplateRegistry | null,
+): TemplateRegistry {
+  if (injected) return injected;
+  return {
+    has: (id) => moduleDefaultTemplateRegistry.has(id),
+    get: (id) => moduleDefaultTemplateRegistry.get(id),
+    list: () =>
+      moduleDefaultTemplateRegistry.list().map((row) => ({
+        templateId: row.templateId,
+        ...(row.displayName !== undefined ? { displayName: row.displayName } : {}),
+      })),
+  };
+}
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
 import './property-panel.ts';
 // `<atlas-dialog>` is registered as a side effect of `@atlas/design`'s
@@ -60,7 +108,6 @@ import {
   PageEditorController,
   PANEL_SIZE_BOUNDS,
   type EditorMode,
-  type LeftPanelTab,
   type PageEditorStateSnapshot,
   type PanelId,
   type PanelsState,
@@ -403,14 +450,24 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(this.shadowRoot as unknown as ShadowRoot);
-    adoptAtlasWidgetStyles(this.shadowRoot as unknown as ShadowRoot);
+    const root = must(this.shadowRoot, 'attachShadow just attached the shadow root');
+    adoptAtlasStyles(root);
+    adoptAtlasWidgetStyles(root);
 
     this._onCanvasClick = (e: Event) => this._handleCanvasClick(e);
     this._onKeyDown = (e: KeyboardEvent) => this._handleKeyDown(e);
-    this._onPanelToggle = (e: Event) => this._handlePanelToggle(e as CustomEvent<PanelToggleEventDetail>);
-    this._onPanelTab = (e: Event) => this._handlePanelTab(e as CustomEvent<PanelTabEventDetail>);
-    this._onPanelResize = (e: Event) => this._handlePanelResize(e as CustomEvent<PanelResizeEventDetail>);
+    this._onPanelToggle = (e: Event) => {
+      const detail = asCustomEvent<PanelToggleEventDetail>(e);
+      if (detail) this._handlePanelToggle(detail);
+    };
+    this._onPanelTab = (e: Event) => {
+      const detail = asCustomEvent<PanelTabEventDetail>(e);
+      if (detail) this._handlePanelTab(detail);
+    };
+    this._onPanelResize = (e: Event) => {
+      const detail = asCustomEvent<PanelResizeEventDetail>(e);
+      if (detail) this._handlePanelResize(detail);
+    };
   }
 
   override connectedCallback(): void {
@@ -495,7 +552,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   }
 
   private _renderShell(): void {
-    const root = this.shadowRoot as ShadowRoot;
+    const root = must(this.shadowRoot, 'shadowRoot present after constructor');
     root.innerHTML = `
       <style>${styles}\n${templatesCssText}</style>
       <atlas-box data-role="topbar" name="topbar">
@@ -532,7 +589,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       segmented.options = MODE_OPTIONS.map((m) => ({ value: m.testValue, label: m.label }));
       segmented.value = 'mode-content';
       segmented.addEventListener('change', (ev) => {
-        const value = (ev as CustomEvent<{ value: string }>).detail?.value;
+        const value = asCustomEvent<{ value: string }>(ev)?.detail?.value;
         const mode = MODE_OPTIONS.find((m) => m.testValue === value)?.value;
         if (mode) this._controller?.setMode(mode);
       });
@@ -558,10 +615,10 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
 
     document.addEventListener('keydown', this._onKeyDown);
 
-    this._canvasHost = root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
-    this._canvasStage = this._canvasHost?.querySelector(
-      'atlas-box[data-role="canvas-stage"]',
-    ) as HTMLElement | null;
+    const canvasHost = root.querySelector('atlas-box[data-role="canvas"]');
+    this._canvasHost = canvasHost instanceof HTMLElement ? canvasHost : null;
+    const canvasStage = this._canvasHost?.querySelector('atlas-box[data-role="canvas-stage"]');
+    this._canvasStage = canvasStage instanceof HTMLElement ? canvasStage : null;
     this._canvasHost?.addEventListener('click', this._onCanvasClick, true);
 
     this._leftPanel = root.querySelector('page-editor-left-panel') as PageEditorLeftPanelElement | null;
@@ -628,6 +685,9 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
       return;
     }
 
+    // The shell uses a local ContentPageElement interface that captures the
+    // mountable surface (props the shell sets + reads). createElement returns
+    // HTMLElement for unmapped tags; cast widens to the prop surface.
     const page = document.createElement('content-page') as ContentPageElement;
     page.pageId = this.pageId;
     page.pageStore = this._controller.wrappedStore;
@@ -655,16 +715,9 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
    */
   private _mountPreview(): void {
     if (!this._canvasStage || !this._controller) return;
-    const preview = document.createElement('page-editor-preview') as HTMLElement & {
-      controller: PageEditorController | null;
-      pageId: string;
-      templateRegistry?: unknown;
-      layoutRegistry?: unknown;
-      principal?: unknown;
-      tenantId?: string;
-      correlationId?: string;
-      capabilities?: Record<string, (a: unknown) => Promise<unknown>>;
-    };
+    // HTMLElementTagNameMap is augmented in preview.ts so createElement
+    // returns the typed PageEditorPreviewElement directly.
+    const preview = document.createElement('page-editor-preview');
     preview.pageId = this.pageId;
     if (this.templateRegistry) preview.templateRegistry = this.templateRegistry;
     if (this.layoutRegistry) preview.layoutRegistry = this.layoutRegistry;
@@ -730,13 +783,11 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     if (
       !prev ||
       prev.pageDocument !== snap.pageDocument ||
-      (prev.pageDocument?.['meta'] as { title?: string } | undefined)?.title !==
-        (snap.pageDocument?.['meta'] as { title?: string } | undefined)?.title
+      readMetaTitle(prev.pageDocument) !== readMetaTitle(snap.pageDocument)
     ) {
       const titleEl = root.querySelector('atlas-text[name="page-title"]');
       if (titleEl) {
-        const t = (snap.pageDocument?.['meta'] as { title?: string } | undefined)?.title ?? snap.pageId;
-        titleEl.textContent = t;
+        titleEl.textContent = readMetaTitle(snap.pageDocument) ?? snap.pageId;
       }
     }
 
@@ -847,17 +898,13 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     // ---- left panel: palette + outline (Burst C-1) ----
     const paletteSlot = this._tabSlots.get('left:palette');
     if (paletteSlot && paletteSlot.childElementCount === 0 && this._controller) {
-      const palette = document.createElement('page-editor-palette') as HTMLElement & {
-        controller: PageEditorController | null;
-      };
+      const palette = document.createElement('page-editor-palette');
       palette.controller = this._controller;
       paletteSlot.appendChild(palette);
     }
     const outlineSlot = this._tabSlots.get('left:outline');
     if (outlineSlot && outlineSlot.childElementCount === 0 && this._controller) {
-      const outline = document.createElement('page-editor-outline') as HTMLElement & {
-        controller: PageEditorController | null;
-      };
+      const outline = document.createElement('page-editor-outline');
       outline.controller = this._controller;
       outlineSlot.appendChild(outline);
     }
@@ -878,9 +925,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     // empty modes itself. Mount once; never tear down on snapshot ticks.
     const settingsSlot = this._tabSlots.get('right:settings');
     if (settingsSlot && settingsSlot.childElementCount === 0 && this._controller) {
-      const inspector = document.createElement('page-editor-inspector') as HTMLElement & {
-        controller: PageEditorController | null;
-      };
+      const inspector = document.createElement('page-editor-inspector');
       inspector.controller = this._controller;
       settingsSlot.appendChild(inspector);
     }
@@ -915,13 +960,12 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     select.setAttribute('name', 'template-select');
     select.setAttribute('aria-label', 'Template');
 
-    const registry: TemplateRegistry =
-      this.templateRegistry ?? (moduleDefaultTemplateRegistry as unknown as TemplateRegistry);
+    const registry = resolveTemplateRegistry(this.templateRegistry);
     const list = registry.list?.() ?? [];
     select.options = list.map((t) => ({ value: t.templateId, label: t.displayName ?? t.templateId }));
     select.value = snap.layoutTemplateId;
     select.addEventListener('change', (ev) => {
-      const next = (ev as CustomEvent<{ value: string }>).detail?.value ?? select.value;
+      const next = asCustomEvent<{ value: string }>(ev)?.detail?.value ?? select.value;
       if (next && next !== snap.layoutTemplateId) {
         void this._switchTemplate(next);
       }
@@ -979,8 +1023,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     wrap.setAttribute('gap', 'sm');
     wrap.setAttribute('name', 'settings-tab-content');
 
-    const panel = document.createElement('page-editor-property-panel') as
-      PageEditorPropertyPanel & HTMLElement;
+    const panel = document.createElement('page-editor-property-panel');
     panel.setAttribute('name', 'property-panel');
     panel.onChange = (cfg) => void this._controller?.updateWidgetConfig(instanceId, cfg);
     wrap.appendChild(panel);
@@ -1023,7 +1066,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
   private _handlePanelTab(ev: CustomEvent<PanelTabEventDetail>): void {
     const detail = ev.detail;
     if (!detail || !this._controller) return;
-    this._controller.setPanelTab(detail.panel, detail.tab as LeftPanelTab);
+    this._controller.setPanelTab(detail.panel, detail.tab);
   }
 
   private _handlePanelResize(ev: CustomEvent<PanelResizeEventDetail>): void {
@@ -1083,8 +1126,8 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     }
     const instanceId = cell.getAttribute('data-instance-id');
     if (!instanceId) return;
-    const me = event as MouseEvent;
-    const additive = me.shiftKey || me.metaKey || me.ctrlKey;
+    const additive =
+      event instanceof MouseEvent && (event.shiftKey || event.metaKey || event.ctrlKey);
     this._controller.selectWidget(instanceId, { additive });
   }
 
@@ -1094,8 +1137,7 @@ export class AuthoringPageEditorShellElement extends AtlasSurface {
     if (!this._controller || !this.pageStore) return;
     const currentDoc = this._controller.getSnapshot().pageDocument;
     if (!currentDoc || currentDoc.templateId === nextTemplateId) return;
-    const registry: TemplateRegistry =
-      this.templateRegistry ?? (moduleDefaultTemplateRegistry as unknown as TemplateRegistry);
+    const registry = resolveTemplateRegistry(this.templateRegistry);
     let nextManifest: TemplateManifest;
     try {
       nextManifest = registry.get(nextTemplateId).manifest;
@@ -1254,7 +1296,7 @@ async function confirmTemplateSwitch(args: {
     dialog.addEventListener('close', (ev) => {
       if (settled) return;
       settled = true;
-      const returnValue = (ev as CustomEvent<{ returnValue: string }>).detail?.returnValue;
+      const returnValue = asCustomEvent<{ returnValue: string }>(ev)?.detail?.returnValue;
       dialog.remove();
       resolve(returnValue === 'confirm');
     });
@@ -1262,6 +1304,14 @@ async function confirmTemplateSwitch(args: {
     document.body.appendChild(dialog);
     dialog.open();
   });
+}
+
+function readMetaTitle(doc: PageDocument | null | undefined): string | null {
+  if (!doc) return null;
+  const meta = doc['meta'];
+  if (!meta || typeof meta !== 'object' || !('title' in meta)) return null;
+  const t = meta.title;
+  return typeof t === 'string' ? t : null;
 }
 
 function panelsChanged(a: PanelsState, b: PanelsState): boolean {

@@ -54,11 +54,11 @@ export async function handleApiKeyCreate(
     );
   }
   // Scope-ceiling enforcement for SP-owned keys.
-  if (hasSp) {
+  if (hasSp && cmd.servicePrincipalId !== undefined) {
     const sp = await getServicePrincipalEntity(
       entities,
       cmd.tenantId,
-      cmd.servicePrincipalId!,
+      cmd.servicePrincipalId,
     );
     if (!sp) {
       throw new IdentityError(

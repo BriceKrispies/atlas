@@ -68,6 +68,7 @@ import {
   REPOSITORY_UPLOADED_EVENT_TYPE,
   UPLOAD_BYTE_LIMIT,
 } from '../src/index.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 // --- in-memory ports -------------------------------------------------
 
@@ -82,7 +83,7 @@ class InMemoryEventStore implements EventStore {
         e.idempotencyKey === envelope.idempotencyKey,
     );
     if (existing) {
-      return { ...existing, seq: existing.seq ?? 0n } as StoredEvent;
+      return { ...existing, seq: existing.seq ?? 0n } satisfies StoredEvent;
     }
     const stored: StoredEvent = { ...envelope, seq: this.nextSeq++ };
     this.events.push(stored);
@@ -280,9 +281,11 @@ describe('handleRepositoryCreate', () => {
       fx.events,
     );
 
-    expect(result.envelope).not.toBeNull();
     expect(result.preexisting).toBe(false);
-    const env = result.envelope!;
+    const env = assertDefined(
+      result.envelope,
+      'first Repository.Create must emit an envelope (preexisting=false)',
+    );
     expect(env.eventType).toBe(REPOSITORY_CREATED_EVENT_TYPE);
     expect(env.tenantId).toBe('acme');
     expect(env.principalId).toBe('user-1');
@@ -291,11 +294,11 @@ describe('handleRepositoryCreate', () => {
       `Repository:${result.repository.repoId}`,
     ]);
     expect(env.idempotencyKey).toBe('repository.create.acme.hello-world');
-    const payload = env.payload as Record<string, unknown>;
-    expect(payload['repoId']).toBe(result.repository.repoId);
-    expect(payload['repoSlug']).toBe('hello-world');
-    expect(payload['name']).toBe('hello-world');
-    expect(payload['description']).toBeNull();
+    const payload = env.payload;
+    expect(payload.repoId).toBe(result.repository.repoId);
+    expect(payload.repoSlug).toBe('hello-world');
+    expect(payload.name).toBe('hello-world');
+    expect(payload.description).toBeNull();
 
     expect(fx.events.events).toHaveLength(1);
     const stored = await fx.repositories.get('acme', result.repository.repoId);
@@ -418,18 +421,20 @@ describe('handleRepositoryUpload', () => {
       `Repository:${repoId}`,
       `Revision:${result.revision.revisionId}`,
     ]);
-    const payload = env.payload as Record<string, unknown>;
-    expect(payload['repoId']).toBe(repoId);
-    expect(payload['revisionId']).toBe(result.revision.revisionId);
-    expect(payload['byteCount']).toBe(bytes.byteLength);
-    expect(payload['contentHash']).toBe(contentHash);
-    expect(payload['pushedBy']).toBe('user-1');
+    const payload = env.payload;
+    expect(payload.repoId).toBe(repoId);
+    expect(payload.revisionId).toBe(result.revision.revisionId);
+    expect(payload.byteCount).toBe(bytes.byteLength);
+    expect(payload.contentHash).toBe(contentHash);
+    expect(payload.pushedBy).toBe('user-1');
 
     // Bytes round-trip through the revision store.
-    const stored = await fx.revisions.getBytes('acme', result.revision.revisionId);
-    expect(stored).not.toBeNull();
-    expect(stored!.byteLength).toBe(bytes.byteLength);
-    expect(sha256Hex(stored!, testCrypto)).toBe(contentHash);
+    const stored = assertDefined(
+      await fx.revisions.getBytes('acme', result.revision.revisionId),
+      `revision bytes must be persisted for ${result.revision.revisionId}`,
+    );
+    expect(stored.byteLength).toBe(bytes.byteLength);
+    expect(sha256Hex(stored, testCrypto)).toBe(contentHash);
   });
 
   it('rejects payload over 10 MB with code UPLOAD_TOO_LARGE', async () => {

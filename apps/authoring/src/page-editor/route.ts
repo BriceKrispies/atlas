@@ -4,6 +4,22 @@ import { InMemoryPageStore, ValidatingPageStore } from '@atlas/page-templates';
 import { authoringCapabilities, authoringLayoutRegistry } from '../shared/stores.ts';
 import { createMountPageEditor, editorSeedPages } from './index.ts';
 
+/** Pluck `meta.title` (string) off a seed page's loosely-typed `meta`. */
+function readMetaTitle(meta: unknown): string | undefined {
+  if (meta === null || typeof meta !== 'object') return undefined;
+  const title = (meta as { title?: unknown }).title;
+  return typeof title === 'string' ? title : undefined;
+}
+
+/** Read `detail.value: string` off a CustomEvent without a blind cast. */
+function readChangeValue(ev: Event): string | undefined {
+  if (!(ev instanceof CustomEvent)) return undefined;
+  const detail: unknown = ev.detail;
+  if (detail === null || typeof detail !== 'object') return undefined;
+  const value = (detail as { value?: unknown }).value;
+  return typeof value === 'string' ? value : undefined;
+}
+
 const styles = `
   :host {
     display: flex;
@@ -75,10 +91,11 @@ export class AuthoringPageEditorRoute extends AtlasSurface {
   private _render(): void {
     const options = editorSeedPages.map((doc) => ({
       value: doc.pageId,
-      label: (doc['meta'] as { title?: string } | undefined)?.title ?? doc.pageId,
+      label: readMetaTitle(doc['meta']) ?? doc.pageId,
     }));
     if (options.length > 0 && !options.some((o) => o.value === this._activePageId)) {
-      this._activePageId = options[0]!.value;
+      const first = options[0];
+      if (first) this._activePageId = first.value;
     }
 
     this._root.innerHTML = `
@@ -97,7 +114,7 @@ export class AuthoringPageEditorRoute extends AtlasSurface {
       select.options = options;
       select.value = this._activePageId;
       select.addEventListener('change', (ev) => {
-        const next = (ev as CustomEvent<{ value: string }>).detail?.value ?? select.value;
+        const next = readChangeValue(ev) ?? select.value;
         this._activePageId = next;
         this._mountEditor();
       });

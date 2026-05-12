@@ -106,6 +106,10 @@ export interface IngressState {
   logger?: Logger;
 }
 
+function isAttrsRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function err(code: string, message: string, status: number, correlationId: string): never {
   throw new IngressError(code, message, status, correlationId);
 }
@@ -268,8 +272,8 @@ async function submitIntentInner(
   if (state.entities && resourceId) {
     try {
       const row = await state.entities.get(state.tenantId, resourceType, resourceId);
-      if (row && row.status === 'active') {
-        resourceAttributes = row.attrs as Record<string, unknown>;
+      if (row && row.status === 'active' && isAttrsRecord(row.attrs)) {
+        resourceAttributes = row.attrs;
       }
     } catch (cause) {
       // Lookup failure is non-fatal — treat as "no attrs" and let the

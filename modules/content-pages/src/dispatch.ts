@@ -20,7 +20,6 @@ import type {
   RelationStore,
   WasmHost,
 } from '@atlas/ports';
-import type { PageDocument } from './types.ts';
 import { buildRenderTree } from './render-tree.ts';
 import { putPageEntity, deletePageEntity } from './entities/page.ts';
 import {
@@ -28,6 +27,7 @@ import {
   deleteRenderTreeEntity,
 } from './entities/page-render-tree.ts';
 import { linkRenderTree, unlinkRenderTree } from './entities/relations.ts';
+import { isContentPagesEvent } from './events.ts';
 
 export interface ContentPagesDispatchContext {
   entities: EntityStore;
@@ -51,26 +51,20 @@ export interface ContentPagesDispatchContext {
   logger?: Logger;
 }
 
-const HANDLED_EVENT_TYPES = new Set([
-  'ContentPages.PageCreated',
-  'ContentPages.PageUpdated',
-  'ContentPages.PageDeleted',
-]);
-
 export async function dispatchContentPagesEvent(
   envelope: EventEnvelope,
   ctx: ContentPagesDispatchContext,
 ): Promise<void> {
-  if (!HANDLED_EVENT_TYPES.has(envelope.eventType)) return;
-
-  const payload = envelope.payload as Record<string, unknown>;
+  // Type-guard narrows `envelope` to `ContentPagesEvent`, which pins
+  // `eventType` to a literal and `payload` to the variant's shape.
+  // Each case arm then reads `document` / `pageId` without a downcast.
+  if (!isContentPagesEvent(envelope)) return;
 
   if (
     envelope.eventType === 'ContentPages.PageCreated' ||
     envelope.eventType === 'ContentPages.PageUpdated'
   ) {
-    const doc = payload['document'] as PageDocument | undefined;
-    if (!doc) return;
+    const doc = envelope.payload.document;
     await putPageEntity(ctx.entities, doc);
     const tree = await buildRenderTree(doc, ctx.wasmHost, ctx.logger);
     await putRenderTreeEntity(
@@ -81,8 +75,9 @@ export async function dispatchContentPagesEvent(
       doc.pluginRef !== undefined ? { pluginId: doc.pluginRef } : {},
     );
     await linkRenderTree(ctx.relations, doc.tenantId, doc.pageId);
-  } else if (envelope.eventType === 'ContentPages.PageDeleted') {
-    const pageId = typeof payload['pageId'] === 'string' ? (payload['pageId'] as string) : '';
+  } else {
+    // 'ContentPages.PageDeleted' — payload is `{ pageId: string }`.
+    const pageId = envelope.payload.pageId;
     if (!pageId) return;
     await deletePageEntity(ctx.entities, envelope.tenantId, pageId);
     await unlinkRenderTree(ctx.relations, envelope.tenantId, pageId);

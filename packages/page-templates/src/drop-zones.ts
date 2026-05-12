@@ -133,7 +133,7 @@ export function computeValidTargets(
       const slots = currentEntries.length + 1;
       result.validRegions.push({
         regionName,
-        canInsertAt: new Array(slots).fill(false),
+        canInsertAt: Array.from<boolean>({ length: slots }).fill(false),
         reason: 'max-widgets',
       });
       continue;
@@ -147,7 +147,7 @@ export function computeValidTargets(
     const slots = currentEntries.length + 1;
     result.validRegions.push({
       regionName,
-      canInsertAt: new Array(slots).fill(true),
+      canInsertAt: Array.from<boolean>({ length: slots }).fill(true),
     });
   }
 

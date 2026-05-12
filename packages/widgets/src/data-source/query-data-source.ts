@@ -38,14 +38,27 @@ export function queryDataSource<R extends Row = Row>(
 
     async fetchAll(): Promise<DataSourceResult<R>> {
       const result: unknown = await backend.query(path);
-      const resultObj = result as { rows?: unknown; total?: unknown } | null;
-      const rows: R[] = Array.isArray(result)
-        ? (result as R[])
-        : Array.isArray(resultObj?.rows)
-          ? (resultObj!.rows as R[])
-          : [];
-      const total = typeof resultObj?.total === 'number' ? resultObj.total : rows.length;
-      return { rows, total };
+      // Trust the backend to return rows of type R — this is the
+      // type-erasure boundary. Either the response is itself a row array,
+      // or it is a `{ rows, total }` envelope. Anything else → empty.
+      // The `unknown[] → R[]` cast is the explicit boundary: callers know
+      // what shape their backend returns and pick R accordingly.
+      let rowsUnknown: unknown[] = [];
+      let total: number | null = null;
+      if (Array.isArray(result)) {
+        rowsUnknown = result;
+      } else if (result !== null && typeof result === 'object') {
+        const obj: { rows?: unknown; total?: unknown } = result;
+        if (Array.isArray(obj.rows)) {
+          rowsUnknown = obj.rows;
+        }
+        if (typeof obj.total === 'number') {
+          total = obj.total;
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: caller-supplied generic R; the function exposes the type contract via its <R> parameter, and the backend response was validated to be `unknown[]` above. Runtime row-shape validation would require a caller-supplied schema, which is out of scope for this generic data-source factory.
+      const rows = rowsUnknown as R[];
+      return { rows, total: total ?? rows.length };
     },
 
     subscribe(cb: (patch: RowPatch<R>) => void): () => void {
@@ -53,8 +66,13 @@ export function queryDataSource<R extends Row = Row>(
         return () => {};
       }
       return backend.subscribe(eventType, (event: unknown) => {
-        const ev = event as { resourceType?: unknown } | null;
-        if (resourceType && ev?.resourceType !== resourceType) return;
+        if (resourceType) {
+          const evResource =
+            event !== null && typeof event === 'object'
+              ? (event as { resourceType?: unknown }).resourceType
+              : undefined;
+          if (evResource !== resourceType) return;
+        }
         if (onEvent) {
           const patch = onEvent(event);
           if (patch && typeof patch === 'object') cb(patch);

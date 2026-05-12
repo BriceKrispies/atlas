@@ -44,8 +44,9 @@ class AtlasChartLegend extends AtlasElement {
     this.setAttribute('role', 'list');
 
     const card = this._card;
-    if (card && card.store) {
-      this._effectDispose = effect(() => this._renderFromStore(card.store!));
+    const store = card?.store;
+    if (store) {
+      this._effectDispose = effect(() => this._renderFromStore(store));
     } else if (this._entries.length) {
       this._renderFlat();
     }
@@ -114,7 +115,7 @@ class AtlasChartLegend extends AtlasElement {
         if (e.hidden) btn.dataset['hidden'] = 'true';
         btn.dataset['seriesId'] = e.id;
         btn.addEventListener('click', () => {
-          store?.commit('toggleSeries', { seriesId: e.id, hidden: !e.hidden });
+          store?.commit({ kind: 'toggleSeries', seriesId: e.id, hidden: !e.hidden });
         });
 
         const swatch = document.createElement('span');
@@ -142,3 +143,9 @@ class AtlasChartLegend extends AtlasElement {
 }
 
 AtlasElement.define('atlas-chart-legend', AtlasChartLegend);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-chart-legend': AtlasChartLegend;
+  }
+}

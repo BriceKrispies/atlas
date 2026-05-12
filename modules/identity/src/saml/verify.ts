@@ -31,6 +31,12 @@ import { SignedXml } from 'xml-crypto';
 import { XMLParser } from 'fast-xml-parser';
 import { IdentityError, codes } from '../errors.ts';
 import type { SamlAttributeMappings } from '../types.ts';
+import {
+  asXmlRecord,
+  asXmlRecordArray,
+  asXmlString,
+  asXmlStringOrArray,
+} from './xml-narrow.ts';
 
 const DEFAULT_CLOCK_SKEW_SECONDS = 5 * 60;
 
@@ -99,7 +105,7 @@ export async function verifySamlResponse(
   const signed = new SignedXml({
     publicCert: opts.idpCertPem,
   });
-  signed.loadSignature(sigEl as unknown as Node);
+  signed.loadSignature(asXmlCryptoNode(sigEl));
   const sigOk = signed.checkSignature(responseXml);
   if (!sigOk) {
     throw new IdentityError(
@@ -131,8 +137,8 @@ export async function verifySamlResponse(
     parseTagValue: false,
     trimValues: true,
   });
-  const parsed = xmlParser.parse(responseXml) as Record<string, unknown>;
-  const response = parsed['Response'] as Record<string, unknown> | undefined;
+  const parsed = asXmlRecord(xmlParser.parse(responseXml)) ?? {};
+  const response = asXmlRecord(parsed['Response']);
   if (!response) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,
@@ -153,7 +159,7 @@ export async function verifySamlResponse(
 
   // InResponseTo (SP-initiated only).
   if (opts.expectedInResponseTo) {
-    const irt = response['@_InResponseTo'] as string | undefined;
+    const irt = asXmlString(response['@_InResponseTo']);
     if (irt !== opts.expectedInResponseTo) {
       throw new IdentityError(
         codes.SAML_INRESPONSETO_MISMATCH,
@@ -163,7 +169,7 @@ export async function verifySamlResponse(
     }
   }
 
-  const assertion = response['Assertion'] as Record<string, unknown> | undefined;
+  const assertion = asXmlRecord(response['Assertion']);
   if (!assertion) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,
@@ -173,8 +179,8 @@ export async function verifySamlResponse(
   }
 
   const assertionId =
-    (assertion['@_ID'] as string | undefined) ??
-    (assertion['@_id'] as string | undefined);
+    asXmlString(assertion['@_ID']) ??
+    asXmlString(assertion['@_id']);
   if (!assertionId) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,
@@ -184,9 +190,7 @@ export async function verifySamlResponse(
   }
 
   // ----- 3. Conditions: NotBefore / NotOnOrAfter -------------------
-  const conditions = assertion['Conditions'] as
-    | Record<string, unknown>
-    | undefined;
+  const conditions = asXmlRecord(assertion['Conditions']);
   if (!conditions) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,
@@ -194,8 +198,8 @@ export async function verifySamlResponse(
       400,
     );
   }
-  const notBefore = conditions['@_NotBefore'] as string | undefined;
-  const notOnOrAfter = conditions['@_NotOnOrAfter'] as string | undefined;
+  const notBefore = asXmlString(conditions['@_NotBefore']);
+  const notOnOrAfter = asXmlString(conditions['@_NotOnOrAfter']);
   if (notBefore) {
     const nb = new Date(notBefore).getTime();
     if (now + skew * 1000 < nb) {
@@ -218,11 +222,9 @@ export async function verifySamlResponse(
   }
 
   // ----- 4. Audience pin -------------------------------------------
-  const audienceRestriction = conditions['AudienceRestriction'] as
-    | Record<string, unknown>
-    | undefined;
+  const audienceRestriction = asXmlRecord(conditions['AudienceRestriction']);
   const audiences = arr(
-    (audienceRestriction?.['Audience'] ?? []) as string | string[],
+    asXmlStringOrArray(audienceRestriction?.['Audience']) ?? [],
   );
   if (audiences.length > 0 && !audiences.includes(opts.spEntityId)) {
     throw new IdentityError(
@@ -246,7 +248,7 @@ export async function verifySamlResponse(
   }
 
   // ----- 6. Subject + attributes -----------------------------------
-  const subject = assertion['Subject'] as Record<string, unknown> | undefined;
+  const subject = asXmlRecord(assertion['Subject']);
   if (!subject) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,
@@ -254,18 +256,18 @@ export async function verifySamlResponse(
       400,
     );
   }
-  const nameIdEl = subject['NameID'] as
-    | { '#text'?: string; '@_Format'?: string }
-    | string
-    | undefined;
+  const nameIdRaw = subject['NameID'];
   let nameId: string | undefined;
   let nameIdFormat: string | undefined;
-  if (typeof nameIdEl === 'string') {
-    nameId = nameIdEl;
+  if (typeof nameIdRaw === 'string') {
+    nameId = nameIdRaw;
     nameIdFormat = 'urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified';
-  } else if (nameIdEl) {
-    nameId = nameIdEl['#text'];
-    nameIdFormat = nameIdEl['@_Format'];
+  } else {
+    const nameIdEl = asXmlRecord(nameIdRaw);
+    if (nameIdEl) {
+      nameId = asXmlString(nameIdEl['#text']);
+      nameIdFormat = asXmlString(nameIdEl['@_Format']);
+    }
   }
   if (!nameId) {
     throw new IdentityError(
@@ -276,22 +278,19 @@ export async function verifySamlResponse(
   }
 
   const attributes: Record<string, string[]> = {};
-  const attrStmt = assertion['AttributeStatement'] as
-    | Record<string, unknown>
-    | undefined;
+  const attrStmt = asXmlRecord(assertion['AttributeStatement']);
   if (attrStmt) {
-    const attrs = arr(attrStmt['Attribute'] as
-      | Record<string, unknown>
-      | Record<string, unknown>[]);
+    const attrs = asXmlRecordArray(attrStmt['Attribute']);
     for (const a of attrs) {
-      const name = a['@_Name'] as string | undefined;
+      const name = asXmlString(a['@_Name']);
       if (!name) continue;
-      const values = arr(a['AttributeValue'] as string | string[] | unknown);
+      const values = arr(a['AttributeValue']);
       attributes[name] = values
         .map((v) => {
           if (typeof v === 'string') return v;
-          if (v && typeof v === 'object' && '#text' in (v as Record<string, unknown>)) {
-            return ((v as Record<string, unknown>)['#text'] as string) ?? '';
+          const rec = asXmlRecord(v);
+          if (rec && '#text' in rec) {
+            return asXmlString(rec['#text']) ?? '';
           }
           return '';
         })
@@ -328,13 +327,14 @@ function findSignatureElement(doc: import('@xmldom/xmldom').Document): Element |
   );
   if (respSigs.length === 0) return null;
   // First signature wins; xml-crypto handles the canonicalization.
-  return respSigs.item(0) as unknown as Element | null;
+  return asXmlCryptoElement(respSigs.item(0));
 }
 
 function pickString(v: unknown): string | undefined {
   if (typeof v === 'string') return v;
-  if (v && typeof v === 'object' && '#text' in (v as Record<string, unknown>)) {
-    return (v as Record<string, unknown>)['#text'] as string;
+  const rec = asXmlRecord(v);
+  if (rec && '#text' in rec) {
+    return asXmlString(rec['#text']);
   }
   return undefined;
 }
@@ -342,4 +342,35 @@ function pickString(v: unknown): string | undefined {
 function arr<T>(v: T | T[] | undefined): T[] {
   if (v === undefined) return [];
   return Array.isArray(v) ? v : [v];
+}
+
+// ---------------------------------------------------------------------------
+// Type-narrowing helpers for the xml-crypto boundary.
+//
+// xml-crypto's `Node` type doesn't structurally unify with @xmldom/xmldom's
+// DOM types at compile time. These helpers funnel the boundary casts
+// through one place each, with documented suppressions only where the
+// impedance is a pure compile-time / library issue.
+//
+// The fast-xml-parser narrowing helpers (`asXmlRecord`, `asXmlString`,
+// `asXmlStringOrArray`, `asXmlRecordArray`) live in `./xml-narrow.ts` so
+// `metadata-parser.ts` can reuse them — same library, same impedance.
+// ---------------------------------------------------------------------------
+
+/**
+ * Hand a DOM `Element` from `@xmldom/xmldom` to `xml-crypto`'s `loadSignature`.
+ * Different `Node` definitions, same DOM node at runtime.
+ */
+function asXmlCryptoNode(el: Element): Node {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: xml-crypto's Node type doesn't unify with @xmldom/xmldom's Element at compile time, but they're the same DOM Node at runtime
+  return el as unknown as Node;
+}
+
+/**
+ * Convert `@xmldom/xmldom` `NodeList.item()` result to DOM `Element | null`.
+ * Same structural shape at runtime; the two libraries publish disjoint types.
+ */
+function asXmlCryptoElement(node: unknown): Element | null {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: @xmldom/xmldom NodeList.item() returns its own Node type which doesn't unify with the DOM Element type; structurally identical at runtime
+  return (node ?? null) as unknown as Element | null;
 }

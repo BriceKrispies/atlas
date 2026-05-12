@@ -48,6 +48,12 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
 
+/** Read `.message` from an arbitrary thrown value without a cast. */
+function errMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function isWidgetMessage(data: unknown): data is WidgetToHostMessage {
   if (!isObject(data)) return false;
   const kind = data['kind'];
@@ -81,7 +87,7 @@ export function createPostMessageTransport({
           eventName: 'atlas.widget.postmessage.onReady.threw',
           level: 'error',
           source: 'widget-host.postmessage',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errMessage(err),
         });
       }
       return;
@@ -97,7 +103,7 @@ export function createPostMessageTransport({
           eventName: 'atlas.widget.postmessage.onPublish.threw',
           level: 'error',
           source: 'widget-host.postmessage',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errMessage(err),
         });
       }
       return;
@@ -114,7 +120,7 @@ export function createPostMessageTransport({
           eventName: 'atlas.widget.postmessage.onCapabilityInvoke.threw',
           level: 'error',
           source: 'widget-host.postmessage',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errMessage(err),
         });
       }
       return;
@@ -135,7 +141,7 @@ export function createPostMessageTransport({
           eventName: 'atlas.widget.postmessage.onLog.threw',
           level: 'error',
           source: 'widget-host.postmessage',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errMessage(err),
         });
       }
       return;

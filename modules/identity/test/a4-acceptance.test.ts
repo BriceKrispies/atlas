@@ -22,6 +22,7 @@ import type {
   RelationWriteInput,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleAuditExportActivate,
   handleAuditExportConfigure,
@@ -44,6 +45,33 @@ import {
 } from '../src/index.ts';
 import { assertEventTags } from './lib/fixtures.ts';
 
+/**
+ * Parse a JSON-Lines line into a known-shape audit envelope row. The
+ * audit export pipeline writes one `EventEnvelope`-shaped JSON object per
+ * line; tests want to spot-check specific fields without spreading
+ * narrowing casts across each call site.
+ */
+interface AuditExportLine {
+  tenantId: string;
+  retentionTag?: string;
+  eventType?: string;
+}
+function parseAuditLine(line: string): AuditExportLine {
+  const parsed: unknown = JSON.parse(line);
+  if (parsed == null || typeof parsed !== 'object') {
+    throw new Error(`audit export line is not an object: ${line}`);
+  }
+  const obj = parsed as { [k: string]: unknown }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- runtime-checked to be an object on the line above
+  const tenantId = obj['tenantId'];
+  if (typeof tenantId !== 'string') {
+    throw new Error(`audit export line missing string tenantId: ${line}`);
+  }
+  const out: AuditExportLine = { tenantId };
+  if (typeof obj['retentionTag'] === 'string') out.retentionTag = obj['retentionTag'];
+  if (typeof obj['eventType'] === 'string') out.eventType = obj['eventType'];
+  return out;
+}
+
 class InMemoryEventStore implements EventStore {
   events: EventEnvelope[] = [];
   private nextSeq = 0n;
@@ -64,6 +92,12 @@ class InMemoryEventStore implements EventStore {
   }
 }
 
+// In-memory `EntityStore` is a type-erased map. The port API is generic in
+// `TAttrs` (callers choose per call) but the underlying storage holds one
+// heterogeneous `Map<string, Entity<unknown>>`, so every boundary between
+// storage and a generic return is a narrowing. We accept those at the four
+// boundary points below — the same pattern the production
+// `PostgresEntityStore` and the shared `lib/fixtures.ts` use.
 class InMemoryEntityStore implements PortEntityStore {
   rows = new Map<string, Entity<unknown>>();
   private k(t: string, ty: string, id: string): string {
@@ -72,6 +106,7 @@ class InMemoryEntityStore implements PortEntityStore {
   async get<T = unknown>(t: string, ty: string, id: string): Promise<Entity<T> | null> {
     const r = this.rows.get(this.k(t, ty, id));
     if (!r || r.status === 'deleted') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
     return r as Entity<T>;
   }
   async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -88,7 +123,7 @@ class InMemoryEntityStore implements PortEntityStore {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    this.rows.set(key, row as Entity<unknown>);
+    this.rows.set(key, row);
     return row;
   }
   async delete(t: string, ty: string, id: string): Promise<void> {
@@ -98,23 +133,32 @@ class InMemoryEntityStore implements PortEntityStore {
   }
   async list<T = unknown>(t: string, ty: string, opts?: EntityListOptions): Promise<Entity<T>[]> {
     const desired = opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
+    const filtered = Array.from(this.rows.values())
       .filter((r) => r.tenantId === t && r.entityType === ty)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
+      .filter((r) => (desired === null ? true : r.status === desired));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return filtered as Entity<T>[];
   }
   async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
     const all = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.entityType === ty,
     );
-    if (!opts.attrsEqual) return all as Entity<T>[];
+    if (!opts.attrsEqual) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+      return all as Entity<T>[];
+    }
     const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
+    const matched = all.filter((row) => {
+      if (row.attrs == null || typeof row.attrs !== 'object') return false;
+      const attrs = row.attrs as { [k: string]: unknown }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+      return preds.every(([k, v]) => attrs[k] === v);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return matched as Entity<T>[];
   }
 }
 
+// Same type-erasure boundary as `InMemoryEntityStore` — see comment above.
 class InMemoryRelationStore implements RelationStore {
   rows = new Map<string, Relation<unknown>>();
   private k(t: string, e: string, f: string, to: string): string {
@@ -130,21 +174,25 @@ class InMemoryRelationStore implements RelationStore {
       attrs: input.attrs ?? null,
       createdAt: new Date().toISOString(),
     };
-    this.rows.set(key, row as Relation<unknown>);
+    this.rows.set(key, row);
     return row;
   }
   async remove(t: string, e: string, f: string, to: string): Promise<void> {
     this.rows.delete(this.k(t, e, f, to));
   }
   async outgoing<T = unknown>(t: string, e: string, f: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const filtered = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.fromId === f,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
+    return filtered as Relation<T>[];
   }
   async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const filtered = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.toId === to,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
+    return filtered as Relation<T>[];
   }
 }
 
@@ -196,7 +244,10 @@ describe('scim.feature: ScimToken Enable + lookup', () => {
       lookupOf(result.plaintextSecret),
     );
     expect(candidates.length).toBe(1);
-    const ok = await verifyPassword(result.plaintextSecret, candidates[0]!.secretHash);
+    const ok = await verifyPassword(
+      result.plaintextSecret,
+      assertDefined(candidates[0], 'length checked above').secretHash,
+    );
     expect(ok).toBe(true);
     void hashSecret;
   });
@@ -406,11 +457,12 @@ describe('audit-export.feature: end-to-end run', () => {
     expect(run.eventCount).toBeGreaterThan(0);
     expect(uploader.pushed.length).toBe(1);
     // JSON-Lines: one envelope per line, valid JSON each.
-    const body = uploader.pushed[0]!.body.toString('utf8');
+    const body = assertDefined(uploader.pushed[0], 'uploader pushed 1 batch above')
+      .body.toString('utf8');
     const lines = body.trim().split('\n');
     expect(lines.length).toBe(run.eventCount);
     for (const l of lines) {
-      const parsed = JSON.parse(l);
+      const parsed = parseAuditLine(l);
       expect(parsed.tenantId).toBe(f.tenantId);
     }
 
@@ -666,13 +718,16 @@ describe('audit-export.feature: end-to-end run', () => {
     // includes 1y), so we assert the floor event is in the bundle
     // rather than counting strictly.
     expect(uploader.pushed.length).toBe(1);
-    const body = uploader.pushed[0]!.body.toString('utf8');
+    const body = assertDefined(uploader.pushed[0], 'uploader pushed 1 batch above')
+      .body.toString('utf8');
     expect(body).toContain('Authorization.ImpersonationStarted');
     expect(body).toContain('retention:7y');
     const lines = body.trim().split('\n');
-    const impLine = lines.find((l) => l.includes('ImpersonationStarted'));
-    expect(impLine).toBeDefined();
-    const parsed = JSON.parse(impLine!);
+    const impLine = assertDefined(
+      lines.find((l) => l.includes('ImpersonationStarted')),
+      'export bundle contains the floor-overridden impersonation event',
+    );
+    const parsed = parseAuditLine(impLine);
     expect(parsed.retentionTag).toBe('retention:7y');
   });
 });

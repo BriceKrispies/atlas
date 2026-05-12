@@ -70,7 +70,6 @@ import {
   PostgresBundleLoader,
   generateCedarSchema,
 } from '@atlas/adapter-policy-cedar';
-import type { ModuleManifest } from '@atlas/adapter-policy-cedar';
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
@@ -265,8 +264,9 @@ export async function bootstrap(
       jwks = createRemoteJWKSet(new URL(config.oidc.jwksUrl));
     } catch (e) {
       // Bad URL parse should be loud; downstream "fetch failed" is lazy.
+      const cause = e instanceof Error ? e.message : String(e);
       throw new Error(
-        `failed to construct JWKS resolver for ${config.oidc.jwksUrl}: ${(e as Error).message}`,
+        `failed to construct JWKS resolver for ${config.oidc.jwksUrl}: ${cause}`,
       );
     }
   }
@@ -284,7 +284,7 @@ export async function bootstrap(
       // Per-deployment schema (Chunk 6c) — generated once at boot from the
       // bundled module manifests. Every tenant's policies validate against
       // the same schema; tenants only customise *policies*, not types.
-      const schema = generateCedarSchema(moduleManifests() as ModuleManifest[]);
+      const schema = generateCedarSchema(moduleManifests());
       policyEngine = new CedarPolicyEngine(
         new PostgresBundleLoader(controlPlaneSql),
         { schema },

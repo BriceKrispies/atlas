@@ -9,13 +9,9 @@
  * mechanical enforcement; ESLint disable comments provide the escape hatch.
  */
 
-import type { Rule } from 'eslint';
-import type {
-  AssignmentExpression,
-  CallExpression,
-  MemberExpression,
-  NewExpression,
-} from 'estree';
+import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from '@typescript-eslint/utils';
+
+const createRule = ESLintUtils.RuleCreator.withoutDocs;
 
 // Property writes that clobber DOM content.
 const FORBIDDEN_WRITE_PROPS = new Set<string>([
@@ -68,7 +64,8 @@ const FORBIDDEN_CTORS = new Set<string>([
   'IntersectionObserver',
 ]);
 
-const rule: Rule.RuleModule = {
+export default createRule({
+  name: 'no-direct-dom',
   meta: {
     type: 'problem',
     docs: {
@@ -91,39 +88,37 @@ const rule: Rule.RuleModule = {
         "Widgets cannot instantiate '{{name}}' — observe state via signals, not DOM mutations.",
     },
   },
-
-  create(context: Rule.RuleContext): Rule.RuleListener {
+  defaultOptions: [],
+  create(context) {
     return {
       // Assignment to `x.innerHTML = ...` or similar.
-      AssignmentExpression(node: AssignmentExpression): void {
+      AssignmentExpression(node: TSESTree.AssignmentExpression): void {
         const left = node.left;
         if (
-          left &&
-          left.type === 'MemberExpression' &&
+          left.type === AST_NODE_TYPES.MemberExpression &&
           !left.computed &&
-          left.property &&
-          left.property.type === 'Identifier' &&
+          left.property.type === AST_NODE_TYPES.Identifier &&
           FORBIDDEN_WRITE_PROPS.has(left.property.name)
         ) {
           context.report({
-            node: left as unknown as Rule.Node,
+            node: left,
             messageId: 'write',
             data: { prop: left.property.name },
           });
         }
       },
 
-      MemberExpression(node: MemberExpression): void {
+      MemberExpression(node: TSESTree.MemberExpression): void {
         const obj = node.object;
         const prop = node.property;
-        if (node.computed || !prop) return;
-        if (prop.type !== 'Identifier') return;
+        if (node.computed) return;
+        if (prop.type !== AST_NODE_TYPES.Identifier) return;
         const propName = prop.name;
 
         // this.shadowRoot / this.parentNode / ...
-        if (obj && obj.type === 'ThisExpression' && FORBIDDEN_THIS_PROPS.has(propName)) {
+        if (obj.type === AST_NODE_TYPES.ThisExpression && FORBIDDEN_THIS_PROPS.has(propName)) {
           context.report({
-            node: node as unknown as Rule.Node,
+            node,
             messageId: 'thisDom',
             data: { prop: propName },
           });
@@ -134,9 +129,9 @@ const rule: Rule.RuleModule = {
         // handful of window props the other rules catch specifically.
         // We flag all reads of document.* and window.* to force widgets
         // off those roots entirely.
-        if (obj && obj.type === 'Identifier' && (obj.name === 'document' || obj.name === 'window')) {
+        if (obj.type === AST_NODE_TYPES.Identifier && (obj.name === 'document' || obj.name === 'window')) {
           context.report({
-            node: node as unknown as Rule.Node,
+            node,
             messageId: 'docWindow',
             data: { obj: obj.name, prop: propName },
           });
@@ -144,16 +139,16 @@ const rule: Rule.RuleModule = {
         }
       },
 
-      CallExpression(node: CallExpression): void {
+      CallExpression(node: TSESTree.CallExpression): void {
         const callee = node.callee;
-        if (!callee || callee.type !== 'MemberExpression' || callee.computed) return;
+        if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed) return;
         const prop = callee.property;
-        if (!prop || prop.type !== 'Identifier') return;
+        if (prop.type !== AST_NODE_TYPES.Identifier) return;
         const name = prop.name;
 
         if (EVENT_METHODS.has(name)) {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'event',
             data: { name },
           });
@@ -162,7 +157,7 @@ const rule: Rule.RuleModule = {
 
         if (FORBIDDEN_METHODS.has(name)) {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'method',
             data: { name },
           });
@@ -170,12 +165,12 @@ const rule: Rule.RuleModule = {
         }
       },
 
-      NewExpression(node: NewExpression): void {
+      NewExpression(node: TSESTree.NewExpression): void {
         const callee = node.callee;
-        if (!callee || callee.type !== 'Identifier') return;
+        if (callee.type !== AST_NODE_TYPES.Identifier) return;
         if (FORBIDDEN_CTORS.has(callee.name)) {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'newObs',
             data: { name: callee.name },
           });
@@ -183,6 +178,4 @@ const rule: Rule.RuleModule = {
       },
     };
   },
-};
-
-export default rule;
+});

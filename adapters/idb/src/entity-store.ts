@@ -20,14 +20,32 @@ import { entityKey, type EntityRow, type IdbDb } from './db.ts';
 
 const DEFAULT_LIMIT = 100;
 
+function toEntityStatus(raw: string): EntityStatus {
+  // Defensive narrow at the IDB boundary. Mirrors `toEntityStatus` in
+  // `adapters/node/src/entity-store.ts` — the schema only ever writes
+  // these three values; an unknown one is a schema-drift bug.
+  switch (raw) {
+    case 'active':
+    case 'archived':
+    case 'deleted':
+      return raw;
+    default:
+      throw new Error(`entity row carries unknown status: ${raw}`);
+  }
+}
+
 function rowToEntity<TAttrs>(row: EntityRow): Entity<TAttrs> {
   return {
     tenantId: row.tenantId,
     entityType: row.entityType,
     entityId: row.entityId,
     schemaVersion: row.schemaVersion,
+    // Boundary: `attrs` is opaque to the adapter; caller supplies `TAttrs`
+    // matching the entity_type's registered schema. Mirrors
+    // `adapters/node/src/entity-store.ts`.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: per-row `attrs` is opaque to the adapter; caller supplies `TAttrs` matching the entity_type's registered schema
     attrs: row.attrs as TAttrs,
-    status: row.status as EntityStatus,
+    status: toEntityStatus(row.status),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -39,7 +57,9 @@ function nowIso(): string {
 
 function attrsContains(attrs: unknown, predicate: Record<string, unknown>): boolean {
   if (!attrs || typeof attrs !== 'object') return false;
-  const a = attrs as Record<string, unknown>;
+  // `typeof === 'object'` + non-null narrows to a record-like; iterate via
+  // `Object.entries` typed against the predicate's known keys.
+  const a = attrs as Readonly<Record<string, unknown>>; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: attrs is JSON-shaped `unknown` at the storage boundary
   for (const [k, v] of Object.entries(predicate)) {
     if (a[k] !== v) return false;
   }
@@ -118,9 +138,10 @@ export class IdbEntityStore implements EntityStore {
     opts: EntityQueryOptions,
   ): Promise<Entity<TAttrs>[]> {
     const base = await this.list<TAttrs>(tenantId, entityType, opts);
-    if (!opts.attrsEqual || Object.keys(opts.attrsEqual).length === 0) {
+    const predicate = opts.attrsEqual;
+    if (!predicate || Object.keys(predicate).length === 0) {
       return base;
     }
-    return base.filter((e) => attrsContains(e.attrs, opts.attrsEqual!));
+    return base.filter((e) => attrsContains(e.attrs, predicate));
   }
 }

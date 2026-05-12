@@ -11,6 +11,7 @@
  */
 
 import { expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   IdentityError,
   generateSecret,
@@ -147,9 +148,9 @@ passwordSteps.Then(
     // (see `modules/identity/src/crypto/password.ts`). The contract is
     // "the password is hashed at rest" — assert non-empty hash with the
     // PHC-shape prefix the impl actually emits.
-    expect(world.user).toBeDefined();
-    expect(world.user!.passwordHash).toBeDefined();
-    expect(world.user!.passwordHash).toMatch(/^\$scrypt\$/);
+    const user = assertDefined(world.user, 'When-step seeded user');
+    expect(user.passwordHash).toBeDefined();
+    expect(user.passwordHash).toMatch(/^\$scrypt\$/);
   },
 );
 
@@ -199,15 +200,15 @@ passwordSteps.Then(
 passwordSteps.Then(
   'a Membership is created with the role from the InviteToken',
   async (world: BddWorld) => {
-    if (!world.user) throw new Error('No user recorded');
-    const membershipId = membershipEntityIdFor(world.user.userId);
+    const user = assertDefined(world.user, 'invite-accept step recorded a user');
+    const membershipId = membershipEntityIdFor(user.userId);
     const m = await world.entities.get<MembershipDocument>(
       world.tenantId,
       'Membership',
       membershipId,
     );
-    expect(m).toBeDefined();
-    expect(m!.attrs.roles).toContain('Author');
+    const membership = assertDefined(m, 'membership materialised after dispatch');
+    expect(membership.attrs.roles).toContain('Author');
   },
 );
 
@@ -249,12 +250,13 @@ passwordSteps.When(
   '{int} wrong-password attempts land within 1 hour',
   async (world: BddWorld, count: string) => {
     const n = Number(count);
+    const user = assertDefined(world.user, 'Background step seeded alice');
     for (let i = 0; i < n; i++) {
       await handlePasswordLogin(
         {
           tenantId: world.tenantId,
           correlationId: `bdd-corr-${i}`,
-          email: world.user!.email,
+          email: user.email,
           password: 'wrong-password-attempt',
           issueSession: false,
         },
@@ -273,14 +275,17 @@ passwordSteps.When(
 passwordSteps.Then(
   "alice's User entity attrs.lockedUntil is set 15 minutes in the future",
   async (world: BddWorld) => {
+    const user = assertDefined(world.user, 'Background step seeded alice');
     const fresh = await world.entities.get<UserDocument>(
       world.tenantId,
       'User',
-      world.user!.userId,
+      user.userId,
     );
-    const lockedUntil = fresh?.attrs.lockedUntil;
-    expect(lockedUntil).toBeDefined();
-    const skewMs = new Date(lockedUntil!).getTime() - Date.now();
+    const lockedUntil = assertDefined(
+      fresh?.attrs.lockedUntil,
+      'lockout dispatched onto user entity',
+    );
+    const skewMs = new Date(lockedUntil).getTime() - Date.now();
     // Tolerance: 14m..16m to avoid clock-flakiness without losing
     // signal. The handler uses 15 min exactly.
     expect(skewMs).toBeGreaterThan(14 * 60 * 1000);
@@ -292,11 +297,12 @@ passwordSteps.Then(
   'further attempts return 401 with reason {string}',
   async (world: BddWorld, expectedReason: string) => {
     const before = world.events.events.length;
+    const user = assertDefined(world.user, 'Background step seeded alice');
     await handlePasswordLogin(
       {
         tenantId: world.tenantId,
         correlationId: 'bdd-corr-after-lock',
-        email: world.user!.email,
+        email: user.email,
         password: 'still-wrong',
         issueSession: false,
       },
@@ -304,9 +310,18 @@ passwordSteps.Then(
       world.entities,
     );
     const newEvents = world.events.events.slice(before);
-    const reject = newEvents.find((e) => e.eventType === 'Identity.LoginRejected');
-    expect(reject).toBeDefined();
-    const reason = (reject!.payload as { reason?: string }).reason;
+    const reject = assertDefined(
+      newEvents.find((e) => e.eventType === 'Identity.LoginRejected'),
+      'login after lockout emits Identity.LoginRejected',
+    );
+    // Payload is a tagged-union; the LoginRejected variant carries `reason`.
+    // The handler is the only writer; this read is part of the test
+    // contract that locked-out logins surface the right reason string.
+    const payload = reject.payload;
+    const reason =
+      payload !== null && typeof payload === 'object' && 'reason' in payload
+        ? payload.reason
+        : undefined;
     expect(reason).toBe(expectedReason);
   },
 );
@@ -373,20 +388,20 @@ passwordSteps.When(
 passwordSteps.Then(
   'the response status is {int}',
   (world: BddWorld, status: string) => {
-    expect(world.lastError).toBeDefined();
-    expect(world.lastError!.status).toBe(Number(status));
+    const err = assertDefined(world.lastError, 'When-step threw IdentityError');
+    expect(err.status).toBe(Number(status));
   },
 );
 
 passwordSteps.Then(
   'the error message lists the failing rules',
   (world: BddWorld) => {
-    expect(world.lastError).toBeDefined();
+    const err = assertDefined(world.lastError, 'When-step threw IdentityError');
     // The complexity validator throws IdentityError with code
     // PASSWORD_COMPLEXITY and a message that includes the failing
     // criterion ("at least", "two character classes", etc.).
-    expect(world.lastError!.code).toBe('PASSWORD_COMPLEXITY');
-    expect(world.lastError!.message.length).toBeGreaterThan(0);
+    expect(err.code).toBe('PASSWORD_COMPLEXITY');
+    expect(err.message.length).toBeGreaterThan(0);
   },
 );
 

@@ -20,18 +20,21 @@ export function defaultConfigPath(): string {
   return join(homedir(), '.atlasctl', 'config.yaml');
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 export function loadConfig(path: string = defaultConfigPath()): ConfigFile {
   if (!existsSync(path)) return {};
   const raw = readFileSync(path, 'utf-8');
-  const parsed = yaml.load(raw);
-  if (typeof parsed !== 'object' || parsed === null) return {};
-  const obj = parsed as Record<string, unknown>;
+  const parsed: unknown = yaml.load(raw);
+  if (!isPlainObject(parsed)) return {};
   const cfg: ConfigFile = {};
-  if (typeof obj['endpoint'] === 'string') cfg.endpoint = obj['endpoint'];
-  if (typeof obj['apiKey'] === 'string') cfg.apiKey = obj['apiKey'];
-  if (typeof obj['token'] === 'string') cfg.token = obj['token'];
-  if (typeof obj['mtls'] === 'object' && obj['mtls'] !== null) {
-    const m = obj['mtls'] as Record<string, unknown>;
+  if (typeof parsed['endpoint'] === 'string') cfg.endpoint = parsed['endpoint'];
+  if (typeof parsed['apiKey'] === 'string') cfg.apiKey = parsed['apiKey'];
+  if (typeof parsed['token'] === 'string') cfg.token = parsed['token'];
+  const m = parsed['mtls'];
+  if (isPlainObject(m)) {
     if (typeof m['cert'] === 'string' && typeof m['key'] === 'string') {
       const mtls: MtlsConfig = { cert: m['cert'], key: m['key'] };
       if (typeof m['ca'] === 'string') mtls.ca = m['ca'];

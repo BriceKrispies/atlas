@@ -227,19 +227,23 @@ export class AtlasActionSheet extends AtlasElement {
     // Listen for action-item activation (CustomEvent bubbles from light DOM
     // children — composed=true means it crosses the shadow boundary).
     this.addEventListener('atlas-action-sheet-item:activate', (ev) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
+      if (!(ev instanceof CustomEvent)) return;
+      const raw: unknown = ev.detail;
+      const value = raw && typeof raw === 'object' && 'value' in raw && typeof raw.value === 'string'
+        ? raw.value
+        : '';
       this.dispatchEvent(
         new CustomEvent<AtlasActionSheetActionDetail>('action', {
-          detail: { value: detail.value },
+          detail: { value },
           bubbles: true,
           composed: true,
         }),
       );
       const name = this.getAttribute('name');
       if (name && this.surfaceId) {
-        this.emit(`${this.surfaceId}.${name}-action`, { value: detail.value });
+        this.emit(`${this.surfaceId}.${name}-action`, { value });
       }
-      this.close(detail.value);
+      this.close(value);
     });
 
     // Keyboard arrow-navigation across items.

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Writable } from 'node:stream';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   CollectorSink,
   ConsoleJsonSink,
@@ -44,8 +45,12 @@ describe('CollectorSink', () => {
     const sink = new CollectorSink();
     for (let i = 0; i < 100; i++) sink.write(makeEvent('debug', `d${i}`));
     expect(sink.events).toHaveLength(100);
-    expect(sink.events[0]!.message).toBe('d0');
-    expect(sink.events[99]!.message).toBe('d99');
+    expect(
+      assertDefined(sink.events[0], 'events[0] exists (length asserted 100)').message,
+    ).toBe('d0');
+    expect(
+      assertDefined(sink.events[99], 'events[99] exists (length asserted 100)').message,
+    ).toBe('d99');
   });
 
   it('reset() empties the collector', () => {
@@ -122,7 +127,11 @@ describe('ConsoleJsonSink format', () => {
     const lines = stream.text().split('\n').filter((l) => l.length > 0);
     expect(lines).toHaveLength(2);
     for (const line of lines) {
-      expect(() => JSON.parse(line)).not.toThrow();
+      expect(() => {
+        // Discarding the parse result; this scenario only asserts that
+        // the on-the-wire form is syntactically valid JSON.
+        JSON.parse(line);
+      }).not.toThrow();
     }
   });
 
@@ -134,7 +143,11 @@ describe('ConsoleJsonSink format', () => {
     await new Promise<void>((r) => setImmediate(r));
     // 50 events but ONE chunk — that's the batching guarantee.
     expect(stream.chunks).toHaveLength(1);
-    const lines = stream.chunks[0]!.split('\n').filter((l) => l.length > 0);
+    const chunk = assertDefined(
+      stream.chunks[0],
+      'chunks[0] exists (length asserted 1)',
+    );
+    const lines = chunk.split('\n').filter((l) => l.length > 0);
     expect(lines).toHaveLength(50);
   });
 });

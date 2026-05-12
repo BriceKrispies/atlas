@@ -51,7 +51,32 @@ function scimError(
     detail,
   };
   if (scimType) body['scimType'] = scimType;
-  return c.json(body, status as ContentfulStatusCode);
+  return c.json(body, scimStatus(status));
+}
+
+/**
+ * Narrow an arbitrary numeric status to Hono's `ContentfulStatusCode`. SCIM
+ * error helpers pass standard HTTP codes (400/401/403/404/409/500); anything
+ * outside that taxonomy is a programmer error and falls back to 500.
+ */
+function scimStatus(status: number): ContentfulStatusCode {
+  // `ContentfulStatusCode` excludes the "no body" codes (101/204/205/304).
+  // SCIM errors always carry a body, so the allowlist below is the
+  // intersection of standard SCIM status codes with the contentful set.
+  switch (status) {
+    case 200:
+    case 201:
+    case 202:
+    case 400:
+    case 401:
+    case 403:
+    case 404:
+    case 409:
+    case 500:
+      return status;
+    default:
+      return 500;
+  }
 }
 
 export const SCIM_RESPONSE_HEADERS = {
@@ -89,7 +114,11 @@ async function validateScimBearer(
   } catch (e) {
     c.get('ctx').logger.warn('auth scheme failed; falling through', {
       event: 'Identity.AuthScheme.Scim.Failed',
-      properties: { scheme: 'scim', tenantId, cause: (e as Error).message },
+      properties: {
+        scheme: 'scim',
+        tenantId,
+        cause: e instanceof Error ? e.message : String(e),
+      },
     });
     return null;
   }

@@ -22,6 +22,7 @@ import { describe, test, expect } from 'vitest';
 import { createServerIngress, makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import type { SearchDocument } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
 const d = baseUrl ? describe : describe.skip;
@@ -37,11 +38,13 @@ d('[node] catalog_badge_family parity (debug-surface)', () => {
     const tax = await ingress.getTaxonomyNodes('recognition');
     expect(tax).not.toBeNull();
 
-    const stored = await ingress.readEventTags(r1.eventId);
-    expect(stored).not.toBeNull();
-    expect(stored!).toContain(`Tenant:${tenantId}`);
-    expect(stored!).toContain('TaxonomyTree:recognition');
-    expect(stored!).toContain('SearchIndex:catalog');
+    const stored = assertDefined(
+      await ingress.readEventTags(r1.eventId),
+      `event tags must be readable for ${r1.eventId}`,
+    );
+    expect(stored).toContain(`Tenant:${tenantId}`);
+    expect(stored).toContain('TaxonomyTree:recognition');
+    expect(stored).toContain('SearchIndex:catalog');
     await ingress.close();
   });
 });
@@ -77,7 +80,10 @@ d('[node] catalog_search parity (debug-surface)', () => {
     // allow-list assertion. Mirror that here by constructing a server
     // ingress directly with `principalId: 'u_alice'`.
     const aliceIngress = await createServerIngress({
-      baseUrl: baseUrl!,
+      baseUrl: assertDefined(
+        baseUrl,
+        'NODE_PARITY_BASE_URL must be set; test would have been skipped otherwise',
+      ),
       tenantId,
       principalId: 'u_alice',
     });
@@ -120,9 +126,11 @@ d('[node] catalog_search parity (debug-surface)', () => {
       buildSeedIntent(tenantId, principalId, `itest-cs-cache-${tenantId}`, seed),
     );
 
-    const tags = await ingress.readEventTags(r.eventId);
-    expect(tags).not.toBeNull();
-    expect(tags!).toContain('SearchIndex:catalog');
+    const tags = assertDefined(
+      await ingress.readEventTags(r.eventId),
+      `event tags must be readable for ${r.eventId}`,
+    );
+    expect(tags).toContain('SearchIndex:catalog');
 
     const body = await ingress.searchCatalog({ q: 'anniversary' });
     expect(body.results.length).toBeGreaterThan(0);

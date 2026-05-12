@@ -26,9 +26,9 @@ const fruits: Option[] = [
 ];
 
 /** In-memory OptionsSource that yields `data` after `load()` is awaited. */
-function fixedSource(data: unknown): OptionsSource {
+function fixedSource(data: readonly Option[] | null | undefined): OptionsSource {
   return {
-    load: async () => data as readonly Option[] | null | undefined,
+    load: async () => data,
   };
 }
 

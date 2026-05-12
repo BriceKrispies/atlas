@@ -110,11 +110,13 @@ export function actionIdToOperationId(actionId: string): string {
 }
 
 function lowerFirst(s: string): string {
-  return s.length === 0 ? s : s[0]!.toLowerCase() + s.slice(1);
+  // `charAt(0)` returns `''` for empty strings (never undefined), so we
+  // get the empty-string short-circuit for free without a non-null assertion.
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 function upperFirst(s: string): string {
-  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function buildOperation(
@@ -166,7 +168,7 @@ function humanizeAction(action: ActionDeclaration): string {
 }
 
 function capitalise(s: string): string {
-  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function buildActionDescription(action: ActionDeclaration): string {
@@ -203,8 +205,13 @@ function wrapPayloadInEnvelope(
   const cloned = structuredClone(envelopeSchema) as Record<string, unknown>;
   // Clear $id so the cloned schema doesn't collide with the source's $id.
   delete cloned['$id'];
-  // The envelope's $schema clause is fine to keep.
-  const properties = cloned['properties'] as Record<string, unknown> | undefined;
+  // The envelope's $schema clause is fine to keep. Narrow `properties`
+  // via a runtime shape check rather than a structural cast.
+  const rawProps = cloned['properties'];
+  const properties: Record<string, unknown> | undefined =
+    typeof rawProps === 'object' && rawProps !== null && !Array.isArray(rawProps)
+      ? (rawProps as Record<string, unknown>) // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON object narrowed by the typeof+non-null+!isArray guard above
+      : undefined;
   if (properties !== undefined) {
     properties['eventType'] = {
       type: 'string',

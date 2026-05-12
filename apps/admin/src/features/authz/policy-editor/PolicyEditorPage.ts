@@ -20,8 +20,14 @@ import {
 } from '@atlas/api-client';
 import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
+import { readDetailValue } from '@atlas/design/internal/assert.ts';
 import { evaluateRequest, validateCedarText, warmupSimulator } from './simulator.ts';
 import type { SimulatorRequest, SimulatorResult } from './simulator.ts';
+
+/** Extract the message string from an unknown thrown value. */
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 const NEW = 'new';
 
@@ -173,7 +179,7 @@ class PolicyEditorPage extends AtlasSurface {
       } catch (e) {
         this._state = {
           ...this._state,
-          loadError: (e as Error).message,
+          loadError: errorMessage(e),
         };
       }
     }
@@ -291,17 +297,19 @@ class PolicyEditorPage extends AtlasSurface {
 
   private _renderEditorPane(): HTMLElement {
     const wrap = document.createElement('atlas-box');
+    // `document.createElement('atlas-code-editor')` returns `AtlasCodeEditor`
+    // via the `HTMLElementTagNameMap` augmentation in `@atlas/design`.
+    // The typed instance exposes `.value` directly — no cast required.
     const editor = document.createElement('atlas-code-editor');
     editor.setAttribute('name', 'cedar-editor');
     editor.setAttribute('language', 'text');
     editor.setAttribute('label', 'Cedar source');
-    // The editor exposes a `value` property and `change` event — set
-    // both imperatively because property bindings via the `html` helper
+    // Set imperatively because property bindings via the `html` helper
     // don't currently support `.value=${...}` for custom elements that
     // override property accessors.
-    (editor as unknown as { value: string }).value = this._state.cedarText;
+    editor.value = this._state.cedarText;
     editor.addEventListener('change', (e: Event) => {
-      const v = (e as CustomEvent<{ value: string }>).detail?.value;
+      const v = readDetailValue(e);
       if (typeof v === 'string') {
         this._state = { ...this._state, cedarText: v };
         this._scheduleValidation();
@@ -325,16 +333,20 @@ class PolicyEditorPage extends AtlasSurface {
     heading.setAttribute('level', '3');
     heading.textContent = 'Parsed policies';
     wrap.appendChild(heading);
+    // `document.createElement('atlas-json-view')` returns `AtlasJsonView`
+    // via the `HTMLElementTagNameMap` augmentation. The component
+    // exposes a `data` setter that drives a re-render — the prior
+    // `as unknown as { value }` cast was setting a non-existent
+    // property and silently dropping the summary on the floor.
     const view = document.createElement('atlas-json-view');
     view.setAttribute('name', 'ast-view');
     // Best-effort summary — counts of permit/forbid/templates
-    const summary = this._summarise(this._state.cedarText);
-    (view as unknown as { value: unknown }).value = summary;
+    view.data = this._summarise(this._state.cedarText);
     wrap.appendChild(view);
     return wrap;
   }
 
-  private _summarise(cedarText: string): Record<string, unknown> {
+  private _summarise(cedarText: string): { [k: string]: number } {
     const permits = (cedarText.match(/(^|\n)\s*permit\s*\(/g) ?? []).length;
     const forbids = (cedarText.match(/(^|\n)\s*forbid\s*\(/g) ?? []).length;
     const annotated = (cedarText.match(/@id\s*\(/g) ?? []).length;
@@ -397,12 +409,15 @@ class PolicyEditorPage extends AtlasSurface {
   }
 
   private _readSimulatorInputs(host: HTMLElement): SimulatorRequest {
+    // `querySelector('atlas-input[name=...]')` returns `AtlasInput | null`
+    // via the `HTMLElementTagNameMap` augmentation in `@atlas/design`
+    // (the bracketed attribute selector narrows on the tag prefix).
+    // The typed instance exposes `.value: string` directly.
     const read = (n: string): string => {
-      const el = host.querySelector(
+      const el = host.querySelector<HTMLElementTagNameMap['atlas-input']>(
         `atlas-input[name="${n}"]`,
-      ) as HTMLElement | null;
-      const v = (el as unknown as { value?: string } | null)?.value;
-      return typeof v === 'string' ? v : '';
+      );
+      return el?.value ?? '';
     };
     return {
       principalId: read('simulator-principal-id') || 'user-001',
@@ -425,7 +440,7 @@ class PolicyEditorPage extends AtlasSurface {
     } catch (e) {
       this._state = {
         ...this._state,
-        simulatorError: (e as Error).message,
+        simulatorError: errorMessage(e),
         lastSimulatorResult: null,
       };
       this.emit('admin.authz.policy-editor.simulator-run', { decision: 'error' });
@@ -453,7 +468,7 @@ class PolicyEditorPage extends AtlasSurface {
       // cedar-wasm load error — surface as a single validation entry so
       // the user knows save will still work but real-time validation
       // is degraded.
-      errs = [`cedar-wasm: ${(e as Error).message}`];
+      errs = [`cedar-wasm: ${errorMessage(e)}`];
     }
     this._state = { ...this._state, validationErrors: errs };
     // Surgical DOM update — preserves <atlas-code-editor> cursor +
@@ -472,7 +487,7 @@ class PolicyEditorPage extends AtlasSurface {
       this._state = {
         ...this._state,
         saving: false,
-        loadError: (e as Error).message,
+        loadError: errorMessage(e),
       };
       this._rerender();
     }
@@ -490,7 +505,7 @@ class PolicyEditorPage extends AtlasSurface {
       this._state = {
         ...this._state,
         activating: false,
-        loadError: (e as Error).message,
+        loadError: errorMessage(e),
       };
       this._rerender();
     }

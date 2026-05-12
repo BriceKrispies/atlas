@@ -2,45 +2,31 @@ import type {
   EntityStore,
   HandlerRegistry,
   IntentHandler,
-  IntentHandlerContext,
   HandlerResult,
 } from '@atlas/ports';
-import type { IntentEnvelope } from '@atlas/platform-core';
 import { handlePageCreate } from './page-create.ts';
 import { handlePageUpdate } from './page-update.ts';
 import { handlePageDelete } from './page-delete.ts';
-import type { PageStatus } from '../types.ts';
+import type {
+  ContentPagesIntentPayload,
+  PageCreatePayload,
+  PageDeletePayload,
+  PageUpdatePayload,
+} from '../intents.ts';
 
-function readString(payload: Record<string, unknown>, key: string): string {
-  const v = payload[key];
-  if (typeof v !== 'string') {
-    throw new Error(`expected string for payload.${key}`);
-  }
-  return v;
-}
-
-function readOptionalString(
-  payload: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const v = payload[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'string') {
-    throw new Error(`expected string|null|undefined for payload.${key}`);
-  }
-  return v;
-}
-
-function readOptionalStatus(
-  payload: Record<string, unknown>,
-  key: string,
-): PageStatus | undefined {
-  const v = payload[key];
-  if (v === undefined || v === null) return undefined;
-  if (v !== 'draft' && v !== 'published' && v !== 'archived') {
-    throw new Error(`expected page status for payload.${key}`);
-  }
-  return v;
+/**
+ * Erase the typed-payload generic when binding a handler into the
+ * registry map. The HandlerRegistry's `get(actionId): IntentHandler`
+ * surface returns the default-generic shape (`IntentPayload`) — ingress
+ * dispatches by `actionId` string and doesn't know payload-shape
+ * statically — so the action-specific narrowing only lives *inside*
+ * each closure. Same pattern as `modules/identity/src/handlers/registry.ts`.
+ */
+function asWide<TPayload extends ContentPagesIntentPayload>(
+  h: IntentHandler<TPayload>,
+): IntentHandler {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: registry erases payload-generic; ingress dispatches by actionId string and the narrowed types only live inside each closure
+  return h as unknown as IntentHandler;
 }
 
 /**
@@ -48,45 +34,30 @@ function readOptionalStatus(
  *
  * Update needs the `EntityStore` to read the prior document; that's
  * not on `IntentHandlerContext`, so the wiring layer injects it via a
- * closure.
+ * closure — same shape as `modules/identity/src/handlers/registry.ts`.
  */
 export function contentPagesHandlerEntries(
   entities: EntityStore,
 ): ReadonlyArray<readonly [string, IntentHandler]> {
-  const createHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const createHandler: IntentHandler<PageCreatePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handlePageCreate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          pageId: readString(payload, 'pageId'),
-          title: readString(payload, 'title'),
-          slug: readString(payload, 'slug'),
-          ...(readOptionalStatus(payload, 'status') !== undefined
-            ? { status: readOptionalStatus(payload, 'status') as PageStatus }
+          pageId: p.pageId,
+          title: p.title,
+          slug: p.slug,
+          ...(p.status !== undefined ? { status: p.status } : {}),
+          ...(p.content !== undefined ? { content: p.content } : {}),
+          ...(p.authorId !== undefined ? { authorId: p.authorId } : {}),
+          ...(p.templateId !== undefined ? { templateId: p.templateId } : {}),
+          ...(p.templateVersion !== undefined
+            ? { templateVersion: p.templateVersion }
             : {}),
-          ...(readOptionalString(payload, 'content') !== undefined
-            ? { content: readOptionalString(payload, 'content') as string }
-            : {}),
-          ...(readOptionalString(payload, 'authorId') !== undefined
-            ? { authorId: readOptionalString(payload, 'authorId') as string }
-            : {}),
-          ...(readOptionalString(payload, 'templateId') !== undefined
-            ? { templateId: readOptionalString(payload, 'templateId') as string }
-            : {}),
-          ...(readOptionalString(payload, 'templateVersion') !== undefined
-            ? {
-                templateVersion: readOptionalString(payload, 'templateVersion') as string,
-              }
-            : {}),
-          ...(readOptionalString(payload, 'pluginRef') !== undefined
-            ? { pluginRef: readOptionalString(payload, 'pluginRef') as string }
-            : {}),
+          ...(p.pluginRef !== undefined ? { pluginRef: p.pluginRef } : {}),
         },
         ctx.eventStore,
       );
@@ -94,37 +65,22 @@ export function contentPagesHandlerEntries(
     },
   };
 
-  const updateHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const updateHandler: IntentHandler<PageUpdatePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handlePageUpdate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          pageId: readString(payload, 'pageId'),
-          ...(readOptionalString(payload, 'title') !== undefined
-            ? { title: readOptionalString(payload, 'title') as string }
-            : {}),
-          ...(readOptionalString(payload, 'slug') !== undefined
-            ? { slug: readOptionalString(payload, 'slug') as string }
-            : {}),
-          ...(readOptionalStatus(payload, 'status') !== undefined
-            ? { status: readOptionalStatus(payload, 'status') as PageStatus }
-            : {}),
-          ...(readOptionalString(payload, 'content') !== undefined
-            ? { content: readOptionalString(payload, 'content') as string }
-            : {}),
-          ...(readOptionalString(payload, 'templateId') !== undefined
-            ? { templateId: readOptionalString(payload, 'templateId') as string }
-            : {}),
-          ...(readOptionalString(payload, 'templateVersion') !== undefined
-            ? {
-                templateVersion: readOptionalString(payload, 'templateVersion') as string,
-              }
+          pageId: p.pageId,
+          ...(p.title !== undefined ? { title: p.title } : {}),
+          ...(p.slug !== undefined ? { slug: p.slug } : {}),
+          ...(p.status !== undefined ? { status: p.status } : {}),
+          ...(p.content !== undefined ? { content: p.content } : {}),
+          ...(p.templateId !== undefined ? { templateId: p.templateId } : {}),
+          ...(p.templateVersion !== undefined
+            ? { templateVersion: p.templateVersion }
             : {}),
         },
         ctx.eventStore,
@@ -134,18 +90,15 @@ export function contentPagesHandlerEntries(
     },
   };
 
-  const deleteHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const deleteHandler: IntentHandler<PageDeletePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handlePageDelete(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          pageId: readString(payload, 'pageId'),
+          pageId: p.pageId,
         },
         ctx.eventStore,
       );
@@ -154,9 +107,9 @@ export function contentPagesHandlerEntries(
   };
 
   return [
-    ['ContentPages.Page.Create', createHandler],
-    ['ContentPages.Page.Update', updateHandler],
-    ['ContentPages.Page.Delete', deleteHandler],
+    ['ContentPages.Page.Create', asWide(createHandler)],
+    ['ContentPages.Page.Update', asWide(updateHandler)],
+    ['ContentPages.Page.Delete', asWide(deleteHandler)],
   ];
 }
 

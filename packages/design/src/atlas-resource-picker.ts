@@ -1,5 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, escapeText } from './util.ts';
+import { isElement, isHtmlElement, isHtmlInputElement } from './internal/assert.ts';
 
 /**
  * <atlas-resource-picker> — UI for selecting Atlas resources (pages,
@@ -193,8 +194,8 @@ export class AtlasResourcePicker extends AtlasElement {
     // Initial empty-query fetch — gives the consumer a chance to seed results.
     this._emitRequest('');
     queueMicrotask(() => {
-      const inner = this._searchInput?.shadowRoot?.querySelector('input') as HTMLInputElement | null;
-      if (inner) inner.focus();
+      const inner = this._searchInput?.shadowRoot?.querySelector('input');
+      if (isHtmlInputElement(inner)) inner.focus();
       else this._searchInput?.focus?.();
     });
   }
@@ -311,22 +312,39 @@ export class AtlasResourcePicker extends AtlasElement {
 
   private _headingText(): string {
     const t = this.getAttribute('resource-type') ?? 'any';
+    const fallback = 'Select a resource';
     const map: Record<string, string> = {
       page: 'Select a page',
       media: 'Select a media file',
       user: 'Select a user',
-      any: 'Select a resource',
+      any: fallback,
     };
-    return map[t] ?? map['any']!;
+    return map[t] ?? fallback;
   }
 
   private _onSearchInput(ev: Event): void {
-    const target = ev.target as HTMLElement & { value?: string };
-    const v = (ev as CustomEvent<{ value?: string }>).detail?.value
-      ?? target.getAttribute?.('value')
-      ?? target.value
-      ?? '';
-    this._query = String(v ?? '');
+    // `<atlas-search-input>` dispatches CustomEvent<{ value: string }>;
+    // fall back to reading the live `value` attribute / property on the
+    // target element so synthesised plain Events still work.
+    let v: string | null = null;
+    if (ev instanceof CustomEvent) {
+      const detail: unknown = ev.detail;
+      if (
+        detail !== null &&
+        typeof detail === 'object' &&
+        'value' in detail &&
+        typeof detail.value === 'string'
+      ) {
+        v = detail.value;
+      }
+    }
+    if (v === null && isElement(ev.target)) {
+      v = ev.target.getAttribute('value');
+    }
+    if (v === null && isHtmlInputElement(ev.target)) {
+      v = ev.target.value;
+    }
+    this._query = v ?? '';
     this._emitRequest(this._query);
   }
 
@@ -374,18 +392,19 @@ export class AtlasResourcePicker extends AtlasElement {
   }
 
   private _onResultClick(ev: Event): void {
-    const target = ev.target as Element | null;
-    const li = target?.closest('.result') as HTMLElement | null;
-    if (!li) return;
-    const id = li.dataset['id'];
+    if (!isElement(ev.target)) return;
+    const closest = ev.target.closest('.result');
+    if (!isHtmlElement(closest)) return;
+    const id = closest.dataset['id'];
     if (!id) return;
     this._toggleSelection(id);
     if (!this.multiple) this._onConfirm();
   }
 
   private _onResultKey(ev: KeyboardEvent): void {
-    const target = ev.target as HTMLElement | null;
-    if (!target?.classList.contains('result')) return;
+    if (!isHtmlElement(ev.target)) return;
+    const target = ev.target;
+    if (!target.classList.contains('result')) return;
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
       const id = target.dataset['id'];
@@ -395,10 +414,12 @@ export class AtlasResourcePicker extends AtlasElement {
       }
     } else if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      (target.nextElementSibling as HTMLElement | null)?.focus();
+      const next = target.nextElementSibling;
+      if (isHtmlElement(next)) next.focus();
     } else if (ev.key === 'ArrowUp') {
       ev.preventDefault();
-      (target.previousElementSibling as HTMLElement | null)?.focus();
+      const prev = target.previousElementSibling;
+      if (isHtmlElement(prev)) prev.focus();
     }
   }
 
@@ -414,15 +435,27 @@ export class AtlasResourcePicker extends AtlasElement {
   }
 
   private _onConfirm(): void {
-    const value = this.multiple ? Array.from(this._selected) : (this._selected.values().next().value ?? '');
-    this.setAttribute('value', this.multiple ? (value as string[]).join(',') : (value as string));
-    this.dispatchEvent(
-      new CustomEvent<AtlasResourcePickerChangeDetail>('change', {
-        detail: { value: this.multiple ? (value as string[]) : (value as string) },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    if (this.multiple) {
+      const values = Array.from(this._selected);
+      this.setAttribute('value', values.join(','));
+      this.dispatchEvent(
+        new CustomEvent<AtlasResourcePickerChangeDetail>('change', {
+          detail: { value: values },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    } else {
+      const single = this._selected.values().next().value ?? '';
+      this.setAttribute('value', single);
+      this.dispatchEvent(
+        new CustomEvent<AtlasResourcePickerChangeDetail>('change', {
+          detail: { value: single },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
     this.close();
   }
 }

@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventStore } from '@atlas/ports';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 interface MakeEventOptions {
   eventId?: string;
@@ -60,15 +61,17 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
         cacheInvalidationTags: ['Tenant:tenant-a', 'SearchIndex:catalog'],
       });
       await store.append(env);
-      const fetched = await store.getEvent('evt-rt');
-      expect(fetched).not.toBeNull();
-      expect(fetched!.eventId).toBe('evt-rt');
-      expect(fetched!.tenantId).toBe('tenant-a');
-      expect(fetched!.cacheInvalidationTags).toEqual([
+      const fetched = assertDefined(
+        await store.getEvent('evt-rt'),
+        'getEvent(evt-rt) after append',
+      );
+      expect(fetched.eventId).toBe('evt-rt');
+      expect(fetched.tenantId).toBe('tenant-a');
+      expect(fetched.cacheInvalidationTags).toEqual([
         'Tenant:tenant-a',
         'SearchIndex:catalog',
       ]);
-      expect(fetched!.payload).toEqual({ hello: 'world' });
+      expect(fetched.payload).toEqual({ hello: 'world' });
     });
 
     test('append returns the original eventId when the same idempotency key is replayed with the same payload', async () => {
@@ -178,9 +181,11 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(events.map((e) => e.eventId)).toEqual(['evt-late', 'evt-early', 'evt-mid']);
 
       for (let i = 1; i < events.length; i++) {
-        const prev = events[i - 1]!;
-        const curr = events[i]!;
-        expect(prev.seq! < curr.seq!).toBe(true);
+        const prev = assertDefined(events[i - 1], `events[${i - 1}] in readEvents result`);
+        const curr = assertDefined(events[i], `events[${i}] in readEvents result`);
+        const prevSeq = assertDefined(prev.seq, 'prev.seq after append');
+        const currSeq = assertDefined(curr.seq, 'curr.seq after append');
+        expect(prevSeq < currSeq).toBe(true);
       }
     });
 
@@ -195,10 +200,13 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
         cacheInvalidationTags: ['Tenant:t', 'TaxonomyTree:recognition', 'SearchIndex:catalog'],
       });
       await store.append(env);
-      const fetched = await store.getEvent('evt-tags');
-      expect(fetched!.cacheInvalidationTags).toContain('Tenant:t');
-      expect(fetched!.cacheInvalidationTags).toContain('TaxonomyTree:recognition');
-      expect(fetched!.cacheInvalidationTags).toContain('SearchIndex:catalog');
+      const fetched = assertDefined(
+        await store.getEvent('evt-tags'),
+        'getEvent(evt-tags) after append',
+      );
+      expect(fetched.cacheInvalidationTags).toContain('Tenant:t');
+      expect(fetched.cacheInvalidationTags).toContain('TaxonomyTree:recognition');
+      expect(fetched.cacheInvalidationTags).toContain('SearchIndex:catalog');
     });
 
     test('causationId on a child event references the parent event', async () => {
@@ -206,8 +214,11 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       await store.append(parent);
       const child = makeEvent({ eventId: 'evt-child', causationId: 'evt-parent' });
       await store.append(child);
-      const fetched = await store.getEvent('evt-child');
-      expect(fetched!.causationId).toBe('evt-parent');
+      const fetched = assertDefined(
+        await store.getEvent('evt-child'),
+        'getEvent(evt-child) after append',
+      );
+      expect(fetched.causationId).toBe('evt-parent');
     });
 
     test('readEvents includes events with a wide variety of payload shapes', async () => {
@@ -245,7 +256,9 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       expect(uniqueSeqs.size).toBe(1);
       const stored = await store.readEvents('tenant-conc');
       expect(stored.length).toBe(1);
-      expect(results[0]!.eventId).toBe(stored[0]!.eventId);
+      const firstResult = assertDefined(results[0], 'results[0] from 5 concurrent appends');
+      const firstStored = assertDefined(stored[0], 'stored[0] after concurrent appends');
+      expect(firstResult.eventId).toBe(firstStored.eventId);
     });
 
     test('[error-shape] append with a missing required field on the envelope throws', async () => {
@@ -253,12 +266,10 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
       // Postgres `events` table — neither adapter can persist a row without
       // it. Contract: append rejects (rather than silently writing a
       // half-shaped row).
-      const broken = makeEvent({ eventId: 'evt-broken' }) as unknown as Record<
-        string,
-        unknown
-      >;
-      delete broken['eventId'];
-      await expect(store.append(broken as unknown as EventEnvelope)).rejects.toThrow();
+      const { eventId: _omitted, ...broken } = makeEvent({ eventId: 'evt-broken' });
+      // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- adversarial test fixture: deliberately missing required `eventId` to exercise the adapter's reject-on-missing-PK path
+      const brokenEnvelope = broken as unknown as EventEnvelope;
+      await expect(store.append(brokenEnvelope)).rejects.toThrow();
     });
 
     test('[error-shape] getEvent on an empty eventId returns null (not an error)', async () => {

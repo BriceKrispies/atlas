@@ -3,6 +3,7 @@ import { backend } from '@atlas/api-client';
 import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
 import '@atlas/widgets';
+import type { Columns } from '@atlas/widgets';
 
 interface PageRow {
   pageId: string;
@@ -10,32 +11,28 @@ interface PageRow {
   slug: string;
   status?: string;
   updatedAt?: string;
+  [k: string]: unknown;
 }
 
-interface ColumnFilterSpec {
-  type: 'text' | 'select';
+/**
+ * Set a property on a custom element. `<atlas-data-table>` declares
+ * `columns` / `data` setters that normalise internally, but the DOM
+ * `HTMLElement` type doesn't expose them — we forward via `Reflect.set`
+ * so no narrowing cast is required at the assignment site. Mirrors the
+ * `html` template binding in `packages/core/src/html.ts`.
+ */
+function setProp(el: HTMLElement, key: string, value: unknown): void {
+  Reflect.set(el, key, value);
 }
 
-interface ColumnSpec {
-  key: keyof PageRow | string;
-  label: string;
-  sortable?: boolean;
-  filter?: ColumnFilterSpec;
-  format?: string | ((value: unknown, row: PageRow) => string | Node);
-}
-
-interface DataTableElement extends HTMLElement {
-  columns: readonly ColumnSpec[];
-  data: readonly PageRow[];
-}
-
-const COLUMNS = (host: PagesListPage): readonly ColumnSpec[] => [
+const COLUMNS = (host: PagesListPage): Columns<PageRow> => [
   { key: 'title', label: 'Title', sortable: true, filter: { type: 'text' } },
   {
     key: 'slug',
     label: 'Slug',
     sortable: true,
-    format: (value: unknown): string => `/${(value as string | undefined) ?? ''}`,
+    // value is inferred as string — no cast required.
+    format: (value): string => `/${value ?? ''}`,
   },
   {
     key: 'status',
@@ -53,7 +50,7 @@ const COLUMNS = (host: PagesListPage): readonly ColumnSpec[] => [
   {
     key: 'pageId',
     label: 'Actions',
-    format: (_value: unknown, row: PageRow): Node => {
+    format: (_value, row): Node => {
       const btn = document.createElement('atlas-button');
       btn.setAttribute('name', 'row-delete');
       btn.setAttribute('variant', 'danger');
@@ -76,9 +73,17 @@ class PagesListPage extends AtlasSurface {
     action: 'Create page',
   };
 
+  /**
+   * Narrow the inherited `data: unknown` to the load() return shape so
+   * render() and the test-state reader read it without an `as` cast.
+   */
+  declare data: readonly PageRow[] | null;
+
   override async load(): Promise<readonly PageRow[]> {
     const result = await backend.query('/pages');
-    return (result as readonly PageRow[] | null) ?? [];
+    // `backend.query` is typed `Promise<unknown>` at the boundary; trust
+    // the array shape from the `/pages` route and drop non-arrays to `[]`.
+    return Array.isArray(result) ? (result as readonly PageRow[]) : [];
   }
 
   /**
@@ -122,13 +127,13 @@ class PagesListPage extends AtlasSurface {
    * to reason about imperatively.
    */
   private _renderTable(pages: readonly PageRow[]): HTMLElement {
-    const table = document.createElement('atlas-data-table') as DataTableElement;
+    const table = document.createElement('atlas-data-table');
     table.setAttribute('name', 'table');
     table.setAttribute('label', 'Content pages');
     table.setAttribute('row-key', 'pageId');
     table.setAttribute('page-size', '25');
-    table.columns = COLUMNS(this);
-    table.data = pages;
+    setProp(table, 'columns', COLUMNS(this));
+    setProp(table, 'data', pages);
     return table;
   }
 

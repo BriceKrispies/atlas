@@ -15,6 +15,21 @@ import {
   shouldEmitPolicyEvaluated,
 } from '../src/audit-emitter.ts';
 
+/**
+ * Narrows an event's `unknown`-typed payload to a string-keyed record so
+ * tests can read fields without per-call `as` casts. Throws on a
+ * malformed envelope — that's a test invariant failure, not a runtime
+ * branch. Centralising the cast keeps the no-unsafe-type-assertion rule
+ * intact at every call site.
+ */
+function payloadOf(payload: unknown): Record<string, unknown> {
+  if (payload === null || typeof payload !== 'object') {
+    throw new Error(`expected payload to be an object, got: ${typeof payload}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof guard narrows object to a string-keyed record; centralised so call sites stay cast-free.
+  return payload as Record<string, unknown>;
+}
+
 const REQUEST: PolicyEvaluationRequest = {
   principal: { id: 'alice', tenantId: 'tenant-a', attributes: {} },
   action: 'Catalog.Family.Publish',
@@ -57,7 +72,7 @@ describe('policyEvaluatedEvent', () => {
     // Including a Tenant: tag here would thrash the Cedar bundle cache
     // once wirePolicyCacheInvalidation is hooked into the dispatcher.
     expect(env.cacheInvalidationTags).toBeNull();
-    const payload = env.payload as Record<string, unknown>;
+    const payload = payloadOf(env.payload);
     expect(payload['decision']).toBe('deny');
     expect(payload['action']).toBe('Catalog.Family.Publish');
     expect(payload['matchedPolicies']).toEqual(['protected-families']);
@@ -86,7 +101,7 @@ describe('policyEvaluatedEvent', () => {
       idempotencyKey: 'i',
       eventId: 'e',
     });
-    expect((env.payload as Record<string, unknown>)['decision']).toBe('permit');
+    expect(payloadOf(env.payload)['decision']).toBe('permit');
   });
 
   test('handles missing matchedPolicies / reasons gracefully', () => {
@@ -96,7 +111,7 @@ describe('policyEvaluatedEvent', () => {
       idempotencyKey: 'i',
       eventId: 'e',
     });
-    const payload = env.payload as Record<string, unknown>;
+    const payload = payloadOf(env.payload);
     expect(payload['matchedPolicies']).toEqual([]);
     expect(payload['reasons']).toEqual([]);
   });

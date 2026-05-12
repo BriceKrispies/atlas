@@ -16,10 +16,12 @@ import type {
 
 type RouteHandler = (...params: string[]) => Promise<unknown>;
 
-/** Route table: path pattern → handler */
+/** Route table: path pattern → handler. Handlers receive the matched
+ *  `:param` segments as positional string args; `matchRoute` guarantees
+ *  the count matches the pattern. */
 const routes: Record<string, RouteHandler> = {
   '/pages': () => store.list('pages'),
-  '/pages/:id': (id) => store.getById('pages', id!),
+  '/pages/:id': (id) => store.getById('pages', id ?? ''),
 };
 
 interface MatchedRoute {
@@ -46,8 +48,15 @@ function matchRoute(path: string): MatchedRoute | null {
     const params: string[] = [];
     let match = true;
     for (let i = 0; i < segments.length; i++) {
-      const pSeg = patternSegments[i]!;
-      const sSeg = segments[i]!;
+      // `segments.length === patternSegments.length` was checked above, so
+      // both index accesses are in range. Read once with explicit guards
+      // to keep `pSeg` / `sSeg` narrowed to `string` without `!`.
+      const pSeg = patternSegments[i];
+      const sSeg = segments[i];
+      if (pSeg === undefined || sSeg === undefined) {
+        match = false;
+        break;
+      }
       if (pSeg.startsWith(':')) {
         params.push(sSeg);
       } else if (pSeg !== sSeg) {
@@ -119,6 +128,10 @@ export const mockBackend: Backend = {
   ): Unsubscribe {
     const tagSet = new Set(tags);
     const wrapped: BackendEventCallback = (event: unknown): void => {
+      // Boundary: the mock store's event bus is typed `unknown`; payloads
+      // are produced by this package's own mock writers so the shape is
+      // known by construction.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: mock event bus is internally produced; payload shape is owned by this package
       const ev = event as SerializedServerEvent;
       if (tagSet.size > 0) {
         const evTags = ev.tags;

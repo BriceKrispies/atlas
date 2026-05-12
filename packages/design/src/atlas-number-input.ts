@@ -270,8 +270,10 @@ export class AtlasNumberInput extends AtlasElement {
     // Event delegation on the .group container so the stepper wiring
     // survives any surgical update without needing rebind.
     group.addEventListener('click', (ev) => {
-      const target = ev.target as Element | null;
-      const btn = target?.closest<HTMLButtonElement>('button[data-dir]');
+      const target = ev.target;
+      const btn = target instanceof Element
+        ? target.closest<HTMLButtonElement>('button[data-dir]')
+        : null;
       if (!btn) return;
       if (btn.disabled) return;
       if (btn.dataset['dir'] === 'up') this.stepUp();

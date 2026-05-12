@@ -16,6 +16,7 @@ import {
   type LayoutDocument,
 } from '@atlas/page-templates';
 import { seedPages } from '@atlas/bundle-standard/seed-pages';
+import { parseMountConfig, v } from '../internal/assert.ts';
 
 export interface SeedPageDoc {
   pageId: string;
@@ -25,14 +26,27 @@ export interface SeedPageDoc {
   [k: string]: unknown;
 }
 
+/** Type-guard for the minimal `SeedPageDoc` shape — pageId is the only required field. */
+export function isSeedPageDoc(d: unknown): d is SeedPageDoc {
+  return typeof d === 'object'
+    && d !== null
+    && typeof (d as { pageId?: unknown }).pageId === 'string';
+}
+
 export const sandboxLayoutRegistry = new LayoutRegistry();
 for (const layout of presetLayouts as LayoutDocument[]) {
   sandboxLayoutRegistry.register(layout);
 }
 
 export const sandboxPageStore = new ValidatingPageStore(new InMemoryPageStore());
-for (const doc of seedPages as SeedPageDoc[]) {
-  void sandboxPageStore.save(doc.pageId, doc);
+// `seedPages` is typed `ReadonlyArray<unknown>` at the bundle boundary —
+// the JSON imports don't carry their authored shape. Validate each doc
+// against the minimal `SeedPageDoc` contract so the loop is typed
+// without an outer `as SeedPageDoc[]` cast.
+for (const doc of seedPages) {
+  if (isSeedPageDoc(doc)) {
+    void sandboxPageStore.save(doc.pageId, doc);
+  }
 }
 
 export const sandboxCapabilities: Record<string, (args: unknown) => Promise<unknown>> = {
@@ -51,8 +65,19 @@ export const sandboxCapabilities: Record<string, (args: unknown) => Promise<unkn
 };
 
 interface ContentPageMountConfig {
-  pageId: string;
-  edit: boolean;
+  pageId?: string;
+  edit?: boolean;
+}
+
+/**
+ * Sets a property on an `HTMLElement`. The receiving custom element
+ * (`<content-page>`) declares its own property reflection — we forward
+ * via `Reflect.set` so no `HTMLElement & Record<string, unknown>` cast
+ * is required at this boundary. Mirrors the `html` template binding in
+ * `packages/core/src/html.ts`.
+ */
+function setProp(el: HTMLElement, key: string, value: unknown): void {
+  Reflect.set(el, key, value);
 }
 
 export function mountContentPage(
@@ -60,20 +85,28 @@ export function mountContentPage(
   ctx: { config: Record<string, unknown>; onLog: (kind: string, payload: unknown) => void },
 ): () => void {
   const { config, onLog } = ctx;
-  const { pageId, edit } = config as unknown as ContentPageMountConfig;
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
-  page['pageId'] = pageId;
-  page['pageStore'] = sandboxPageStore;
-  page['layoutRegistry'] = sandboxLayoutRegistry;
-  page['principal'] = { id: 'u_sandbox', roles: [] };
-  page['tenantId'] = 'acme';
-  page['correlationId'] = `cid-sandbox-${pageId}-${Date.now()}`;
-  page['capabilities'] = sandboxCapabilities;
-  page['edit'] = edit === true;
-  page['onMediatorTrace'] = (evt: unknown) => onLog('mediator', evt);
-  page['onCapabilityTrace'] = (evt: unknown) => onLog('capability', evt);
+  // Validate against the optional-field shape and require pageId — the
+  // sandbox specimen contract guarantees it. `parseMountConfig` reads
+  // each field through its typed validator, so no `as` cast is needed.
+  const parsed = parseMountConfig<ContentPageMountConfig>(config, {
+    pageId: v.string,
+    edit: v.boolean,
+  });
+  const pageId = parsed.pageId ?? 'unknown';
+  const edit = parsed.edit === true;
+  const page = document.createElement('content-page');
+  setProp(page, 'pageId', pageId);
+  setProp(page, 'pageStore', sandboxPageStore);
+  setProp(page, 'layoutRegistry', sandboxLayoutRegistry);
+  setProp(page, 'principal', { id: 'u_sandbox', roles: [] });
+  setProp(page, 'tenantId', 'acme');
+  setProp(page, 'correlationId', `cid-sandbox-${pageId}-${Date.now()}`);
+  setProp(page, 'capabilities', sandboxCapabilities);
+  setProp(page, 'edit', edit);
+  setProp(page, 'onMediatorTrace', (evt: unknown) => onLog('mediator', evt));
+  setProp(page, 'onCapabilityTrace', (evt: unknown) => onLog('capability', evt));
   demoEl.appendChild(page);
-  onLog('page-mount', { pageId, edit: page['edit'] });
+  onLog('page-mount', { pageId, edit });
   return () => {
     try { page.remove(); } catch { /* already detached */ }
   };

@@ -15,7 +15,13 @@ import atlasDesignUrl from '@atlas/design?url';
 // JSON so it ships as a static asset rather than code.
 import announcementsHarnessSpec from '@atlas/bundle-standard/widgets/announcements/harness.fixtures.json';
 
-import { arrayDataSource } from '@atlas/widgets';
+import { arrayDataSource, type RowPatch } from '@atlas/widgets';
+// Pull in the HTMLElementTagNameMap augmentation for `widget-harness` so
+// `document.createElement('widget-harness')` returns the typed
+// WidgetHarnessElement — no structural cast required. The class itself
+// is registered side-effect via `main.ts`; we only need the types here.
+import type { HarnessSpec } from '../../harness/widget-harness.ts';
+import { parseMountConfig, v } from '../../internal/assert.ts';
 
 // ── Widgets ─────────────────────────────────────────────────────
 //
@@ -29,15 +35,18 @@ import { arrayDataSource } from '@atlas/widgets';
 // config-variant switcher, live mediator/bridge trace logs, and a
 // synthetic-publish panel. The sandbox shell just hands it a container.
 function mountAnnouncementsHarness(demoEl: HTMLElement): () => void {
-  const harness = document.createElement('widget-harness') as HTMLElement & {
-    spec: unknown;
-    widgetId: string;
-    resolveWidgetModuleUrl: (widgetId: string) =>
-      | string
-      | { url: string; supportUrls?: string[] }
-      | null;
-  };
-  harness.spec = announcementsHarnessSpec;
+  // `widget-harness` is augmented onto HTMLElementTagNameMap (see
+  // ../../harness/widget-harness.ts), so createElement returns the typed
+  // WidgetHarnessElement with its `spec` / `widgetId` /
+  // `resolveWidgetModuleUrl` fields — no structural cast needed.
+  const harness = document.createElement('widget-harness');
+  // The harness fixture is a JSON file loaded at build time. TS infers
+  // its very-narrow literal type, but HarnessSpec is the open-ended
+  // dev-time fixture contract — narrower literals are compatible at
+  // runtime. Pass through `unknown` so the assignment isn't structurally
+  // narrowed at the type level.
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: dev-time JSON fixture, HarnessSpec is structurally compatible
+  harness.spec = announcementsHarnessSpec as unknown as HarnessSpec;
   harness.widgetId = 'content.announcements';
   harness.resolveWidgetModuleUrl = (widgetId: string) =>
     widgetId === 'content.announcements'
@@ -101,17 +110,45 @@ interface DataTableMountConfig {
   data?: SampleRow[];
 }
 
+// SampleRow validator for parseMountConfig — checks the field shape we
+// hand to the data table at runtime.
+function isSampleRowArray(x: unknown): x is SampleRow[] {
+  if (!Array.isArray(x)) return false;
+  // `Array.isArray` narrows to `any[]`; re-widen to unknown[] so member
+  // access through the guard stays type-safe.
+  const rows: unknown[] = x;
+  return rows.every((r) => {
+    if (typeof r !== 'object' || r === null) return false;
+    if (!('id' in r) || !('title' in r)) return false;
+    return typeof r.id === 'number' && typeof r.title === 'string';
+  });
+}
+
+function customEventDetail(e: Event): unknown {
+  return e instanceof CustomEvent ? e.detail : undefined;
+}
+
 function mountDataTable(
   demo: HTMLElement,
   ctx: { config: Record<string, unknown>; onLog: (kind: string, payload: unknown) => void },
 ): () => void {
   const { onLog } = ctx;
-  const config = ctx.config as unknown as DataTableMountConfig;
-  const table = document.createElement('atlas-data-table') as HTMLElement & {
-    columns: unknown;
-    data?: unknown;
-    dataSource?: unknown;
-  };
+  // Mount configs flow in as `Record<string, unknown>` — validate each
+  // field through parseMountConfig instead of a structural `as` cast.
+  // Unknown / wrongly-typed fields fall through to the defaults below.
+  const config = parseMountConfig<DataTableMountConfig>(ctx.config, {
+    pageSize: v.number,
+    selection: v.string,
+    emptyHeading: v.string,
+    streaming: v.boolean,
+    data: isSampleRowArray,
+  });
+  // `atlas-data-table` is a widgets package element — it's not in
+  // HTMLElementTagNameMap, so createElement returns plain HTMLElement.
+  // We attach the columns / data / dataSource properties imperatively;
+  // the runtime class accepts them. Using a typed local interface lets
+  // us drop the `as HTMLElement & { … }` structural cast.
+  const table = createDataTable();
   table.setAttribute('name', 'table');
   table.setAttribute('label', 'Sample pages');
   if (config.pageSize != null) table.setAttribute('page-size', String(config.pageSize));
@@ -125,8 +162,19 @@ function mountDataTable(
   if (config.streaming) {
     const ds = arrayDataSource(config.data ?? SAMPLE_TABLE_ROWS);
     table.dataSource = ds;
-    (typeof window !== 'undefined' ? window : globalThis as unknown as Window)
-      .__atlasTestDataSource = ds;
+    if (typeof window !== 'undefined') {
+      // Wrap so `emit` widens its arg to `unknown` for the
+      // sandbox/test boundary. Runtime delegates straight to the
+      // typed `ds.emit`; the wrapper exists only so the global
+      // type can stay free of `RowPatch<Row>`. Tests pass a
+      // structurally-valid patch shape; the inner runtime branches
+      // on `patch.type` so a malformed patch is a no-op rather
+      // than a crash.
+      window.__atlasTestDataSource = {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: sandbox→test bridge; runtime `applyPatch` already branches on patch.type, so a malformed `unknown` is a no-op.
+        emit: (patch: unknown): void => { ds.emit(patch as RowPatch<SampleRow>); },
+      };
+    }
   } else {
     table.data = config.data ?? SAMPLE_TABLE_ROWS;
   }
@@ -136,7 +184,7 @@ function mountDataTable(
     'row-selected', 'row-unselected', 'row-activated', 'stream-patch-applied',
   ];
   const handlers: Array<[string, EventListener]> = events.map((ev) => {
-    const h: EventListener = (e) => onLog(ev, (e as CustomEvent).detail ?? {});
+    const h: EventListener = (e) => onLog(ev, customEventDetail(e) ?? {});
     table.addEventListener(ev, h);
     return [ev, h];
   });
@@ -149,6 +197,23 @@ function mountDataTable(
       delete window.__atlasTestDataSource;
     }
   };
+}
+
+/**
+ * Typed factory for `<atlas-data-table>`. The widget element is not
+ * declared on HTMLElementTagNameMap (the widgets package keeps its
+ * concrete class private), so without a factory every call site needs a
+ * structural cast. The factory localises that knowledge to one place and
+ * documents the contract.
+ */
+interface DataTableEl extends HTMLElement {
+  columns: unknown;
+  data?: unknown;
+  dataSource?: unknown;
+}
+function createDataTable(): DataTableEl {
+  const el = document.createElement('atlas-data-table');
+  return Object.assign(el, { columns: undefined as unknown });
 }
 
 S({
@@ -221,8 +286,15 @@ function mountChart(
   ctx: { config: Record<string, unknown>; onLog: (kind: string, payload: unknown) => void },
 ): () => void {
   const { onLog } = ctx;
-  const config = ctx.config as unknown as ChartMountConfig;
-  const chart = document.createElement('atlas-chart') as HTMLElement & { data: unknown };
+  const config = parseMountConfig<ChartMountConfig>(ctx.config, {
+    type: v.string,
+    height: v.string,
+    label: v.string,
+    showLegend: v.boolean,
+    innerRadius: v.number,
+    data: v.defined,
+  });
+  const chart = createChart();
   chart.setAttribute('name', 'chart');
   chart.setAttribute('type', config.type ?? 'line');
   if (config.height) chart.setAttribute('height', config.height);
@@ -231,7 +303,7 @@ function mountChart(
   if (config.innerRadius != null) chart.setAttribute('inner-radius', String(config.innerRadius));
   chart.data = config.data;
 
-  const handler: EventListener = (e) => onLog(e.type, (e as CustomEvent).detail ?? {});
+  const handler: EventListener = (e) => onLog(e.type, customEventDetail(e) ?? {});
   chart.addEventListener('point-focus', handler);
   chart.addEventListener('point-blur', handler);
 
@@ -241,6 +313,15 @@ function mountChart(
     chart.removeEventListener('point-blur', handler);
     chart.remove();
   };
+}
+
+/** Typed factory for `<atlas-chart>`. See `createDataTable` for rationale. */
+interface ChartEl extends HTMLElement {
+  data: unknown;
+}
+function createChart(): ChartEl {
+  const el = document.createElement('atlas-chart');
+  return Object.assign(el, { data: undefined as unknown });
 }
 
 S({
@@ -303,12 +384,12 @@ function mountChartCard(
   ctx: { config: Record<string, unknown>; onLog: (kind: string, payload: unknown) => void },
 ): () => void {
   const { onLog } = ctx;
-  const config = ctx.config as unknown as ChartCardMountConfig;
-  const card = document.createElement('atlas-chart-card') as HTMLElement & {
-    data: unknown;
-    drilldowns: unknown;
-    initialConfig: unknown;
-  };
+  const config = parseMountConfig<ChartCardMountConfig>(ctx.config, {
+    chartId: v.string,
+    data: v.defined,
+    drilldowns: v.defined,
+  });
+  const card = createChartCard();
   card.setAttribute('chart-id', config.chartId ?? 'sales');
 
   card.innerHTML = `
@@ -336,13 +417,28 @@ function mountChartCard(
 
   demo.appendChild(card);
 
-  const logHandler: EventListener = (e) => onLog(e.type, (e as CustomEvent).detail ?? {});
+  const logHandler: EventListener = (e) => onLog(e.type, customEventDetail(e) ?? {});
   card.addEventListener('point-click', logHandler);
 
   return () => {
     card.removeEventListener('point-click', logHandler);
     card.remove();
   };
+}
+
+/** Typed factory for `<atlas-chart-card>`. See `createDataTable` for rationale. */
+interface ChartCardEl extends HTMLElement {
+  data: unknown;
+  drilldowns: unknown;
+  initialConfig: unknown;
+}
+function createChartCard(): ChartCardEl {
+  const el = document.createElement('atlas-chart-card');
+  return Object.assign(el, {
+    data: undefined as unknown,
+    drilldowns: undefined as unknown,
+    initialConfig: undefined as unknown,
+  });
 }
 
 S({
@@ -418,6 +514,15 @@ S({
 
 declare global {
   interface Window {
-    __atlasTestDataSource?: unknown;
+    /**
+     * Imperative handle the streaming data-table specimen installs so
+     * Playwright tests can inject SSE-style patches without dispatching
+     * synthetic events. The reified `emit` accepts any `RowPatch<Row>`;
+     * the global type widens its argument to `unknown` so the
+     * sandbox/test boundary doesn't leak `RowPatch` into the global type
+     * surface (contravariant: a function taking `RowPatch` is assignable
+     * here only after a one-step structural cast at the install site).
+     */
+    __atlasTestDataSource?: { emit: (patch: unknown) => void };
   }
 }

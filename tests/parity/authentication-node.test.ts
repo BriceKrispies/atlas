@@ -68,9 +68,12 @@ d('[node] authentication parity', () => {
     // 200 if test-auth is enabled; 401 otherwise — both are spec-valid per Rust.
     expect([200, 401]).toContain(res.status);
     if (res.status === 200) {
-      const body = res.body as { principalId?: string; tenantId?: string };
-      expect(body.principalId).toBe('test-user-123');
-      expect(body.tenantId).toBe('tenant-dev');
+      const body = res.body;
+      if (!body || typeof body !== 'object') throw new Error('expected JSON body on whoami');
+      const principalId = 'principalId' in body && typeof body.principalId === 'string' ? body.principalId : null;
+      const tenantId = 'tenantId' in body && typeof body.tenantId === 'string' ? body.tenantId : null;
+      expect(principalId).toBe('test-user-123');
+      expect(tenantId).toBe('tenant-dev');
     }
   });
 

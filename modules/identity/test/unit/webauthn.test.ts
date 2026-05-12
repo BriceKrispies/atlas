@@ -15,6 +15,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
 import {
   handleWebAuthnRegisterBegin,
   handleWebAuthnRegisterFinish,
@@ -24,6 +28,41 @@ import {
   identityErrorCodes,
 } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
+
+/**
+ * Build a `RegistrationResponseJSON` with empty attestation bytes.
+ * The non-crypto branches under test (unknown-challenge rejection)
+ * short-circuit before signature verification, so empty
+ * `clientDataJSON` / `attestationObject` is fine — they're only parsed
+ * once the challenge row resolves.
+ */
+function emptyRegistrationResponse(): RegistrationResponseJSON {
+  return {
+    id: 'cred-1',
+    rawId: 'cred-1',
+    response: {
+      clientDataJSON: '',
+      attestationObject: '',
+    },
+    type: 'public-key',
+    clientExtensionResults: {},
+  };
+}
+
+/** Mirror of {@link emptyRegistrationResponse} for assertion flows. */
+function emptyAssertionResponse(): AuthenticationResponseJSON {
+  return {
+    id: 'cred-1',
+    rawId: 'cred-1',
+    response: {
+      clientDataJSON: '',
+      authenticatorData: '',
+      signature: '',
+    },
+    type: 'public-key',
+    clientExtensionResults: {},
+  };
+}
 
 describe('handleWebAuthnRegisterBegin', () => {
   it('returns challengeId + PublicKeyCredentialCreationOptions and persists a challenge', async () => {
@@ -101,20 +140,11 @@ describe('handleWebAuthnRegisterFinish — non-crypto branches', () => {
           principalId: 'user-1',
           userId: 'user-1',
           challengeId: 'wac-fake',
-          response: {
-            id: 'cred-1',
-            rawId: 'cred-1',
-            response: {
-              clientDataJSON: '',
-              attestationObject: '',
-            },
-            type: 'public-key',
-            clientExtensionResults: {},
-          } as never,
+          response: emptyRegistrationResponse(),
           expectedOrigin: 'https://atlas.example.com',
           rpId: 'atlas.example.com',
           factorKind: 'webauthn_mfa',
-          name: 'security key',
+          factorName: 'security key',
         },
         fx.events,
         fx.entities,
@@ -157,7 +187,9 @@ describe('handleWebAuthnAssertBegin', () => {
         tenantId: fx.tenantId,
         correlationId: 'c',
         rpId: 'atlas.example.com',
-        // No allowCredentials — the authenticator picks any valid passkey.
+        factorKind: 'passkey',
+        // No userId — the authenticator picks any valid passkey via
+        // discoverable-credential flow.
       },
       fx.entities,
     );
@@ -176,18 +208,7 @@ describe('handleWebAuthnAssertFinish — non-crypto branches', () => {
           correlationId: 'c',
           principalId: 'user-1',
           challengeId: 'wac-fake',
-          response: {
-            id: 'cred-1',
-            rawId: 'cred-1',
-            response: {
-              clientDataJSON: '',
-              authenticatorData: '',
-              signature: '',
-              userHandle: undefined,
-            },
-            type: 'public-key',
-            clientExtensionResults: {},
-          } as never,
+          response: emptyAssertionResponse(),
           expectedOrigin: 'https://atlas.example.com',
           rpId: 'atlas.example.com',
           factorKind: 'webauthn_mfa',
@@ -209,18 +230,7 @@ describe('handleWebAuthnAssertFinish — non-crypto branches', () => {
           correlationId: 'c',
           principalId: 'user-1',
           challengeId: 'wac-fake',
-          response: {
-            id: 'cred-1',
-            rawId: 'cred-1',
-            response: {
-              clientDataJSON: '',
-              authenticatorData: '',
-              signature: '',
-              userHandle: undefined,
-            },
-            type: 'public-key',
-            clientExtensionResults: {},
-          } as never,
+          response: emptyAssertionResponse(),
           expectedOrigin: 'https://atlas.example.com',
           rpId: 'atlas.example.com',
           factorKind: 'webauthn_mfa',

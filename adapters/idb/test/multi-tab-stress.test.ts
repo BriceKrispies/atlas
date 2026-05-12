@@ -27,6 +27,12 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { IdbCache, IdbEventStore, openAtlasIdb, type IdbDb } from '@atlas/adapter-idb';
 
+/** Asserts existence; replaces `arr[i]!` patterns where index is provably in-range. */
+function assertDefined<T>(v: T | null | undefined, msg: string): T {
+  if (v == null) throw new Error(`Test invariant violation: ${msg}`);
+  return v;
+}
+
 let dbCounter = 0;
 
 function freshDbName(): string {
@@ -121,12 +127,12 @@ describe('IDB multi-tab stress', () => {
     // Every shared key resolves to exactly one event in the store, and both
     // tabs' append() calls returned that event's id.
     for (let i = 0; i < sharedKeys.length; i++) {
-      const aId = aResults[i]!.eventId;
-      const bId = bResults[i]!.eventId;
+      const aId = assertDefined(aResults[i], `aResults[${i}] missing`).eventId;
+      const bId = assertDefined(bResults[i], `bResults[${i}] missing`).eventId;
       expect(aId).toBe(bId);
       const matchingStored = stored.filter((e) => e.idempotencyKey === sharedKeys[i]);
       expect(matchingStored.length).toBe(1);
-      expect(matchingStored[0]!.eventId).toBe(aId);
+      expect(assertDefined(matchingStored[0], 'matchingStored[0]').eventId).toBe(aId);
     }
   });
 

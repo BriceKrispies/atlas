@@ -80,7 +80,11 @@ export class DragOverlay {
  * makes the clone visually match the source footprint.
  */
 export function cloneSourcePreview(sourceEl: HTMLElement, sourceRect: Rect): HTMLElement {
-  const clone = sourceEl.cloneNode(true) as HTMLElement;
+  const cloned = sourceEl.cloneNode(true);
+  if (!(cloned instanceof HTMLElement)) {
+    throw new Error('cloneSourcePreview: cloneNode did not return an HTMLElement');
+  }
+  const clone = cloned;
   clone.setAttribute('data-dnd-overlay-preview', '');
   // The clone is a visual echo, not an identity-bearing element. Strip
   // anything that would let selectors / test-id generators mistake it for

@@ -51,6 +51,35 @@ import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
 
+/**
+ * Type-predicate guard for "is this a JSON object?" — narrows the
+ * `c.req.json()` `unknown` return into `Record<string, unknown>` without
+ * a structural cast. Mirrors the helper in `routes/mfa.ts`.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Read the request body as a JSON object; on parse failure return `{}`. */
+async function readBodyObject(c: AppCtx): Promise<Record<string, unknown>> {
+  const raw: unknown = await c.req.json().catch(() => ({}));
+  return isJsonObject(raw) ? raw : {};
+}
+
+/** Read a string field from an arbitrary value, returning null when absent or non-string. */
+function readString(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+/**
+ * Read an array of items whose elements are JSON objects. Returns null
+ * when the value isn't an array; per-element non-objects are filtered.
+ */
+function readObjectArray(v: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(v)) return null;
+  return v.filter(isJsonObject);
+}
+
 const SCIM_USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const SCIM_GROUP_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group';
 const SCIM_LIST_RESPONSE_SCHEMA =
@@ -87,7 +116,15 @@ function parseFilter(
   // Match `<attr> eq "<value>"` (the only operator we support).
   const match = filter.match(/^([A-Za-z0-9._]+)\s+eq\s+"([^"]*)"$/);
   if (!match) return null;
-  return { attribute: match[1]!, value: match[2]! };
+  // The regex has two capture groups (`[1]` and `[2]`). When `match` is
+  // non-null both indices are populated — TS's `RegExpMatchArray`
+  // typing widens them to `string | undefined`, but the regex shape
+  // guarantees presence. Guard explicitly so no `!` non-null is
+  // required.
+  const attribute = match[1];
+  const value = match[2];
+  if (attribute === undefined || value === undefined) return null;
+  return { attribute, value };
 }
 
 function scimListResponse(resources: unknown[]): Record<string, unknown> {
@@ -217,15 +254,16 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
 
   app.post('/scim/v2/Users', async (c: AppCtx) => {
     const principal = c.get('principal');
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    const userName = typeof body['userName'] === 'string' ? (body['userName'] as string) : null;
+    const body = await readBodyObject(c);
+    const userName = readString(body['userName']);
     if (!userName) {
       return scimError(c, 400, 'userName is required', 'invalidValue');
     }
     const active = body['active'] !== false;
-    const name = (body['name'] as Record<string, unknown> | undefined) ?? {};
-    const givenName = typeof name['givenName'] === 'string' ? (name['givenName'] as string) : undefined;
-    const familyName = typeof name['familyName'] === 'string' ? (name['familyName'] as string) : undefined;
+    const nameField = body['name'];
+    const name: Record<string, unknown> = isJsonObject(nameField) ? nameField : {};
+    const givenName = readString(name['givenName']) ?? undefined;
+    const familyName = readString(name['familyName']) ?? undefined;
     const sql = await ensureSql(state, principal.tenantId);
     const entities = new PostgresEntityStore(sql);
     const eventStore = new PostgresEventStore(sql);
@@ -281,13 +319,13 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
   app.patch('/scim/v2/Users/:userId', async (c: AppCtx) => {
     const principal = c.get('principal');
     const userId = c.req.param('userId') ?? '';
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const schemas = body['schemas'];
     if (!Array.isArray(schemas) || !schemas.includes(SCIM_PATCH_OP_SCHEMA)) {
       return scimError(c, 400, 'expected PatchOp schema', 'invalidSyntax');
     }
-    const ops = body['Operations'];
-    if (!Array.isArray(ops)) {
+    const ops = readObjectArray(body['Operations']);
+    if (!ops) {
       return scimError(c, 400, 'Operations array required', 'invalidSyntax');
     }
     const sql = await ensureSql(state, principal.tenantId);
@@ -298,10 +336,9 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
     if (!existing) return scimError(c, 404, `user not found: ${userId}`);
     let updated: UserDocument = { ...existing };
     let activeChanged = false;
-    for (const op of ops as Array<Record<string, unknown>>) {
-      const operation =
-        typeof op['op'] === 'string' ? (op['op'] as string).toLowerCase() : '';
-      const path = typeof op['path'] === 'string' ? (op['path'] as string) : '';
+    for (const op of ops) {
+      const operation = (readString(op['op']) ?? '').toLowerCase();
+      const path = readString(op['path']) ?? '';
       const value = op['value'];
       if (operation !== 'replace' && operation !== 'add') {
         return scimError(
@@ -365,7 +402,7 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
             tenantId: principal.tenantId,
             userId,
             op: 'patch-active-false',
-            cause: (e as Error).message,
+            cause: e instanceof Error ? e.message : String(e),
           },
         });
       }
@@ -421,7 +458,7 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
           tenantId: principal.tenantId,
           userId,
           op: 'delete',
-          cause: (e as Error).message,
+          cause: e instanceof Error ? e.message : String(e),
         },
       });
     }
@@ -456,26 +493,26 @@ export function scimRoutes(state: AppState): Hono<{ Variables: ServerVariables }
   app.patch('/scim/v2/Groups/:groupId', async (c: AppCtx) => {
     const principal = c.get('principal');
     const groupId = c.req.param('groupId') ?? '';
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    const ops = body['Operations'];
-    if (!Array.isArray(ops)) {
+    const body = await readBodyObject(c);
+    const ops = readObjectArray(body['Operations']);
+    if (!ops) {
       return scimError(c, 400, 'Operations array required', 'invalidSyntax');
     }
     const sql = await ensureSql(state, principal.tenantId);
     const entities = new PostgresEntityStore(sql);
-    for (const op of ops as Array<Record<string, unknown>>) {
-      const operation =
-        typeof op['op'] === 'string' ? (op['op'] as string).toLowerCase() : '';
-      const path = typeof op['path'] === 'string' ? (op['path'] as string) : '';
+    for (const op of ops) {
+      const operation = (readString(op['op']) ?? '').toLowerCase();
+      const path = readString(op['path']) ?? '';
       const value = op['value'];
       if (path !== 'members') {
         return scimError(c, 400, `unsupported path: ${path}`, 'invalidPath');
       }
-      if (!Array.isArray(value)) {
+      const members = readObjectArray(value);
+      if (!members) {
         return scimError(c, 400, 'members value must be array', 'invalidValue');
       }
-      for (const memberRef of value as Array<Record<string, unknown>>) {
-        const userId = typeof memberRef['value'] === 'string' ? (memberRef['value'] as string) : '';
+      for (const memberRef of members) {
+        const userId = readString(memberRef['value']) ?? '';
         if (!userId) continue;
         const membership = await getMembershipEntity(entities, principal.tenantId, userId);
         if (!membership) continue;

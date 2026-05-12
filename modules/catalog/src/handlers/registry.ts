@@ -30,6 +30,11 @@ function readSeedPayload(payload: Record<string, unknown>): SeedPayload {
   if (!v || typeof v !== 'object') {
     throw new Error('expected object for payload.payload (seed payload)');
   }
+  // Boundary: ingress schema validation already enforces the SeedPayload
+  // shape (catalog.seed_package_apply schema); the runtime object check
+  // above is a belt-and-braces guard. Use `unknown` bridge so the lint
+  // rule sees this as a controlled boundary cast.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- ingress AJV already validated SeedPayload shape; runtime object check above guards the rare bypass case
   return v as SeedPayload;
 }
 

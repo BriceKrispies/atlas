@@ -36,7 +36,7 @@ import {
 import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
-import { errorResponse, publicIdentityCode } from '../middleware/errors.ts';
+import { errorResponse, publicIdentityCode, errorMessage } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import {
   buildClearSessionCookie,
@@ -128,7 +128,7 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         properties: {
           tenantId,
           route: 'identity.invite-accept',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(
@@ -269,7 +269,7 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         properties: {
           tenantId,
           route: 'identity.session-refresh',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);
@@ -363,7 +363,7 @@ export function identityRoutes(state: AppState): Hono<{ Variables: ServerVariabl
         properties: {
           tenantId: principal.tenantId,
           route: 'identity.session-logout',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', 'tenant not found', 404, correlationId);

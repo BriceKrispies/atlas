@@ -29,6 +29,18 @@ function newChallengeId(): string {
   return `wac-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+/**
+ * Runtime guard narrowing `AuthFactorDocument['attrs']` to the WebAuthn
+ * sub-shape. The `attrs` union is not discriminated by the parent
+ * `kind` field; structural inspection for `credentialId` is the
+ * sanctioned narrow path.
+ */
+function isWebAuthnAttrs(
+  a: AuthFactorDocument['attrs'],
+): a is WebAuthnFactorAttrs {
+  return 'credentialId' in a && typeof a.credentialId === 'string';
+}
+
 // =====================================================================
 // Begin: generate challenge + return PublicKeyCredentialCreationOptions
 // =====================================================================
@@ -85,10 +97,11 @@ export async function handleWebAuthnRegisterBegin(
     cmd.factorKind,
   );
   const exclude = existing
-    .map((f) => {
-      const a = f.attrs as WebAuthnFactorAttrs;
-      return a.credentialId ? { id: a.credentialId } : null;
-    })
+    .map((f) =>
+      isWebAuthnAttrs(f.attrs) && f.attrs.credentialId
+        ? { id: f.attrs.credentialId }
+        : null,
+    )
     .filter((v): v is { id: string } => v !== null);
   const policy = cmd.policy ?? DEFAULT_IDENTITY_POLICY;
   // For passkeys we require resident-key + UV (passkeys MUST satisfy
@@ -200,7 +213,7 @@ export async function handleWebAuthnRegisterFinish(
   } catch (e) {
     throw new IdentityError(
       codes.WEBAUTHN_VERIFICATION_FAILED,
-      `attestation verification failed: ${(e as Error).message}`,
+      `attestation verification failed: ${e instanceof Error ? e.message : String(e)}`,
       400,
     );
   }

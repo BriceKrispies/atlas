@@ -65,7 +65,7 @@ export class FilesystemPluginLoader implements WasmPluginLoader {
     } catch (e) {
       throw new WasmHostError(
         'LoadFailed',
-        `failed to read plugin '${pluginRef}' at ${path}: ${(e as Error).message}`,
+        `failed to read plugin '${pluginRef}' at ${path}: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
     this.#cache.set(pluginRef, bytes);

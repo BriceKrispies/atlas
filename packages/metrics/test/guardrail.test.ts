@@ -14,6 +14,7 @@
  */
 
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   guardrail,
   techDebt,
@@ -103,9 +104,9 @@ describe('guardrail() helper', () => {
     );
 
     expect(logger.calls).toHaveLength(1);
-    const [call] = logger.calls;
-    expect(call!.msg).toBe('guardrail');
-    expect(call!.fields).toEqual({
+    const call = assertDefined(logger.calls[0], 'expected one logger call after guardrail()');
+    expect(call.msg).toBe('guardrail');
+    expect(call.fields).toEqual({
       event: 'guardrail',
       kind: 'tech_debt',
       id: 'auth_error_handling_001',
@@ -130,7 +131,7 @@ describe('guardrail() helper', () => {
     );
 
     expect(logger.calls).toHaveLength(1);
-    const fields = logger.calls[0]!.fields;
+    const fields = assertDefined(logger.calls[0], 'expected one logger call').fields;
     expect(fields).toEqual({
       event: 'guardrail',
       kind: 'tech_debt',
@@ -153,7 +154,7 @@ describe('guardrail() helper', () => {
       message: 'via registry',
     });
     expect(logger.calls).toHaveLength(1);
-    expect(logger.calls[0]!.msg).toBe('guardrail');
+    expect(assertDefined(logger.calls[0], 'expected one logger call').msg).toBe('guardrail');
   });
 
   test('does not throw when no logger is available — counter still ticks', () => {
@@ -235,8 +236,12 @@ describe('techDebt() / mvpShortcut() convenience wrappers', () => {
     techDebt({ id: 'fwd', component: 'svc', message: 'x' }, logger);
     mvpShortcut({ id: 'fwd', component: 'svc', message: 'x' }, logger);
     expect(logger.calls).toHaveLength(2);
-    expect(logger.calls[0]!.fields['kind']).toBe('tech_debt');
-    expect(logger.calls[1]!.fields['kind']).toBe('mvp_shortcut');
+    expect(assertDefined(logger.calls[0], 'expected techDebt logger call').fields['kind']).toBe(
+      'tech_debt',
+    );
+    expect(assertDefined(logger.calls[1], 'expected mvpShortcut logger call').fields['kind']).toBe(
+      'mvp_shortcut',
+    );
   });
 });
 

@@ -34,11 +34,11 @@ export function ensureLayoutStyles(elOrRoot?: Node | null): void {
   let root: Document | ShadowRoot = document;
   if (elOrRoot) {
     const maybeRoot =
-      typeof (elOrRoot as Node).getRootNode === 'function'
-        ? (elOrRoot as Node).getRootNode()
-        : (elOrRoot as unknown as Node);
-    if (maybeRoot && (maybeRoot === document || (maybeRoot as Node).nodeType === 11)) {
-      root = maybeRoot as Document | ShadowRoot;
+      typeof elOrRoot.getRootNode === 'function' ? elOrRoot.getRootNode() : elOrRoot;
+    if (maybeRoot instanceof ShadowRoot) {
+      root = maybeRoot;
+    } else if (maybeRoot === document) {
+      root = document;
     }
   }
   if (_injected.has(root)) return;

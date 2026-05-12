@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Writable } from 'node:stream';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   ConsoleJsonSink,
   InMemoryLevelController,
@@ -25,7 +26,10 @@ class CapturingStream extends Writable {
     return this.text()
       .split('\n')
       .filter((l) => l.length > 0)
-      .map((l) => JSON.parse(l) as LogEvent);
+      .map((l) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-only JSON line reader; each line is produced by ConsoleJsonSink which writes a serialized LogEvent shape (its on-the-wire format is the very contract under test here).
+        return JSON.parse(l) as LogEvent;
+      });
   }
 }
 
@@ -52,7 +56,7 @@ describe('ctx.logger.fatal', () => {
     // After fatal returns synchronously, all four events are on the wire.
     const records = stream.records();
     expect(records.map((r) => r.message)).toEqual(['a', 'b', 'c', 'boom']);
-    expect(records[3]!.level).toBe('fatal');
+    expect(assertDefined(records[3], 'records[3] after 4 emits').level).toBe('fatal');
   });
 
   it('bypasses level filtering — emits even when level controller is at fatal', () => {
@@ -93,7 +97,7 @@ describe('ctx.logger.fatal', () => {
       error: { code: 'BOOT_FAILED', message: 'connect ECONNREFUSED' },
     });
 
-    const r = stream.records()[0]!;
+    const r = assertDefined(stream.records()[0], 'records[0] after fatal emit');
     expect(r.tenantId).toBe('acme');
     expect(r.principalId).toBe('u-1');
     expect(r.correlationId).toBe('corr-fatal-stamp');

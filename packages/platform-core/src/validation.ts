@@ -9,15 +9,7 @@
 //   ConstraintViolation.
 
 import type { EventEnvelope, SearchDocument } from './types.ts';
-import type {
-  ModuleManifest,
-  ActionDeclaration,
-  ResourceDeclaration,
-  EventDeclaration,
-  ProjectionDeclaration,
-  JobDeclaration,
-  CacheArtifact,
-} from './manifest.ts';
+import type { ModuleManifest } from './manifest.ts';
 
 /**
  * Analytics event shape mirroring `crates/core/src/types.rs::AnalyticsEvent`
@@ -216,7 +208,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
   }
   const resourceTypes = new Set<string>();
   for (const raw of (resources as unknown[] | undefined) ?? []) {
-    const r = requireObject(raw, 'resources[]') as unknown as ResourceDeclaration & Record<string, unknown>;
+    const r = requireObject(raw, 'resources[]');
     const rt = r['resourceType'];
     if (!isString(rt) || rt.length === 0) {
       throw ValidationError.missingField('resources[].resourceType');
@@ -234,7 +226,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
   }
   const actionIds = new Set<string>();
   for (const raw of (actions as unknown[] | undefined) ?? []) {
-    const a = requireObject(raw, 'actions[]') as unknown as ActionDeclaration & Record<string, unknown>;
+    const a = requireObject(raw, 'actions[]');
     const aid = a['actionId'];
     if (!isString(aid) || aid.length === 0) {
       throw ValidationError.missingField('actions[].actionId');
@@ -261,7 +253,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
   }
   const eventTypes = new Set<string>();
   for (const raw of (events as unknown[] | undefined) ?? []) {
-    const e = requireObject(raw, 'events[]') as unknown as EventDeclaration & Record<string, unknown>;
+    const e = requireObject(raw, 'events[]');
     const et = e['eventType'];
     if (!isString(et) || et.length === 0) {
       throw ValidationError.missingField('events[].eventType');
@@ -287,7 +279,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
     throw ValidationError.invalidFormat('projections must be an array');
   }
   for (const raw of (projections as unknown[] | undefined) ?? []) {
-    const p = requireObject(raw, 'projections[]') as unknown as ProjectionDeclaration & Record<string, unknown>;
+    const p = requireObject(raw, 'projections[]');
     const pn = p['projectionName'];
     if (!isString(pn) || pn.length === 0) {
       throw ValidationError.missingField('projections[].projectionName');
@@ -304,7 +296,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
     throw ValidationError.invalidFormat('jobs must be an array');
   }
   for (const raw of (jobs as unknown[] | undefined) ?? []) {
-    const j = requireObject(raw, 'jobs[]') as unknown as JobDeclaration & Record<string, unknown>;
+    const j = requireObject(raw, 'jobs[]');
     const jt = j['jobType'];
     if (!isString(jt) || jt.length === 0) {
       throw ValidationError.missingField('jobs[].jobType');
@@ -325,7 +317,7 @@ export function validateModuleManifest(value: unknown): asserts value is ModuleM
     throw ValidationError.invalidFormat('cacheArtifacts must be an array');
   }
   for (const raw of (cacheArtifacts as unknown[] | undefined) ?? []) {
-    const c = requireObject(raw, 'cacheArtifacts[]') as unknown as CacheArtifact & Record<string, unknown>;
+    const c = requireObject(raw, 'cacheArtifacts[]');
     const aid = c['artifactId'];
     if (!isString(aid) || aid.length === 0) {
       throw ValidationError.missingField('cacheArtifacts[].artifactId');

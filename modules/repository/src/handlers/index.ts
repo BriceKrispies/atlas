@@ -86,7 +86,17 @@ function ctxAsRepoCtx(ctx: IntentHandlerContext): RepositoryHandlerContext {
       'repository handlers require `repositories` + `revisions` + `crypto` on IntentHandlerContext (wired by apps/server)',
     );
   }
-  return c as RepositoryHandlerContext;
+  // `c` is now known to carry every required field — return a fresh
+  // record whose shape exactly satisfies `RepositoryHandlerContext`
+  // without a type assertion. (`c as RepositoryHandlerContext` would
+  // cast away the `Partial<>` widening; building the object literal lets
+  // the assignability check do the work.)
+  return {
+    ...ctx,
+    repositories: c.repositories,
+    revisions: c.revisions,
+    crypto: c.crypto,
+  };
 }
 
 const repositoryCreateHandler: IntentHandler = {
@@ -102,14 +112,10 @@ const repositoryCreateHandler: IntentHandler = {
         principalId: ctx.principalId,
         repoSlug: readString(envelope.payload, 'repoSlug'),
         name: readString(envelope.payload, 'name'),
-        ...(readOptionalString(envelope.payload, 'description') !== undefined
-          ? {
-              description: readOptionalString(
-                envelope.payload,
-                'description',
-              ) as string,
-            }
-          : {}),
+        ...((): { description?: string } => {
+          const description = readOptionalString(envelope.payload, 'description');
+          return description !== undefined ? { description } : {};
+        })(),
       },
       c.repositories,
       ctx.eventStore,

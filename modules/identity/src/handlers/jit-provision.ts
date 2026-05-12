@@ -65,6 +65,10 @@ export interface JitProvisionResult {
   created: boolean;
 }
 
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 /**
  * Walk a dotted JSON path on a claims object. `'realm_access.roles'`
  * resolves to `claims.realm_access.roles`. Returns `undefined` for
@@ -77,8 +81,8 @@ function readGroupClaim(
   const parts = path.split('.').filter(Boolean);
   let cursor: unknown = raw;
   for (const p of parts) {
-    if (typeof cursor !== 'object' || cursor === null) return [];
-    cursor = (cursor as Record<string, unknown>)[p];
+    if (!isPlainRecord(cursor)) return [];
+    cursor = cursor[p];
   }
   if (!Array.isArray(cursor)) return [];
   return cursor.filter((v): v is string => typeof v === 'string');

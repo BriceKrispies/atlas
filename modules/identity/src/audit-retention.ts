@@ -95,10 +95,8 @@ export function effectiveRetentionDays(
   retentionTag: string | undefined,
   tenantOverrideDays?: number,
 ): number {
-  const floorDays =
-    retentionTag !== undefined && retentionTag in FLOOR_DAYS_BY_TAG
-      ? FLOOR_DAYS_BY_TAG[retentionTag]!
-      : DEFAULT_RETENTION_DAYS;
+  const tagged = retentionTag !== undefined ? FLOOR_DAYS_BY_TAG[retentionTag] : undefined;
+  const floorDays = tagged ?? DEFAULT_RETENTION_DAYS;
   if (tenantOverrideDays === undefined) return floorDays;
   // Tenant can EXTEND but never shorten — pick the longer of the two.
   return tenantOverrideDays > floorDays ? tenantOverrideDays : floorDays;

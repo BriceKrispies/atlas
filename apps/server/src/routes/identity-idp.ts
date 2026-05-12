@@ -25,6 +25,7 @@ import {
   identityDispatcher,
   listIdentityProviders,
   IdentityError,
+  type IdpConfigureCommand,
 } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
@@ -36,6 +37,57 @@ type AppCtx = Context<{ Variables: ServerVariables }>;
 
 function readString(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+/**
+ * Type guard: narrows `unknown` to a plain JSON object. Indexing returns
+ * `unknown` because JSON values are unknown by nature — each leaf field
+ * still needs its own narrow before use.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Parse the request body as a JSON object. Returns `{}` on parse failure
+ * or when the body is non-object (array, primitive, null). Collapses the
+ * `c.req.json()` `unknown` boundary into a typed object via a type-predicate
+ * guard — no type-system escape-hatch cast required.
+ */
+async function readBodyObject(c: AppCtx): Promise<Record<string, unknown>> {
+  const raw: unknown = await c.req.json().catch(() => ({}));
+  return isJsonObject(raw) ? raw : {};
+}
+
+/**
+ * Validate a `roleMappings` array entry against the `RoleMapping` shape.
+ * Returns `null` if the value isn't a string-keyed object with the required
+ * `group: string` + `roles: string[]` fields. The handler accepts a
+ * `RoleMapping[]`, so each entry must be narrowed before it crosses the
+ * boundary — earlier code laundered the whole list through `as never`.
+ */
+function readRoleMapping(
+  v: unknown,
+): NonNullable<IdpConfigureCommand['roleMappings']>[number] | null {
+  if (!isJsonObject(v)) return null;
+  const group = readString(v['group']);
+  if (!group) return null;
+  const rolesRaw = v['roles'];
+  if (!Array.isArray(rolesRaw)) return null;
+  const roles = rolesRaw.filter((r): r is string => typeof r === 'string');
+  return { group, roles };
+}
+
+function readRoleMappings(
+  v: unknown,
+): NonNullable<IdpConfigureCommand['roleMappings']> | null {
+  if (!Array.isArray(v)) return null;
+  const out: NonNullable<IdpConfigureCommand['roleMappings']> = [];
+  for (const entry of v) {
+    const mapping = readRoleMapping(entry);
+    if (mapping) out.push(mapping);
+  }
+  return out;
 }
 
 export function identityIdpRoutes(
@@ -74,7 +126,7 @@ export function identityIdpRoutes(
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, correlationId);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const displayName = readString(body['displayName']);
     const issuer = readString(body['issuer']);
     const audience = readString(body['audience']);
@@ -87,6 +139,19 @@ export function identityIdpRoutes(
         correlationId,
       );
     }
+    const jwksUri = readString(body['jwksUri']);
+    const groupClaimPath = readString(body['groupClaimPath']);
+    const requireInviteRaw = body['requireInvite'];
+    const requireInvite =
+      typeof requireInviteRaw === 'boolean' ? requireInviteRaw : null;
+    const defaultRolesRaw = body['defaultRolesOnFirstLogin'];
+    const defaultRoles = Array.isArray(defaultRolesRaw)
+      ? defaultRolesRaw.filter((v): v is string => typeof v === 'string')
+      : null;
+    const roleMappings = readRoleMappings(body['roleMappings']);
+    const priorityRaw = body['priority'];
+    const priority = typeof priorityRaw === 'number' ? priorityRaw : null;
+
     const sql = await ensureTenantMigrated(state, principal.tenantId);
     const eventStore = new PostgresEventStore(sql);
     const entities = new PostgresEntityStore(sql);
@@ -100,27 +165,12 @@ export function identityIdpRoutes(
           displayName,
           issuer,
           audience,
-          ...(readString(body['jwksUri']) !== null
-            ? { jwksUri: readString(body['jwksUri']) as string }
-            : {}),
-          ...(readString(body['groupClaimPath']) !== null
-            ? { groupClaimPath: readString(body['groupClaimPath']) as string }
-            : {}),
-          ...(typeof body['requireInvite'] === 'boolean'
-            ? { requireInvite: body['requireInvite'] as boolean }
-            : {}),
-          ...(Array.isArray(body['defaultRolesOnFirstLogin'])
-            ? {
-                defaultRolesOnFirstLogin: (body['defaultRolesOnFirstLogin'] as unknown[])
-                  .filter((v): v is string => typeof v === 'string'),
-              }
-            : {}),
-          ...(Array.isArray(body['roleMappings'])
-            ? { roleMappings: body['roleMappings'] as never }
-            : {}),
-          ...(typeof body['priority'] === 'number'
-            ? { priority: body['priority'] as number }
-            : {}),
+          ...(jwksUri !== null ? { jwksUri } : {}),
+          ...(groupClaimPath !== null ? { groupClaimPath } : {}),
+          ...(requireInvite !== null ? { requireInvite } : {}),
+          ...(defaultRoles !== null ? { defaultRolesOnFirstLogin: defaultRoles } : {}),
+          ...(roleMappings !== null ? { roleMappings } : {}),
+          ...(priority !== null ? { priority } : {}),
         },
         eventStore,
       );
@@ -205,7 +255,8 @@ export function identityIdpRoutes(
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, correlationId);
     }
     const idpId = c.req.param('idpId') ?? '';
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
+    const jwksUri = readString(body['jwksUri']);
     const sql = await ensureTenantMigrated(state, principal.tenantId);
     const eventStore = new PostgresEventStore(sql);
     const entities = new PostgresEntityStore(sql);
@@ -217,9 +268,7 @@ export function identityIdpRoutes(
           correlationId,
           principalId: principal.principalId,
           idpId,
-          ...(readString(body['jwksUri']) !== null
-            ? { jwksUri: readString(body['jwksUri']) as string }
-            : {}),
+          ...(jwksUri !== null ? { jwksUri } : {}),
         },
         eventStore,
         entities,

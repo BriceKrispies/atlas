@@ -12,15 +12,16 @@ import { EditorAPI, freshInstanceId } from './editor-api.ts';
 import { createAnnouncer, type Announcer } from './a11y.ts';
 import { DndController } from '../dnd/controller.ts';
 import { ensureDndStyles } from '../dnd/styles.ts';
+import { isHtmlElement, must } from '../internal/assert.ts';
 // `makeCommit` is imported for parity with the pre-TS module; the runtime
 // exposes commit envelopes via EditorAPI._recordCommit.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { registerTestState, makeCommit } from '@atlas/test-state';
 
 import type { PageDocument } from '../page-store.ts';
 import type { TemplateManifest } from '../registry.ts';
 import type { WidgetRegistryLike } from '../drop-zones.ts';
 import type {
+  CommitResult,
   DragPayload,
   DropTarget,
 } from '../dnd/types.ts';
@@ -106,8 +107,7 @@ export function attachEditor({
   const dndController = new DndController({
     ...(typeof document !== 'undefined' ? { root: document } : {}),
     activationDistance: 4,
-    onDrop: async ({ payload, target }) =>
-      (await commitDndDrop(payload, target)) as { ok: boolean; reason?: string; [k: string]: unknown },
+    onDrop: async ({ payload, target }) => commitDndDrop(payload, target),
   });
   dndController.attach();
   teardowns.push(() => dndController.detach());
@@ -226,7 +226,10 @@ export function attachEditor({
   function clearEditorDecorations(): void {
     clearDndRegistrations();
     for (const el of widgetHostEl.querySelectorAll('[data-cell-chrome]')) {
-      (el as HTMLElement).remove?.();
+      // Element.remove() is the standard method; widgetHostEl is host-DOM
+      // so every match is at minimum an Element with .remove(). The optional
+      // chain protects against legacy mocks without it.
+      el.remove?.();
     }
     for (const cell of widgetHostEl.querySelectorAll('[data-widget-cell]')) {
       cell.removeAttribute('tabindex');
@@ -260,7 +263,12 @@ export function attachEditor({
       ) as HTMLElement[];
 
       for (let i = 0; i < cells.length; i++) {
-        decorateCell(cells[i]!, region, i, entries[i]);
+        decorateCell(
+          must(cells[i], 'cells[i] in-range by loop construction'),
+          region,
+          i,
+          entries[i],
+        );
       }
 
       // The section IS the slot. It renders with a fixed footprint whether
@@ -288,7 +296,8 @@ export function attachEditor({
 
   // Delegated click + keyboard handlers for empty slots.
   function onHostClick(ev: Event): void {
-    const section = (ev.target as Element | null)?.closest?.('section[data-slot][data-empty="true"]');
+    if (!(ev.target instanceof Element)) return;
+    const section = ev.target.closest?.('section[data-slot][data-empty="true"]');
     if (!section || !widgetHostEl.contains(section)) return;
     const region = section.getAttribute('data-slot');
     if (!region) return;
@@ -296,9 +305,9 @@ export function attachEditor({
     void onSlotActivated(region);
   }
   function onHostKeydown(ev: KeyboardEvent): void {
-    const target = ev.target as HTMLElement | null;
-    if (target?.tagName !== 'SECTION') return;
-    const section = target;
+    if (!isHtmlElement(ev.target)) return;
+    const section = ev.target;
+    if (section.tagName !== 'SECTION') return;
     if (!section.hasAttribute('data-empty')) return;
     if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
       ev.preventDefault();
@@ -310,10 +319,10 @@ export function attachEditor({
     }
   }
   widgetHostEl.addEventListener('click', onHostClick);
-  widgetHostEl.addEventListener('keydown', onHostKeydown as EventListener);
+  widgetHostEl.addEventListener('keydown', onHostKeydown);
   teardowns.push(() => {
     widgetHostEl.removeEventListener('click', onHostClick);
-    widgetHostEl.removeEventListener('keydown', onHostKeydown as EventListener);
+    widgetHostEl.removeEventListener('keydown', onHostKeydown);
   });
 
   function decorateCell(
@@ -330,7 +339,7 @@ export function attachEditor({
     cellEl.setAttribute('name', `cell-${instanceId}`);
 
     for (const old of cellEl.querySelectorAll(':scope > [data-cell-chrome]')) {
-      (old as HTMLElement).remove?.();
+      old.remove?.();
     }
 
     const ownerDoc = contentPageEl.ownerDocument ?? document;
@@ -367,16 +376,12 @@ export function attachEditor({
     cellEl.appendChild(chrome);
 
     cellEl.addEventListener('click', (ev: Event) => {
-      const target = ev.target as Element | null;
-      if (target && typeof target.closest === 'function') {
-        if (target.closest('[name^="delete-"]')) return;
-      }
+      if (ev.target instanceof Element && ev.target.closest('[name^="delete-"]')) return;
       ev.stopPropagation();
       toggleCellSelection(instanceId);
     });
-    cellEl.addEventListener('keydown', (ev: Event) => {
-      const kev = ev as KeyboardEvent;
-      if (ev.target !== cellEl) return;
+    cellEl.addEventListener('keydown', (kev: KeyboardEvent) => {
+      if (kev.target !== cellEl) return;
       if (kev.key === 'Enter' || kev.key === ' ' || kev.key === 'Spacebar') {
         kev.preventDefault();
         toggleCellSelection(instanceId);
@@ -428,7 +433,7 @@ export function attachEditor({
   async function commitDndDrop(
     payload: DragPayload,
     target: DropTarget,
-  ): Promise<{ ok: boolean; reason?: string | undefined; [k: string]: unknown }> {
+  ): Promise<CommitResult> {
     const region = target?.containerId;
     if (!payload || typeof region !== 'string') {
       return { ok: false, reason: 'invalid-target' };
@@ -453,7 +458,11 @@ export function attachEditor({
     }
     announceResult(res, region);
     clearSelection();
-    return res as { ok: boolean; reason?: string | undefined; [k: string]: unknown };
+    // ApiResult unions to CommitResult-compatible shape; reason is optional
+    // in both. exactOptionalPropertyTypes catches the union's `reason?: string | undefined`
+    // mismatch with `reason?: string` — the runtime values are identical.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: ApiResult.reason `string | undefined` vs CommitResult.reason `string?` under exactOptionalPropertyTypes
+    return res as CommitResult;
   }
 
   async function commitSlot(region: string): Promise<void> {
@@ -493,15 +502,23 @@ export function attachEditor({
   }
 
   function findDisplayName(widgetId: string | null | undefined): string {
+    if (!widgetId) return 'widget';
     try {
-      const entry = widgetRegistry.get?.(widgetId as string) as
-        | { manifest?: { displayName?: string } }
-        | null
-        | undefined;
-      return entry?.manifest?.displayName ?? widgetId ?? 'widget';
+      const entry: unknown = widgetRegistry.get?.(widgetId);
+      const dn = readDisplayName(entry);
+      return dn ?? widgetId;
     } catch {
-      return widgetId ?? 'widget';
+      return widgetId;
     }
+  }
+
+  function readDisplayName(entry: unknown): string | null {
+    if (!entry || typeof entry !== 'object' || !('manifest' in entry)) return null;
+    const manifest = entry.manifest;
+    if (!manifest || typeof manifest !== 'object' || !('displayName' in manifest))
+      return null;
+    const dn = manifest.displayName;
+    return typeof dn === 'string' ? dn : null;
   }
 
   // ---------------------------------------------------------------------
@@ -527,8 +544,9 @@ export function attachEditor({
     for (const chip of chips) {
       const widgetId = chip.getAttribute('data-widget-id');
       if (!widgetId) continue;
+      if (!(chip instanceof HTMLElement)) continue;
       const unreg = dndController.registerSource({
-        element: chip as HTMLElement,
+        element: chip,
         containerId: 'palette',
         getPayload: () => ({ type: 'chip', id: widgetId }),
       });
@@ -549,8 +567,9 @@ export function attachEditor({
       );
     };
     paletteEl.onChipActivate = async ({ widgetId, region }) => {
-      const res = await api.add({ widgetId, region: region as string, index: 0 });
-      announceResult(res, region as string);
+      const targetRegion = region ?? '';
+      const res = await api.add({ widgetId, region: targetRegion, index: 0 });
+      announceResult(res, targetRegion);
       clearSelection();
     };
     registerPaletteChips(paletteEl);
@@ -562,8 +581,7 @@ export function attachEditor({
     teardowns.push(clearPaletteDndRegistrations);
   }
 
-  const onDocKey = (ev: Event): void => {
-    const kev = ev as KeyboardEvent;
+  const onDocKey = (kev: KeyboardEvent): void => {
     if (kev.key === 'Escape' && selection) {
       clearSelection();
     }

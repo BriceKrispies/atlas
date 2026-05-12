@@ -35,7 +35,7 @@ class AtlasChartExportButton extends AtlasElement {
     btn.setAttribute('size', 'sm');
     btn.textContent = this.label;
     btn.addEventListener('click', () => {
-      this._card?.store?.commit('requestExport', { format: this.format });
+      this._card?.store?.commit({ kind: 'requestExport', format: this.format });
     });
     this.appendChild(btn);
   }

@@ -12,6 +12,7 @@
 import { describe, test, expect } from 'vitest';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { VariantRow } from '@atlas/catalog';
 
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
@@ -38,10 +39,12 @@ d('[node] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getTaxonomyNodes('recognition');
-    expect(body).not.toBeNull();
-    const svc = body!.nodes.find((n) => n.key === 'service-anniversary');
-    expect(svc).toBeDefined();
-    expect(svc!.families.some((f) => f.familyKey === 'service_anniversary_badge')).toBe(true);
+    const tax = assertDefined(body, 'taxonomy fetched after seed apply');
+    const svc = assertDefined(
+      tax.nodes.find((n) => n.key === 'service-anniversary'),
+      'service-anniversary node present in recognition taxonomy',
+    );
+    expect(svc.families.some((f) => f.familyKey === 'service_anniversary_badge')).toBe(true);
     await ingress.close();
   });
 
@@ -53,19 +56,19 @@ d('[node] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getFamilyDetail('service_anniversary_badge');
-    expect(body).not.toBeNull();
+    const detail = assertDefined(body, 'family detail fetched after seed apply');
     expect(
-      body!.attributes.some(
+      detail.attributes.some(
         (a) => (a as { attributeKey?: string }).attributeKey === 'years_of_service',
       ),
     ).toBe(true);
     expect(
-      body!.attributes.some(
+      detail.attributes.some(
         (a) => (a as { attributeKey?: string }).attributeKey === 'badge_tier',
       ),
     ).toBe(true);
     expect(
-      body!.displayPolicies.some(
+      detail.displayPolicies.some(
         (d) => (d as { surface?: string }).surface === 'variant_table',
       ),
     ).toBe(true);
@@ -80,12 +83,14 @@ d('[node] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getVariantTable('service_anniversary_badge');
-    expect(body).not.toBeNull();
-    expect(body!.rows.length).toBe(3);
+    const table = assertDefined(body, 'variant table fetched after seed apply');
+    expect(table.rows.length).toBe(3);
 
-    const fiveYear = body!.rows.find((r) => r.variantKey === '5-year');
-    expect(fiveYear).toBeDefined();
-    expect(fiveYear!.values['years_of_service']?.normalized).toBe(5);
+    const fiveYear = assertDefined(
+      table.rows.find((r) => r.variantKey === '5-year'),
+      '5-year row present in seeded variant table',
+    );
+    expect(fiveYear.values['years_of_service']?.normalized).toBe(5);
     await ingress.close();
   });
 
@@ -99,9 +104,9 @@ d('[node] catalog_badge_family parity', () => {
     const body = await ingress.getVariantTable('service_anniversary_badge', {
       filters: { badge_tier: { kind: 'equals', value: 'gold' } },
     });
-    expect(body).not.toBeNull();
-    expect(body!.rows.length).toBe(1);
-    expect(body!.rows[0]!.variantKey).toBe('10-year');
+    const table = assertDefined(body, 'variant table fetched with gold filter');
+    expect(table.rows.length).toBe(1);
+    expect(assertDefined(table.rows[0], 'length checked above').variantKey).toBe('10-year');
     await ingress.close();
   });
 
@@ -128,8 +133,9 @@ d('[node] catalog_badge_family parity', () => {
     );
 
     const before = await ingress.getVariantTable('service_anniversary_badge');
-    expect(before).not.toBeNull();
-    const beforeRows = canonicalize(before!.rows);
+    const beforeRows = canonicalize(
+      assertDefined(before, 'variant table fetched before rebuild').rows,
+    );
 
     const bumped = { ...seed, version: `rebuild-${tenantId}` };
     await ingress.submitIntent(
@@ -137,8 +143,9 @@ d('[node] catalog_badge_family parity', () => {
     );
 
     const after = await ingress.getVariantTable('service_anniversary_badge');
-    expect(after).not.toBeNull();
-    const afterRows = canonicalize(after!.rows);
+    const afterRows = canonicalize(
+      assertDefined(after, 'variant table fetched after rebuild').rows,
+    );
     expect(afterRows).toEqual(beforeRows);
     await ingress.close();
   });
@@ -218,7 +225,9 @@ d('[node] catalog_search parity', () => {
     for (let i = 0; i < scores.length - 1; i++) {
       expect(scores[i] ?? 0).toBeGreaterThanOrEqual(scores[i + 1] ?? 0);
     }
-    expect(body.results[0]!.documentType).toBe('family');
+    expect(assertDefined(body.results[0], 'length checked above').documentType).toBe(
+      'family',
+    );
     await ingress.close();
   });
 

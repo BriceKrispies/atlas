@@ -32,8 +32,9 @@ import {
   OAUTH_TOKEN_ENTITY_TYPE,
   OAUTH_TOKEN_LATEST_VERSION,
 } from '@atlas/identity';
+import { jsonParam, type JsonSchema } from './sql-json.ts';
 
-const USER_JSON_SCHEMA = {
+const USER_JSON_SCHEMA: JsonSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'identity.user.v1',
   type: 'object',
@@ -53,9 +54,9 @@ const USER_JSON_SCHEMA = {
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
-} as const;
+};
 
-const MEMBERSHIP_JSON_SCHEMA = {
+const MEMBERSHIP_JSON_SCHEMA: JsonSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'identity.membership.v1',
   type: 'object',
@@ -70,9 +71,9 @@ const MEMBERSHIP_JSON_SCHEMA = {
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
-} as const;
+};
 
-const AUTH_SESSION_JSON_SCHEMA = {
+const AUTH_SESSION_JSON_SCHEMA: JsonSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'identity.auth_session.v1',
   type: 'object',
@@ -113,9 +114,9 @@ const AUTH_SESSION_JSON_SCHEMA = {
     endReason: { type: 'string' },
     endedAt: { type: 'string', format: 'date-time' },
   },
-} as const;
+};
 
-const INVITE_TOKEN_JSON_SCHEMA = {
+const INVITE_TOKEN_JSON_SCHEMA: JsonSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'identity.invite_token.v1',
   type: 'object',
@@ -144,7 +145,27 @@ const INVITE_TOKEN_JSON_SCHEMA = {
     acceptedUserId: { type: 'string' },
     createdAt: { type: 'string', format: 'date-time' },
   },
-} as const;
+};
+
+const API_KEY_JSON_SCHEMA: JsonSchema = {
+  $id: 'identity.api_key.v1',
+  type: 'object',
+};
+
+const SERVICE_PRINCIPAL_JSON_SCHEMA: JsonSchema = {
+  $id: 'identity.service_principal.v1',
+  type: 'object',
+};
+
+const OAUTH_TOKEN_JSON_SCHEMA: JsonSchema = {
+  $id: 'identity.oauth_token.v1',
+  type: 'object',
+};
+
+const IDENTITY_PROVIDER_JSON_SCHEMA: JsonSchema = {
+  $id: 'identity.identity_provider.v1',
+  type: 'object',
+};
 
 export async function seedIdentityEntityTypes(
   sql: postgres.Sql,
@@ -155,21 +176,21 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, schema_version, json_schema, origin)
     VALUES
       (${USER_ENTITY_TYPE},          NULL, ${USER_LATEST_VERSION},
-       ${sql.json(USER_JSON_SCHEMA as never)},          'platform'),
+       ${jsonParam(sql, USER_JSON_SCHEMA)},          'platform'),
       (${MEMBERSHIP_ENTITY_TYPE},    NULL, ${MEMBERSHIP_LATEST_VERSION},
-       ${sql.json(MEMBERSHIP_JSON_SCHEMA as never)},    'platform'),
+       ${jsonParam(sql, MEMBERSHIP_JSON_SCHEMA)},    'platform'),
       (${INVITE_TOKEN_ENTITY_TYPE},  NULL, ${INVITE_TOKEN_LATEST_VERSION},
-       ${sql.json(INVITE_TOKEN_JSON_SCHEMA as never)},  'platform'),
+       ${jsonParam(sql, INVITE_TOKEN_JSON_SCHEMA)},  'platform'),
       (${AUTH_SESSION_ENTITY_TYPE},  NULL, ${AUTH_SESSION_LATEST_VERSION},
-       ${sql.json(AUTH_SESSION_JSON_SCHEMA as never)},  'platform'),
+       ${jsonParam(sql, AUTH_SESSION_JSON_SCHEMA)},  'platform'),
       (${API_KEY_ENTITY_TYPE},  NULL, ${API_KEY_LATEST_VERSION},
-       ${sql.json({ $id: 'identity.api_key.v1', type: 'object' } as never)},  'platform'),
+       ${jsonParam(sql, API_KEY_JSON_SCHEMA)},  'platform'),
       (${SERVICE_PRINCIPAL_ENTITY_TYPE}, NULL, ${SERVICE_PRINCIPAL_LATEST_VERSION},
-       ${sql.json({ $id: 'identity.service_principal.v1', type: 'object' } as never)}, 'platform'),
+       ${jsonParam(sql, SERVICE_PRINCIPAL_JSON_SCHEMA)}, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, ${OAUTH_TOKEN_LATEST_VERSION},
-       ${sql.json({ $id: 'identity.oauth_token.v1', type: 'object' } as never)}, 'platform'),
+       ${jsonParam(sql, OAUTH_TOKEN_JSON_SCHEMA)}, 'platform'),
       (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, ${IDENTITY_PROVIDER_LATEST_VERSION},
-       ${sql.json({ $id: 'identity.identity_provider.v1', type: 'object' } as never)}, 'platform')
+       ${jsonParam(sql, IDENTITY_PROVIDER_JSON_SCHEMA)}, 'platform')
     ON CONFLICT (entity_type, tenant_id) DO NOTHING
   `;
 
@@ -215,9 +236,9 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${USER_ENTITY_TYPE}, NULL, 'email',
-       ${sql.json(['email'] as never)}, TRUE, NULL, 'platform'),
+       ${jsonParam(sql, ['email'])}, TRUE, NULL, 'platform'),
       (${USER_ENTITY_TYPE}, NULL, 'primaryIdpSubject',
-       ${sql.json(['primaryIdpSubject'] as never)}, TRUE,
+       ${jsonParam(sql, ['primaryIdpSubject'])}, TRUE,
        ${`(attrs->>'primaryIdpSubject') IS NOT NULL`}, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
@@ -227,9 +248,9 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${MEMBERSHIP_ENTITY_TYPE}, NULL, 'userId',
-       ${sql.json(['userId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['userId'])}, FALSE, NULL, 'platform'),
       (${MEMBERSHIP_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform')
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
@@ -238,9 +259,9 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${INVITE_TOKEN_ENTITY_TYPE}, NULL, 'tokenLookup',
-       ${sql.json(['tokenLookup'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['tokenLookup'])}, FALSE, NULL, 'platform'),
       (${INVITE_TOKEN_ENTITY_TYPE}, NULL, 'email',
-       ${sql.json(['email'] as never)}, FALSE, NULL, 'platform')
+       ${jsonParam(sql, ['email'])}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
@@ -263,13 +284,13 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${AUTH_SESSION_ENTITY_TYPE}, NULL, 'userId',
-       ${sql.json(['userId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['userId'])}, FALSE, NULL, 'platform'),
       (${AUTH_SESSION_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform'),
       (${AUTH_SESSION_ENTITY_TYPE}, NULL, 'refreshTokenLookup',
-       ${sql.json(['refreshTokenLookup'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['refreshTokenLookup'])}, FALSE, NULL, 'platform'),
       (${AUTH_SESSION_ENTITY_TYPE}, NULL, 'accessTokenLookup',
-       ${sql.json(['accessTokenLookup'] as never)}, FALSE, NULL, 'platform')
+       ${jsonParam(sql, ['accessTokenLookup'])}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 
@@ -278,25 +299,25 @@ export async function seedIdentityEntityTypes(
       (entity_type, tenant_id, index_name, field_paths, is_unique, where_clause, origin)
     VALUES
       (${API_KEY_ENTITY_TYPE}, NULL, 'userId',
-       ${sql.json(['userId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['userId'])}, FALSE, NULL, 'platform'),
       (${API_KEY_ENTITY_TYPE}, NULL, 'servicePrincipalId',
-       ${sql.json(['servicePrincipalId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['servicePrincipalId'])}, FALSE, NULL, 'platform'),
       (${API_KEY_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform'),
       (${SERVICE_PRINCIPAL_ENTITY_TYPE}, NULL, 'ownerUserId',
-       ${sql.json(['ownerUserId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['ownerUserId'])}, FALSE, NULL, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, 'secretLookup',
-       ${sql.json(['secretLookup'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['secretLookup'])}, FALSE, NULL, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, 'apiKeyId',
-       ${sql.json(['apiKeyId'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['apiKeyId'])}, FALSE, NULL, 'platform'),
       (${OAUTH_TOKEN_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform'),
       (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'issuer',
-       ${sql.json(['issuer'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['issuer'])}, FALSE, NULL, 'platform'),
       (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'status',
-       ${sql.json(['status'] as never)}, FALSE, NULL, 'platform'),
+       ${jsonParam(sql, ['status'])}, FALSE, NULL, 'platform'),
       (${IDENTITY_PROVIDER_ENTITY_TYPE}, NULL, 'kind',
-       ${sql.json(['kind'] as never)}, FALSE, NULL, 'platform')
+       ${jsonParam(sql, ['kind'])}, FALSE, NULL, 'platform')
     ON CONFLICT (entity_type, tenant_id, index_name) DO NOTHING
   `;
 }

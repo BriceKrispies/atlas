@@ -35,6 +35,17 @@ import {
 const IDP_ISSUER = 'https://idp.example.com';
 const SP_ENTITY_ID = 'https://atlas.example.com/sp';
 
+/**
+ * Vitest's asymmetric matchers (`expect.stringMatching`, etc.) are
+ * declared as `any` on the runtime type. Hoisting the matcher behind a
+ * typed `unknown`-returning factory keeps the test bodies free of the
+ * `no-unsafe-assignment` violation when the matcher is dropped into a
+ * `toMatchObject` shape literal.
+ */
+function samlErrorCodeMatcher(): unknown {
+  return expect.stringMatching(/^SAML_/);
+}
+
 // One keypair per suite — gen is ~1s; reusing keeps the suite under a few sec.
 let idp: TestKeyPair;
 beforeAll(() => {
@@ -100,7 +111,7 @@ describe('SAML verifier — F-SAML-2 algorithm whitelist', () => {
     ).rejects.toMatchObject({
       // Either SAML_SIGNATURE_INVALID or a new SAML_ALGORITHM_DISALLOWED
       // is acceptable — what's NOT acceptable is success.
-      code: expect.stringMatching(/^SAML_/),
+      code: samlErrorCodeMatcher(),
     });
   });
 });
@@ -125,7 +136,7 @@ describe('SAML verifier — F-SAML-5 issuer pin', () => {
     });
     await expect(
       verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/^SAML_/) });
+    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
   });
 });
 
@@ -150,7 +161,7 @@ describe('SAML verifier — F-SAML-11 audience pin', () => {
     });
     await expect(
       verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/^SAML_/) });
+    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
   });
 });
 
@@ -182,7 +193,7 @@ describe('SAML verifier — F-SAML-12 SubjectConfirmation Recipient', () => {
     // form of `expectedAcsUrl` and assert against Recipient.)
     await expect(
       verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/^SAML_/) });
+    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
   });
 });
 

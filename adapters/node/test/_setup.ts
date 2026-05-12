@@ -30,11 +30,11 @@ export const HAS_DB = typeof TEST_DB_URL === 'string' && TEST_DB_URL.length > 0;
 let sharedSql: postgres.Sql | null = null;
 
 async function ensureSql(): Promise<postgres.Sql> {
-  if (!HAS_DB) {
+  if (TEST_DB_URL === undefined || TEST_DB_URL.length === 0) {
     throw new Error('TEST_TENANT_DB_URL not set');
   }
   if (!sharedSql) {
-    sharedSql = postgres(TEST_DB_URL!, { max: 4, prepare: false });
+    sharedSql = postgres(TEST_DB_URL, { max: 4, prepare: false });
     await runMigrations(sharedSql, 'tenant');
   }
   return sharedSql;

@@ -37,17 +37,18 @@ interface PaletteSnapshot {
 
 async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
+    interface ContentPageEl extends Element {
+      editor?: unknown;
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`) as
-        (Element & { editor?: unknown }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const cp = root.querySelector<ContentPageEl>(`content-page[data-page-id="${pid}"]`);
       if (cp && cp.editor) return true;
       const all = root.querySelectorAll('*');
       for (const el of all) {
-        const e = el as Element & { shadowRoot?: ShadowRoot };
-        if (e.shadowRoot) stack.push(e.shadowRoot);
+        if (el.shadowRoot) stack.push(el.shadowRoot);
       }
     }
     return false;
@@ -73,32 +74,39 @@ async function openEditor(page: Page, pageId: string): Promise<void> {
 
 async function mountPalette(page: Page): Promise<void> {
   await page.evaluate(async () => {
-    // Vite serves source at this path; tsc can't resolve absolute browser
-    // paths, so we hide the import behind a Function constructor.
+    interface ShellEl extends Element {
+      editorState?: unknown;
+    }
+    interface PaletteEl extends HTMLElement {
+      controller: unknown;
+    }
+    // Side-effect import registers the custom element. Vite serves the
+    // module at this path; TypeScript doesn't resolve absolute browser
+    // paths, so route through Function to keep the bundler from rewriting
+    // the specifier.
     const mod = '/src/page-editor/left-panel/index.ts';
-    await (new Function('m', 'return import(m)') as (m: string) => Promise<unknown>)(mod);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
+    const dyn = new Function('m', 'return import(m)');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
+    await (dyn as (m: string) => Promise<unknown>)(mod);
     const stack: Array<Document | ShadowRoot | Element> = [document];
-    let shell: (Element & { editorState?: unknown }) | null = null;
+    let shell: ShellEl | null = null;
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { editorState?: unknown }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector<ShellEl>('authoring-page-editor-shell');
       if (el && el.editorState) {
         shell = el;
         break;
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     if (!shell?.editorState) throw new Error('shell controller not ready');
     document.querySelectorAll('page-editor-palette[data-test-mount]').forEach((n) => n.remove());
-    const palette = document.createElement('page-editor-palette') as HTMLElement & {
-      controller: unknown;
-    };
+    const palette = document.createElement('page-editor-palette') as PaletteEl;
     palette.setAttribute('data-test-mount', 'true');
     palette.controller = shell.editorState;
     document.body.appendChild(palette);
@@ -106,7 +114,9 @@ async function mountPalette(page: Page): Promise<void> {
 }
 
 async function readPaletteState(page: Page, pageId: string): Promise<PaletteSnapshot | null> {
-  return (await readEditorState(page, `${pageId}:palette`)) as PaletteSnapshot | null;
+  const raw = await readEditorState(page, `${pageId}:palette`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the palette-surface snapshot shape is contract-pinned by the palette element (mirrors page-editor-outline.test.ts).
+  return raw as PaletteSnapshot | null;
 }
 
 async function setSearch(page: Page, value: string): Promise<void> {

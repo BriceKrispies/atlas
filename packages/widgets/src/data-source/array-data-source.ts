@@ -51,7 +51,7 @@ export function arrayDataSource<R extends Row = Row>(
             eventName: 'Atlas.Listener.Threw',
             level: 'error',
             source: 'widgets.array-data-source.setRows',
-            'error.message': (err as Error)?.message ?? String(err),
+            'error.message': err instanceof Error ? err.message : String(err),
           });
         }
       }
@@ -66,7 +66,7 @@ export function arrayDataSource<R extends Row = Row>(
             eventName: 'Atlas.Listener.Threw',
             level: 'error',
             source: 'widgets.array-data-source.emit',
-            'error.message': (err as Error)?.message ?? String(err),
+            'error.message': err instanceof Error ? err.message : String(err),
           });
         }
       }

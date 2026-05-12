@@ -295,7 +295,8 @@ export class PageEditorOutlineElement extends AtlasSurface {
     const map = new Map(snap.widgetInstances.map((w) => [w.instanceId, w]));
 
     for (let i = 0; i < region.widgetIds.length; i++) {
-      const instanceId = region.widgetIds[i]!;
+      const instanceId = region.widgetIds[i];
+      if (instanceId === undefined) continue;
       const widget = map.get(instanceId);
       const widgetId = widget?.widgetId ?? '(unknown)';
       list.appendChild(this._renderWidgetRow({
@@ -460,3 +461,9 @@ export class PageEditorOutlineElement extends AtlasSurface {
 }
 
 AtlasElement.define('page-editor-outline', PageEditorOutlineElement);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'page-editor-outline': PageEditorOutlineElement;
+  }
+}

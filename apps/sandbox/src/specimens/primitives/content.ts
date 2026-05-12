@@ -65,6 +65,12 @@ interface MediaPickerHost extends HTMLElement {
   setItems(items: readonly MediaItem[]): void;
 }
 
+/** Read `event.detail` without an `as CustomEvent` cast. Mirrors the
+ * helper in `apps/sandbox/src/specimens/patterns/widgets.ts`. */
+function customEventDetail(e: Event): unknown {
+  return e instanceof CustomEvent ? e.detail : undefined;
+}
+
 S({
   id: 'media-picker',
   name: 'MediaPicker',
@@ -88,16 +94,14 @@ S({
       // Catalogue is host-supplied. Echo every catalogue refresh request
       // to the log so the contract is visible in the specimen UI.
       p.addEventListener('request-items', (ev) => {
-        const detail = (ev as CustomEvent).detail;
-        onLog(`${label}.request-items`, detail);
+        onLog(`${label}.request-items`, customEventDetail(ev));
         // Always serve the same mock catalogue — filter logic lives in
         // the picker. A real host would issue a backend fetch keyed on
         // detail.query / detail.type / detail.page.
         p.setItems(MOCK_ITEMS);
       });
       p.addEventListener('change', (ev) => {
-        const detail = (ev as CustomEvent).detail;
-        onLog(`${label}.change`, detail);
+        onLog(`${label}.change`, customEventDetail(ev));
       });
       // Seed the catalogue immediately so the trigger preview strip can
       // resolve any pre-set ids without waiting for the panel to open.

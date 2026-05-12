@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleGenerateRecoveryCodes,
   handleRegenerateRecoveryCodes,
@@ -123,7 +124,10 @@ describe('handleRegenerateRecoveryCodes', () => {
           correlationId: 'redeem-old',
           principalId: 'user-4',
           userId: 'user-4',
-          presentedCode: first.plaintextCodes[0]!,
+          presentedCode: assertDefined(
+            first.plaintextCodes[0],
+            'first generate must mint at least one plaintext code',
+          ),
         },
         fx.events,
         fx.entities,
@@ -159,7 +163,10 @@ describe('handleRedeemRecoveryCode', () => {
         correlationId: 'r',
         principalId: 'user-5',
         userId: 'user-5',
-        presentedCode: generated.plaintextCodes[0]!,
+        presentedCode: assertDefined(
+          generated.plaintextCodes[0],
+          'gen() must mint at least one plaintext code',
+        ),
       },
       fx.events,
       fx.entities,
@@ -174,13 +181,17 @@ describe('handleRedeemRecoveryCode', () => {
   it('rejects a code on second redemption (single-use enforcement)', async () => {
     const fx = newFixture();
     const generated = await gen(fx);
+    const code = assertDefined(
+      generated.plaintextCodes[0],
+      'gen() must mint at least one plaintext code',
+    );
     await handleRedeemRecoveryCode(
       {
         tenantId: fx.tenantId,
         correlationId: 'r1',
         principalId: 'user-5',
         userId: 'user-5',
-        presentedCode: generated.plaintextCodes[0]!,
+        presentedCode: code,
       },
       fx.events,
       fx.entities,
@@ -193,7 +204,7 @@ describe('handleRedeemRecoveryCode', () => {
           correlationId: 'r2',
           principalId: 'user-5',
           userId: 'user-5',
-          presentedCode: generated.plaintextCodes[0]!,
+          presentedCode: code,
         },
         fx.events,
         fx.entities,

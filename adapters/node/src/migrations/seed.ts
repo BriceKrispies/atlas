@@ -42,6 +42,7 @@ import { moduleManifests } from '@atlas/schemas';
 import type { ActionDeclaration } from '@atlas/platform-core';
 import { seedContentPagesEntityTypes } from '../seeds/content-pages-types.ts';
 import { seedIdentityEntityTypes } from '../seeds/identity-types.ts';
+import { jsonParam } from '../seeds/sql-json.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // adapters/node/src/migrations/ -> repo root is four levels up.
@@ -70,6 +71,16 @@ function md5Hex(input: string): string {
 }
 
 /**
+ * Type guard for plain JSON objects (non-null, non-array). Narrows
+ * `unknown` to `Record<string, unknown>` so property reads on
+ * `moduleManifests()` results stay inside the type system instead of
+ * forcing per-property `as { foo?: unknown }` casts.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
  * Pull every `ActionDeclaration` declared across the bundled module
  * manifests. Used to drive the role-pack Cedar generation. Defensive
  * shape coercion — `moduleManifests()` returns `unknown[]` so we
@@ -82,16 +93,16 @@ function collectManifestActions(
 ): ActionDeclaration[] {
   const out: ActionDeclaration[] = [];
   for (const m of manifests) {
-    if (typeof m !== 'object' || m === null) continue;
-    const actions = (m as { actions?: unknown }).actions;
+    if (!isJsonObject(m)) continue;
+    const actions = m['actions'];
     if (!Array.isArray(actions)) continue;
     for (const a of actions) {
-      if (typeof a !== 'object' || a === null) continue;
-      const aid = (a as { actionId?: unknown }).actionId;
-      const rt = (a as { resourceType?: unknown }).resourceType;
+      if (!isJsonObject(a)) continue;
+      const aid = a['actionId'];
+      const rt = a['resourceType'];
       if (typeof aid !== 'string' || typeof rt !== 'string') continue;
-      const rawVerb = (a as { verb?: unknown }).verb;
-      const rawAuditLevel = (a as { auditLevel?: unknown }).auditLevel;
+      const rawVerb = a['verb'];
+      const rawAuditLevel = a['auditLevel'];
       out.push({
         actionId: aid,
         resourceType: rt,
@@ -152,13 +163,13 @@ export async function runControlPlaneSeed(
   for (const spec of manifestSpecs) {
     const manifestContent = await readFile(spec.path, 'utf8');
     const parsed: unknown = JSON.parse(manifestContent);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (!isJsonObject(parsed)) {
       throw new Error(`manifest ${spec.label} is not a JSON object`);
     }
     // Strip JSON Schema annotation keys ($schema, $id, ...) — matches
     // the Rust seed's `obj.retain(|k, _| !k.starts_with('$'))`.
     const manifest: JsonObject = {};
-    for (const [k, v] of Object.entries(parsed as JsonObject)) {
+    for (const [k, v] of Object.entries(parsed)) {
       if (!k.startsWith('$')) manifest[k] = v;
     }
 
@@ -181,7 +192,7 @@ export async function runControlPlaneSeed(
 
     await sql`
       INSERT INTO control_plane.module_versions (module_id, version, manifest_json, schema_hash)
-      VALUES (${moduleId}, ${version}, ${sql.json(manifest as never)}, ${schemaHash})
+      VALUES (${moduleId}, ${version}, ${jsonParam(sql, manifest)}, ${schemaHash})
       ON CONFLICT (module_id, version) DO NOTHING
     `;
 
@@ -212,7 +223,7 @@ export async function runControlPlaneSeed(
     const schema: unknown = JSON.parse(content);
     await sql`
       INSERT INTO control_plane.schema_registry (schema_id, version, json_schema, compat_mode)
-      VALUES (${id}, 1, ${sql.json(schema as never)}, 'BACKWARD')
+      VALUES (${id}, 1, ${jsonParam(sql, schema)}, 'BACKWARD')
       ON CONFLICT (schema_id, version) DO NOTHING
     `;
     insertedSchemas.push(id);
@@ -234,7 +245,7 @@ export async function runControlPlaneSeed(
   const policyBundle = buildRolePackBundle(allActions);
   await sql`
     INSERT INTO control_plane.policies (tenant_id, version, policy_json, status)
-    VALUES (${SAMPLE_TENANT_ID}, 1, ${sql.json(policyBundle as never)}, 'active')
+    VALUES (${SAMPLE_TENANT_ID}, 1, ${jsonParam(sql, policyBundle)}, 'active')
     ON CONFLICT (tenant_id, version) DO NOTHING
   `;
 

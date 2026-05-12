@@ -4,18 +4,9 @@
  * delete, onSave) in a linkedom DOM.
  */
 
-import { parseHTML } from 'linkedom';
-
-const dom = parseHTML('<!doctype html><html><head></head><body></body></html>');
-(globalThis as unknown as Record<string, unknown>)['window'] = dom.window;
-(globalThis as unknown as Record<string, unknown>)['document'] = dom.document;
-(globalThis as unknown as Record<string, unknown>)['HTMLElement'] = dom.HTMLElement;
-(globalThis as unknown as Record<string, unknown>)['customElements'] = dom.customElements;
-(globalThis as unknown as Record<string, unknown>)['Node'] = dom.Node;
-(globalThis as unknown as Record<string, unknown>)['DocumentFragment'] = dom.DocumentFragment;
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = ((v: unknown) => JSON.parse(JSON.stringify(v))) as typeof structuredClone;
-}
+import { document, dispatchEventOn, setInputValueAndChange } from './_lib/setup.ts';
+import { must } from '../src/internal/assert.ts';
+import type { LayoutDocument } from '../src/layout/layout-document.ts';
 
 // Import via the package barrel so both <atlas-layout> and the editor
 // register as a side effect.
@@ -25,9 +16,9 @@ const { validateLayoutDocument, emptyLayoutDocument } = await import(
 );
 
 type LayoutEditorEl = HTMLElement & {
-  layout?: unknown;
-  onChange?: (doc: unknown) => void;
-  onSave?: (doc: unknown) => void;
+  layout?: LayoutDocument;
+  onChange?: (doc: LayoutDocument) => void;
+  onSave?: (doc: LayoutDocument) => void;
 };
 
 function assert(cond: unknown, msg: string): void {
@@ -39,19 +30,11 @@ function assertEq<T>(a: T, b: T, msg: string): void {
   }
 }
 
-function mountEditor(initial?: unknown): LayoutEditorEl {
+function mountEditor(initial?: LayoutDocument): LayoutEditorEl {
   const el = document.createElement('atlas-layout-editor') as LayoutEditorEl;
   document.body.appendChild(el);
   if (initial) el.layout = initial;
   return el;
-}
-
-function setInputValueAndChange(input: HTMLInputElement | null, value: number | string): void {
-  if (!input) return;
-  input.value = String(value);
-  const win = globalThis.window as unknown as { Event: typeof Event };
-  const ev = new win.Event('change', { bubbles: true });
-  input.dispatchEvent(ev);
 }
 
 async function testEditor_rendersToolbarCanvasPanel(): Promise<void> {
@@ -66,13 +49,16 @@ async function testEditor_rendersToolbarCanvasPanel(): Promise<void> {
 
 async function testEditor_addSlotCreatesSection(): Promise<void> {
   const el = mountEditor(emptyLayoutDocument({ layoutId: 'x' }));
-  const addBtn = el.querySelector('[data-action="add-slot"]') as HTMLElement;
+  const addBtn = must(
+    el.querySelector<HTMLElement>('[data-action="add-slot"]'),
+    'add-slot button just rendered',
+  );
   addBtn.click();
   const sections = el.querySelectorAll(
     '[data-editor-canvas] atlas-layout > section[data-slot]',
   );
   assertEq(sections.length, 1, 'one slot after add');
-  const doc = el.layout as { slots: unknown[] };
+  const doc = must(el.layout, 'layout populated by add-slot click');
   assertEq(doc.slots.length, 1, 'doc has one slot');
   const res = validateLayoutDocument(doc);
   assert(res.ok, 'doc after add is valid');
@@ -81,16 +67,19 @@ async function testEditor_addSlotCreatesSection(): Promise<void> {
 
 async function testEditor_multipleAddSlotsPlaceWithoutOverlap(): Promise<void> {
   const el = mountEditor(emptyLayoutDocument({ layoutId: 'x' }));
-  const addBtn = el.querySelector('[data-action="add-slot"]') as HTMLElement;
+  const addBtn = must(
+    el.querySelector<HTMLElement>('[data-action="add-slot"]'),
+    'add-slot button just rendered',
+  );
   addBtn.click();
   addBtn.click();
   addBtn.click();
-  const doc = el.layout as { slots: Array<{ name: string; col: number; row: number; colSpan: number; rowSpan: number }> };
+  const doc = must(el.layout, 'layout populated by add-slot clicks');
   assertEq(doc.slots.length, 3, 'three slots');
   for (let i = 0; i < doc.slots.length; i++) {
     for (let j = i + 1; j < doc.slots.length; j++) {
-      const a = doc.slots[i]!;
-      const b = doc.slots[j]!;
+      const a = must(doc.slots[i], `slots[${i}] just pushed`);
+      const b = must(doc.slots[j], `slots[${j}] just pushed`);
       const overlap =
         a.col < b.col + b.colSpan &&
         a.col + a.colSpan > b.col &&
@@ -109,17 +98,19 @@ async function testEditor_panelEditResizesSlot(): Promise<void> {
     grid: { columns: 12, rowHeight: 160, gap: 16 },
     slots: [{ name: 'main', col: 1, row: 1, colSpan: 4, rowSpan: 2 }],
   });
-  const win = globalThis.window as unknown as { Event: typeof Event };
-  el.querySelector(
-    '[data-editor-canvas] atlas-layout > section[data-slot="main"]',
-  )!.dispatchEvent(new win.Event('click', { bubbles: true }));
+  const slotEl = must(
+    el.querySelector('[data-editor-canvas] atlas-layout > section[data-slot="main"]'),
+    'main slot just rendered',
+  );
+  dispatchEventOn(slotEl, 'click');
 
-  const colSpanInput = el.querySelector('input[data-field="colSpan"]') as HTMLInputElement | null;
+  const colSpanInput = el.querySelector<HTMLInputElement>('input[data-field="colSpan"]');
   assert(colSpanInput, 'colSpan input present when a slot is selected');
   setInputValueAndChange(colSpanInput, 8);
 
-  const doc = el.layout as { slots: Array<{ colSpan: number }> };
-  assertEq(doc.slots[0]!.colSpan, 8, 'colSpan updated via panel');
+  const doc = must(el.layout, 'layout still present');
+  const slot0 = must(doc.slots[0], 'slots[0] still present');
+  assertEq(slot0.colSpan, 8, 'colSpan updated via panel');
   el.remove();
 }
 
@@ -130,14 +121,16 @@ async function testEditor_panelRenameSlot(): Promise<void> {
     grid: { columns: 12, rowHeight: 160, gap: 16 },
     slots: [{ name: 'main', col: 1, row: 1, colSpan: 12, rowSpan: 1 }],
   });
-  const win = globalThis.window as unknown as { Event: typeof Event };
-  el.querySelector(
-    '[data-editor-canvas] atlas-layout > section[data-slot="main"]',
-  )!.dispatchEvent(new win.Event('click', { bubbles: true }));
-  const nameInput = el.querySelector('input[data-field="name"]') as HTMLInputElement | null;
+  const slotEl = must(
+    el.querySelector('[data-editor-canvas] atlas-layout > section[data-slot="main"]'),
+    'main slot just rendered',
+  );
+  dispatchEventOn(slotEl, 'click');
+  const nameInput = el.querySelector<HTMLInputElement>('input[data-field="name"]');
   setInputValueAndChange(nameInput, 'header');
-  const doc = el.layout as { slots: Array<{ name: string }> };
-  assertEq(doc.slots[0]!.name, 'header', 'slot renamed');
+  const doc = must(el.layout, 'layout still present');
+  const slot0 = must(doc.slots[0], 'slots[0] still present');
+  assertEq(slot0.name, 'header', 'slot renamed');
   assert(
     el.querySelector(
       '[data-editor-canvas] atlas-layout > section[data-slot="header"]',
@@ -157,34 +150,51 @@ async function testEditor_deleteSlot(): Promise<void> {
       { name: 'b', col: 7, row: 1, colSpan: 6, rowSpan: 1 },
     ],
   });
-  const win = globalThis.window as unknown as { Event: typeof Event };
-  el.querySelector(
-    '[data-editor-canvas] atlas-layout > section[data-slot="a"]',
-  )!.dispatchEvent(new win.Event('click', { bubbles: true }));
-  (el.querySelector('[data-action="delete-slot"]') as HTMLElement).click();
-  const doc = el.layout as { slots: Array<{ name: string }> };
+  const slotA = must(
+    el.querySelector('[data-editor-canvas] atlas-layout > section[data-slot="a"]'),
+    'slot a just rendered',
+  );
+  dispatchEventOn(slotA, 'click');
+  const deleteBtn = must(
+    el.querySelector<HTMLElement>('[data-action="delete-slot"]'),
+    'delete-slot button just rendered',
+  );
+  deleteBtn.click();
+  const doc = must(el.layout, 'layout still present');
   assertEq(doc.slots.length, 1, 'one slot after delete');
-  assertEq(doc.slots[0]!.name, 'b', 'correct slot survived');
+  const survivor = must(doc.slots[0], 'one slot survived');
+  assertEq(survivor.name, 'b', 'correct slot survived');
   el.remove();
 }
 
 async function testEditor_onChangeAndOnSaveFire(): Promise<void> {
   const el = mountEditor(emptyLayoutDocument({ layoutId: 'x' }));
   let changes = 0;
-  let savedDoc: unknown = null;
+  // Explicit `let` widening — the assignment happens in an onSave
+  // callback whose timing TS can't see, so the variable's type at the
+  // read site below would otherwise narrow to `null` only.
+  let savedDoc: LayoutDocument | null = null as LayoutDocument | null;
   el.onChange = () => {
     changes += 1;
   };
   el.onSave = (doc) => {
     savedDoc = doc;
   };
-  (el.querySelector('[data-action="add-slot"]') as HTMLElement).click();
+  const addBtn = must(
+    el.querySelector<HTMLElement>('[data-action="add-slot"]'),
+    'add-slot button just rendered',
+  );
+  addBtn.click();
   assert(changes >= 1, 'onChange fired for add');
 
-  (el.querySelector('[data-action="save"]') as HTMLElement).click();
+  const saveBtn = must(
+    el.querySelector<HTMLElement>('[data-action="save"]'),
+    'save button just rendered',
+  );
+  saveBtn.click();
   await new Promise((r) => setTimeout(r, 0));
-  assert(savedDoc !== null, 'onSave fired');
-  assertEq((savedDoc as { slots: unknown[] }).slots.length, 1, 'saved doc reflects added slot');
+  const saved = must(savedDoc, 'onSave fired');
+  assertEq(saved.slots.length, 1, 'saved doc reflects added slot');
   el.remove();
 }
 
@@ -199,13 +209,19 @@ async function testEditor_onChangeDoesNotFireOnInvalidEdit(): Promise<void> {
   el.onChange = () => {
     changes += 1;
   };
-  const win = globalThis.window as unknown as { Event: typeof Event };
-  el.querySelector(
-    '[data-editor-canvas] atlas-layout > section[data-slot="main"]',
-  )!.dispatchEvent(new win.Event('click', { bubbles: true }));
-  setInputValueAndChange(el.querySelector('input[data-field="colSpan"]') as HTMLInputElement | null, 99);
+  const slotEl = must(
+    el.querySelector('[data-editor-canvas] atlas-layout > section[data-slot="main"]'),
+    'main slot just rendered',
+  );
+  dispatchEventOn(slotEl, 'click');
+  setInputValueAndChange(
+    el.querySelector<HTMLInputElement>('input[data-field="colSpan"]'),
+    99,
+  );
   assertEq(changes, 0, 'invalid edit never fired onChange');
-  assertEq((el.layout as { slots: Array<{ colSpan: number }> }).slots[0]!.colSpan, 12, 'doc unchanged');
+  const doc = must(el.layout, 'layout still present');
+  const slot0 = must(doc.slots[0], 'slots[0] still present');
+  assertEq(slot0.colSpan, 12, 'doc unchanged');
   el.remove();
 }
 
@@ -218,12 +234,11 @@ async function main(): Promise<void> {
   await testEditor_deleteSlot();
   await testEditor_onChangeAndOnSaveFire();
   await testEditor_onChangeDoesNotFireOnInvalidEdit();
-  // eslint-disable-next-line no-console
   console.log('OK');
 }
 
 main().catch((err: unknown) => {
-  // eslint-disable-next-line no-console
-  console.error('FAIL:', (err as Error | undefined)?.stack ?? err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error('FAIL:', stack ?? err);
   process.exit(1);
 });

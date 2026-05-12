@@ -1,6 +1,7 @@
 import type { ProjectionStore } from '@atlas/ports';
 import type { FamilyDetailResponse } from '../responses.ts';
 import { projectionKey } from '../projections/family-detail.ts';
+import { readProjection } from '../internal/projection-read.ts';
 
 export async function queryFamilyDetail(
   tenantId: string,
@@ -8,5 +9,5 @@ export async function queryFamilyDetail(
   projections: ProjectionStore,
 ): Promise<FamilyDetailResponse | null> {
   const v = await projections.get(projectionKey(familyKey, tenantId));
-  return (v as FamilyDetailResponse | null) ?? null;
+  return readProjection<FamilyDetailResponse>(v);
 }

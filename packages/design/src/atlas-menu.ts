@@ -1,8 +1,9 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet } from './util.ts';
+import { isHtmlElement } from './internal/assert.ts';
 import './atlas-menu-item.ts';
 import './atlas-menu-separator.ts';
-import type { AtlasMenuItem } from './atlas-menu-item.ts';
+import { AtlasMenuItem } from './atlas-menu-item.ts';
 
 /**
  * <atlas-menu> — dropdown / context menu. Authors declare items as light
@@ -96,8 +97,34 @@ const sheet = createSheet(`
 
 type Placement = 'top' | 'bottom' | 'start' | 'end';
 
+const PLACEMENTS: readonly Placement[] = ['top', 'bottom', 'start', 'end'];
+
+function isPlacement(v: string | null): v is Placement {
+  return v !== null && (PLACEMENTS as readonly string[]).includes(v);
+}
+
 export interface AtlasMenuSelectDetail {
   value: string;
+}
+
+interface AtlasMenuItemActivateDetail {
+  value: string;
+}
+
+/** Popover API surface — gated by lib.dom version (Baseline 2024+). */
+interface PopoverHostElement {
+  showPopover: () => void;
+  hidePopover: () => void;
+}
+
+function supportsPopover(el: HTMLElement): el is HTMLElement & PopoverHostElement {
+  // Property test rather than capability check: Safari before 17 reports
+  // the popover attribute but not the imperative methods. Use Reflect.get
+  // to probe without a type assertion.
+  return (
+    typeof Reflect.get(el, 'showPopover') === 'function' &&
+    typeof Reflect.get(el, 'hidePopover') === 'function'
+  );
 }
 
 export class AtlasMenu extends AtlasElement {
@@ -216,7 +243,7 @@ export class AtlasMenu extends AtlasElement {
     // Use native popover API when available — gives us top-layer + UA
     // outside-light-dismiss for free. We still wire our own dismiss for
     // older browsers and to keep behaviour consistent.
-    if (typeof (HTMLElement.prototype as unknown as { showPopover?: unknown }).showPopover === 'function') {
+    if (typeof Reflect.get(HTMLElement.prototype, 'showPopover') === 'function') {
       surface.setAttribute('popover', 'manual');
     }
 
@@ -228,10 +255,23 @@ export class AtlasMenu extends AtlasElement {
     this._slot = slot;
 
     // Item activation events bubble through the slot; intercept them
-    // and translate to the public select event.
-    surface.addEventListener('atlas-menu-item-activate', (e) => {
-      const detail = (e as CustomEvent<{ value: string }>).detail;
-      this._emitSelect(detail?.value ?? '');
+    // and translate to the public select event. The synthetic event is
+    // dispatched by `<atlas-menu-item>` with a typed detail.
+    surface.addEventListener('atlas-menu-item-activate', (e: Event) => {
+      // `<atlas-menu-item>` dispatches a CustomEvent with `{ value: string }`.
+      let value = '';
+      if (e instanceof CustomEvent) {
+        const detail: unknown = e.detail;
+        if (
+          detail !== null &&
+          typeof detail === 'object' &&
+          'value' in detail &&
+          typeof detail.value === 'string'
+        ) {
+          value = detail.value;
+        }
+      }
+      this._emitSelect(value);
       this.close();
     });
 
@@ -249,8 +289,11 @@ export class AtlasMenu extends AtlasElement {
     const sel = this.getAttribute('anchor');
     if (sel) {
       try {
-        const root = this.getRootNode() as Document | ShadowRoot;
-        const found = root.querySelector(sel);
+        const root = this.getRootNode();
+        const found =
+          root instanceof Document || root instanceof ShadowRoot
+            ? root.querySelector(sel)
+            : null;
         if (found instanceof HTMLElement) return found;
       } catch {
         /* invalid selector — ignore */
@@ -303,7 +346,8 @@ export class AtlasMenu extends AtlasElement {
       return;
     }
     e.preventDefault();
-    this.toggle(e.currentTarget as HTMLElement);
+    const trigger = isHtmlElement(e.currentTarget) ? e.currentTarget : undefined;
+    this.toggle(trigger);
   }
 
   private _onAnchorPress(e: PointerEvent): void {
@@ -347,7 +391,9 @@ export class AtlasMenu extends AtlasElement {
 
   private _show(): void {
     if (!this._surface) return;
-    this._previouslyFocused = (this.getRootNode() as Document).activeElement;
+    const root = this.getRootNode();
+    this._previouslyFocused =
+      root instanceof Document || root instanceof ShadowRoot ? root.activeElement : null;
     this._surface.hidden = false;
     if (this._anchorEl) this._anchorEl.setAttribute('aria-expanded', 'true');
     this._tryShowPopover(this._surface);
@@ -373,10 +419,10 @@ export class AtlasMenu extends AtlasElement {
     this._items().forEach((i) => i.removeAttribute('data-active'));
     // Restore focus to the trigger (or wherever it came from) so keyboard
     // users land back where they started — required by C3.10.
-    const restore = this._previouslyFocused as HTMLElement | null;
-    if (restore && typeof restore.focus === 'function') {
+    const restore = isHtmlElement(this._previouslyFocused) ? this._previouslyFocused : null;
+    if (restore) {
       try { restore.focus(); } catch { /* ignore */ }
-    } else if (this._anchorEl && typeof this._anchorEl.focus === 'function') {
+    } else if (this._anchorEl) {
       try { this._anchorEl.focus(); } catch { /* ignore */ }
     }
     this._previouslyFocused = null;
@@ -384,16 +430,14 @@ export class AtlasMenu extends AtlasElement {
   }
 
   private _tryShowPopover(el: HTMLElement): void {
-    const fn = (el as unknown as { showPopover?: () => void }).showPopover;
-    if (typeof fn === 'function') {
-      try { fn.call(el); } catch { /* already shown */ }
+    if (supportsPopover(el)) {
+      try { el.showPopover(); } catch { /* already shown */ }
     }
   }
 
   private _tryHidePopover(el: HTMLElement): void {
-    const fn = (el as unknown as { hidePopover?: () => void }).hidePopover;
-    if (typeof fn === 'function') {
-      try { fn.call(el); } catch { /* already hidden */ }
+    if (supportsPopover(el)) {
+      try { el.hidePopover(); } catch { /* already hidden */ }
     }
   }
 
@@ -416,7 +460,7 @@ export class AtlasMenu extends AtlasElement {
   private _handleDocPointerDown(e: PointerEvent): void {
     if (!this.isOpen) return;
     const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
-    if (path.includes(this._surface as EventTarget)) return;
+    if (this._surface !== null && path.includes(this._surface)) return;
     // Clicking the anchor itself should be a toggle, NOT a stray dismiss.
     if (this._anchorEl && path.includes(this._anchorEl)) return;
     this.close();
@@ -494,8 +538,8 @@ export class AtlasMenu extends AtlasElement {
     const assigned = this._slot.assignedElements({ flatten: true });
     const items: AtlasMenuItem[] = [];
     for (const el of assigned) {
-      if (el.tagName.toLowerCase() === 'atlas-menu-item') {
-        items.push(el as AtlasMenuItem);
+      if (el instanceof AtlasMenuItem) {
+        items.push(el);
       }
     }
     return items;
@@ -555,7 +599,8 @@ export class AtlasMenu extends AtlasElement {
     const anchor = this._lastAnchor ?? this._anchorEl;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const placement = (this.getAttribute('placement') as Placement) || 'bottom';
+    const placementAttr = this.getAttribute('placement');
+    const placement: Placement = isPlacement(placementAttr) ? placementAttr : 'bottom';
     // Measure the surface AFTER it's visible so width/height reflect
     // actual content. Min-width is mirrored from the anchor for visual
     // alignment when there's room.

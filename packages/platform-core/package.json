@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@atlas/ports": "workspace:*",
+    "@atlas/test-fixtures": "workspace:*",
     "vitest": "^4.1.5"
   }
 }

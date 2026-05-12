@@ -45,6 +45,19 @@ interface JsonSchema {
   };
 }
 
+/**
+ * Read + parse a JSON Schema file from disk. JSON.parse is typed as
+ * `any`; the read schemas conform to the structural-only `JsonSchema`
+ * interface above (every field optional). The narrow is local to this
+ * regression suite — we don't validate the schemas themselves, only
+ * the `$id` + `$ref` fields they declare.
+ */
+async function readSchemaFile(path: string): Promise<JsonSchema> {
+  const text = await readFile(path, 'utf8');
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON Schema fixture read — file shape is a JSON Schema with the optional fields declared in `JsonSchema` above; every field accessed by the assertions is optional, so a malformed file surfaces as a failed `expect`, not a runtime crash.
+  return JSON.parse(text) as JsonSchema;
+}
+
 test('regression: page-layout.v1 + page-document.v1 duplicated $ids match short-form contract', async () => {
   const pageLayoutPath = resolve(
     repoRoot,
@@ -63,8 +76,8 @@ test('regression: page-layout.v1 + page-document.v1 duplicated $ids match short-
     'page_document.schema.json',
   );
 
-  const pageLayout = JSON.parse(await readFile(pageLayoutPath, 'utf8')) as JsonSchema;
-  const pageDoc = JSON.parse(await readFile(pageDocPath, 'utf8')) as JsonSchema;
+  const pageLayout = await readSchemaFile(pageLayoutPath);
+  const pageDoc = await readSchemaFile(pageDocPath);
 
   expect(pageLayout.$id, 'page_layout duplicated copy must declare short-form $id').toBe(
     'page-layout.v1',
@@ -131,8 +144,8 @@ test('regression: canonical specs/schemas/contracts/page-layout.v1 + page-docume
     'page_document.schema.json',
   );
 
-  const pageLayout = JSON.parse(await readFile(pageLayoutPath, 'utf8')) as JsonSchema;
-  const pageDoc = JSON.parse(await readFile(pageDocPath, 'utf8')) as JsonSchema;
+  const pageLayout = await readSchemaFile(pageLayoutPath);
+  const pageDoc = await readSchemaFile(pageDocPath);
 
   expect(pageLayout.$id).toBe('page-layout.v1');
   expect(pageDoc.$id).toBe('page-document.v1');

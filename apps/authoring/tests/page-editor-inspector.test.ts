@@ -16,6 +16,7 @@
  */
 
 import { test, expect, assertCommitted, readEditorState } from '@atlas/test-fixtures';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { Page } from '@playwright/test';
 
 const ROUTE = '#/page-editor';
@@ -42,15 +43,13 @@ async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`) as
-        (Element & { editor?: unknown }) | null;
-      if (cp && cp.editor) return true;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`);
+      if (cp && 'editor' in cp && cp.editor) return true;
       const all = root.querySelectorAll('*');
       for (const el of all) {
-        const e = el as Element & { shadowRoot?: ShadowRoot };
-        if (e.shadowRoot) stack.push(e.shadowRoot);
+        if (el.shadowRoot) stack.push(el.shadowRoot);
       }
     }
     return false;
@@ -84,29 +83,26 @@ async function mountInspector(page: Page, pageId: string): Promise<void> {
     // Lazy-load the inspector module so the customElements registration
     // happens on the first test that needs it. The dev server serves source
     // files relative to the authoring app root, so `/src/...` resolves.
-    const dynImport = (specifier: string): Promise<unknown> =>
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      (new Function('s', 'return import(s)') as (s: string) => Promise<unknown>)(specifier);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-type-assertion -- boundary: Function-constructed dynamic import is the only way to defeat the bundler-walk; the resolved value is `unknown` by design.
+    const dynImport = new Function('s', 'return import(s)') as (s: string) => Promise<unknown>;
     try {
       await dynImport('/src/page-editor/right-panel/inspector.ts');
     } catch {
       await dynImport('/src/page-editor/right-panel/index.ts');
     }
     const stack: Array<Document | ShadowRoot | Element> = [document];
-    let shellEl: (Element & { editorState?: unknown }) | null = null;
+    let shellEl: Element | null = null;
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { editorState?: unknown; shadowRoot?: ShadowRoot }) | null;
-      if (el?.editorState) {
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell');
+      if (el && 'editorState' in el && el.editorState) {
         shellEl = el;
         break;
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     if (!shellEl) throw new Error(`shell not found for ${pid}`);
@@ -114,14 +110,16 @@ async function mountInspector(page: Page, pageId: string): Promise<void> {
     document
       .querySelectorAll('page-editor-inspector[data-test-harness]')
       .forEach((n) => n.remove());
-    const inspector = document.createElement('page-editor-inspector') as
-      HTMLElement & { controller?: unknown };
+    const inspector = document.createElement('page-editor-inspector');
     inspector.setAttribute('data-test-harness', '');
     inspector.style.cssText =
       'position:fixed;bottom:0;right:0;width:380px;max-height:60vh;overflow:auto;background:var(--atlas-color-bg);border:2px solid var(--atlas-color-accent);z-index:9999;';
     document.body.appendChild(inspector);
-    (inspector as { controller: unknown }).controller =
-      (shellEl as { editorState: unknown }).editorState;
+    // Both shellEl.editorState and inspector.controller are typed as
+    // `unknown` here; the assignment is intentional — wiring the shell's
+    // live controller into the harness-mounted inspector so it reflects
+    // the same state as the canonical right-panel.
+    Reflect.set(inspector, 'controller', Reflect.get(shellEl, 'editorState'));
   }, pageId);
   await page.waitForFunction(() => {
     if (!window.__atlasTest) return false;
@@ -129,18 +127,29 @@ async function mountInspector(page: Page, pageId: string): Promise<void> {
   });
 }
 
+/**
+ * Boundary: `readEditorState` returns `unknown` by design (the
+ * test-state registry is shape-erased). The inspector snapshot shape
+ * is contract-pinned by `<page-editor-inspector>`'s controller; one
+ * justified narrowing here keeps all call sites clean.
+ */
 async function readInspector(page: Page, pageId: string): Promise<InspectorSnapshot | null> {
-  return (await readEditorState(page, `${pageId}:inspector`)) as InspectorSnapshot | null;
+  const snap = await readEditorState(page, `${pageId}:inspector`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; inspector snapshot shape is contract-pinned by its controller.
+  return snap as InspectorSnapshot | null;
+}
+
+async function readInspectorOrThrow(page: Page, pageId: string): Promise<InspectorSnapshot> {
+  return assertDefined(await readInspector(page, pageId), `inspector snapshot for ${pageId}`);
 }
 
 async function clickCanvasCell(page: Page, instanceId: string, modifier?: 'Shift'): Promise<void> {
   const handle = await page.evaluateHandle((id: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const shell = root.querySelector('authoring-page-editor-shell') as
-        (Element & { shadowRoot?: ShadowRoot }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const shell = root.querySelector('authoring-page-editor-shell');
       if (shell?.shadowRoot) {
         const hit = shell.shadowRoot.querySelector(
           `[data-widget-cell][data-instance-id="${id}"]`,
@@ -149,8 +158,7 @@ async function clickCanvasCell(page: Page, instanceId: string, modifier?: 'Shift
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
@@ -178,8 +186,8 @@ async function inspectorQuery(
   return page.evaluate((sel: string) => {
     const insp = document.querySelector('page-editor-inspector[data-test-harness]');
     if (!insp) return { ok: false };
-    const hit = insp.querySelector(sel) as HTMLElement | null;
-    if (!hit) return { ok: false };
+    const hit = insp.querySelector(sel);
+    if (!(hit instanceof HTMLElement)) return { ok: false };
     const attrs: Record<string, string | null> = {};
     for (const a of hit.getAttributeNames()) attrs[a] = hit.getAttribute(a);
     return { ok: true, tag: hit.tagName.toLowerCase(), attrs };
@@ -217,10 +225,10 @@ test.describe('page-editor-inspector — sections & conditionals', () => {
     expect(dedup.slice(0, 3)).toEqual(['content', 'trend', 'data']);
 
     // content + trend defaultOpen=true; data defaultOpen=false.
-    const snap = await readInspector(page, 'editor-starter');
-    expect(snap!.openSections['content']).toBe(true);
-    expect(snap!.openSections['trend']).toBe(true);
-    expect(snap!.openSections['data']).toBe(false);
+    const snap = await readInspectorOrThrow(page, 'editor-starter');
+    expect(snap.openSections['content']).toBe(true);
+    expect(snap.openSections['trend']).toBe(true);
+    expect(snap.openSections['data']).toBe(false);
   });
 
   test.skip('toggling a section commits toggleSection on the inspector', async ({ page }) => {
@@ -240,8 +248,8 @@ test.describe('page-editor-inspector — sections & conditionals', () => {
       patch: { section: 'data', open: true },
     });
 
-    const snap = await readInspector(page, 'editor-starter');
-    expect(snap!.openSections['data']).toBe(true);
+    const snap = await readInspectorOrThrow(page, 'editor-starter');
+    expect(snap.openSections['data']).toBe(true);
   });
 
   test('x-atlas-when hides trendLabel when trend is empty and shows it when set', async ({ page }) => {
@@ -252,19 +260,19 @@ test.describe('page-editor-inspector — sections & conditionals', () => {
     // Force the trend value via the controller so the test does not depend on
     // the seed's initial config.
     await page.evaluate((id: string) => {
+      interface ShellWithEditorState extends Element {
+        editorState?: {
+          updateWidgetConfig: (
+            instanceId: string,
+            config: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & {
-            editorState?: {
-              updateWidgetConfig: (
-                instanceId: string,
-                config: Record<string, unknown>,
-              ) => Promise<unknown>;
-            };
-          }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellWithEditorState | null;
         if (el?.editorState) {
           void el.editorState.updateWidgetConfig(id, {
             label: 'Active tenants',
@@ -276,8 +284,7 @@ test.describe('page-editor-inspector — sections & conditionals', () => {
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
     }, STARTER_KPI_ID);
@@ -314,8 +321,8 @@ test.describe('page-editor-inspector — control overrides', () => {
 
     const tagName = await page.evaluate(() => {
       const insp = document.querySelector('page-editor-inspector[data-test-harness]');
-      const ta = insp?.querySelector('[name="field-content"] textarea') as HTMLElement | null;
-      return ta?.tagName?.toLowerCase() ?? null;
+      const ta = insp?.querySelector('[name="field-content"] textarea');
+      return ta instanceof HTMLElement ? ta.tagName.toLowerCase() : null;
     });
     expect(tagName).toBe('textarea');
   });
@@ -346,10 +353,12 @@ test.describe('page-editor-inspector — presets', () => {
 
     // The shell receives the merged config via updateWidgetConfig. The
     // commit's `config` field must include level: 1 from the preset.
-    const shellCommit = (await assertCommitted(page, 'editor:editor-starter:shell', {
+    const shellCommitRaw = await assertCommitted(page, 'editor:editor-starter:shell', {
       intent: 'updateWidgetConfig',
       patch: { instanceId: STARTER_HEADING_ID },
-    })) as { patch: { config?: Record<string, unknown> } };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: assertCommitted returns unknown; the shell commit envelope shape is contract-pinned by the shell controller.
+    const shellCommit = shellCommitRaw as { patch: { config?: Record<string, unknown> } };
     expect(shellCommit.patch.config?.['level']).toBe(1);
   });
 });
@@ -360,18 +369,16 @@ test.describe('page-editor-inspector — copy / paste', () => {
     // heading via the shell controller so we have a paste target.
     await openEditor(page, 'editor-starter');
     const secondId = await page.evaluate(async () => {
+      interface ShellWithAdd extends Element {
+        editorState?: {
+          addWidget: (a: unknown) => Promise<{ ok: boolean; instanceId?: string }>;
+        };
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & {
-            editorState?: {
-              addWidget: (
-                a: unknown,
-              ) => Promise<{ ok: boolean; instanceId?: string }>;
-            };
-          }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellWithAdd | null;
         if (el?.editorState) {
           const r = await el.editorState.addWidget({
             widgetId: 'sandbox.heading',
@@ -382,13 +389,13 @@ test.describe('page-editor-inspector — copy / paste', () => {
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
       return null;
     });
     expect(typeof secondId).toBe('string');
+    const secondIdSafe = assertDefined(secondId, 'second heading instance id');
 
     await mountInspector(page, 'editor-starter');
 
@@ -406,20 +413,20 @@ test.describe('page-editor-inspector — copy / paste', () => {
     });
 
     // 2. Inspect the sibling heading; paste.
-    await clickCanvasCell(page, secondId as string);
+    await clickCanvasCell(page, secondIdSafe);
     await expect.poll(async () => (await readInspector(page, 'editor-starter'))?.instanceId).toBe(
-      secondId,
+      secondIdSafe,
     );
     await clickInInspector(page, '[name="inspector-menu"]');
     await clickInInspector(page, '[name="paste-config"]');
 
     await assertCommitted(page, inspectorKey('editor-starter'), {
       intent: 'pasteConfig',
-      patch: { widgetId: 'sandbox.heading', instanceId: secondId },
+      patch: { widgetId: 'sandbox.heading', instanceId: secondIdSafe },
     });
     await assertCommitted(page, 'editor:editor-starter:shell', {
       intent: 'updateWidgetConfig',
-      patch: { instanceId: secondId },
+      patch: { instanceId: secondIdSafe },
     });
   });
 });
@@ -431,18 +438,16 @@ test.describe('page-editor-inspector — multi-select', () => {
     // shared field intersection.
     await openEditor(page, 'editor-starter');
     const secondHeadingId = await page.evaluate(async () => {
+      interface ShellWithAdd extends Element {
+        editorState?: {
+          addWidget: (a: unknown) => Promise<{ ok: boolean; instanceId?: string }>;
+        };
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & {
-            editorState?: {
-              addWidget: (
-                a: unknown,
-              ) => Promise<{ ok: boolean; instanceId?: string }>;
-            };
-          }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellWithAdd | null;
         if (el?.editorState) {
           const r = await el.editorState.addWidget({
             widgetId: 'sandbox.heading',
@@ -453,18 +458,18 @@ test.describe('page-editor-inspector — multi-select', () => {
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
       return null;
     });
     expect(typeof secondHeadingId).toBe('string');
+    const secondHeadingIdSafe = assertDefined(secondHeadingId, 'second heading instance id');
 
     await mountInspector(page, 'editor-starter');
 
     await clickCanvasCell(page, STARTER_HEADING_ID);
-    await clickCanvasCell(page, secondHeadingId as string, 'Shift');
+    await clickCanvasCell(page, secondHeadingIdSafe, 'Shift');
 
     await expect.poll(async () => (await readInspector(page, 'editor-starter'))?.mode).toBe(
       'multi',
@@ -482,21 +487,22 @@ test.describe('page-editor-inspector — multi-select', () => {
     // updateWidgetConfig for both selected instances.
     await page.evaluate((id: string) => {
       const insp = document.querySelector('page-editor-inspector[data-test-harness]');
-      const inputEl = insp?.querySelector('[name="field-text"] atlas-input') as
-        (HTMLElement & { shadowRoot?: ShadowRoot }) | null;
-      const inner = inputEl?.shadowRoot?.querySelector('input') as HTMLInputElement | null;
-      if (inner) {
-        inner.value = `Updated for ${id}`;
-        inner.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      const inputEl = insp?.querySelector('[name="field-text"] atlas-input');
+      if (inputEl instanceof HTMLElement) {
+        const inner = inputEl.shadowRoot?.querySelector('input');
+        if (inner instanceof HTMLInputElement) {
+          inner.value = `Updated for ${id}`;
+          inner.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+        // atlas-input forwards as a CustomEvent — emit one directly to be safe.
+        inputEl.dispatchEvent(
+          new CustomEvent('input', {
+            detail: { value: 'Updated multi-select' },
+            bubbles: true,
+            composed: true,
+          }),
+        );
       }
-      // atlas-input forwards as a CustomEvent — emit one directly to be safe.
-      inputEl?.dispatchEvent(
-        new CustomEvent('input', {
-          detail: { value: 'Updated multi-select' },
-          bubbles: true,
-          composed: true,
-        }),
-      );
     }, STARTER_HEADING_ID);
 
     // The wrapper records its own multiSelectEdit commit on the inspector
@@ -509,14 +515,16 @@ test.describe('page-editor-inspector — multi-select', () => {
     // is what `lastCommit` exposes; both instance ids should appear over time.
     await expect
       .poll(async () => {
-        const last = (await page.evaluate((key: string) => {
+        const lastRaw = await page.evaluate((key: string) => {
           if (!window.__atlasTest) return null;
           return window.__atlasTest.getLastCommit(key);
-        }, 'editor:editor-starter:shell')) as
-          | { intent: string; patch: { instanceId?: string } }
-          | null;
-        if (!last) return null;
-        return { intent: last.intent, instanceId: last.patch?.instanceId ?? null };
+        }, 'editor:editor-starter:shell');
+        if (!lastRaw || typeof lastRaw !== 'object') return null;
+        const obj = lastRaw as { intent?: unknown; patch?: { instanceId?: unknown } };
+        const intent = typeof obj.intent === 'string' ? obj.intent : null;
+        const instanceId = typeof obj.patch?.instanceId === 'string' ? obj.patch.instanceId : null;
+        if (!intent) return null;
+        return { intent, instanceId };
       })
       .toMatchObject({ intent: 'updateWidgetConfig' });
   });

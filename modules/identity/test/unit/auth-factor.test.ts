@@ -133,8 +133,8 @@ describe('handleFactorRevoke', () => {
       fx.entities,
     );
     expect(result.document.status).toBe('revoked');
-    const payload = result.envelope.payload as { force: boolean };
-    expect(payload.force).toBe(true);
+    const payload = result.envelope.payload;
+    expect(payload && typeof payload === 'object' && 'force' in payload && payload.force).toBe(true);
   });
 
   it('allows revoke when user has multiple active factors (last-factor guard does not fire)', async () => {

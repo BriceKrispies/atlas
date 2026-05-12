@@ -12,20 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  EventStore,
-  StoredEvent,
-  Entity,
-  EntityListOptions,
-  EntityQueryOptions,
-  EntityStatus,
-  EntityStore as PortEntityStore,
-  EntityWriteInput,
-  Relation,
-  RelationStore,
-  RelationWriteInput,
-} from '@atlas/ports';
-import type { EventEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleApiKeyCreate,
   handleApiKeyRevoke,
@@ -40,7 +27,6 @@ import {
   handleServicePrincipalDisable,
   handleSessionRefresh,
   handleSessionRevokeAllForUser,
-  dispatchIdentityEvent,
   getApiKeyEntity,
   getOAuthTokenEntity,
   getServicePrincipalEntity,
@@ -48,155 +34,11 @@ import {
   IdentityError,
   identityErrorCodes,
   parseApiKeyBearer,
-  type ApiKeyDocument,
-  type AuthSessionDocument,
-  type OAuthAccessTokenDocument,
 } from '../src/index.ts';
-import { assertEventTags } from './lib/fixtures.ts';
+import { assertEventTags, newFixture, dispatchAll } from './lib/fixtures.ts';
 
-class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
-  private nextSeq = 0n;
-  async append(envelope: EventEnvelope): Promise<StoredEvent> {
-    this.nextSeq += 1n;
-    const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
-    this.events.push(stored);
-    return stored;
-  }
-  async getEvent(eventId: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.eventId === eventId) ?? null;
-  }
-  async findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null> {
-    return (
-      this.events.find(
-        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
-      ) ?? null
-    );
-  }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return this.events.map((e) => ({ ...e }));
-  }
-}
-
-class InMemoryEntityStore implements PortEntityStore {
-  rows = new Map<string, Entity<unknown>>();
-  private k(t: string, ty: string, id: string): string {
-    return `${t}::${ty}::${id}`;
-  }
-  async get<T = unknown>(
-    tenantId: string,
-    entityType: string,
-    entityId: string,
-  ): Promise<Entity<T> | null> {
-    const row = this.rows.get(this.k(tenantId, entityType, entityId));
-    if (!row || row.status === 'deleted') return null;
-    return row as Entity<T>;
-  }
-  async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
-    const key = this.k(input.tenantId, input.entityType, input.entityId);
-    const existing = this.rows.get(key);
-    const now = new Date().toISOString();
-    const row: Entity<T> = {
-      tenantId: input.tenantId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      schemaVersion: input.schemaVersion ?? 1,
-      attrs: input.attrs,
-      status: input.status ?? 'active',
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    this.rows.set(key, row as Entity<unknown>);
-    return row;
-  }
-  async delete(t: string, ty: string, id: string): Promise<void> {
-    const key = this.k(t, ty, id);
-    const existing = this.rows.get(key);
-    if (existing) this.rows.set(key, { ...existing, status: 'deleted' });
-  }
-  async list<T = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts?: EntityListOptions,
-  ): Promise<Entity<T>[]> {
-    const desired: EntityStatus | null =
-      opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
-      .filter((r) => r.tenantId === tenantId && r.entityType === entityType)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
-  }
-  async query<T = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts: EntityQueryOptions,
-  ): Promise<Entity<T>[]> {
-    const all = Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.entityType === entityType,
-    );
-    if (!opts.attrsEqual) return all as Entity<T>[];
-    const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
-  }
-}
-
-class InMemoryRelationStore implements RelationStore {
-  rows = new Map<string, Relation<unknown>>();
-  private k(t: string, e: string, f: string, to: string): string {
-    return `${t}::${e}::${f}::${to}`;
-  }
-  async add<T = unknown>(input: RelationWriteInput<T>): Promise<Relation<T>> {
-    const key = this.k(input.tenantId, input.edgeType, input.fromId, input.toId);
-    const row: Relation<T> = {
-      tenantId: input.tenantId,
-      edgeType: input.edgeType,
-      fromId: input.fromId,
-      toId: input.toId,
-      attrs: input.attrs ?? null,
-      createdAt: new Date().toISOString(),
-    };
-    this.rows.set(key, row as Relation<unknown>);
-    return row;
-  }
-  async remove(t: string, e: string, f: string, to: string): Promise<void> {
-    this.rows.delete(this.k(t, e, f, to));
-  }
-  async outgoing<T = unknown>(t: string, e: string, f: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === t && r.edgeType === e && r.fromId === f,
-    ) as Relation<T>[];
-  }
-  async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === t && r.edgeType === e && r.toId === to,
-    ) as Relation<T>[];
-  }
-}
-
-interface Fx {
-  events: InMemoryEventStore;
-  entities: InMemoryEntityStore;
-  relations: InMemoryRelationStore;
-  tenantId: string;
-}
-function fx(): Fx {
-  return {
-    events: new InMemoryEventStore(),
-    entities: new InMemoryEntityStore(),
-    relations: new InMemoryRelationStore(),
-    tenantId: 't1',
-  };
-}
-async function dispatchAll(f: Fx): Promise<void> {
-  for (const e of f.events.events) {
-    await dispatchIdentityEvent(e, { entities: f.entities, relations: f.relations });
-  }
-}
+type Fx = ReturnType<typeof newFixture>;
+const fx = (): Fx => newFixture();
 
 async function bootstrapUserWithSession(
   f: Fx,
@@ -341,7 +183,10 @@ describe('session-management.feature: refresh-token reuse breach', () => {
     } catch (e) {
       caught = e;
     }
-    expect((caught as IdentityError).code).toBe(identityErrorCodes.SESSION_REUSE_DETECTED);
+    if (!(caught instanceof IdentityError)) {
+      throw new Error(`expected IdentityError, got ${String(caught)}`);
+    }
+    expect(caught.code).toBe(identityErrorCodes.SESSION_REUSE_DETECTED);
     await dispatchAll(f);
     const stored = await getSessionEntity(f.entities, f.tenantId, boot.sessionId);
     expect(stored?.status).toBe('revoked');
@@ -633,9 +478,13 @@ describe('service-principal-oauth.feature: revoke', () => {
       f.entities,
     );
     await dispatchAll(f);
-    expect(revoked.envelope?.eventType).toBe('Identity.OAuthTokenRevoked');
+    const revokedEnv = assertDefined(
+      revoked.envelope,
+      'OAuth revoke of a known token returns a non-null envelope',
+    );
+    expect(revokedEnv.eventType).toBe('Identity.OAuthTokenRevoked');
     // I10 — revoke event tags Tenant + the token entity.
-    assertEventTags(revoked.envelope!, [
+    assertEventTags(revokedEnv, [
       `Tenant:${f.tenantId}`,
       `OAuthToken:${issued.document.tokenId}`,
     ]);

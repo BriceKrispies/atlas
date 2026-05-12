@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   ValidationError,
   validateEventEnvelope,
@@ -24,6 +25,38 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/platform-core/src -> repo root is three levels up.
 const REPO_ROOT = resolve(HERE, '..', '..', '..');
 const FIXTURES_DIR = resolve(REPO_ROOT, 'specs', 'fixtures');
+
+/**
+ * Narrow a thrown value to `ValidationError`. The validators reject via
+ * `throw new ValidationError(...)`; `catch (e: unknown)` from a `try`
+ * around a call we expect to throw is the boundary where typing breaks
+ * down. This guard collapses the cast and asserts the discriminator
+ * in one place so every test reads as a behavior check, not a cast.
+ */
+function asValidationError(e: unknown): ValidationError {
+  if (!(e instanceof ValidationError)) {
+    throw new Error(
+      `expected ValidationError, got ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  return e;
+}
+
+/**
+ * Narrow `loadAndStrip()`'s `unknown` return when we know the fixture
+ * shape is a top-level JSON object. Runtime-guarded; one boundary
+ * readback replaces ad-hoc casting.
+ */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function asRecord(v: unknown, what: string): Record<string, unknown> {
+  if (!isRecord(v)) {
+    throw new Error(`${what}: expected plain object record, got ${typeof v}`);
+  }
+  return v;
+}
 
 // ---------- ValidationError taxonomy --------------------------------------
 
@@ -154,8 +187,9 @@ describe('validateEventEnvelope (direct)', () => {
     try {
       validateEventEnvelope({ ...valid, idempotencyKey: '' });
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('MissingField');
-      expect((e as ValidationError).field).toBe('idempotencyKey');
+      const err = asValidationError(e);
+      expect(err.kind).toBe('MissingField');
+      expect(err.field).toBe('idempotencyKey');
     }
   });
 
@@ -164,7 +198,7 @@ describe('validateEventEnvelope (direct)', () => {
       validateEventEnvelope({ ...valid, eventType: 'NoDot' });
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('InvalidFormat');
+      expect(asValidationError(e).kind).toBe('InvalidFormat');
     }
   });
 
@@ -173,7 +207,7 @@ describe('validateEventEnvelope (direct)', () => {
       validateEventEnvelope({ ...valid, schemaVersion: 0 });
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('InvalidFormat');
+      expect(asValidationError(e).kind).toBe('InvalidFormat');
     }
   });
 });
@@ -201,25 +235,27 @@ describe('validateModuleManifest (direct)', () => {
   });
 
   test('duplicate actionId', () => {
-    const bad = { ...valid, actions: [valid.actions[0]!, valid.actions[0]!] };
+    const firstAction = assertDefined(valid.actions[0], 'fixture has one action');
+    const bad = { ...valid, actions: [firstAction, firstAction] };
     try {
       validateModuleManifest(bad);
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('Duplicate');
+      expect(asValidationError(e).kind).toBe('Duplicate');
     }
   });
 
   test('action references undeclared resource', () => {
+    const firstAction = assertDefined(valid.actions[0], 'fixture has one action');
     const bad = {
       ...valid,
-      actions: [{ ...valid.actions[0]!, resourceType: 'NotDeclared' }],
+      actions: [{ ...firstAction, resourceType: 'NotDeclared' }],
     };
     try {
       validateModuleManifest(bad);
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('InvalidReference');
+      expect(asValidationError(e).kind).toBe('InvalidReference');
     }
   });
 
@@ -240,7 +276,7 @@ describe('validateModuleManifest (direct)', () => {
       validateModuleManifest(bad);
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('ConstraintViolation');
+      expect(asValidationError(e).kind).toBe('ConstraintViolation');
     }
   });
 });
@@ -263,7 +299,7 @@ describe('validateSearchDocuments (direct)', () => {
       validateSearchDocuments(dup);
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('Duplicate');
+      expect(asValidationError(e).kind).toBe('Duplicate');
     }
   });
 });
@@ -286,11 +322,12 @@ describe('validateAnalyticsEvents (direct)', () => {
   });
 
   test('eventType without dot', () => {
+    const firstEvent = assertDefined(valid[0], 'fixture has one event');
     try {
-      validateAnalyticsEvents([{ ...valid[0]!, eventType: 'no_dot' }]);
+      validateAnalyticsEvents([{ ...firstEvent, eventType: 'no_dot' }]);
       throw new Error('should have thrown');
     } catch (e) {
-      expect((e as ValidationError).kind).toBe('InvalidFormat');
+      expect(asValidationError(e).kind).toBe('InvalidFormat');
     }
   });
 });
@@ -337,9 +374,10 @@ describe('fixture parity (specs/fixtures/*)', () => {
   });
 
   test('loadAndStrip drops $-prefixed keys from real fixtures', async () => {
-    const stripped = (await loadAndStrip(
-      resolve(FIXTURES_DIR, 'analytics_events__valid__sample.json'),
-    )) as Record<string, unknown>;
+    const stripped = asRecord(
+      await loadAndStrip(resolve(FIXTURES_DIR, 'analytics_events__valid__sample.json')),
+      'analytics_events__valid__sample.json',
+    );
     expect(stripped['$comment']).toBeUndefined();
     expect(stripped['$invariants']).toBeUndefined();
     expect(Array.isArray(stripped['events'])).toBe(true);

@@ -31,32 +31,33 @@ export function canonicalJsonStringify(value: unknown): string {
 function stringify(value: unknown, seen: WeakSet<object>): string {
   if (value === null) return 'null';
 
-  const t = typeof value;
-  if (t === 'string') return JSON.stringify(value);
-  if (t === 'number') {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') {
     // JSON.stringify already emits `null` for NaN / +-Infinity; mirror
     // that so canonical output matches `JSON.stringify` for primitives.
-    if (!Number.isFinite(value as number)) return 'null';
+    if (!Number.isFinite(value)) return 'null';
     return JSON.stringify(value);
   }
-  if (t === 'boolean') return (value as boolean) ? 'true' : 'false';
-  if (t === 'undefined' || t === 'function' || t === 'symbol') {
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') {
     // Caller-side: top-level undefined/function returns 'null' to match
     // JSON.stringify's behavior of producing `undefined` (which is then
     // serialised as 'null' inside arrays / dropped in objects).
     return 'null';
   }
-  if (t === 'bigint') {
+  if (typeof value === 'bigint') {
     throw new TypeError('canonicalJsonStringify: bigint values are not JSON-serialisable');
   }
 
-  // Objects + arrays.
-  const obj = value as object;
+  // Objects + arrays. `typeof value === 'object'` narrows to `object | null`;
+  // null was returned above so the value is `object` here.
+  const obj: object = value;
 
   // Honor toJSON() for objects that opt into a serialisation form (Date,
   // most notably). Mirrors JSON.stringify Date semantics — Dates serialise
   // to ISO strings, not `{}`.
-  const maybeToJson = (obj as { toJSON?: (key?: string) => unknown }).toJSON;
+  const withToJson: { toJSON?: (this: object, key?: string) => unknown } = obj;
+  const maybeToJson = withToJson.toJSON;
   if (typeof maybeToJson === 'function') {
     return stringify(maybeToJson.call(obj), seen);
   }
@@ -67,7 +68,7 @@ function stringify(value: unknown, seen: WeakSet<object>): string {
   seen.add(obj);
   try {
     if (Array.isArray(obj)) {
-      const parts = obj.map((item) => {
+      const parts = obj.map((item: unknown) => {
         if (item === undefined || typeof item === 'function' || typeof item === 'symbol') {
           return 'null';
         }
@@ -75,10 +76,9 @@ function stringify(value: unknown, seen: WeakSet<object>): string {
       });
       return '[' + parts.join(',') + ']';
     }
-    const keys = Object.keys(obj as Record<string, unknown>).sort();
+    const entries = Object.entries(obj).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
     const out: string[] = [];
-    for (const k of keys) {
-      const v = (obj as Record<string, unknown>)[k];
+    for (const [k, v] of entries) {
       if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue;
       out.push(JSON.stringify(k) + ':' + stringify(v, seen));
     }

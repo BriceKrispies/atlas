@@ -58,31 +58,41 @@ function parseSearchDocument(
   if (typeof body.documentType !== 'string' || body.documentType === '') {
     return 'documentType must be a non-empty string';
   }
+  const fields = body.fields;
   if (
-    typeof body.fields !== 'object' ||
-    body.fields === null ||
-    Array.isArray(body.fields)
+    typeof fields !== 'object' ||
+    fields === null ||
+    Array.isArray(fields)
   ) {
     return 'fields must be an object';
   }
+  // `fields` is now narrowed to `object` (non-array, non-null). Copy
+  // into a fresh `Record<string, unknown>` via `Object.entries` so we
+  // get the index-signature shape SearchDocument expects without
+  // asserting one onto an existing reference.
+  const fieldsRecord: Record<string, unknown> = Object.fromEntries(
+    Object.entries(fields),
+  );
   let permissionAttributes: SearchDocument['permissionAttributes'] = null;
   if (body.permissionAttributes !== undefined && body.permissionAttributes !== null) {
-    const pa = body.permissionAttributes as { allowedPrincipals?: unknown };
+    const pa = body.permissionAttributes;
+    if (typeof pa !== 'object' || pa === null) {
+      return 'permissionAttributes.allowedPrincipals must be an array of strings';
+    }
+    const allowedPrincipals = (pa as { allowedPrincipals?: unknown }).allowedPrincipals;
     if (
-      typeof pa !== 'object' ||
-      pa === null ||
-      !Array.isArray(pa.allowedPrincipals) ||
-      !pa.allowedPrincipals.every((x): x is string => typeof x === 'string')
+      !Array.isArray(allowedPrincipals) ||
+      !allowedPrincipals.every((x): x is string => typeof x === 'string')
     ) {
       return 'permissionAttributes.allowedPrincipals must be an array of strings';
     }
-    permissionAttributes = { allowedPrincipals: pa.allowedPrincipals };
+    permissionAttributes = { allowedPrincipals };
   }
   return {
     documentId: body.documentId,
     documentType: body.documentType,
     tenantId: forcedTenantId,
-    fields: body.fields as Record<string, unknown>,
+    fields: fieldsRecord,
     permissionAttributes,
   };
 }
@@ -139,7 +149,7 @@ export function debugRoutes(state: AppState): Hono<{ Variables: ServerVariables 
       return errorResponse(
         c,
         'BAD_REQUEST',
-        `Invalid JSON body: ${(e as Error).message}`,
+        `Invalid JSON body: ${e instanceof Error ? e.message : String(e)}`,
         400,
         correlationId,
       );

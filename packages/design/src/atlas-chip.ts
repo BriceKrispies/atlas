@@ -203,8 +203,8 @@ export class AtlasChip extends AtlasElement {
     const removeBtn = root.querySelector<HTMLButtonElement>('.remove');
 
     chipBtn?.addEventListener('click', (e) => {
-      const target = e.target as Element | null;
-      if (target?.closest('.remove')) return; // remove handles its own click
+      const target = e.target;
+      if (target instanceof Element && target.closest('.remove')) return; // remove handles its own click
       this._onActivate();
     });
     chipBtn?.addEventListener('keydown', (e) => {

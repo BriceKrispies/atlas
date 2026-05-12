@@ -36,7 +36,7 @@ export class CommitBoundary {
       return {
         ok: false,
         reason: 'commit-threw',
-        message: (err as Error | undefined)?.message ?? String(err),
+        message: err instanceof Error ? err.message : String(err),
       };
     }
   }

@@ -13,7 +13,7 @@ import { AtlasElement, html } from '@atlas/core';
  *   - page-change      { detail: { page } }
  *   - page-size-change { detail: { pageSize } }
  */
-class AtlasPagination extends AtlasElement {
+export class AtlasPagination extends AtlasElement {
   _page: number = 0;
   _pageCount: number = 1;
   _pageSize: number = 25;
@@ -135,8 +135,9 @@ class AtlasPagination extends AtlasElement {
   }
 
   _onSizeChange(event: Event): void {
-    const target = event.target as HTMLSelectElement | null;
-    const next = clampInt(Number(target?.value), 1, Number.MAX_SAFE_INTEGER);
+    const target = event.target;
+    const value = target instanceof HTMLSelectElement ? target.value : '';
+    const next = clampInt(Number(value), 1, Number.MAX_SAFE_INTEGER);
     if (next === this._pageSize) return;
     this._pageSize = next;
     this.dispatchEvent(new CustomEvent('page-size-change', {

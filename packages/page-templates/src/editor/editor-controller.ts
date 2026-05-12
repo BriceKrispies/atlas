@@ -22,6 +22,7 @@ import {
 } from '../drop-zones.ts';
 import type { PageDocument, WidgetInstance } from '../page-store.ts';
 import type { TemplateManifest } from '../registry.ts';
+import { must } from '../internal/assert.ts';
 
 export interface EditorControllerOptions {
   /** initial doc; will be cloned internally. */
@@ -190,8 +191,12 @@ export class EditorController {
       this._listeners.set(event, set);
     }
     set.add(handler);
+    // Capture the Set so the unsubscribe closure doesn't need a non-null
+    // assertion on `set` (TS narrows the let-binding above but loses the
+    // narrowing through the closure).
+    const captured = set;
     return () => {
-      set!.delete(handler);
+      captured.delete(handler);
     };
   }
 
@@ -202,7 +207,6 @@ export class EditorController {
       try {
         handler(payload);
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[editor-controller] listener threw', err);
       }
     }
@@ -225,8 +229,12 @@ export class EditorController {
     const reg = this._registry;
     if (!reg || typeof reg.get !== 'function') return null;
     try {
-      const entry = reg.get(widgetId) as { schema?: unknown } | null | undefined;
-      return entry?.schema ?? null;
+      const entry: unknown = reg.get(widgetId);
+      if (entry === null || typeof entry !== 'object' || !('schema' in entry)) {
+        return null;
+      }
+      const schema: unknown = entry.schema;
+      return schema ?? null;
     } catch {
       return null;
     }
@@ -326,8 +334,10 @@ export class EditorController {
       next.regions[found.region] = [];
     }
     const regions = next.regions as Record<string, WidgetInstance[]>;
-    const sourceArr = regions[found.region]!;
-    const targetArr = regions[region]!;
+    // Both arrays were ensured to exist on lines above (the source via
+    // `findInstance`, the target via the `Array.isArray` guard + assign).
+    const sourceArr = must(regions[found.region], 'move: source region array ensured');
+    const targetArr = must(regions[region], 'move: target region array ensured');
 
     // Remove from current position first; this matters for same-region moves
     // where the target index can refer to the slot after removal.
@@ -400,7 +410,11 @@ export class EditorController {
     if (!found) return { ok: false, reason: 'instance-not-found' };
 
     const next = structuredClone(this._doc);
-    const entry = next.regions![found.region]![found.index]!;
+    // `findInstance` returned a hit, so `regions[found.region][found.index]`
+    // must exist on the just-cloned doc.
+    const regions = must(next.regions, 'update: doc has regions (findInstance hit)');
+    const arr = must(regions[found.region], 'update: source region array exists');
+    const entry = must(arr[found.index], 'update: entry at index exists');
     entry.config = structuredClone(config ?? {});
 
     this._doc = next;
@@ -427,7 +441,9 @@ export class EditorController {
     }
 
     const next = structuredClone(this._doc);
-    const [removed] = next.regions![found.region]!.splice(found.index, 1);
+    const regions = must(next.regions, 'remove: doc has regions (findInstance hit)');
+    const arr = must(regions[found.region], 'remove: source region array exists');
+    const [removed] = arr.splice(found.index, 1);
 
     this._doc = next;
     this._emit('statechange', { doc: this._doc });

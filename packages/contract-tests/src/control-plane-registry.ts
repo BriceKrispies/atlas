@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import type { ControlPlaneRegistry } from '@atlas/ports';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 export function controlPlaneRegistryContract(
   makeRegistry: () => Promise<ControlPlaneRegistry>,
@@ -23,12 +24,14 @@ export function controlPlaneRegistryContract(
     });
 
     test('getAction returns a populated entry for a known action', () => {
-      const entry = registry.getAction('Catalog.SeedPackage.Apply');
-      expect(entry).not.toBeNull();
-      expect(entry!.actionId).toBe('Catalog.SeedPackage.Apply');
-      expect(entry!.resourceType).toBe('SeedPackage');
-      expect(entry!.schemaId).toBe('catalog.seed_package.apply.v1');
-      expect(entry!.schemaVersion).toBe(1);
+      const entry = assertDefined(
+        registry.getAction('Catalog.SeedPackage.Apply'),
+        'getAction should return an entry for the bundled Catalog.SeedPackage.Apply action',
+      );
+      expect(entry.actionId).toBe('Catalog.SeedPackage.Apply');
+      expect(entry.resourceType).toBe('SeedPackage');
+      expect(entry.schemaId).toBe('catalog.seed_package.apply.v1');
+      expect(entry.schemaVersion).toBe(1);
     });
 
     test('getAction returns null for an unknown action', () => {
@@ -41,8 +44,10 @@ export function controlPlaneRegistryContract(
       //   actionId, resourceType, seedPackageKey, seedPackageVersion, payload
       // and uses additionalProperties: false. The validator must accept a
       // structurally valid payload and reject one missing the required fields.
-      const validate = registry.getSchemaValidator('catalog.seed_package.apply.v1', 1);
-      expect(validate).not.toBeNull();
+      const validate = assertDefined(
+        registry.getSchemaValidator('catalog.seed_package.apply.v1', 1),
+        'getSchemaValidator should return a compiled validator for catalog.seed_package.apply.v1',
+      );
 
       const valid = {
         actionId: 'Catalog.SeedPackage.Apply',
@@ -51,10 +56,10 @@ export function controlPlaneRegistryContract(
         seedPackageVersion: '1.0.0',
         payload: { kind: 'badge_family' },
       };
-      expect(validate!(valid)).toBe(true);
+      expect(validate(valid)).toBe(true);
 
       // Empty object lacks all required fields.
-      expect(validate!({})).toBe(false);
+      expect(validate({})).toBe(false);
     });
 
     test('[error-shape] getSchemaValidator returns null for an unknown schema id (does not throw)', () => {

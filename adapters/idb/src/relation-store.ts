@@ -19,6 +19,7 @@ function rowToRelation<TAttrs>(row: RelationRow): Relation<TAttrs> {
     edgeType: row.edgeType,
     fromId: row.fromId,
     toId: row.toId,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- storage layer: relations store attrs as opaque JSON; the caller declares the expected `TAttrs` shape (same pattern as the postgres counterpart in adapters/node/src/relation-store.ts).
     attrs: (row.attrs ?? null) as TAttrs | null,
     createdAt: row.createdAt,
   };

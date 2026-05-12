@@ -272,8 +272,10 @@ export class AtlasFileUpload extends AtlasElement {
     // Event delegation on the file list for remove buttons — survives
     // surgical innerHTML replacement of list rows.
     this._list?.addEventListener('click', (e) => {
-      const target = e.target as Element | null;
-      const btn = target?.closest<HTMLButtonElement>('button[data-idx]');
+      const target = e.target;
+      const btn = target instanceof Element
+        ? target.closest<HTMLButtonElement>('button[data-idx]')
+        : null;
       if (!btn) return;
       const idx = Number(btn.dataset['idx']);
       if (!Number.isFinite(idx)) return;

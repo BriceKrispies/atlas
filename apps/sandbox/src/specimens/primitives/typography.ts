@@ -1,3 +1,4 @@
+import { parseMountConfig, v } from '../../internal/assert.ts';
 import { S } from '../_register.ts';
 
 S({
@@ -108,10 +109,10 @@ AtlasElement.define('atlas-example', Example);</atlas-code>
 });
 
 interface CodeEditorConfig {
-  language: string;
-  theme: string;
+  language?: string;
+  theme?: string;
   readonly?: boolean;
-  value: string;
+  value?: string;
 }
 
 S({
@@ -119,15 +120,21 @@ S({
   name: 'CodeEditor',
   tag: 'atlas-code-editor',
   mount: (demoEl, { config, onLog }) => {
-    const cfg = config as unknown as CodeEditorConfig;
+    const cfg = parseMountConfig<CodeEditorConfig>(config, {
+      language: v.string,
+      theme: v.string,
+      readonly: v.boolean,
+      value: v.string,
+    });
     const el = document.createElement('atlas-code-editor');
-    el.setAttribute('language', cfg.language);
-    el.setAttribute('theme', cfg.theme);
+    const language = cfg.language ?? 'typescript';
+    el.setAttribute('language', language);
+    el.setAttribute('theme', cfg.theme ?? 'vs-dark');
     if (cfg.readonly) el.setAttribute('readonly', '');
-    el.setAttribute('value', cfg.value);
+    el.setAttribute('value', cfg.value ?? '');
     el.style.height = '360px';
     demoEl.appendChild(el);
-    onLog('mount', `lazy-loading Monaco for language=${cfg.language}`);
+    onLog('mount', `lazy-loading Monaco for language=${language}`);
     return () => el.remove();
   },
   configVariants: [

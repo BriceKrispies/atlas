@@ -9,6 +9,7 @@
 
 import { emitTelemetry } from '@atlas/core';
 
+import { must } from '../internal/assert.ts';
 import { PointerSensor } from './sensor.ts';
 import { Projection } from './projection.ts';
 import { DragOverlay, cloneSourcePreview } from './overlay.ts';
@@ -138,7 +139,7 @@ export class DndController {
           level: 'error',
           source: 'page-templates.dnd.controller',
           phase,
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': err instanceof Error ? err.message : String(err),
         });
       }
     }
@@ -174,8 +175,9 @@ export class DndController {
           );
     this.overlay.mount(preview, pointer, this._active.pickupOffset);
     this.projection.setSourceGhost(source.element, 'ghost');
+    const activePayload = must(this._active, 'active drag set above').payload;
     const candidates = [...this._targets.values()].filter(
-      (t) => !t.accepts || t.accepts(this._active!.payload),
+      (t) => !t.accepts || t.accepts(activePayload),
     );
     this.projection.markCandidates(candidates.map((t) => t.element));
     this._resolveTarget(pointer);

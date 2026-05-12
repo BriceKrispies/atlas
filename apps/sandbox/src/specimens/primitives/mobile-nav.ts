@@ -1,4 +1,5 @@
 import { S } from '../_register.ts';
+import { must } from '../../internal/assert.ts';
 
 /**
  * Mobile nav chrome — top app-bar + thumb-reach bottom-nav.
@@ -126,7 +127,10 @@ S({
       for (const [k, v] of Object.entries(attrs)) bar.setAttribute(k, v);
       items.forEach((it) => bar.appendChild(it));
       bar.addEventListener('change', (ev) => {
-        const detail = (ev as CustomEvent).detail;
+        // Bottom-nav `change` events carry an unknown-shaped detail; the
+        // log handler accepts arbitrary JSON, so no validation needed —
+        // just unwrap the CustomEvent.detail without a structural cast.
+        const detail: unknown = ev instanceof CustomEvent ? ev.detail : null;
         onLog('change', detail);
       });
       return bar;
@@ -228,8 +232,9 @@ S({
     let i = 0;
     const timer = setInterval(() => {
       i = (i + 1) % order.length;
-      autoBar.setAttribute('value', order[i]!);
-      onLog('cycled', { value: order[i] });
+      const next = must(order[i], 'cycle index modulo order.length is always in-bounds');
+      autoBar.setAttribute('value', next);
+      onLog('cycled', { value: next });
     }, 1500);
 
     stack.append(sec3, sec4, sec5, secHide, secAuto);

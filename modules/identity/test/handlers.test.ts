@@ -8,26 +8,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  EventStore,
-  StoredEvent,
-  Entity,
-  EntityListOptions,
-  EntityQueryOptions,
-  EntityStatus,
-  EntityStore as PortEntityStore,
-  EntityWriteInput,
-  Relation,
-  RelationStore,
-  RelationWriteInput,
-} from '@atlas/ports';
-import type { EventEnvelope } from '@atlas/platform-core';
 import {
   handleUserCreate,
   handleMembershipCreate,
   handleInviteIssue,
   handleInviteAccept,
-  dispatchIdentityEvent,
   getUserEntity,
   getMembershipEntity,
   getInviteTokenEntity,
@@ -37,170 +22,7 @@ import {
   lookupOf,
   type UserDocument,
 } from '../src/index.ts';
-
-class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
-  private nextSeq = 0n;
-  async append(envelope: EventEnvelope): Promise<StoredEvent> {
-    this.nextSeq += 1n;
-    const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
-    this.events.push(stored);
-    return stored;
-  }
-  async getEvent(eventId: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.eventId === eventId) ?? null;
-  }
-  async findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null> {
-    return (
-      this.events.find(
-        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
-      ) ?? null
-    );
-  }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return this.events.map((e) => ({ ...e }));
-  }
-}
-
-class InMemoryEntityStore implements PortEntityStore {
-  rows = new Map<string, Entity<unknown>>();
-  private k(t: string, ty: string, id: string): string {
-    return `${t}::${ty}::${id}`;
-  }
-  async get<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    entityId: string,
-  ): Promise<Entity<TAttrs> | null> {
-    const row = this.rows.get(this.k(tenantId, entityType, entityId));
-    if (!row || row.status === 'deleted') return null;
-    return row as Entity<TAttrs>;
-  }
-  async put<TAttrs = unknown>(
-    input: EntityWriteInput<TAttrs>,
-  ): Promise<Entity<TAttrs>> {
-    const key = this.k(input.tenantId, input.entityType, input.entityId);
-    const existing = this.rows.get(key);
-    const now = new Date().toISOString();
-    const row: Entity<TAttrs> = {
-      tenantId: input.tenantId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      schemaVersion: input.schemaVersion ?? 1,
-      attrs: input.attrs,
-      status: input.status ?? 'active',
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    this.rows.set(key, row as Entity<unknown>);
-    return row;
-  }
-  async delete(t: string, ty: string, id: string): Promise<void> {
-    const key = this.k(t, ty, id);
-    const existing = this.rows.get(key);
-    if (existing) {
-      this.rows.set(key, { ...existing, status: 'deleted' });
-    }
-  }
-  async list<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts?: EntityListOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    const desiredStatus: EntityStatus | null =
-      opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
-      .filter((r) => r.tenantId === tenantId && r.entityType === entityType)
-      .filter((r) => (desiredStatus === null ? true : r.status === desiredStatus))
-      .sort((a, b) =>
-        a.entityId.localeCompare(b.entityId),
-      ) as Entity<TAttrs>[];
-  }
-  async query<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts: EntityQueryOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    const base = await this.list<TAttrs>(tenantId, entityType, opts);
-    if (!opts.attrsEqual) return base;
-    const predicates = Object.entries(opts.attrsEqual);
-    return base.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return predicates.every(([k, v]) => attrs?.[k] === v);
-    });
-  }
-}
-
-class InMemoryRelationStore implements RelationStore {
-  rows = new Map<string, Relation<unknown>>();
-  private k(t: string, e: string, f: string, to: string): string {
-    return `${t}::${e}::${f}::${to}`;
-  }
-  async add<TAttrs = unknown>(
-    input: RelationWriteInput<TAttrs>,
-  ): Promise<Relation<TAttrs>> {
-    const key = this.k(input.tenantId, input.edgeType, input.fromId, input.toId);
-    const row: Relation<TAttrs> = {
-      tenantId: input.tenantId,
-      edgeType: input.edgeType,
-      fromId: input.fromId,
-      toId: input.toId,
-      attrs: input.attrs ?? null,
-      createdAt: new Date().toISOString(),
-    };
-    this.rows.set(key, row as Relation<unknown>);
-    return row;
-  }
-  async remove(t: string, e: string, f: string, to: string): Promise<void> {
-    this.rows.delete(this.k(t, e, f, to));
-  }
-  async outgoing<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    fromId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.fromId === fromId,
-    ) as Relation<TAttrs>[];
-  }
-  async incoming<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    toId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.toId === toId,
-    ) as Relation<TAttrs>[];
-  }
-}
-
-interface Fixture {
-  events: InMemoryEventStore;
-  entities: InMemoryEntityStore;
-  relations: InMemoryRelationStore;
-  tenantId: string;
-}
-
-function newFixture(): Fixture {
-  return {
-    events: new InMemoryEventStore(),
-    entities: new InMemoryEntityStore(),
-    relations: new InMemoryRelationStore(),
-    tenantId: 't1',
-  };
-}
-
-async function dispatchAll(fx: Fixture): Promise<void> {
-  for (const e of fx.events.events) {
-    await dispatchIdentityEvent(e, {
-      entities: fx.entities,
-      relations: fx.relations,
-    });
-  }
-}
+import { newFixture, dispatchAll } from './lib/fixtures.ts';
 
 describe('Identity.User.Create', () => {
   it('emits UserCreated with platform + tenant cache tags', async () => {

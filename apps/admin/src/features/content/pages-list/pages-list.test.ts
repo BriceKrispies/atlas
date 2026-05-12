@@ -13,6 +13,48 @@ interface IntentEnvelope {
   };
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Type-guard for the captured intent envelope shape. `JSON.parse` is
+ * typed `any` — route through `unknown` and validate the minimal shape
+ * so downstream `requests[i]` reads are typed without `as` casts.
+ */
+function isIntentEnvelope(v: unknown): v is IntentEnvelope {
+  if (!isRecord(v)) return false;
+  const payload = v['payload'];
+  if (!isRecord(payload)) return false;
+  return typeof payload['actionId'] === 'string';
+}
+
+/**
+ * Parse a captured POST body into a typed envelope, throwing if the
+ * shape didn't match. Replaces the `JSON.parse(x) as IntentEnvelope`
+ * unsafe cast at every callsite.
+ */
+function parseIntentEnvelope(raw: string): IntentEnvelope {
+  const parsed: unknown = JSON.parse(raw);
+  if (!isIntentEnvelope(parsed)) {
+    throw new Error('captured request was not a valid intent envelope');
+  }
+  return parsed;
+}
+
+/**
+ * Return `arr[i]` or throw — replaces the `arr[i]!` non-null assertion
+ * pattern. Surfaces an actionable error if the test setup didn't capture
+ * the expected request.
+ */
+function at<T>(arr: readonly T[], i: number, what: string): T {
+  const v = arr[i];
+  if (v === undefined) {
+    throw new Error(`${what}: expected element at index ${String(i)}, got undefined`);
+  }
+  return v;
+}
+
 test.describe('pages-list surface', () => {
   // -- States --
 
@@ -87,7 +129,7 @@ test.describe('pages-list surface', () => {
       await mockApi(page, { pages: samplePages });
       await page.route('**/api/v1/intents', (route) => {
         const postData = route.request().postData() ?? '{}';
-        requests.push(JSON.parse(postData) as IntentEnvelope);
+        requests.push(parseIntentEnvelope(postData));
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -109,7 +151,7 @@ test.describe('pages-list surface', () => {
 
       // Verify the intent envelope was submitted with correct payload
       expect(requests.length).toBeGreaterThanOrEqual(1);
-      const envelope = requests[0]!;
+      const envelope = at(requests, 0, 'create page intent');
       expect(envelope.payload.actionId).toBe('ContentPages.Page.Create');
       expect(envelope.payload.title).toBe('My New Page');
       expect(envelope.payload.slug).toBe('my-new-page');
@@ -122,7 +164,7 @@ test.describe('pages-list surface', () => {
       await mockApi(page, { pages: samplePages });
       await page.route('**/api/v1/intents', (route) => {
         const postData = route.request().postData() ?? '{}';
-        requests.push(JSON.parse(postData) as IntentEnvelope);
+        requests.push(parseIntentEnvelope(postData));
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -145,7 +187,7 @@ test.describe('pages-list surface', () => {
       await deleteButtons.first().click();
 
       expect(requests.length).toBeGreaterThanOrEqual(1);
-      expect(requests[0]!.payload.actionId).toBe('ContentPages.Page.Delete');
+      expect(at(requests, 0, 'delete page intent').payload.actionId).toBe('ContentPages.Page.Delete');
     });
   });
 

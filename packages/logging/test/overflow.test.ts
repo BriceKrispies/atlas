@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Writable } from 'node:stream';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { ConsoleJsonSink } from '../src/index.ts';
 import type { LogEvent, LogLevel } from '../src/index.ts';
 
@@ -19,8 +20,11 @@ class CapturingStream extends Writable {
   lines(): string[] {
     return this.text().split('\n').filter((l) => l.length > 0);
   }
-  records<T = LogEvent>(): T[] {
-    return this.lines().map((l) => JSON.parse(l) as T);
+  records(): LogEvent[] {
+    return this.lines().map((l) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-only JSON line reader; each line is produced by ConsoleJsonSink which writes a serialized LogEvent shape (its on-the-wire format is the very contract under test here).
+      return JSON.parse(l) as LogEvent;
+    });
   }
   reset(): void {
     this.chunks = [];
@@ -98,10 +102,15 @@ describe('ConsoleJsonSink overflow policy', () => {
     await flushImmediates();
 
     const records = stream.records();
-    const overflow = records.find((r) => r.eventName === 'Logging.BufferOverflow.Dropped');
-    expect(overflow).toBeDefined();
-    expect(overflow!.level).toBe('warn');
-    const props = overflow!.properties as Record<string, unknown>;
+    const overflow = assertDefined(
+      records.find((r) => r.eventName === 'Logging.BufferOverflow.Dropped'),
+      'overflow record must be present after the eviction sequence above',
+    );
+    expect(overflow.level).toBe('warn');
+    const props = assertDefined(
+      overflow.properties,
+      'overflow record carries the droppedInWindow properties bag',
+    );
     expect(props['droppedInWindow']).toMatchObject({ debug: 1 });
   });
 

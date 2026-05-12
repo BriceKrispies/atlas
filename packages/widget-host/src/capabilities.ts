@@ -42,7 +42,7 @@ export class CapabilityBridge {
         eventName: 'atlas.widget.bridge.onTrace.threw',
         level: 'error',
         source: 'widget-host.capabilities',
-        'error.message': (err as Error)?.message ?? String(err),
+        'error.message': err instanceof Error ? err.message : String(err),
       });
     }
   }

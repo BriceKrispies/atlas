@@ -65,8 +65,15 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function htmlResponse(c: AppCtx, body: string, status = 200): Response {
-  return c.body(body, status as 200, {
+/**
+ * Sentinels for the small set of status codes the signup form actually
+ * returns. Typed as a union literal so `c.body` accepts each value without
+ * a downcast.
+ */
+type SignupStatus = 200 | 400 | 404 | 409 | 500;
+
+function htmlResponse(c: AppCtx, body: string, status: SignupStatus = 200): Response {
+  return c.body(body, status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
   });
@@ -304,7 +311,7 @@ export function signupRoutes(state: AppState): Hono<{ Variables: ServerVariables
         properties: {
           tenantId,
           route: 'signup.confirm',
-          cause: (e as Error).message,
+          cause: e instanceof Error ? e.message : String(e),
         },
       });
       return errorResponse(c, 'NOT_FOUND', `tenant not found: ${tenantId}`, 404, correlationId);

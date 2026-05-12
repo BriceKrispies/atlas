@@ -1,6 +1,23 @@
 import { AtlasElement } from '@atlas/core';
 
 /**
+ * Read the `{ value, open }` detail off a bubbling `toggle` CustomEvent
+ * without a structural cast. `addEventListener`'s callback receives the
+ * loose `Event` type; we narrow via `instanceof CustomEvent` and
+ * field-level type checks rather than asserting the union shape.
+ */
+function readToggleDetail(ev: Event): { value: string; open: boolean } | null {
+  if (!(ev instanceof CustomEvent)) return null;
+  const detail: unknown = ev.detail;
+  if (typeof detail !== 'object' || detail === null) return null;
+  if (!('value' in detail) || !('open' in detail)) return null;
+  const value: unknown = (detail as { value: unknown }).value;
+  const open: unknown = (detail as { open: unknown }).open;
+  if (typeof value !== 'string' || typeof open !== 'boolean') return null;
+  return { value, open };
+}
+
+/**
  * <atlas-accordion> — vertical stack of collapsible sections.
  *
  * Expects `<atlas-accordion-item>` children. The accordion is the policy
@@ -21,14 +38,16 @@ export class AtlasAccordion extends AtlasElement {
     super.connectedCallback();
     if (!this.hasAttribute('role')) this.setAttribute('role', 'group');
     this.addEventListener('toggle', (ev) => {
-      const detail = (ev as unknown as CustomEvent<{ value: string; open: boolean }>).detail;
+      const detail = readToggleDetail(ev);
       if (!detail?.open) return;
       if ((this.getAttribute('type') ?? 'single') !== 'single') return;
-      const items = Array.from(
-        this.querySelectorAll('atlas-accordion-item'),
-      ) as AtlasAccordionItem[];
+      const items = this.querySelectorAll('atlas-accordion-item');
       for (const item of items) {
-        if (item.getAttribute('value') !== detail.value && item.hasAttribute('open')) {
+        if (
+          item instanceof AtlasAccordionItem &&
+          item.getAttribute('value') !== detail.value &&
+          item.hasAttribute('open')
+        ) {
           item.removeAttribute('open');
         }
       }

@@ -92,6 +92,12 @@ interface WorkerGlobalSurface {
   ): void;
   close(): void;
 }
+// `self` types as `Window & typeof globalThis` under `lib: DOM`. In a Web
+// Worker the runtime value is actually a `DedicatedWorkerGlobalScope` that
+// satisfies `WorkerGlobalSurface` (postMessage/addEventListener('message')/
+// close), but TS has no way to know that without `lib: WebWorker`. This
+// double-cast is the documented escape hatch.
+// eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Web Worker scope, narrowing `self` to the worker surface
 const ctx: WorkerGlobalSurface = self as unknown as WorkerGlobalSurface;
 
 interface RuntimeState {

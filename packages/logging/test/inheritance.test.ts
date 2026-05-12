@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 
 describe('AtlasExecutionContext inheritance — immutable .with*()', () => {
@@ -79,10 +80,14 @@ describe('AtlasExecutionContext inheritance — immutable .with*()', () => {
     child.logger.info('child log');
 
     expect(rig.collector.events).toHaveLength(2);
-    expect(rig.collector.events[0]!.moduleId).toBeUndefined();
-    expect(rig.collector.events[0]!.actionId).toBeUndefined();
-    expect(rig.collector.events[1]!.moduleId).toBe('identity');
-    expect(rig.collector.events[1]!.actionId).toBe('Identity.Login');
+    const [first, second] = [
+      assertDefined(rig.collector.events[0], 'events[0] exists (length asserted === 2)'),
+      assertDefined(rig.collector.events[1], 'events[1] exists (length asserted === 2)'),
+    ];
+    expect(first.moduleId).toBeUndefined();
+    expect(first.actionId).toBeUndefined();
+    expect(second.moduleId).toBe('identity');
+    expect(second.actionId).toBe('Identity.Login');
   });
 
   it('chained inheritance compounds without losing earlier fields', () => {

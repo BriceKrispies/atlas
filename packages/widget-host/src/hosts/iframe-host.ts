@@ -103,7 +103,7 @@ export async function mount({
           widgetId: manifest.widgetId,
           instanceId,
           topic,
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': err instanceof Error ? err.message : String(err),
         });
       }
     },

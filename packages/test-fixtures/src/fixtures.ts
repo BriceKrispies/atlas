@@ -45,7 +45,10 @@ export const test = base.extend<AtlasFixtures>({
             argHandle
               .jsonValue()
               .then((val: unknown) => {
-                if (val && typeof val === 'object') {
+                if (val && typeof val === 'object' && !Array.isArray(val)) {
+                  // Boundary: console.debug telemetry arg is structured by
+                  // the producer (atlas-metrics). Tests pin the contract.
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test boundary: console.debug arg shape pinned by atlas-metrics emitter
                   events.push(val as TelemetryEvent);
                 }
               })

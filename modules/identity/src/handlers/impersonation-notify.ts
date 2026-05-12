@@ -101,13 +101,16 @@ function isA7Event(event: EventEnvelope): boolean {
 // =====================================================================
 
 function defaultChannelsFor(event: EventEnvelope): ReadonlyArray<NotificationChannel> {
-  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const payload = event.payload;
   switch (event.eventType) {
     case 'Authorization.ImpersonationStarted':
       return ['tenant_admin', 'ops_pager'];
     case 'Authorization.ImpersonationEnded': {
       // Tenant-revoked end MUST notify ops out-of-band per spec.
-      const reason = payload['reason'];
+      const reason =
+        typeof payload === 'object' && payload !== null
+          ? (payload as { reason?: unknown }).reason
+          : undefined;
       if (reason === 'tenant_revoked' || reason === 'platform_revoked') {
         return ['tenant_admin', 'ops_pager'];
       }
@@ -171,7 +174,9 @@ function extractAuditMetadata(
 ): Record<string, unknown> {
   if (payload == null || typeof payload !== 'object') return {};
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+  // `payload` is now narrowed to `object`; `Object.entries` accepts it
+  // and returns `[string, unknown][]` — no structural cast needed.
+  for (const [k, v] of Object.entries(payload)) {
     if (AUDIT_FIELD_WHITELIST.has(k)) {
       out[k] = v;
     }

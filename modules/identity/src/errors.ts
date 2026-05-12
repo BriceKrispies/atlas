@@ -131,6 +131,15 @@ export type IdentityErrorCode = (typeof codes)[keyof typeof codes];
 export class IdentityError extends Error {
   readonly code: IdentityErrorCode;
   readonly status: number;
+  /**
+   * Optional follow-up events the handler had already prepared when the
+   * failure landed (e.g. `session-refresh` reuse-detection, which emits
+   * `SessionAnomalyDetected` + revoke-cascade events before throwing
+   * 401). Test / integration callers can read this without re-querying
+   * the event store; the standard route layer just maps the error to
+   * an HTTP response and ignores the events.
+   */
+  events?: import('@atlas/platform-core').EventEnvelope[];
 
   constructor(
     code: IdentityErrorCode,

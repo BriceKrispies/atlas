@@ -4,49 +4,8 @@
  * failure. Invoked via `pnpm --filter @atlas/page-templates dry-run`.
  */
 
-import { parseHTML } from 'linkedom';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-
-// --- set up a browser-ish global environment BEFORE importing packages
-const dom = parseHTML(
-  '<!doctype html><html><head></head><body></body></html>',
-);
-(globalThis as unknown as Record<string, unknown>)['window'] = dom.window;
-(globalThis as unknown as Record<string, unknown>)['document'] = dom.document;
-(globalThis as unknown as Record<string, unknown>)['HTMLElement'] = dom.HTMLElement;
-(globalThis as unknown as Record<string, unknown>)['DocumentFragment'] = dom.DocumentFragment;
-(globalThis as unknown as Record<string, unknown>)['customElements'] = dom.customElements;
-(globalThis as unknown as Record<string, unknown>)['Node'] = dom.Node;
-(globalThis as unknown as Record<string, unknown>)['NodeFilter'] = (dom as { NodeFilter?: unknown }).NodeFilter ?? {
-  SHOW_ELEMENT: 1,
-};
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = ((v: unknown) => JSON.parse(JSON.stringify(v))) as typeof structuredClone;
-}
-
-// linkedom does not implement createTreeWalker; add a tiny shim so
-// @atlas/core's html tagged template can attach event bindings.
-if (typeof globalThis.document.createTreeWalker !== 'function') {
-  (globalThis.document as unknown as { createTreeWalker: (root: Element) => { nextNode: () => Element | null } }).createTreeWalker = (
-    root: Element,
-  ) => {
-    const elements: Element[] = [];
-    const walk = (el: Element): void => {
-      elements.push(el);
-      for (const child of (el.children as unknown as Iterable<Element>) ?? []) walk(child);
-    };
-    for (const child of (root.children as unknown as Iterable<Element>) ?? []) walk(child);
-    let i = -1;
-    return {
-      nextNode(): Element | null {
-        i += 1;
-        return i < elements.length ? elements[i]! : null;
-      },
-    };
-  };
-}
+import { customElements, document, HTMLElementCtor, loadFixture } from './_lib/setup.ts';
+import { must } from '../src/internal/assert.ts';
 
 // ---- import the package under test (registers <content-page>) --------
 const pkg = await import('../src/index.ts');
@@ -60,23 +19,21 @@ const {
   PageDocumentError,
   PageTemplateError,
 } = pkg;
+import type { PageDocument } from '../src/page-store.ts';
+import type { TemplateManifest } from '../src/registry.ts';
 
-const widgetHostPkg = await import('@atlas/widget-host');
-const { WidgetRegistry } = widgetHostPkg as { WidgetRegistry: new () => { register: (args: { manifest: unknown; element: CustomElementConstructor }) => void } };
+const { WidgetRegistry } = await import('@atlas/widget-host');
+import type { WidgetManifest } from '@atlas/widget-host';
 
 // ---- load fixtures ---------------------------------------------------
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = resolve(__dirname, '../../../../specs/fixtures');
-const readFixture = (name: string): unknown =>
-  JSON.parse(readFileSync(resolve(fixturesDir, name), 'utf8'));
 
-const templateOneColumn = readFixture('page_template__valid__one_column.json') as Record<string, unknown>;
-const templateTwoColumn = readFixture('page_template__valid__two_column.json') as Record<string, unknown>;
-const templateNoRegions = readFixture('page_template__invalid__no_regions.json') as Record<string, unknown>;
-const docWelcome = readFixture('page_document__valid__welcome.json') as Record<string, unknown>;
-const docRoundTrip = readFixture('page_document__valid__backend_round_trip.json') as Record<string, unknown>;
-const docMissingTemplate = readFixture('page_document__invalid__missing_template.json') as Record<string, unknown>;
-const announcementsManifest = readFixture('widget_manifest__valid__announcements.json') as Record<string, unknown>;
+const templateOneColumn = loadFixture<TemplateManifest>('page_template__valid__one_column.json');
+const templateTwoColumn = loadFixture<TemplateManifest>('page_template__valid__two_column.json');
+const templateNoRegions = loadFixture<TemplateManifest>('page_template__invalid__no_regions.json');
+const docWelcome = loadFixture<PageDocument>('page_document__valid__welcome.json');
+const docRoundTrip = loadFixture<PageDocument>('page_document__valid__backend_round_trip.json');
+const docMissingTemplate = loadFixture<PageDocument>('page_document__invalid__missing_template.json');
+const announcementsManifest = loadFixture<Record<string, unknown>>('widget_manifest__valid__announcements.json');
 
 // ---- utilities -------------------------------------------------------
 
@@ -99,7 +56,8 @@ function sortedStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return '[' + value.map(sortedStringify).join(',') + ']';
   }
-  const obj = value as Record<string, unknown>;
+  // `value` is `object` here; widening to a string-keyed record is safe.
+  const obj: Record<string, unknown> = value as Record<string, unknown>; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: TS narrows non-array `object` to plain `object`; reading own string keys is structurally safe.
   const keys = Object.keys(obj).sort();
   return (
     '{' +
@@ -113,13 +71,10 @@ function sortedStringify(value: unknown): string {
 function hasErrorBox(node: Element | null): boolean {
   const walk = (el: Element | null): boolean => {
     if (!el) return false;
-    if (
-      (el as { getAttribute?: (name: string) => string | null }).getAttribute &&
-      el.getAttribute('name') === 'content-page-error'
-    ) {
+    if (el.getAttribute('name') === 'content-page-error') {
       return true;
     }
-    for (const child of (el.children as unknown as Iterable<Element>) ?? []) {
+    for (const child of el.children) {
       if (walk(child)) return true;
     }
     return false;
@@ -133,7 +88,7 @@ function findDescendant(
 ): Element | null {
   if (!node) return null;
   if (predicate(node)) return node;
-  for (const child of (node.children as unknown as Iterable<Element>) ?? []) {
+  for (const child of node.children) {
     const found = findDescendant(child, predicate);
     if (found) return found;
   }
@@ -142,7 +97,7 @@ function findDescendant(
 
 // ---- stub template classes ------------------------------------------
 // linkedom requires HTMLElement subclasses to be registered before `new`.
-class OneColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class OneColumnTemplate extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -150,7 +105,7 @@ class OneColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof 
 }
 customElements.define('tpl-one-column', OneColumnTemplate);
 
-class TwoColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class TwoColumnTemplate extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -159,7 +114,7 @@ class TwoColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof 
 customElements.define('tpl-two-column', TwoColumnTemplate);
 
 // Stub widget class, minimal — exists only so <widget-host> can instantiate it.
-class AnnouncementsWidget extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class AnnouncementsWidget extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -171,31 +126,33 @@ customElements.define('stub-announcements-widget', AnnouncementsWidget);
 
 async function testManifestValidation(): Promise<void> {
   const good = validateTemplateManifest(templateOneColumn);
-  assert(good.ok === true, `one-column manifest should validate, got ${JSON.stringify(good.errors)}`);
+  const goodErrs = good.ok ? undefined : good.errors;
+  assert(good.ok, `one-column manifest should validate, got ${JSON.stringify(goodErrs)}`);
 
   const bad = validateTemplateManifest(templateNoRegions);
   assert(bad.ok === false, 'no-regions manifest must fail validation');
-  assert(
-    bad.errors.length > 0,
-    'no-regions manifest must carry at least one error',
-  );
+  if (!bad.ok) {
+    assert(bad.errors.length > 0, 'no-regions manifest must carry at least one error');
+  }
 }
 
 async function testDocumentValidation(): Promise<void> {
   const good = validatePageDocument(docWelcome);
-  assert(good.ok === true, `welcome doc should validate, got ${JSON.stringify(good.errors)}`);
+  const goodErrs = good.ok ? undefined : good.errors;
+  assert(good.ok, `welcome doc should validate, got ${JSON.stringify(goodErrs)}`);
 
   const bad = validatePageDocument(docMissingTemplate);
   assert(bad.ok === false, 'missing-template doc must fail validation');
-  assert(bad.errors.length > 0, 'missing-template doc must carry errors');
+  if (!bad.ok) {
+    assert(bad.errors.length > 0, 'missing-template doc must carry errors');
+  }
 }
 
 async function testRoundTripByteEquivalence(): Promise<void> {
   const store = new InMemoryPageStore();
-  const before = structuredClone(docRoundTrip) as { pageId: string; tenantId?: string };
-  await store.save(before.pageId, before as unknown as Parameters<typeof store.save>[1]);
-  const after = await store.get(before.pageId);
-  assert(after !== null, 'round-trip: get must return the saved doc');
+  const before = structuredClone(docRoundTrip);
+  await store.save(before.pageId, before);
+  const after = must(await store.get(before.pageId), 'just saved, must be retrievable');
   const beforeStr = sortedStringify(before);
   const afterStr = sortedStringify(after);
   assert(
@@ -204,10 +161,10 @@ async function testRoundTripByteEquivalence(): Promise<void> {
   );
 
   // Mutating the returned doc MUST NOT affect store contents.
-  (after as { tenantId?: string })!.tenantId = 'mutated';
-  const fresh = await store.get(before.pageId);
+  after.tenantId = 'mutated';
+  const fresh = must(await store.get(before.pageId), 'still retrievable');
   assert(
-    (fresh as { tenantId?: string })?.tenantId === before.tenantId,
+    fresh.tenantId === before.tenantId,
     'returned doc must not share identity with stored doc',
   );
 }
@@ -216,42 +173,49 @@ async function testValidatingPageStoreRejectsInvalid(): Promise<void> {
   const store = new ValidatingPageStore(new InMemoryPageStore());
   let caught: unknown = null;
   try {
-    await store.save('broken', docMissingTemplate as unknown as Parameters<typeof store.save>[1]);
+    await store.save('broken', docMissingTemplate);
   } catch (err) {
     caught = err;
   }
   assert(
     caught instanceof PageDocumentError,
-    `expected PageDocumentError, got ${caught}`,
+    `expected PageDocumentError, got ${String(caught)}`,
   );
-  const details = (caught as { details?: { errors?: unknown[] } } | null)?.details;
-  assert(
-    Array.isArray(details?.errors) && (details?.errors?.length ?? 0) > 0,
-    'PageDocumentError must carry ajv errors in details.errors',
-  );
+  if (caught instanceof PageDocumentError) {
+    const details = caught.details;
+    const errors =
+      details && typeof details === 'object' && 'errors' in details
+        ? (details as { errors?: unknown }).errors
+        : undefined;
+    assert(
+      Array.isArray(errors) && errors.length > 0,
+      'PageDocumentError must carry ajv errors in details.errors',
+    );
+  }
 
   // Valid save round-trips through the decorator.
-  await store.save((docWelcome as { pageId: string }).pageId, docWelcome as unknown as Parameters<typeof store.save>[1]);
-  const back = await store.get((docWelcome as { pageId: string }).pageId);
+  await store.save(docWelcome.pageId, docWelcome);
+  const back = await store.get(docWelcome.pageId);
   assert(
-    back && (back as { pageId?: string }).pageId === (docWelcome as { pageId: string }).pageId,
+    back !== null && back.pageId === docWelcome.pageId,
     'ValidatingPageStore should round-trip a valid doc',
   );
 }
 
 async function testTemplateRegistryRoundTrip(): Promise<void> {
   const reg = new TemplateRegistry();
-  reg.register({ manifest: templateOneColumn as never, element: OneColumnTemplate });
-  assert(reg.has((templateOneColumn as { templateId: string }).templateId), 'registry.has after register');
-  const entry = reg.get((templateOneColumn as { templateId: string }).templateId);
+  reg.register({ manifest: templateOneColumn, element: OneColumnTemplate });
+  assert(reg.has(templateOneColumn.templateId), 'registry.has after register');
+  const entry = reg.get(templateOneColumn.templateId);
   assert(entry.element === OneColumnTemplate, 'registry.get returns registered element');
   assert(
-    entry.manifest.templateId === (templateOneColumn as { templateId: string }).templateId,
+    entry.manifest.templateId === templateOneColumn.templateId,
     'registry.get returns registered manifest',
   );
   const list = reg.list();
+  const first = must(list[0], 'list has at least one entry');
   assert(
-    list.length === 1 && list[0]!.templateId === (templateOneColumn as { templateId: string }).templateId,
+    list.length === 1 && first.templateId === templateOneColumn.templateId,
     `registry.list should yield one entry, got ${JSON.stringify(list)}`,
   );
 
@@ -267,7 +231,7 @@ async function testTemplateRegistryRoundTrip(): Promise<void> {
   // Invalid manifest rejected at register time.
   let regThrew: unknown = null;
   try {
-    reg.register({ manifest: templateNoRegions as never, element: OneColumnTemplate });
+    reg.register({ manifest: templateNoRegions, element: OneColumnTemplate });
   } catch (err) {
     regThrew = err;
   }
@@ -278,7 +242,7 @@ async function testTemplateRegistryRoundTrip(): Promise<void> {
 
   // moduleDefaultTemplateRegistry is a distinct instance.
   assert(
-    !moduleDefaultTemplateRegistry.has((templateOneColumn as { templateId: string }).templateId),
+    !moduleDefaultTemplateRegistry.has(templateOneColumn.templateId),
     'moduleDefaultTemplateRegistry should be empty',
   );
 }
@@ -286,11 +250,11 @@ async function testTemplateRegistryRoundTrip(): Promise<void> {
 function makeWelcomeStore(): InstanceType<typeof InMemoryPageStore> {
   const store = new InMemoryPageStore();
   // seed a cloned copy so later tests can mutate their own fixture freely
-  store._docs.set((docWelcome as { pageId: string }).pageId, structuredClone(docWelcome) as never);
+  store._docs.set(docWelcome.pageId, structuredClone(docWelcome));
   return store;
 }
 
-function makeWidgetRegistry(): { register: (args: { manifest: unknown; element: CustomElementConstructor }) => void } {
+function makeWidgetRegistry(): InstanceType<typeof WidgetRegistry> {
   const wr = new WidgetRegistry();
   // The spec fixture carries $schema/$comment/$invariants for discoverability;
   // the runtime schema rejects unknown properties, so strip them here.
@@ -298,30 +262,47 @@ function makeWidgetRegistry(): { register: (args: { manifest: unknown; element: 
   delete clean['$schema'];
   delete clean['$comment'];
   delete clean['$invariants'];
-  wr.register({ manifest: clean, element: AnnouncementsWidget });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the fixture is a schema-validated WidgetManifest with documentation-only `$schema/$comment/$invariants` keys stripped; what remains satisfies WidgetManifest. WidgetRegistry.register re-validates at runtime.
+  wr.register({ manifest: clean as WidgetManifest, element: AnnouncementsWidget });
   return wr;
 }
 
 function makeTemplateRegistry(): InstanceType<typeof TemplateRegistry> {
   const tr = new TemplateRegistry();
-  tr.register({ manifest: templateOneColumn as never, element: OneColumnTemplate });
-  tr.register({ manifest: templateTwoColumn as never, element: TwoColumnTemplate });
+  tr.register({ manifest: templateOneColumn, element: OneColumnTemplate });
+  tr.register({ manifest: templateTwoColumn, element: TwoColumnTemplate });
   return tr;
 }
+
+// Shape of <content-page> the dry-run pokes properties on.
+type ContentPageEl = HTMLElement & {
+  pageId?: string;
+  pageStore?: unknown;
+  templateRegistry?: unknown;
+  widgetRegistry?: unknown;
+  principal?: unknown;
+  tenantId?: string;
+  correlationId?: string;
+};
+
+// Shape of <widget-host> the dry-run reads.
+type WidgetHostEl = Element & {
+  layout?: { version: number; slots: Record<string, unknown[]> };
+};
 
 async function testContentPageHappyPath(): Promise<void> {
   const pageStore = makeWelcomeStore();
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
-  page['pageId'] = (docWelcome as { pageId: string }).pageId;
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = widgetRegistry;
-  page['principal'] = { id: 'u_test', roles: [] };
-  page['tenantId'] = 't_test';
-  page['correlationId'] = 'cid-dry-run-happy';
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = docWelcome.pageId;
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.principal = { id: 'u_test', roles: [] };
+  page.tenantId = 't_test';
+  page.correlationId = 'cid-dry-run-happy';
   document.body.appendChild(page);
 
   await waitMicrotasks(30);
@@ -339,20 +320,18 @@ async function testContentPageHappyPath(): Promise<void> {
 
   const host = findDescendant(
     page,
-    (el) => el.tagName != null && el.tagName.toLowerCase() === 'widget-host',
-  ) as (Element & { layout?: { version: number; slots: Record<string, unknown[]> } }) | null;
-  assert(host, 'happy-path: <widget-host> must be present in the DOM');
+    (el) => el.tagName.toLowerCase() === 'widget-host',
+  ) as WidgetHostEl | null;
+  const hostEl = must(host, 'happy-path: <widget-host> must be present in the DOM');
   assert(
-    host!.parentNode === template,
+    hostEl.parentNode === template,
     '<widget-host> should be a child of the template element',
   );
   // Layout was forwarded correctly.
+  const layout = must(hostEl.layout, 'widget-host should receive the forwarded layout');
+  assert(layout.version === 1, 'widget-host should receive the forwarded layout');
   assert(
-    host!.layout && host!.layout.version === 1,
-    'widget-host should receive the forwarded layout',
-  );
-  assert(
-    host!.layout?.slots && Array.isArray(host!.layout.slots['main']),
+    Array.isArray(layout.slots['main']),
     'forwarded layout should carry the regions as slots',
   );
 
@@ -362,19 +341,19 @@ async function testContentPageHappyPath(): Promise<void> {
 
 async function testContentPageTemplateMissing(): Promise<void> {
   const pageStore = new InMemoryPageStore();
-  const doc = structuredClone(docWelcome) as Record<string, unknown>;
-  doc['templateId'] = 'template.nonexistent';
-  await pageStore.save(doc['pageId'] as string, doc as never);
+  const doc = structuredClone(docWelcome);
+  doc.templateId = 'template.nonexistent';
+  await pageStore.save(doc.pageId, doc);
 
   const templateRegistry = new TemplateRegistry();
-  templateRegistry.register({ manifest: templateOneColumn as never, element: OneColumnTemplate });
+  templateRegistry.register({ manifest: templateOneColumn, element: OneColumnTemplate });
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
-  page['pageId'] = doc['pageId'];
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = makeWidgetRegistry();
-  page['correlationId'] = 'cid-dry-run-missing';
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = doc.pageId;
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = makeWidgetRegistry();
+  page.correlationId = 'cid-dry-run-missing';
   document.body.appendChild(page);
 
   await waitMicrotasks(20);
@@ -385,7 +364,7 @@ async function testContentPageTemplateMissing(): Promise<void> {
   );
   const host = findDescendant(
     page,
-    (el) => el.tagName != null && el.tagName.toLowerCase() === 'widget-host',
+    (el) => el.tagName.toLowerCase() === 'widget-host',
   );
   assert(
     host === null,
@@ -398,21 +377,21 @@ async function testContentPageTemplateMissing(): Promise<void> {
 
 async function testContentPageVersionAhead(): Promise<void> {
   const pageStore = new InMemoryPageStore();
-  const doc = structuredClone(docWelcome) as Record<string, unknown>;
-  doc['templateVersion'] = '9.9.9';
-  await pageStore.save(doc['pageId'] as string, doc as never);
+  const doc = structuredClone(docWelcome);
+  doc.templateVersion = '9.9.9';
+  await pageStore.save(doc.pageId, doc);
 
-  const oldTwoColumn = structuredClone(templateTwoColumn) as Record<string, unknown>;
-  oldTwoColumn['version'] = '0.1.0';
+  const oldTwoColumn = structuredClone(templateTwoColumn);
+  oldTwoColumn.version = '0.1.0';
   const templateRegistry = new TemplateRegistry();
-  templateRegistry.register({ manifest: oldTwoColumn as never, element: TwoColumnTemplate });
+  templateRegistry.register({ manifest: oldTwoColumn, element: TwoColumnTemplate });
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
-  page['pageId'] = doc['pageId'];
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = makeWidgetRegistry();
-  page['correlationId'] = 'cid-dry-run-version';
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = doc.pageId;
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = makeWidgetRegistry();
+  page.correlationId = 'cid-dry-run-version';
   document.body.appendChild(page);
 
   await waitMicrotasks(20);
@@ -423,7 +402,7 @@ async function testContentPageVersionAhead(): Promise<void> {
   );
   const host = findDescendant(
     page,
-    (el) => el.tagName != null && el.tagName.toLowerCase() === 'widget-host',
+    (el) => el.tagName.toLowerCase() === 'widget-host',
   );
   assert(
     host === null,
@@ -444,12 +423,11 @@ async function main(): Promise<void> {
   await testContentPageTemplateMissing();
   await testContentPageVersionAhead();
 
-  // eslint-disable-next-line no-console
   console.log('OK');
 }
 
 main().catch((err: unknown) => {
-  // eslint-disable-next-line no-console
-  console.error('FAIL:', (err as Error | undefined)?.stack ?? err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error('FAIL:', stack ?? err);
   process.exit(1);
 });

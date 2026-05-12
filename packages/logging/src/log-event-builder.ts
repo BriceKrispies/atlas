@@ -29,10 +29,9 @@ export function buildLogEvent(
   fields: LogFields | undefined,
   options: BuildLogEventOptions = {},
 ): LogEvent {
-  // Build into a Record so we can conditionally add optional fields per
-  // exactOptionalPropertyTypes. The cast at the end is safe because we
-  // populate every required field above.
-  const event: Record<string, unknown> = {
+  // Build via a mutable LogEvent so we can conditionally add optional
+  // fields per exactOptionalPropertyTypes without a final cast.
+  const event: LogEvent = {
     timestamp: new Date().toISOString(),
     level,
     message,
@@ -43,26 +42,26 @@ export function buildLogEvent(
     spanId: ctx.spanId,
   };
 
-  if (ctx.userId !== undefined) event['userId'] = ctx.userId;
-  if (ctx.sessionId !== undefined) event['sessionId'] = ctx.sessionId;
-  if (ctx.causationId !== undefined) event['causationId'] = ctx.causationId;
-  if (ctx.requestId !== undefined) event['requestId'] = ctx.requestId;
-  if (ctx.moduleId !== undefined) event['moduleId'] = ctx.moduleId;
-  if (ctx.actionId !== undefined) event['actionId'] = ctx.actionId;
-  if (ctx.resourceType !== undefined) event['resourceType'] = ctx.resourceType;
-  if (ctx.resourceId !== undefined) event['resourceId'] = ctx.resourceId;
-  if (ctx.surfaceId !== undefined) event['surfaceId'] = ctx.surfaceId;
+  if (ctx.userId !== undefined) event.userId = ctx.userId;
+  if (ctx.sessionId !== undefined) event.sessionId = ctx.sessionId;
+  if (ctx.causationId !== undefined) event.causationId = ctx.causationId;
+  if (ctx.requestId !== undefined) event.requestId = ctx.requestId;
+  if (ctx.moduleId !== undefined) event.moduleId = ctx.moduleId;
+  if (ctx.actionId !== undefined) event.actionId = ctx.actionId;
+  if (ctx.resourceType !== undefined) event.resourceType = ctx.resourceType;
+  if (ctx.resourceId !== undefined) event.resourceId = ctx.resourceId;
+  if (ctx.surfaceId !== undefined) event.surfaceId = ctx.surfaceId;
 
   if (fields !== undefined) {
-    if (fields.event !== undefined) event['eventName'] = fields.event;
-    if (fields.error !== undefined) event['error'] = fields.error;
-    if (fields.durationMs !== undefined) event['durationMs'] = fields.durationMs;
+    if (fields.event !== undefined) event.eventName = fields.event;
+    if (fields.error !== undefined) event.error = fields.error;
+    if (fields.durationMs !== undefined) event.durationMs = fields.durationMs;
     if (fields.properties !== undefined) {
       const extraKeys = options.redactionExtraKeys;
       const opts = extraKeys !== undefined ? { extraKeys } : {};
-      event['properties'] = redact(fields.properties, opts);
+      event.properties = redact(fields.properties, opts);
     }
   }
 
-  return event as unknown as LogEvent;
+  return event;
 }

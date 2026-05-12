@@ -59,7 +59,7 @@ export async function mockApi(page: Page, config: MockApiConfig): Promise<void> 
   if (config.intents !== undefined) {
     const intentsConfig = config.intents;
     await page.route(`${API_BASE}/intents`, async (route) => {
-      if (typeof intentsConfig === 'function') {
+      if (isIntentRouteHandler(intentsConfig)) {
         return intentsConfig(route);
       }
 
@@ -71,6 +71,12 @@ export async function mockApi(page: Page, config: MockApiConfig): Promise<void> 
       });
     });
   }
+}
+
+function isIntentRouteHandler(
+  v: IntentRouteHandler | MockValue<unknown>,
+): v is IntentRouteHandler {
+  return typeof v === 'function';
 }
 
 /**

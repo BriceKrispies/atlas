@@ -197,8 +197,10 @@ class AdminShell extends AtlasSurface {
 
     const nav = shadow.querySelector('atlas-nav');
     nav?.addEventListener('click', (e: Event) => {
-      const target = e.target as Element | null;
-      const item = target?.closest('atlas-nav-item') ?? null;
+      const target = e.target;
+      const item = target instanceof Element
+        ? target.closest('atlas-nav-item')
+        : null;
       if (!item) return;
       const href = item.getAttribute('href');
       if (href) {

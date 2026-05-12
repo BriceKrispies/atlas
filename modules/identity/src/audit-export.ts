@@ -25,6 +25,16 @@ import {
   putAuditExportRun,
 } from './entities/audit-export-config.ts';
 import { shouldExportEvent } from './audit-retention.ts';
+import { must } from './internal/assert.ts';
+
+/**
+ * Read `.message` from an arbitrary thrown value. `catch` clauses are
+ * typed `unknown`; narrow without an unsafe cast.
+ */
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
 
 /**
  * Object-store uploader. Receives the JSON-Lines buffer + a
@@ -105,7 +115,7 @@ export async function runAuditExport(
       runId,
       startedAt,
       fromCursor,
-      `event-store read failed: ${(e as Error).message}`,
+      `event-store read failed: ${errMessage(e)}`,
     );
   }
   const fromSeqN = BigInt(fromCursor);
@@ -157,11 +167,14 @@ export async function runAuditExport(
       runId,
       startedAt,
       fromCursor,
-      `upload failed: ${(e as Error).message}`,
+      `upload failed: ${errMessage(e)}`,
     );
   }
 
-  const lastSeq = fresh[fresh.length - 1]!.seq!.toString();
+  // `fresh.length > 0` was checked above, and EventStore always populates
+  // `seq` on read. `must` makes the invariants explicit and avoids two `!`.
+  const lastEvent = must(fresh[fresh.length - 1], 'fresh.length > 0 guarded above');
+  const lastSeq = must(lastEvent.seq, 'EventStore.readEvents populates seq on every event').toString();
   const endedAt = new Date().toISOString();
   const run: AuditExportRunDocument = {
     runId,

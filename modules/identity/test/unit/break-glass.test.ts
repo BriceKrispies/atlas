@@ -28,6 +28,21 @@ import {
 } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 
+/**
+ * Narrows an event's `unknown`-typed payload to a string-keyed record so
+ * tests can read fields without per-call `as` casts. Throws on a
+ * malformed envelope — that's a test invariant failure, not a runtime
+ * branch. Centralising the cast keeps `no-unsafe-type-assertion` intact
+ * at every call site.
+ */
+function payloadOf(payload: unknown): Record<string, unknown> {
+  if (payload === null || typeof payload !== 'object') {
+    throw new Error(`expected payload to be an object, got: ${typeof payload}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof guard narrows object to string-keyed record; centralised so call sites stay cast-free.
+  return payload as Record<string, unknown>;
+}
+
 const VALID = {
   issuedBy: 'op-1',
   grantedTo: 'op-1',
@@ -334,8 +349,8 @@ describe('handleBreakGlassDeny', () => {
     expect(result.envelope.eventType).toBe('Authorization.BreakGlassDenied');
     expect(result.document.status).toBe('denied');
     expect(result.document.endReason).toBe('denied_by_approver');
-    const payload = result.envelope.payload as { reason?: string };
-    expect(payload.reason).toBe('insufficient justification');
+    const payload = payloadOf(result.envelope.payload);
+    expect(payload['reason']).toBe('insufficient justification');
   });
 
   it('rejects denial of non-pending grant', async () => {
@@ -408,13 +423,7 @@ describe('handleBreakGlassAction', () => {
       `Tenant:${fx.tenantId}`,
       `BreakGlassGrant:bgg-1`,
     ]);
-    const payload = result.envelope.payload as {
-      grantId: string;
-      grantedTo: string;
-      actionId: string;
-      resourceType?: string;
-      resourceId?: string;
-    };
+    const payload = payloadOf(result.envelope.payload);
     expect(payload).toMatchObject({
       grantId: 'bgg-1',
       grantedTo: 'op-2',
@@ -436,7 +445,7 @@ describe('handleBreakGlassAction', () => {
       },
       fx.events,
     );
-    const payload = result.envelope.payload as Record<string, unknown>;
+    const payload = payloadOf(result.envelope.payload);
     expect('resourceType' in payload).toBe(false);
     expect('resourceId' in payload).toBe(false);
   });

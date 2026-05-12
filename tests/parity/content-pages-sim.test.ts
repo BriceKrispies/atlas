@@ -11,6 +11,7 @@ import { makeSimIngress } from './lib/sim-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
 import { newEventId } from '@atlas/catalog';
 import type { IntentEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 function buildPageCreateIntent(opts: {
   tenantId: string;
@@ -204,10 +205,12 @@ describe('[sim] content-pages parity', () => {
         slug: 'tagged',
       }),
     );
-    const tags = await ingress.readEventTags(r.eventId);
-    expect(tags).not.toBeNull();
-    expect(tags!).toContain(`Tenant:${tenantId}`);
-    expect(tags!).toContain('Page:tagged');
+    const tags = assertDefined(
+      await ingress.readEventTags(r.eventId),
+      'readEventTags returned non-null in the asserted-non-null branch',
+    );
+    expect(tags).toContain(`Tenant:${tenantId}`);
+    expect(tags).toContain('Page:tagged');
     await ingress.close();
   });
 });

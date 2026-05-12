@@ -148,12 +148,11 @@ export class AtlasTabs extends AtlasElement {
     return this._tabs;
   }
   set tabs(next: readonly RawTabInput[] | null | undefined) {
-    this._tabs = Array.isArray(next)
-      ? next.map((t) => ({
-          value: String(t.value),
-          label: String(t.label ?? t.value),
-        }))
-      : [];
+    const arr: readonly RawTabInput[] = Array.isArray(next) ? next : [];
+    this._tabs = arr.map((t) => ({
+      value: String(t.value),
+      label: String(t.label ?? t.value),
+    }));
     if (this._value && !this._tabs.some((t) => t.value === this._value)) {
       this._value = null;
     }
@@ -174,7 +173,8 @@ export class AtlasTabs extends AtlasElement {
     super.connectedCallback();
     this.setAttribute('role', 'tablist');
     if (!this._built) {
-      adoptSheet(this.shadowRoot as ShadowRoot, sheet);
+      const root = this.shadowRoot;
+      if (root) adoptSheet(root, sheet);
       this._built = true;
     }
     this._renderTabs();
@@ -238,8 +238,9 @@ export class AtlasTabs extends AtlasElement {
   }
 
   private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
-    const current = ev.currentTarget as HTMLButtonElement | null;
-    if (!current) return;
+    const eventTarget = ev.currentTarget;
+    if (!(eventTarget instanceof HTMLButtonElement)) return;
+    const current = eventTarget;
     const idx = buttons.indexOf(current);
     if (idx < 0) return;
     let next = -1;

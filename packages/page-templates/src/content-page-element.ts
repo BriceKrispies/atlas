@@ -13,6 +13,7 @@ import {
 import { attachEditor, type EditorHandle } from './editor/edit-mount.ts';
 import './editor/widget-palette.ts';
 import { ensureEditorStyles } from './editor/editor-styles.ts';
+import { must } from './internal/assert.ts';
 import { AtlasLayoutElement } from './layout/layout-element.ts';
 import {
   moduleDefaultLayoutRegistry,
@@ -42,9 +43,27 @@ interface WidgetHostLike extends HTMLElement {
   applyMutation?: (args: Record<string, unknown>) => boolean;
 }
 
+/**
+ * Resolve the effective widget registry for this content-page. The
+ * fallback `moduleDefaultRegistry` is a concrete `WidgetRegistry`; its
+ * `list()` returns a row shape that doesn't carry `WidgetRegistryLike`'s
+ * `[k: string]: unknown` index signature, so direct assignment fails
+ * under exactOptionalPropertyTypes. A thin adapter — not a cast —
+ * presents the registry through the local Like shape.
+ */
+function resolveWidgetRegistry(
+  injected: WidgetRegistryLike | null | undefined,
+): WidgetRegistryLike {
+  if (injected) return injected;
+  return {
+    has: (id) => moduleDefaultRegistry.has(id),
+    get: (id) => moduleDefaultRegistry.get(id),
+    list: () => moduleDefaultRegistry.list().map((row) => ({ ...row })),
+  };
+}
+
 function telemetry(event: string, payload: Record<string, unknown>): void {
   // Errors go to console.error; lifecycle events to console.debug.
-  // eslint-disable-next-line no-console
   const fn = event === 'atlas.content-page.load.error' ? console.error : console.debug;
   fn(event, payload);
 }
@@ -142,12 +161,12 @@ export class ContentPageElement extends AtlasSurface {
     // own imperative mount pipeline. AtlasSurface._applyTestId sets
     // data-testid from surfaceId; children then inherit via surface
     // ancestor walk.
-    (this as unknown as { _applyTestId: () => void })._applyTestId();
+    this._applyTestId();
     if (this.pageId) {
       this.setAttribute('data-page-id', this.pageId);
     }
     this._loadAndMount().catch((err: unknown) => {
-      const e = err as Error | undefined;
+      const e = err instanceof Error ? err : undefined;
       this._renderError(`Unexpected error: ${e?.message ?? String(err)}`);
       telemetry('atlas.content-page.load.error', {
         pageId: this.pageId,
@@ -237,7 +256,8 @@ export class ContentPageElement extends AtlasSurface {
     try {
       doc = await this.pageStore.get(this.pageId);
     } catch (err) {
-      const msg = `page load failed: ${(err as Error | undefined)?.message ?? String(err)}`;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const msg = `page load failed: ${errorMsg}`;
       this._renderError(msg);
       telemetry('atlas.content-page.load.error', {
         pageId: this.pageId,
@@ -340,7 +360,9 @@ export class ContentPageElement extends AtlasSurface {
     } else {
       // --- Legacy template-based path ---------------------------------
       const registry = this.templateRegistry;
-      if (!registry.has(doc.templateId as string)) {
+      const templateId = doc.templateId ?? '';
+      const templateVersion = doc.templateVersion ?? '';
+      if (!registry.has(templateId)) {
         const msg = `Template not registered: ${doc.templateId}`;
         this._renderError(msg);
         telemetry('atlas.content-page.load.error', {
@@ -351,12 +373,12 @@ export class ContentPageElement extends AtlasSurface {
         });
         return;
       }
-      const resolved = registry.get(doc.templateId as string);
+      const resolved = registry.get(templateId);
       manifest = resolved.manifest;
       const TemplateClass = resolved.element;
 
       // INV-TEMPLATE-08: stored version ahead of registered version fails closed.
-      const cmp = compareSemver(doc.templateVersion as string, manifest.version);
+      const cmp = compareSemver(templateVersion, manifest.version);
       if (cmp > 0) {
         const msg =
           `Stored templateVersion ${doc.templateVersion} is ahead of registered ` +
@@ -371,7 +393,6 @@ export class ContentPageElement extends AtlasSurface {
         return;
       }
       if (cmp < 0) {
-        // eslint-disable-next-line no-console
         console.debug('atlas.content-page.version.behind', {
           pageId: this.pageId,
           templateId: doc.templateId,
@@ -400,10 +421,12 @@ export class ContentPageElement extends AtlasSurface {
 
       this._detachEditor();
       this.textContent = '';
-      templateEl = new TemplateClass() as HTMLElement;
+      templateEl = new TemplateClass();
       this._templateEl = templateEl;
     }
 
+    // widget-host is a custom element registered in @atlas/widget-host;
+    // it augments HTMLElement with the WidgetHostLike property surface.
     const hostEl = document.createElement('widget-host') as WidgetHostLike;
     if (this.widgetRegistry) hostEl.registry = this.widgetRegistry;
     hostEl.principal = this.principal;
@@ -419,7 +442,8 @@ export class ContentPageElement extends AtlasSurface {
     hostEl.layout = { version: 1, slots: docRegions };
     this._widgetHostEl = hostEl;
 
-    templateEl!.appendChild(hostEl);
+    const mountedTemplateEl = must(templateEl, 'templateEl assigned in both layout and template branches');
+    mountedTemplateEl.appendChild(hostEl);
 
     this._currentDoc = doc;
     this._currentManifest = manifest;
@@ -443,14 +467,16 @@ export class ContentPageElement extends AtlasSurface {
       const layout = document.createElement('atlas-box');
       layout.className = 'content-page-edit-layout';
       layout.setAttribute('name', 'edit-layout');
-      layout.appendChild(templateEl!);
+      layout.appendChild(mountedTemplateEl);
 
+      // widget-palette is the custom element registered in
+      // ./editor/widget-palette.ts; it augments HTMLElement with the props below.
       const palette = document.createElement('widget-palette') as HTMLElement & {
         widgetRegistry?: WidgetRegistryLike;
         templateManifest?: TemplateManifest | null;
         pageDoc?: PageDocument;
       };
-      palette.widgetRegistry = (this.widgetRegistry ?? moduleDefaultRegistry) as WidgetRegistryLike;
+      palette.widgetRegistry = resolveWidgetRegistry(this.widgetRegistry);
       palette.templateManifest = manifest;
       palette.pageDoc = doc;
       layout.appendChild(palette);
@@ -466,11 +492,11 @@ export class ContentPageElement extends AtlasSurface {
       // are present for decoration.
       this._editorHandle = attachEditor({
         contentPageEl: this,
-        templateEl: templateEl!,
+        templateEl: mountedTemplateEl,
         widgetHostEl: hostEl,
         pageDoc: doc,
-        templateManifest: manifest!,
-        widgetRegistry: (this.widgetRegistry ?? moduleDefaultRegistry) as WidgetRegistryLike,
+        templateManifest: must(manifest, 'manifest assigned in both layout and template branches'),
+        widgetRegistry: resolveWidgetRegistry(this.widgetRegistry),
         onCommit: async (nextDoc, info) => this._commitAndRemount(nextDoc, info),
         onTelemetry: ({ event, payload }) =>
           telemetry(event, {
@@ -484,7 +510,7 @@ export class ContentPageElement extends AtlasSurface {
       // `contentPageEl.editor.add({...})` etc. and never touch pointer state.
       this.editor = this._editorHandle.api;
     } else {
-      this.appendChild(templateEl!);
+      this.appendChild(mountedTemplateEl);
     }
 
     telemetry('atlas.content-page.load', {
@@ -500,7 +526,10 @@ export class ContentPageElement extends AtlasSurface {
   private async _commitAndRemount(nextDoc: PageDocument, info: CommitInfo): Promise<void> {
     // Persist through the store (the ValidatingPageStore decorator will
     // reject invalid docs; let it throw — edit-mount catches and announces).
-    await this.pageStore!.save(this.pageId, nextDoc);
+    await must(this.pageStore, 'pageStore present (checked in _loadAndMount)').save(
+      this.pageId,
+      nextDoc,
+    );
 
     // Try an incremental mutation first — keeps every untouched widget
     // and every section exactly where it was, so nothing reflows on an

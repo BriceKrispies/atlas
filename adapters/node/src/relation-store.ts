@@ -11,6 +11,8 @@ import type {
 } from '@atlas/ports';
 import type postgres from 'postgres';
 
+import { jsonParam } from './seeds/sql-json.ts';
+
 interface RelationRow {
   tenant_id: string;
   edge_type: string;
@@ -26,6 +28,7 @@ function rowToRelation<TAttrs>(row: RelationRow): Relation<TAttrs> {
     edgeType: row.edge_type,
     fromId: row.from_id,
     toId: row.to_id,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: DB JSON column → caller-chosen generic TAttrs; trust the caller's type parameter.
     attrs: (row.attrs ?? null) as TAttrs | null,
     createdAt: row.created_at,
   };
@@ -46,7 +49,7 @@ export class PostgresRelationStore implements RelationStore {
         ${input.edgeType},
         ${input.fromId},
         ${input.toId},
-        ${attrs === null ? null : this.sql.json(attrs as never)}
+        ${attrs === null ? null : jsonParam(this.sql, attrs)}
       )
       ON CONFLICT (tenant_id, edge_type, from_id, to_id) DO UPDATE SET
         attrs = EXCLUDED.attrs

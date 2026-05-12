@@ -57,20 +57,19 @@ export async function handleIdpRotateJwks(
     );
   }
   const occurredAt = new Date().toISOString();
+  // Reset jwksFetchedAt so the cache layer treats the JWKS as stale.
+  // Spreading `existing` first lets us drop the field by omission rather
+  // than writing an `undefined` sentinel into the JSON column.
+  const { jwksFetchedAt: _droppedJwksFetchedAt, ...withoutFetchedAt } = existing;
+  void _droppedJwksFetchedAt;
   const document: IdentityProviderDocument = {
-    ...existing,
+    ...withoutFetchedAt,
     ...(cmd.discoveryDocument !== undefined
       ? { discoveryDocument: cmd.discoveryDocument }
       : {}),
     ...(cmd.jwksUri !== undefined ? { jwksUri: cmd.jwksUri } : {}),
-    // Reset jwksFetchedAt so the cache layer treats it as stale.
-    jwksFetchedAt: undefined as unknown as string,
     updatedAt: occurredAt,
   };
-  // Strip undefined sentinel so the JSON column stays clean.
-  if (document.jwksFetchedAt === undefined) {
-    delete (document as { jwksFetchedAt?: string }).jwksFetchedAt;
-  }
   const envelope: EventEnvelope = {
     eventId: newEventId(),
     eventType: 'Identity.IdentityProviderRotatedJwks',

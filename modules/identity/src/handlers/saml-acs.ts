@@ -69,7 +69,7 @@ export async function handleSamlAcs(
   // Pull the issuer from the unverified parse just to find the IdP;
   // signature verify pins to that IdP's cert immediately after.
   const issuerMatch = xml.match(/<(?:saml:)?Issuer[^>]*>([^<]+)<\/(?:saml:)?Issuer>/);
-  const claimedIssuer = issuerMatch ? issuerMatch[1]!.trim() : null;
+  const claimedIssuer = issuerMatch?.[1]?.trim() ?? null;
   if (!claimedIssuer) {
     throw new IdentityError(
       codes.SAML_INVALID_RESPONSE,

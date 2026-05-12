@@ -232,7 +232,23 @@ before writing code. The whole stack converges on this list.
 | E2E (Playwright) | `pnpm test:e2e` |
 | BDD (Playwright + Gherkin) | `pnpm bdd` |
 | Lint | `pnpm lint` |
+| Dead code / unused exports | `pnpm lint:knip` |
+| Workspace version drift | `pnpm lint:syncpack` |
+| Markdown style | `pnpm lint:markdown` |
+| JSON schema contracts (Spectral) | `pnpm lint:spectral` |
+| Postgres migration safety (Squawk) | `pnpm lint:sql` |
+| Markdown link integrity (Lychee) | `pnpm lint:links` |
+| Atlas invariant rules (Semgrep) | `pnpm lint:semgrep` |
+| Format (write) | `pnpm format` |
+| Format check (no writes) | `pnpm format:check` |
+| Secret scan (Gitleaks) | `pnpm secrets:scan` |
+| Vulnerability scan (osv-scanner) | `pnpm vuln:scan` |
+| Test coverage (report) | `pnpm coverage` |
+| Architectural deps (dep-cruiser) | `pnpm deps:check` |
+| Invariant scan (overseer) | `pnpm overseer:check` |
 | DB up (Postgres) | `make db-up` |
+
+> The full quality battery — knip, syncpack, gitleaks, osv-scanner, lychee, markdownlint, squawk, spectral, vitest coverage — runs on every PR via [`.github/workflows/quality.yml`](.github/workflows/quality.yml). Pre-commit hooks (lefthook) run the fast subset locally; install with `pnpm exec lefthook install` after `pnpm install`.
 
 ## Non-Negotiable Invariants
 

@@ -1,4 +1,5 @@
 import { S } from '../_register.ts';
+import { customDetail, isElement, isValueDetail } from '../../internal/assert.ts';
 
 S({
   id: 'bottom-sheet',
@@ -41,14 +42,17 @@ S({
       `;
       trigger.addEventListener('click', () => sheet.open());
       sheet.addEventListener('click', (ev) => {
-        const t = ev.target as Element | null;
-        if (t?.closest('[data-sheet-cancel]')) sheet.close('cancel');
-        if (t?.closest('[data-sheet-confirm]')) sheet.close('confirm');
+        const t = ev.target;
+        if (isElement(t) && t.closest('[data-sheet-cancel]')) sheet.close('cancel');
+        if (isElement(t) && t.closest('[data-sheet-confirm]')) sheet.close('confirm');
       });
       sheet.addEventListener('open', () => onLog(`${opts.label}.open`, {}));
-      sheet.addEventListener('close', (ev) =>
-        onLog(`${opts.label}.close`, (ev as CustomEvent).detail ?? {}),
-      );
+      sheet.addEventListener('close', (ev) => {
+        // Close detail is free-form (varies per close reason); log
+        // whatever shape arrives without narrowing it.
+        const detail: unknown = ev instanceof CustomEvent ? ev.detail : null;
+        onLog(`${opts.label}.close`, detail ?? {});
+      });
       return { trigger, sheet };
     }
 
@@ -128,7 +132,10 @@ S({
 
       trigger.addEventListener('click', () => sheet.open());
       sheet.addEventListener('action', (ev) => {
-        const detail = (ev as CustomEvent<{ value: string }>).detail;
+        // Action-sheet items dispatch `action` with `{ value }`. Validate
+        // the shape via a typed reader so the log records a stable shape
+        // even if a future change drifts.
+        const detail = customDetail(ev, isValueDetail, `${opts.label} action event`);
         onLog(`${opts.label}.action`, detail);
       });
       sheet.addEventListener('close', () => onLog(`${opts.label}.close`, {}));

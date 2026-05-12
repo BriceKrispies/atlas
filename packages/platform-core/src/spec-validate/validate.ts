@@ -88,6 +88,6 @@ export function validate(kind: Kind, value: unknown): void {
       throw new AdapterError('Validation', e.message, e);
     }
     // Anything else is a shape error (TypeError from non-object/array etc.)
-    throw new AdapterError('Deserialize', (e as Error).message ?? String(e), e);
+    throw new AdapterError('Deserialize', e instanceof Error ? e.message : String(e), e);
   }
 }

@@ -1,10 +1,51 @@
 import { AtlasElement } from '@atlas/core';
-import { DataTableCore, STATUS, type ColumnConfig, type DataTableState } from './data-table-core.ts';
+import {
+  DataTableCore,
+  STATUS,
+  type AnyColumn,
+  type Columns,
+  type DataTableState,
+} from './data-table-core.ts';
 import { arrayDataSource } from '../data-source/array-data-source.ts';
 import { formatCell } from './cell-formatters.ts';
+import { AtlasPagination } from './atlas-pagination.ts';
 import type { DataSource, Row, RowPatch } from '../data-source/types.ts';
 import type { RowKey } from '../data-source/patch.ts';
 import type { SelectionKey, SelectionMode } from './selection-core.ts';
+import { isHtmlElement } from '../internal/assert.ts';
+
+/** Type-guard for any DataSource-shaped value. */
+function isDataSourceLike<R extends Row>(v: unknown): v is DataSource<R> {
+  return typeof v === 'object'
+    && v !== null
+    && typeof Reflect.get(v, 'fetchAll') === 'function';
+}
+
+/** Type-guard for an `R[]` shape. The element type is trusted from context. */
+function isRowArray<R extends Row>(v: unknown): v is R[] {
+  return Array.isArray(v);
+}
+
+/** Read a number field off a CustomEvent's `detail` bag without `as` casts. */
+function readDetailNumber(event: Event, field: string, fallback: number): number {
+  const raw: unknown = readDetailField(event, field);
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Read a free-form value off a CustomEvent's `detail.value`. */
+function readDetailValue(event: Event): unknown {
+  return readDetailField(event, 'value');
+}
+
+function readDetailField(event: Event, field: string): unknown {
+  if (!(event instanceof CustomEvent)) return undefined;
+  const detail: unknown = event.detail;
+  if (typeof detail !== 'object' || detail === null) return undefined;
+  // Reflect.get is typed `any`; route through `unknown` at the boundary so
+  // downstream callers see a typed value.
+  return Reflect.get(detail, field) as unknown;
+}
 
 /**
  * <atlas-data-table> — paginated, sortable, filterable data table with
@@ -25,7 +66,7 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
   }
 
   _core: DataTableCore<R> = new DataTableCore<R>({});
-  _columns: Array<ColumnConfig<R>> = [];
+  _columns: Array<AnyColumn<R>> = [];
   _dataSource: DataSource<R> | null = null;
   _unsubCore: (() => void) | null = null;
   _unsubStream: (() => void) | null = null;
@@ -34,18 +75,13 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
   _lastFetchToken: number = 0;
   _toolbar: HTMLElement | null = null;
   _body!: HTMLElement;
-  _pagination!: HTMLElement & {
-    hidden: boolean;
-    pageCount?: number;
-    pageSize?: number;
-    page?: number;
-  };
+  _pagination!: AtlasPagination;
 
   // ── Property API ─────────────────────────────────────────────
 
-  get columns(): Array<ColumnConfig<R>> { return this._columns; }
-  set columns(next: Array<ColumnConfig<R>>) {
-    this._columns = Array.isArray(next) ? next.slice() : [];
+  get columns(): ReadonlyArray<AnyColumn<R>> { return this._columns; }
+  set columns(next: Columns<R> | ReadonlyArray<AnyColumn<R>>) {
+    this._columns = toAnyColumns(next);
     this._core.setColumns(this._columns);
     if (this._shellBuilt) this._rebuildShell();
   }
@@ -147,10 +183,14 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     this._unsubStream?.();
     this._unsubStream = null;
 
-    if (Array.isArray(next)) {
-      this._dataSource = arrayDataSource<R>(next as R[]);
-    } else if (next && typeof (next as DataSource<R>).fetchAll === 'function') {
-      this._dataSource = next as DataSource<R>;
+    if (isRowArray<R>(next)) {
+      // Trust the caller's element type at the boundary. The setter
+      // signature on `data` / `dataSource` (R[] | DataSource<R> | null)
+      // is the contract; we widen to `unknown` only inside the
+      // dispatcher.
+      this._dataSource = arrayDataSource<R>(next.slice());
+    } else if (isDataSourceLike<R>(next)) {
+      this._dataSource = next;
     } else if (next == null) {
       this._dataSource = null;
       this._core.setAllRows([]);
@@ -234,15 +274,14 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     this._body = body;
     this.appendChild(body);
 
-    const pagination = document.createElement('atlas-pagination') as unknown as HTMLElement & {
-      hidden: boolean;
-      pageCount?: number;
-      pageSize?: number;
-      page?: number;
-    };
+    // Build the pagination element via `new` rather than createElement so
+    // we hold a typed instance directly — no element-tag-map dance, and
+    // `pageCount` / `pageSize` / `page` setters are visible at the type
+    // level.
+    const pagination = new AtlasPagination();
     pagination.setAttribute('name', this._childName('pagination'));
-    pagination.addEventListener('page-change', (e) => this._onPageChange(e as CustomEvent));
-    pagination.addEventListener('page-size-change', (e) => this._onPageSizeChange(e as CustomEvent));
+    pagination.addEventListener('page-change', (e) => this._onPageChange(e));
+    pagination.addEventListener('page-size-change', (e) => this._onPageSizeChange(e));
     this._pagination = pagination;
     this.appendChild(pagination);
 
@@ -314,8 +353,7 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
       // atlas-input fire `input` per keystroke and `change` only on
       // blur/commit — use `input` so the table filters as the user types.
       input.addEventListener('input', (e) => {
-        const detail = (e as unknown as CustomEvent).detail as { value?: unknown } | null;
-        const value = detail?.value;
+        const value = readDetailValue(e);
         this._core.setFilter(key, value);
         this._emitTelemetry('filter-applied', { columnKey: key, value });
         this.dispatchEvent(new CustomEvent('filter-change', {
@@ -370,8 +408,14 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     clear.textContent = 'Clear filters';
     clear.addEventListener('click', () => {
       this._core.clearFilters();
-      for (const input of this.querySelectorAll('atlas-input[data-column-key]')) {
-        (input as unknown as { value: string }).value = '';
+      // `atlas-input` is registered in HTMLElementTagNameMap (see
+      // packages/design/src/atlas-input.ts), so querying by the bare tag
+      // gives us typed `AtlasInput` elements with a real `.value` setter.
+      // The attribute filter is applied imperatively to keep the typed
+      // return.
+      for (const input of this.querySelectorAll('atlas-input')) {
+        if (!input.hasAttribute('data-column-key')) continue;
+        input.value = '';
         input.setAttribute('value', '');
       }
       this._emitTelemetry('filter-cleared', {});
@@ -429,10 +473,9 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
           sortDir === 'asc' ? 'ascending' :
           sortDir === 'desc' ? 'descending' : 'none');
         cell.addEventListener('click', () => this._toggleSort(key));
-        cell.addEventListener('keydown', (event: Event) => {
-          const ke = event as KeyboardEvent;
-          if (ke.key === 'Enter' || ke.key === ' ') {
-            ke.preventDefault();
+        cell.addEventListener('keydown', (event: KeyboardEvent) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
             this._toggleSort(key);
           }
         });
@@ -473,10 +516,7 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
       for (const col of this._columns) {
         const cell = document.createElement('atlas-table-cell');
         if (col.align) cell.dataset['align'] = col.align;
-        const accessor: (r: R) => unknown = typeof col.key === 'function'
-          ? col.key
-          : (r: R) => (r as Record<string, unknown>)[col.key as string];
-        const value = accessor(row);
+        const value = readColumnValue(row, col);
         const formatted = formatCell(value, row, col);
         if (formatted instanceof Node) cell.appendChild(formatted);
         else if (formatted != null) cell.textContent = String(formatted);
@@ -484,13 +524,13 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
       }
 
       if (state.selectionMode !== 'none') {
-        (rowEl as HTMLElement).tabIndex = 0;
+        rowEl.tabIndex = 0;
         rowEl.addEventListener('click', (event: Event) => {
-          const target = event.target as HTMLElement | null;
+          const target = isHtmlElement(event.target) ? event.target : null;
           if (target !== rowEl && target?.closest('atlas-button,a,input,select')) return;
           this._toggleRowSelection(key, row);
         });
-        rowEl.addEventListener('keydown', (event: Event) => this._onRowKey(event as KeyboardEvent, key, row));
+        rowEl.addEventListener('keydown', (event: KeyboardEvent) => this._onRowKey(event, key, row));
       }
 
       body.appendChild(rowEl);
@@ -537,9 +577,8 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
 
   _onFilterInput(_event: Event): void { /* placeholder — filter-input handled on atlas-input directly */ }
 
-  _onPageChange(event: CustomEvent): void {
-    const detail = event.detail as { page?: unknown } | null;
-    const page = Number(detail?.page ?? 0);
+  _onPageChange(event: Event): void {
+    const page = readDetailNumber(event, 'page', 0);
     this._core.setPage(page);
     const s = this._core.getState();
     this._announce(`Page ${s.page + 1} of ${this._core.pageCount()}`);
@@ -549,9 +588,8 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     }));
   }
 
-  _onPageSizeChange(event: CustomEvent): void {
-    const detail = event.detail as { pageSize?: unknown } | null;
-    const size = Number(detail?.pageSize ?? 25);
+  _onPageSizeChange(event: Event): void {
+    const size = readDetailNumber(event, 'pageSize', 25);
     this._core.setPageSize(size);
     this._emitTelemetry('page-size-changed', { pageSize: size });
     this.dispatchEvent(new CustomEvent('page-change', {
@@ -562,10 +600,17 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
   _onRowKey(event: KeyboardEvent, key: SelectionKey, row: R): void {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      const rows = [...this.querySelectorAll('atlas-row[data-row-key]')];
-      const i = rows.indexOf(event.currentTarget as Element);
+      // `atlas-row` is registered in HTMLElementTagNameMap, so the bare
+      // tag query is typed as `NodeListOf<AtlasRow>`. We then filter by
+      // the data attribute imperatively to keep the typed array.
+      const rows: HTMLElement[] = [];
+      for (const el of this.querySelectorAll('atlas-row')) {
+        if (el.hasAttribute('data-row-key')) rows.push(el);
+      }
+      const current = isHtmlElement(event.currentTarget) ? event.currentTarget : null;
+      const i = current ? rows.indexOf(current) : -1;
       const next = event.key === 'ArrowDown' ? rows[i + 1] : rows[i - 1];
-      if (next) (next as HTMLElement).focus();
+      if (next) next.focus();
       return;
     }
     if (event.key === ' ') {
@@ -613,6 +658,30 @@ class AtlasDataTable<R extends Row = Row> extends AtlasElement {
     if (!sid || !name) return;
     this.emit(`${sid}.${name}.${suffix}`, payload);
   }
+}
+
+function readColumnValue<R extends Row>(row: R, col: AnyColumn<R>): unknown {
+  if (typeof col.key === 'function') return col.key(row);
+  // col.key is keyof R; indexer yields R[keyof R].
+  return (row as Record<keyof R, unknown>)[col.key];
+}
+
+/**
+ * Convert a consumer-facing `Columns<R>` (each entry typed `Column<R, V>`
+ * with V narrow per-key) into the type-erased `AnyColumn<R>` shape stored
+ * internally. Required because `Column<R, V>` → `Column<R, unknown>` is a
+ * variance bridge that TypeScript flags under
+ * `exactOptionalPropertyTypes`: `CellFormatterFn<R, V>` accepts V-typed
+ * values, but the storage layer dispatches `unknown`. At runtime the
+ * formatter receives the actual `R[K]` value from `readColumnValue`, so
+ * the wider parameter never produces invalid data — this is the boundary
+ * between the typed consumer surface and the dispatcher's `unknown` bus.
+ */
+function toAnyColumns<R extends Row>(
+  next: Columns<R> | ReadonlyArray<AnyColumn<R>>,
+): Array<AnyColumn<R>> {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Column<R, V> → Column<R, unknown> variance bridge (typed consumer surface → unknown dispatcher).
+  return [...next] as unknown as Array<AnyColumn<R>>;
 }
 
 function messageBlock(role: string, heading: string, body: string): HTMLElement {

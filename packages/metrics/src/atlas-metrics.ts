@@ -19,8 +19,8 @@ import { getRegistry } from './registry.ts';
 import type { Metric } from './types.ts';
 
 function getOrRegister<M extends Metric>(metric: M): M {
-  const existing = getRegistry().get(metric.descriptor.name);
-  if (existing) return existing as unknown as M;
+  const existing = getRegistry().get<M>(metric.descriptor.name);
+  if (existing) return existing;
   return getRegistry().register(metric);
 }
 

@@ -61,7 +61,10 @@ function expectInvariant(input: unknown, invariant: string): void {
   expect(caught, `expected ${invariant} rejection but call succeeded`).toBeInstanceOf(
     RenderTreeError,
   );
-  expect((caught as RenderTreeError).invariant).toBe(invariant);
+  if (!(caught instanceof RenderTreeError)) {
+    throw new Error(`expected RenderTreeError, got ${String(caught)}`);
+  }
+  expect(caught.invariant).toBe(invariant);
 }
 
 describe('validateRenderTree (V1-V17)', () => {

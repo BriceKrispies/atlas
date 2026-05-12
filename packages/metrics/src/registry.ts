@@ -29,9 +29,19 @@ export class Registry {
    * Look up a previously registered metric by name. Useful for
    * cross-module access without exporting every metric singleton
    * from a shared `metrics.ts` registry module.
+   *
+   * The optional `M` parameter lets the caller declare the expected
+   * concrete metric shape (e.g. `Counter`, `Histogram`); the registry
+   * itself doesn't enforce that, but it removes the need for an
+   * unsafe cast at call sites that own the name. Callers are
+   * responsible for ensuring the same name is always registered with
+   * the same metric type — registration is deduped by `getOrRegister`.
    */
-  get(name: string): Metric | undefined {
-    return this.metrics.get(name);
+  get<M extends Metric = Metric>(name: string): M | undefined {
+    const v = this.metrics.get(name);
+    if (v === undefined) return undefined;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- registry stores name→Metric with the concrete subtype erased; caller declares the expected `M` and `getOrRegister` keeps the (name, type) mapping consistent.
+    return v as M;
   }
 
   /**

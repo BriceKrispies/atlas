@@ -105,7 +105,9 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
       expect(decision.effect).toBe('deny');
       if (decision.reasons !== undefined) {
         expect(decision.reasons.length).toBeGreaterThan(0);
-        expect(decision.reasons[0]!.length).toBeGreaterThan(0);
+        const first = decision.reasons[0];
+        if (first === undefined) throw new Error('reasons length > 0 yet [0] undefined');
+        expect(first.length).toBeGreaterThan(0);
       }
     });
 

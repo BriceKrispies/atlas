@@ -116,8 +116,12 @@ test.describe('atlas-data-table specimen', () => {
     const log = page.locator('atlas-box[data-role="mount-log"]');
 
     // Inject an upsert patch via the specimen's imperative data source handle.
+    // window.__atlasTestDataSource is typed by the streaming specimen
+    // (apps/sandbox/src/specimens/patterns/widgets.ts) as { emit(unknown) }.
     await page.evaluate(() => {
-      (window as unknown as { __atlasTestDataSource: { emit: (p: unknown) => void } }).__atlasTestDataSource.emit({
+      const ds = window.__atlasTestDataSource;
+      if (!ds) throw new Error('streaming specimen did not install __atlasTestDataSource');
+      ds.emit({
         type: 'upsert',
         row: { id: 99, title: 'Streamed Row', status: 'published', score: 100, updated: '2026-04-23' },
       });
@@ -133,7 +137,9 @@ test.describe('atlas-data-table specimen', () => {
 
     // Now remove and confirm the row disappears.
     await page.evaluate(() => {
-      (window as unknown as { __atlasTestDataSource: { emit: (p: unknown) => void } }).__atlasTestDataSource.emit({
+      const ds = window.__atlasTestDataSource;
+      if (!ds) throw new Error('streaming specimen did not install __atlasTestDataSource');
+      ds.emit({
         type: 'remove',
         rowKey: 99,
       });

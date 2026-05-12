@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { UpcasterRegistry, upcastToLatest } from './upcaster.ts';
 
+/**
+ * Narrow an `unknown` attrs blob to a record so test upcasters can spread
+ * it. The upcaster signature accepts `unknown` so production upcasters
+ * must do their own narrowing — these test-only upcasters just need to
+ * assert "row is an object" then return a new shape. Throws otherwise so
+ * a regression that passes a non-object attrs row trips a clear failure
+ * instead of a silent type-assertion shrug.
+ */
+function asRecord(attrs: unknown): Record<string, unknown> {
+  if (typeof attrs !== 'object' || attrs === null) {
+    throw new Error(`expected attrs to be an object, got ${typeof attrs}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof-check narrowing from `unknown` to a string-keyed record so test upcasters can spread the attrs blob. The runtime check above guarantees the object is non-null.
+  return attrs as Record<string, unknown>;
+}
+
 describe('UpcasterRegistry', () => {
   it('latestVersion defaults to 1 with no upcasters registered', () => {
     const r = new UpcasterRegistry();
@@ -17,9 +33,9 @@ describe('UpcasterRegistry', () => {
 
   it('apply walks the chain in order', () => {
     const r = new UpcasterRegistry();
-    r.register('Page', 1, (attrs) => ({ ...(attrs as object), v1to2: true }));
-    r.register('Page', 2, (attrs) => ({ ...(attrs as object), v2to3: true }));
-    const out = r.apply('Page', 1, 3, { name: 'home' }) as Record<string, unknown>;
+    r.register('Page', 1, (attrs) => ({ ...asRecord(attrs), v1to2: true }));
+    r.register('Page', 2, (attrs) => ({ ...asRecord(attrs), v2to3: true }));
+    const out = asRecord(r.apply('Page', 1, 3, { name: 'home' }));
     expect(out['name']).toBe('home');
     expect(out['v1to2']).toBe(true);
     expect(out['v2to3']).toBe(true);
@@ -69,9 +85,9 @@ describe('upcastToLatest', () => {
 
   it('walks chain to latest registered version', () => {
     const r = new UpcasterRegistry();
-    r.register('Page', 1, (attrs) => ({ ...(attrs as object), upcasted: true }));
+    r.register('Page', 1, (attrs) => ({ ...asRecord(attrs), upcasted: true }));
     const out = upcastToLatest(r, 'Page', 1, { name: 'home' });
     expect(out.schemaVersion).toBe(2);
-    expect((out.attrs as Record<string, unknown>)['upcasted']).toBe(true);
+    expect(asRecord(out.attrs)['upcasted']).toBe(true);
   });
 });

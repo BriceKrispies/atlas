@@ -158,13 +158,17 @@ S({
       row.appendChild(del);
 
       row.addEventListener('open', (ev) => {
-        onLog('open', (ev as CustomEvent).detail);
+        onLog('open', readEventDetail(ev));
       });
       row.addEventListener('close', () => {
         onLog('close', { from: msg.from });
       });
       row.addEventListener('action', (ev) => {
-        onLog('action', { from: msg.from, ...(ev as CustomEvent).detail });
+        const detail = readEventDetail(ev);
+        const extras: Record<string, unknown> = isPlainRecord(detail)
+          ? Object.fromEntries(Object.entries(detail))
+          : {};
+        onLog('action', { from: msg.from, ...extras });
       });
 
       stack.appendChild(row);
@@ -179,6 +183,15 @@ S({
     { name: 'keyboard-only', config: { keyboardOnly: true } },
   ],
 });
+
+function readEventDetail(ev: Event): unknown {
+  if (!(ev instanceof CustomEvent)) return null;
+  return ev.detail as unknown;
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
 
 /** Local helper — sandbox-only, mirrors design/util escapeText semantics. */
 function escapeText(s: string): string {

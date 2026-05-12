@@ -20,6 +20,7 @@
 
 import type postgres from 'postgres';
 import { createTransport, type Transporter } from 'nodemailer';
+import type SMTPPool from 'nodemailer/lib/smtp-pool/index.js';
 import type {
   EmailMessage,
   Mailer,
@@ -49,7 +50,10 @@ function newMessageId(): string {
 }
 
 export class SmtpMailer implements Mailer {
-  private readonly transport: Transporter;
+  // Typed against the pool transport's SentMessageInfo so `info.messageId`
+  // narrows to `string` without a cast (see RFC 2822 §3.6.4 — the relay
+  // is required to populate Message-ID, and nodemailer surfaces it here).
+  private readonly transport: Transporter<SMTPPool.SentMessageInfo, SMTPPool.Options>;
   private readonly fromAddress: string;
 
   constructor(
@@ -88,8 +92,11 @@ export class SmtpMailer implements Mailer {
 
     // 2. Use the SMTP-supplied messageId when available so log entries
     //    correlate with the receiving server's records. Fall back to
-    //    a locally-minted id (matches `StdoutEventMailer` shape).
-    const messageId = (info.messageId as string | undefined) ?? newMessageId();
+    //    a locally-minted id (matches `StdoutEventMailer` shape). The
+    //    SMTPPool typing guarantees `messageId: string`, but some
+    //    transports (or non-relay paths) may leave it empty — the `||`
+    //    keeps the fallback live without leaning on type tricks.
+    const messageId = info.messageId || newMessageId();
 
     // 3. Persist for the in-app mailbox panel + audit. Same column
     //    shape as StdoutEventMailer.
@@ -150,7 +157,7 @@ export class SmtpMailer implements Mailer {
         JSON.stringify({
           event: 'mailer.close.error',
           driver: 'smtp',
-          error: (e as Error).message,
+          error: e instanceof Error ? e.message : String(e),
         }),
       );
     }

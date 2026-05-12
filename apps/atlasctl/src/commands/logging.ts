@@ -31,6 +31,7 @@
 
 import { request, type ClientOptions } from '../client.ts';
 import { emitResult, type OutputFlags } from '../output.ts';
+import { errorMessage } from '../json.ts';
 
 const VALID_LEVELS = new Set(['debug', 'info', 'warn', 'error', 'fatal']);
 
@@ -68,7 +69,7 @@ export async function runLoggingLevels(
     emitResult(flags, {
       correlationId: client.correlationId,
       status: 'error',
-      message: `request failed: ${(e as Error).message}`,
+      message: `request failed: ${errorMessage(e)}`,
       errorCode: 'TRANSPORT',
     });
     return 1;
@@ -161,7 +162,7 @@ async function submitLevelChange(
     emitResult(flags, {
       correlationId: client.correlationId,
       status: 'error',
-      message: `request failed: ${(e as Error).message}`,
+      message: `request failed: ${errorMessage(e)}`,
       errorCode: 'TRANSPORT',
     });
     return 1;
@@ -215,7 +216,7 @@ export async function runLoggingInspect(
     emitResult(flags, {
       correlationId: client.correlationId,
       status: 'error',
-      message: `request failed: ${(e as Error).message}`,
+      message: `request failed: ${errorMessage(e)}`,
       errorCode: 'TRANSPORT',
     });
     return 1;

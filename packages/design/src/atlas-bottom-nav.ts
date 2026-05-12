@@ -303,8 +303,9 @@ export class AtlasBottomNav extends AtlasElement {
       }
     });
     // If nothing is active, fall back to making the first item focusable.
-    if (activeIndex === -1 && items.length > 0) {
-      items[0]!.setAttribute('tabindex', '0');
+    if (activeIndex === -1) {
+      const [first] = items;
+      first?.setAttribute('tabindex', '0');
     }
   }
 
@@ -323,10 +324,16 @@ export class AtlasBottomNav extends AtlasElement {
   private _onKey(e: KeyboardEvent): void {
     const items = this._items().filter((it) => !it.hasAttribute('disabled'));
     if (items.length === 0) return;
-    const active = (e.target as HTMLElement | null)?.closest(
-      'atlas-bottom-nav-item',
-    ) as AtlasBottomNavItem | null;
-    const idx = active ? items.indexOf(active) : -1;
+    // `e.target` is `EventTarget | null`; only Elements can host a
+    // `.closest()` lookup. Narrow with `instanceof` (no cast) and then
+    // resolve the focused tab back to its `AtlasBottomNavItem` by
+    // identity search through the typed `items` array.
+    const eventTarget = e.target;
+    const focusedTab =
+      eventTarget instanceof Element
+        ? items.find((it) => it.contains(eventTarget) || it === eventTarget)
+        : undefined;
+    const idx = focusedTab ? items.indexOf(focusedTab) : -1;
     let next = idx;
     switch (e.key) {
       case 'ArrowRight':
@@ -345,8 +352,8 @@ export class AtlasBottomNav extends AtlasElement {
         break;
       case 'Enter':
       case ' ': {
-        if (active) {
-          const v = active.getAttribute('value');
+        if (focusedTab) {
+          const v = focusedTab.getAttribute('value');
           if (v != null) {
             e.preventDefault();
             this._select(v);

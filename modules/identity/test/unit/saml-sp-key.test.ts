@@ -23,6 +23,33 @@ import {
 } from '../../src/index.ts';
 import { assertEventTags, newFixture } from '../lib/fixtures.ts';
 
+/**
+ * Read the SamlSpKey document off an emitted event's payload with a
+ * runtime structural check. Throws on a malformed envelope — that's a
+ * test invariant failure. Centralises the per-shape narrowing so call
+ * sites don't `as`-cast.
+ */
+function readSpKeyDocument(
+  payload: unknown,
+): { keyId: string; tenantId: string; status: 'active' } {
+  if (payload === null || typeof payload !== 'object') {
+    throw new Error('expected payload to be an object');
+  }
+  const obj = (payload as { document?: unknown }).document;
+  if (obj === null || typeof obj !== 'object') {
+    throw new Error('expected payload.document to be an object');
+  }
+  const candidate = obj as { keyId?: unknown; tenantId?: unknown; status?: unknown };
+  if (
+    typeof candidate.keyId !== 'string' ||
+    typeof candidate.tenantId !== 'string' ||
+    candidate.status !== 'active'
+  ) {
+    throw new Error('expected payload.document to be an active SamlSpKey row');
+  }
+  return { keyId: candidate.keyId, tenantId: candidate.tenantId, status: 'active' };
+}
+
 describe('handleSamlSpKeyGenerate — happy path', () => {
   it('emits Identity.SamlSpKeyGenerated with Tenant + SamlSpKey tags (I10)', async () => {
     const fx = newFixture();
@@ -66,12 +93,10 @@ describe('handleSamlSpKeyGenerate — failure: already-active key', () => {
     // it only emits the event. Until a dispatcher runs, `findActiveSamlSpKey`
     // sees nothing. To exercise the guard we manually seed the active row.)
     const initial = fx.events.events[0];
-    expect(initial).toBeDefined();
-    const doc = (initial!.payload as { document: unknown }).document as {
-      keyId: string;
-      tenantId: string;
-      status: 'active';
-    };
+    if (!initial) {
+      throw new Error('expected one event after first SamlSpKey.Generate');
+    }
+    const doc = readSpKeyDocument(initial.payload);
     await fx.entities.put({
       tenantId: doc.tenantId,
       entityType: 'SamlSpKey',

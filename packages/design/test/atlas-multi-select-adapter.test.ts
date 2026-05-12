@@ -12,24 +12,15 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import type { AtlasMultiSelect } from '../src/atlas-multi-select.ts';
+import type { Option, OptionsSource } from '../src/multi-select-core.ts';
 
 // DOM globals (document, HTMLElement, customElements, CSSStyleSheet,
 // ElementInternals, FormData, ShadowRoot, adoptedStyleSheets patch) are
 // installed by the global vitest setup — see
-// `frontend/test-setup/linkedom-shims.ts`.
-
-// Minimal aliases to the linkedom shapes we use in tests.
-// Functional at runtime; we keep them as `any`-like via `unknown` where
-// the linkedom shape doesn't line up with DOM lib types.
-type AnyEl = any;
-
-// Handy references to the globals the shim installed.
-const dom = {
-  document: globalThis.document,
-  HTMLElement: globalThis.HTMLElement,
-  customElements: globalThis.customElements,
-  Event: globalThis.Event,
-};
+// `test-setup/linkedom-shims.ts`. That setup also reinstalls
+// `globalThis.Event` / `CustomEvent` to linkedom's constructors so plain
+// `new Event(type, init)` interops with `dispatchEvent`.
 
 beforeAll(async () => {
   // Import AFTER globals are installed so the element registers against
@@ -37,11 +28,32 @@ beforeAll(async () => {
   await import('../src/atlas-multi-select.ts');
 });
 
+// ── event detail shapes ────────────────────────────────────────────
+
+interface ChangeDetail {
+  value: string[];
+  added: string[];
+  removed: string[];
+  selected: Option[];
+}
+
+interface SearchDetail {
+  query: string;
+}
+
+interface UnselectDetail {
+  option: Option | undefined;
+}
+
+interface CreateDetail {
+  option: Option | undefined;
+}
+
 // ── helpers ────────────────────────────────────────────────────────
 
 interface MakeElArgs {
   attrs?: Record<string, string | boolean | null | undefined>;
-  options?: Array<{ value: string; label: string; disabled?: boolean }>;
+  options?: Option[];
   value?: string[];
 }
 
@@ -49,29 +61,24 @@ function makeEl({
   attrs = {},
   options = [],
   value,
-}: MakeElArgs = {}): AnyEl {
-  const el = (dom.document as AnyEl).createElement('atlas-multi-select');
+}: MakeElArgs = {}): AtlasMultiSelect {
+  const el = document.createElement('atlas-multi-select');
   for (const [k, v] of Object.entries(attrs)) {
     if (v === true) el.setAttribute(k, '');
     else if (v !== false && v != null) el.setAttribute(k, String(v));
   }
   el.options = options;
   if (Array.isArray(value)) el.value = value;
-  (dom.document as AnyEl).body.appendChild(el);
+  document.body.appendChild(el);
   return el;
 }
 
 function dispatch(
-  node: AnyEl,
+  node: Element,
   type: string,
   init: Record<string, unknown> = {},
-): AnyEl {
-  // linkedom's dispatchEvent is picky — use its own Event constructor
-  // (the global Event from Node's globalThis doesn't interop cleanly).
-  const WinEvent = dom.Event as unknown as {
-    new (type: string, init: Record<string, unknown>): AnyEl;
-  };
-  const ev = new WinEvent(type, {
+): Event {
+  const ev = new Event(type, {
     bubbles: true,
     cancelable: true,
     ...init,
@@ -80,14 +87,57 @@ function dispatch(
   return ev;
 }
 
-function q(el: AnyEl, sel: string): AnyEl {
-  return el.shadowRoot.querySelector(sel);
-}
-function qa(el: AnyEl, sel: string): AnyEl[] {
-  return Array.from(el.shadowRoot.querySelectorAll(sel));
+/** Required selector — throws if missing (replaces pervasive `!`). */
+function q<E extends Element = HTMLElement>(
+  el: AtlasMultiSelect,
+  sel: string,
+): E {
+  const root = el.shadowRoot;
+  if (!root) throw new Error(`no shadowRoot on host`);
+  const found = root.querySelector<E>(sel);
+  if (!found) throw new Error(`no match for selector: ${sel}`);
+  return found;
 }
 
-const fruits = [
+/** Optional selector — null when missing, for the few sites that branch. */
+function qOpt<E extends Element = HTMLElement>(
+  el: AtlasMultiSelect,
+  sel: string,
+): E | null {
+  return el.shadowRoot?.querySelector<E>(sel) ?? null;
+}
+
+function qa<E extends Element = HTMLElement>(
+  el: AtlasMultiSelect,
+  sel: string,
+): E[] {
+  const root = el.shadowRoot;
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<E>(sel));
+}
+
+/** Narrow undefined out for `array[0]` / `Array.find` results. */
+function must<T>(v: T | undefined | null): T {
+  if (v == null) throw new Error('expected non-null value');
+  return v;
+}
+
+/**
+ * Add a typed listener for a CustomEvent that the component dispatches.
+ * The DOM's standard `HTMLElementEventMap` does not declare
+ * <atlas-multi-select>'s `change`/`search`/`unselect`/`create` custom
+ * events, so the cast is bounded to this helper.
+ */
+function onCustom<T>(
+  target: EventTarget,
+  type: string,
+  fn: (e: CustomEvent<T>) => void,
+): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-explicit-any -- linkedom-DOM-shape: CustomEvent listeners aren't in the standard HTMLElementEventMap; the cast is bounded to this helper
+  target.addEventListener(type, fn as any);
+}
+
+const fruits: Option[] = [
   { value: 'apple', label: 'Apple' },
   { value: 'banana', label: 'Banana' },
   { value: 'cherry', label: 'Cherry' },
@@ -111,9 +161,9 @@ describe('shell structure is built once on mount', () => {
   it('options render with data-value / aria-selected / role=option', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const opts = qa(el, '.option');
+    const opts = qa<HTMLElement>(el, '.option');
     expect(opts.length).toBe(3);
-    expect(opts.map((o) => o.dataset.value)).toEqual([
+    expect(opts.map((o) => o.dataset['value'])).toEqual([
       'apple',
       'banana',
       'cherry',
@@ -129,8 +179,10 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('click on first option selects it and el.value reflects', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const first = qa(el, '.option').find(
-      (o) => o.dataset.value === 'apple',
+    const first = must(
+      qa<HTMLElement>(el, '.option').find(
+        (o) => o.dataset['value'] === 'apple',
+      ),
     );
     dispatch(first, 'click');
     expect(el.value).toEqual(['apple']);
@@ -139,8 +191,12 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('second click on same option unselects (toggle)', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const first = (): AnyEl =>
-      qa(el, '.option').find((o) => o.dataset.value === 'apple');
+    const first = (): HTMLElement =>
+      must(
+        qa<HTMLElement>(el, '.option').find(
+          (o) => o.dataset['value'] === 'apple',
+        ),
+      );
     dispatch(first(), 'click');
     dispatch(first(), 'click');
     expect(el.value).toEqual([]);
@@ -149,8 +205,10 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('sequential clicks on different options accumulate', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const by = (v: string): AnyEl =>
-      qa(el, '.option').find((o) => o.dataset.value === v);
+    const by = (v: string): HTMLElement =>
+      must(
+        qa<HTMLElement>(el, '.option').find((o) => o.dataset['value'] === v),
+      );
     dispatch(by('apple'), 'click');
     dispatch(by('cherry'), 'click');
     dispatch(by('banana'), 'click');
@@ -160,8 +218,12 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('selection persists: option DOM after click shows aria-selected=true', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const apple = (): AnyEl =>
-      qa(el, '.option').find((o) => o.dataset.value === 'apple');
+    const apple = (): HTMLElement =>
+      must(
+        qa<HTMLElement>(el, '.option').find(
+          (o) => o.dataset['value'] === 'apple',
+        ),
+      );
     dispatch(apple(), 'click');
     // Find the (possibly re-rendered) apple li and check aria-selected.
     expect(apple().getAttribute('aria-selected')).toBe('true');
@@ -170,7 +232,7 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('host mirrors selection in data-value attribute', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    dispatch(qa(el, '.option')[0], 'click');
+    dispatch(must(qa<HTMLElement>(el, '.option')[0]), 'click');
     expect(el.getAttribute('data-value')).toBe(JSON.stringify(el.value));
   });
 
@@ -182,15 +244,19 @@ describe('clicking an option toggles selection (the regression)', () => {
     // <li> is still the same DOM node across mouseover → click.
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const apple = qa(el, '.option').find(
-      (o) => o.dataset.value === 'apple',
+    const apple = must(
+      qa<HTMLElement>(el, '.option').find(
+        (o) => o.dataset['value'] === 'apple',
+      ),
     );
     dispatch(apple, 'mouseover');
     // If mouseover re-rendered the options list, `apple` is now a stale
     // reference and still in the pre-render DOM — click on it wouldn't
     // fire in a real browser. Assert identity before dispatching click.
-    const appleAfterHover = qa(el, '.option').find(
-      (o) => o.dataset.value === 'apple',
+    const appleAfterHover = must(
+      qa<HTMLElement>(el, '.option').find(
+        (o) => o.dataset['value'] === 'apple',
+      ),
     );
     expect(apple).toBe(appleAfterHover);
     dispatch(apple, 'click');
@@ -200,16 +266,20 @@ describe('clicking an option toggles selection (the regression)', () => {
   it('change event fires with delta + selected in detail', () => {
     const el = makeEl({ attrs: { name: 't' }, options: fruits });
     el.open();
-    const events: AnyEl[] = [];
-    el.addEventListener('change', (e: AnyEl) => events.push(e.detail));
+    const events: ChangeDetail[] = [];
+    onCustom<ChangeDetail>(el, 'change', (e) => events.push(e.detail));
     dispatch(
-      qa(el, '.option').find((o) => o.dataset.value === 'banana'),
+      must(
+        qa<HTMLElement>(el, '.option').find(
+          (o) => o.dataset['value'] === 'banana',
+        ),
+      ),
       'click',
     );
     expect(events.length).toBe(1);
-    expect(events[0].added).toEqual(['banana']);
-    expect(events[0].removed).toEqual([]);
-    expect(events[0].value).toEqual(['banana']);
+    expect(must(events[0]).added).toEqual(['banana']);
+    expect(must(events[0]).removed).toEqual([]);
+    expect(must(events[0]).value).toEqual(['banana']);
   });
 });
 
@@ -220,10 +290,12 @@ describe('search input: typing filters options and survives re-render', () => {
       options: fruits,
     });
     el.open();
-    const search = q(el, '.search');
+    const search = q<HTMLInputElement>(el, '.search');
     search.value = 'ch';
     dispatch(search, 'input');
-    const visible = qa(el, '.option').map((o) => o.dataset.value);
+    const visible = qa<HTMLElement>(el, '.option').map(
+      (o) => o.dataset['value'],
+    );
     expect(visible).toEqual(['cherry']);
   });
 
@@ -233,10 +305,10 @@ describe('search input: typing filters options and survives re-render', () => {
       options: fruits,
     });
     el.open();
-    const search1 = q(el, '.search');
+    const search1 = q<HTMLInputElement>(el, '.search');
     search1.value = 'a';
     dispatch(search1, 'input');
-    const search2 = q(el, '.search');
+    const search2 = q<HTMLInputElement>(el, '.search');
     // Same node identity — the shell is not rebuilt on state changes.
     expect(search1).toBe(search2);
     expect(search2.value).toBe('a');
@@ -248,13 +320,15 @@ describe('search input: typing filters options and survives re-render', () => {
       options: fruits,
     });
     el.open();
-    const search = q(el, '.search');
+    const search = q<HTMLInputElement>(el, '.search');
     for (const ch of ['b', 'a', 'n']) {
       search.value += ch;
       dispatch(search, 'input');
     }
-    expect(q(el, '.search').value).toBe('ban');
-    expect(qa(el, '.option').map((o) => o.dataset.value)).toEqual(['banana']);
+    expect(q<HTMLInputElement>(el, '.search').value).toBe('ban');
+    expect(
+      qa<HTMLElement>(el, '.option').map((o) => o.dataset['value']),
+    ).toEqual(['banana']);
   });
 
   it('clicking a filtered option still selects it', () => {
@@ -263,10 +337,10 @@ describe('search input: typing filters options and survives re-render', () => {
       options: fruits,
     });
     el.open();
-    const search = q(el, '.search');
+    const search = q<HTMLInputElement>(el, '.search');
     search.value = 'ch';
     dispatch(search, 'input');
-    dispatch(qa(el, '.option')[0], 'click');
+    dispatch(must(qa<HTMLElement>(el, '.option')[0]), 'click');
     expect(el.value).toEqual(['cherry']);
   });
 
@@ -276,9 +350,9 @@ describe('search input: typing filters options and survives re-render', () => {
       options: fruits,
     });
     el.open();
-    const events: AnyEl[] = [];
-    el.addEventListener('search', (e: AnyEl) => events.push(e.detail));
-    const search = q(el, '.search');
+    const events: SearchDetail[] = [];
+    onCustom<SearchDetail>(el, 'search', (e) => events.push(e.detail));
+    const search = q<HTMLInputElement>(el, '.search');
     search.value = 'b';
     dispatch(search, 'input');
     expect(events).toEqual([{ query: 'b' }]);
@@ -304,15 +378,15 @@ describe('chips: remove button unselects without closing', () => {
       options: fruits,
       value: ['apple'],
     });
-    const unsel: AnyEl[] = [];
-    const chg: AnyEl[] = [];
-    el.addEventListener('unselect', (e: AnyEl) => unsel.push(e.detail));
-    el.addEventListener('change', (e: AnyEl) => chg.push(e.detail));
+    const unsel: UnselectDetail[] = [];
+    const chg: ChangeDetail[] = [];
+    onCustom<UnselectDetail>(el, 'unselect', (e) => unsel.push(e.detail));
+    onCustom<ChangeDetail>(el, 'change', (e) => chg.push(e.detail));
     dispatch(q(el, '.chip-remove'), 'click');
     expect(unsel.length).toBe(1);
-    expect(unsel[0].option.value).toBe('apple');
+    expect(must(unsel[0]).option?.value).toBe('apple');
     expect(chg.length).toBe(1);
-    expect(chg[0].removed).toEqual(['apple']);
+    expect(must(chg[0]).removed).toEqual(['apple']);
   });
 });
 
@@ -327,23 +401,24 @@ describe('lifecycle states render in the listbox', () => {
     const el = makeEl({ attrs: { name: 't' } });
     el.open();
     // Port that never resolves until we say so.
-    let release: ((v: unknown) => void) | undefined;
-    el.optionsSource = {
+    let release: ((v: readonly Option[]) => void) | undefined;
+    const source: OptionsSource = {
       load: () =>
-        new Promise((r) => {
+        new Promise<readonly Option[]>((r) => {
           release = r;
         }),
     };
+    el.optionsSource = source;
     // Wait a microtask so loadOptions has set status=loading.
     await Promise.resolve();
-    const row = q(el, '.status-row');
-    expect(row?.dataset.kind).toBe('loading');
+    const row = qOpt<HTMLElement>(el, '.status-row');
+    expect(row?.dataset['kind']).toBe('loading');
     release?.(fruits);
   });
 
   it('status=error shows retry button; retry recovers', async () => {
     let first = true;
-    const src = {
+    const src: OptionsSource = {
       load: async () => {
         if (first) {
           first = false;
@@ -356,7 +431,7 @@ describe('lifecycle states render in the listbox', () => {
     el.open();
     el.optionsSource = src;
     await new Promise((r) => setTimeout(r, 0));
-    expect(q(el, '.status-row')?.dataset.kind).toBe('error');
+    expect(qOpt<HTMLElement>(el, '.status-row')?.dataset['kind']).toBe('error');
     const retry = q(el, '[data-action="retry"]');
     expect(retry).toBeTruthy();
     dispatch(retry, 'click');
@@ -373,7 +448,7 @@ describe('allow-create', () => {
       options: fruits,
     });
     el.open();
-    const search = q(el, '.search');
+    const search = q<HTMLInputElement>(el, '.search');
     search.value = 'Durian';
     dispatch(search, 'input');
     const hint = q(el, '[data-action="create"]');
@@ -387,14 +462,14 @@ describe('allow-create', () => {
       options: fruits,
     });
     el.open();
-    const created: AnyEl[] = [];
-    el.addEventListener('create', (e: AnyEl) => created.push(e.detail.option));
-    const search = q(el, '.search');
+    const created: Array<Option | undefined> = [];
+    onCustom<CreateDetail>(el, 'create', (e) => created.push(e.detail.option));
+    const search = q<HTMLInputElement>(el, '.search');
     search.value = 'Durian';
     dispatch(search, 'input');
     dispatch(q(el, '[data-action="create"]'), 'click');
     expect(el.value).toEqual(['Durian']);
     expect(created.length).toBe(1);
-    expect(created[0].label).toBe('Durian');
+    expect(must(created[0]).label).toBe('Durian');
   });
 });

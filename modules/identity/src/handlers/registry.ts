@@ -36,6 +36,29 @@ import { handleIdpRotateJwks } from './idp-rotate-jwks.ts';
 import type { SessionEndReason } from '../types.ts';
 import { IdentityError } from '../errors.ts';
 import { eventTypeToLogShape } from './log-shape.ts';
+import type {
+  ApiKeyCreatePayload,
+  ApiKeyRevokePayload,
+  ApiKeyRotatePayload,
+  IdentityIntentPayload,
+  IdpActivatePayload,
+  IdpConfigurePayload,
+  IdpDisablePayload,
+  IdpRotateJwksPayload,
+  InviteAcceptPayload,
+  InviteIssuePayload,
+  MembershipCreatePayload,
+  PasswordLoginPayload,
+  PasswordSetPayload,
+  ServicePrincipalCreatePayload,
+  ServicePrincipalDisablePayload,
+  ServicePrincipalSetScopesPayload,
+  SessionIssuePayload,
+  SessionRefreshPayload,
+  SessionRevokeAllForUserPayload,
+  SessionRevokePayload,
+  UserCreatePayload,
+} from '../intents.ts';
 
 /**
  * Redact and truncate a free-text value for log output. We never log
@@ -62,15 +85,19 @@ function clampFreeText(v: unknown): string | undefined {
  * Failed shape is predictable even when the handler throws before
  * emitting an event. Success / Rejected shapes are derived from the
  * primary `eventType` via `eventTypeToLogShape`.
+ *
+ * Generic over `TPayload` so the wrapped handler keeps its typed
+ * envelope all the way through — the wrapper just observes outcomes,
+ * it doesn't touch payload fields.
  */
-function withLogging(
+function withLogging<TPayload extends IdentityIntentPayload>(
   verb: string,
-  inner: IntentHandler,
-): IntentHandler {
+  inner: IntentHandler<TPayload>,
+): IntentHandler<TPayload> {
   return {
     async handle(
       ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
+      envelope: IntentEnvelope<TPayload>,
     ): Promise<HandlerResult> {
       const logger = ctx.logger;
       try {
@@ -85,10 +112,7 @@ function withLogging(
           const fields = {
             event: shape.event,
             properties: {
-              actionId:
-                clampFreeText(
-                  (envelope.payload as { actionId?: unknown })?.actionId,
-                ) ?? '<unknown>',
+              actionId: clampFreeText(envelope.payload.actionId) ?? '<unknown>',
               eventType: result.primary.eventType,
               eventId: result.primary.eventId,
               followCount: result.follow.length,
@@ -114,17 +138,15 @@ function withLogging(
               : e instanceof Error
                 ? e.name
                 : 'UnknownError';
+          const message = e instanceof Error ? e.message : String(e);
           logger.error(`identity ${verb} failed`, {
             event: `Identity.${verb}.Failed`,
             error: {
               code,
-              message: clampFreeText((e as Error).message ?? String(e)) ?? '',
+              message: clampFreeText(message) ?? '',
             },
             properties: {
-              actionId:
-                clampFreeText(
-                  (envelope.payload as { actionId?: unknown })?.actionId,
-                ) ?? '<unknown>',
+              actionId: clampFreeText(envelope.payload.actionId) ?? '<unknown>',
             },
           });
         }
@@ -146,71 +168,44 @@ const VALID_END_REASONS: ReadonlySet<SessionEndReason> = new Set<SessionEndReaso
 ]);
 
 /**
- * Read a `SessionEndReason` from the intent payload. When the field is
- * absent, the caller-supplied `fallback` wins (e.g. session-revoke
- * defaults to `admin_revoke`). When the field is present but not in the
- * `VALID_END_REASONS` set, the request is rejected — silently coercing
- * an unknown value to `admin_revoke` would falsify the audit trail and
- * mislead the risk engine, so we surface the bad input as a 400.
+ * Coerce a payload `reason` field to a `SessionEndReason`, falling
+ * back when absent and rejecting on unknown strings.
+ *
+ * The wire shape allows `reason` to be omitted (the registry then
+ * uses the caller-supplied `fallback`, e.g. `admin_revoke` for
+ * session-revoke). Silently coercing an unknown value to
+ * `admin_revoke` would falsify the audit trail and mislead the risk
+ * engine, so we surface the bad input as a 400 instead.
  */
-function readEndReason(
-  payload: Record<string, unknown>,
-  key: string,
+function coerceEndReason(
+  reason: SessionEndReason | undefined,
   fallback: SessionEndReason,
 ): SessionEndReason {
-  const v = payload[key];
-  if (v === undefined || v === null) return fallback;
-  if (typeof v !== 'string' || !VALID_END_REASONS.has(v as SessionEndReason)) {
+  if (reason === undefined) return fallback;
+  if (!VALID_END_REASONS.has(reason)) {
     throw new IdentityError(
       'IDENTITY_INVALID',
-      `payload.${key} must be one of: ${Array.from(VALID_END_REASONS).join(', ')}`,
+      `payload.reason must be one of: ${Array.from(VALID_END_REASONS).join(', ')}`,
       400,
     );
   }
-  return v as SessionEndReason;
+  return reason;
 }
 
-function readString(payload: Record<string, unknown>, key: string): string {
-  const v = payload[key];
-  if (typeof v !== 'string') {
-    throw new Error(`expected string for payload.${key}`);
-  }
-  return v;
-}
-
-function readOptionalString(
-  payload: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const v = payload[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'string') {
-    throw new Error(`expected string|null|undefined for payload.${key}`);
-  }
-  return v;
-}
-
-function readStringArray(
-  payload: Record<string, unknown>,
-  key: string,
-): string[] {
-  const v = payload[key];
-  if (!Array.isArray(v) || !v.every((item) => typeof item === 'string')) {
-    throw new Error(`expected string[] for payload.${key}`);
-  }
-  return v as string[];
-}
-
-function readOptionalNumber(
-  payload: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const v = payload[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'number') {
-    throw new Error(`expected number|null|undefined for payload.${key}`);
-  }
-  return v;
+/**
+ * Erase the typed-payload generic when binding a handler into the
+ * registry map. The HandlerRegistry's `get(actionId): IntentHandler`
+ * surface returns the default-generic shape (`IntentPayload`), so the
+ * action-specific narrowing only lives inside each closure — the
+ * caller (ingress) still sees the wide interface, which is correct:
+ * ingress dispatches by `actionId` and doesn't know payload-shape
+ * statically.
+ */
+function asWide<TPayload extends IdentityIntentPayload>(
+  h: IntentHandler<TPayload>,
+): IntentHandler {
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: registry erases payload-generic; ingress dispatches by actionId string and the narrowed types only live inside each closure
+  return h as unknown as IntentHandler;
 }
 
 /**
@@ -223,37 +218,21 @@ function readOptionalNumber(
 export function identityHandlerEntries(
   entities: EntityStore,
 ): ReadonlyArray<readonly [string, IntentHandler]> {
-  const userCreateHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const userCreateHandler: IntentHandler<UserCreatePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleUserCreate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          email: readString(payload, 'email'),
-          ...(readOptionalString(payload, 'userId') !== undefined
-            ? { userId: readOptionalString(payload, 'userId') as string }
+          email: p.email,
+          ...(p.userId !== undefined ? { userId: p.userId } : {}),
+          ...(p.primaryIdpSubject !== undefined
+            ? { primaryIdpSubject: p.primaryIdpSubject }
             : {}),
-          ...(readOptionalString(payload, 'primaryIdpSubject') !== undefined
-            ? {
-                primaryIdpSubject: readOptionalString(
-                  payload,
-                  'primaryIdpSubject',
-                ) as string,
-              }
-            : {}),
-          ...(readOptionalString(payload, 'givenName') !== undefined
-            ? { givenName: readOptionalString(payload, 'givenName') as string }
-            : {}),
-          ...(readOptionalString(payload, 'familyName') !== undefined
-            ? {
-                familyName: readOptionalString(payload, 'familyName') as string,
-              }
-            : {}),
+          ...(p.givenName !== undefined ? { givenName: p.givenName } : {}),
+          ...(p.familyName !== undefined ? { familyName: p.familyName } : {}),
         },
         ctx.eventStore,
       );
@@ -261,19 +240,16 @@ export function identityHandlerEntries(
     },
   };
 
-  const membershipCreateHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const membershipCreateHandler: IntentHandler<MembershipCreatePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleMembershipCreate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          userId: readString(payload, 'userId'),
-          roles: readStringArray(payload, 'roles'),
+          userId: p.userId,
+          roles: p.roles,
         },
         ctx.eventStore,
         entities,
@@ -282,22 +258,17 @@ export function identityHandlerEntries(
     },
   };
 
-  const inviteIssueHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const inviteIssueHandler: IntentHandler<InviteIssuePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleInviteIssue(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          email: readString(payload, 'email'),
-          rolesOnAccept: readStringArray(payload, 'rolesOnAccept'),
-          ...(readOptionalNumber(payload, 'ttlSeconds') !== undefined
-            ? { ttlSeconds: readOptionalNumber(payload, 'ttlSeconds') as number }
-            : {}),
+          email: p.email,
+          rolesOnAccept: p.rolesOnAccept,
+          ...(p.ttlSeconds !== undefined ? { ttlSeconds: p.ttlSeconds } : {}),
         },
         ctx.eventStore,
       );
@@ -309,35 +280,21 @@ export function identityHandlerEntries(
     },
   };
 
-  const inviteAcceptHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const inviteAcceptHandler: IntentHandler<InviteAcceptPayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleInviteAccept(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          presentedToken: readString(payload, 'presentedToken'),
-          acceptedEmail: readString(payload, 'acceptedEmail'),
-          ...(readOptionalString(payload, 'primaryIdpSubject') !== undefined
-            ? {
-                primaryIdpSubject: readOptionalString(
-                  payload,
-                  'primaryIdpSubject',
-                ) as string,
-              }
+          presentedToken: p.presentedToken,
+          acceptedEmail: p.acceptedEmail,
+          ...(p.primaryIdpSubject !== undefined
+            ? { primaryIdpSubject: p.primaryIdpSubject }
             : {}),
-          ...(readOptionalString(payload, 'givenName') !== undefined
-            ? { givenName: readOptionalString(payload, 'givenName') as string }
-            : {}),
-          ...(readOptionalString(payload, 'familyName') !== undefined
-            ? {
-                familyName: readOptionalString(payload, 'familyName') as string,
-              }
-            : {}),
+          ...(p.givenName !== undefined ? { givenName: p.givenName } : {}),
+          ...(p.familyName !== undefined ? { familyName: p.familyName } : {}),
         },
         ctx.eventStore,
         entities,
@@ -346,19 +303,16 @@ export function identityHandlerEntries(
     },
   };
 
-  const passwordSetHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const passwordSetHandler: IntentHandler<PasswordSetPayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handlePasswordSet(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          userId: readString(payload, 'userId'),
-          newPassword: readString(payload, 'newPassword'),
+          userId: p.userId,
+          newPassword: p.newPassword,
         },
         ctx.eventStore,
         entities,
@@ -367,28 +321,18 @@ export function identityHandlerEntries(
     },
   };
 
-  const passwordLoginHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const passwordLoginHandler: IntentHandler<PasswordLoginPayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handlePasswordLogin(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
-          email: readString(payload, 'email'),
-          password: readString(payload, 'password'),
-          ...(readOptionalString(payload, 'attemptIp') !== undefined
-            ? { attemptIp: readOptionalString(payload, 'attemptIp') as string }
-            : {}),
-          ...(readOptionalString(payload, 'attemptUserAgent') !== undefined
-            ? {
-                attemptUserAgent: readOptionalString(
-                  payload,
-                  'attemptUserAgent',
-                ) as string,
-              }
+          email: p.email,
+          password: p.password,
+          ...(p.attemptIp !== undefined ? { attemptIp: p.attemptIp } : {}),
+          ...(p.attemptUserAgent !== undefined
+            ? { attemptUserAgent: p.attemptUserAgent }
             : {}),
         },
         ctx.eventStore,
@@ -400,24 +344,17 @@ export function identityHandlerEntries(
 
   // ----- Phase A2 — sessions ---------------------------------------
 
-  const sessionIssueHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const sessionIssueHandler: IntentHandler<SessionIssuePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleSessionIssue(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          userId: readString(payload, 'userId'),
-          ...(readOptionalString(payload, 'ip') !== undefined
-            ? { ip: readOptionalString(payload, 'ip') as string }
-            : {}),
-          ...(readOptionalString(payload, 'userAgent') !== undefined
-            ? { userAgent: readOptionalString(payload, 'userAgent') as string }
-            : {}),
+          userId: p.userId,
+          ...(p.ip !== undefined ? { ip: p.ip } : {}),
+          ...(p.userAgent !== undefined ? { userAgent: p.userAgent } : {}),
         },
         ctx.eventStore,
         entities,
@@ -431,24 +368,17 @@ export function identityHandlerEntries(
     },
   };
 
-  const sessionRefreshHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const sessionRefreshHandler: IntentHandler<SessionRefreshPayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleSessionRefresh(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
-          sessionId: readString(payload, 'sessionId'),
-          presentedRefreshSecret: readString(payload, 'presentedRefreshSecret'),
-          ...(readOptionalString(payload, 'ip') !== undefined
-            ? { ip: readOptionalString(payload, 'ip') as string }
-            : {}),
-          ...(readOptionalString(payload, 'userAgent') !== undefined
-            ? { userAgent: readOptionalString(payload, 'userAgent') as string }
-            : {}),
+          sessionId: p.sessionId,
+          presentedRefreshSecret: p.presentedRefreshSecret,
+          ...(p.ip !== undefined ? { ip: p.ip } : {}),
+          ...(p.userAgent !== undefined ? { userAgent: p.userAgent } : {}),
         },
         ctx.eventStore,
         entities,
@@ -457,19 +387,16 @@ export function identityHandlerEntries(
     },
   };
 
-  const sessionRevokeHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const sessionRevokeHandler: IntentHandler<SessionRevokePayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
       const result = await handleSessionRevoke(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          sessionId: readString(payload, 'sessionId'),
-          reason: readEndReason(payload, 'reason', 'admin_revoke'),
+          sessionId: p.sessionId,
+          reason: coerceEndReason(p.reason, 'admin_revoke'),
         },
         ctx.eventStore,
         entities,
@@ -478,19 +405,17 @@ export function identityHandlerEntries(
     },
   };
 
-  const sessionRevokeAllHandler: IntentHandler = {
-    async handle(
-      ctx: IntentHandlerContext,
-      envelope: IntentEnvelope,
-    ): Promise<HandlerResult> {
-      const payload = envelope.payload as Record<string, unknown>;
+  const sessionRevokeAllHandler: IntentHandler<SessionRevokeAllForUserPayload> = {
+    async handle(ctx, envelope): Promise<HandlerResult> {
+      const p = envelope.payload;
+      const targetUserId = p.userId;
       const result = await handleSessionRevokeAllForUser(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          userId: readString(payload, 'userId'),
-          reason: readEndReason(payload, 'reason', 'admin_revoke'),
+          userId: targetUserId,
+          reason: coerceEndReason(p.reason, 'admin_revoke'),
         },
         ctx.eventStore,
         entities,
@@ -505,7 +430,6 @@ export function identityHandlerEntries(
       // the revoke-all, not the acting principal — earlier code
       // mislabelled it as `ctx.principalId`, which broke audit
       // attribution when an admin revoked another user's sessions.
-      const targetUserId = readString(payload, 'userId');
       const primary: EventEnvelope = result.envelopes[0] ?? {
         eventId: newEventId(),
         eventType: 'Identity.SessionRevokeAllForUser.NoOp',
@@ -533,36 +457,21 @@ export function identityHandlerEntries(
 
   // ----- Phase A2.7-A2.9 — service credentials ---------------------
 
-  function readStringArray(
-    payload: Record<string, unknown>,
-    key: string,
-  ): string[] {
-    const v = payload[key];
-    if (!Array.isArray(v) || !v.every((item) => typeof item === 'string')) {
-      throw new Error(`expected string[] for payload.${key}`);
-    }
-    return v as string[];
-  }
-
-  const apiKeyCreateHandler: IntentHandler = {
+  const apiKeyCreateHandler: IntentHandler<ApiKeyCreatePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleApiKeyCreate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          name: readString(p, 'name'),
-          scopes: readStringArray(p, 'scopes'),
-          ...(readOptionalString(p, 'userId') !== undefined
-            ? { userId: readOptionalString(p, 'userId') as string }
+          name: p.name,
+          scopes: p.scopes,
+          ...(p.userId !== undefined ? { userId: p.userId } : {}),
+          ...(p.servicePrincipalId !== undefined
+            ? { servicePrincipalId: p.servicePrincipalId }
             : {}),
-          ...(readOptionalString(p, 'servicePrincipalId') !== undefined
-            ? { servicePrincipalId: readOptionalString(p, 'servicePrincipalId') as string }
-            : {}),
-          ...(readOptionalString(p, 'expiresAt') !== undefined
-            ? { expiresAt: readOptionalString(p, 'expiresAt') as string }
-            : {}),
+          ...(p.expiresAt !== undefined ? { expiresAt: p.expiresAt } : {}),
         },
         ctx.eventStore,
         entities,
@@ -571,15 +480,15 @@ export function identityHandlerEntries(
     },
   };
 
-  const apiKeyRotateHandler: IntentHandler = {
+  const apiKeyRotateHandler: IntentHandler<ApiKeyRotatePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleApiKeyRotate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          keyId: readString(p, 'keyId'),
+          keyId: p.keyId,
         },
         ctx.eventStore,
         entities,
@@ -588,15 +497,15 @@ export function identityHandlerEntries(
     },
   };
 
-  const apiKeyRevokeHandler: IntentHandler = {
+  const apiKeyRevokeHandler: IntentHandler<ApiKeyRevokePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleApiKeyRevoke(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          keyId: readString(p, 'keyId'),
+          keyId: p.keyId,
         },
         ctx.eventStore,
         entities,
@@ -605,17 +514,17 @@ export function identityHandlerEntries(
     },
   };
 
-  const spCreateHandler: IntentHandler = {
+  const spCreateHandler: IntentHandler<ServicePrincipalCreatePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleServicePrincipalCreate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          ownerUserId: readString(p, 'ownerUserId'),
-          displayName: readString(p, 'displayName'),
-          scopes: readStringArray(p, 'scopes'),
+          ownerUserId: p.ownerUserId,
+          displayName: p.displayName,
+          scopes: p.scopes,
         },
         ctx.eventStore,
       );
@@ -623,16 +532,16 @@ export function identityHandlerEntries(
     },
   };
 
-  const spSetScopesHandler: IntentHandler = {
+  const spSetScopesHandler: IntentHandler<ServicePrincipalSetScopesPayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleServicePrincipalSetScopes(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          spId: readString(p, 'spId'),
-          scopes: readStringArray(p, 'scopes'),
+          spId: p.spId,
+          scopes: p.scopes,
         },
         ctx.eventStore,
         entities,
@@ -641,15 +550,15 @@ export function identityHandlerEntries(
     },
   };
 
-  const spDisableHandler: IntentHandler = {
+  const spDisableHandler: IntentHandler<ServicePrincipalDisablePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleServicePrincipalDisable(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          spId: readString(p, 'spId'),
+          spId: p.spId,
         },
         ctx.eventStore,
         entities,
@@ -660,47 +569,34 @@ export function identityHandlerEntries(
 
   // ----- Phase A3 — federated OIDC -------------------------------
 
-  const idpConfigureHandler: IntentHandler = {
+  const idpConfigureHandler: IntentHandler<IdpConfigurePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleIdpConfigure(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          displayName: readString(p, 'displayName'),
-          issuer: readString(p, 'issuer'),
-          audience: readString(p, 'audience'),
-          ...(readOptionalString(p, 'jwksUri') !== undefined
-            ? { jwksUri: readOptionalString(p, 'jwksUri') as string }
+          displayName: p.displayName,
+          issuer: p.issuer,
+          audience: p.audience,
+          ...(p.jwksUri !== undefined ? { jwksUri: p.jwksUri } : {}),
+          ...(p.groupClaimPath !== undefined
+            ? { groupClaimPath: p.groupClaimPath }
             : {}),
-          ...(readOptionalString(p, 'groupClaimPath') !== undefined
-            ? {
-                groupClaimPath: readOptionalString(p, 'groupClaimPath') as string,
-              }
+          ...(p.discoveryDocument !== undefined
+            ? { discoveryDocument: p.discoveryDocument }
             : {}),
-          ...(p['discoveryDocument'] !== undefined
-            ? {
-                discoveryDocument: p['discoveryDocument'] as never,
-              }
+          ...(p.requireInvite !== undefined
+            ? { requireInvite: p.requireInvite }
             : {}),
-          ...(p['requireInvite'] !== undefined
-            ? { requireInvite: Boolean(p['requireInvite']) }
+          ...(p.defaultRolesOnFirstLogin !== undefined
+            ? { defaultRolesOnFirstLogin: p.defaultRolesOnFirstLogin }
             : {}),
-          ...(Array.isArray(p['defaultRolesOnFirstLogin'])
-            ? {
-                defaultRolesOnFirstLogin: readStringArray(
-                  p,
-                  'defaultRolesOnFirstLogin',
-                ),
-              }
+          ...(p.roleMappings !== undefined
+            ? { roleMappings: p.roleMappings }
             : {}),
-          ...(Array.isArray(p['roleMappings'])
-            ? { roleMappings: p['roleMappings'] as never }
-            : {}),
-          ...(typeof p['priority'] === 'number'
-            ? { priority: p['priority'] as number }
-            : {}),
+          ...(p.priority !== undefined ? { priority: p.priority } : {}),
         },
         ctx.eventStore,
       );
@@ -708,15 +604,15 @@ export function identityHandlerEntries(
     },
   };
 
-  const idpActivateHandler: IntentHandler = {
+  const idpActivateHandler: IntentHandler<IdpActivatePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleIdpActivate(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          idpId: readString(p, 'idpId'),
+          idpId: p.idpId,
         },
         ctx.eventStore,
         entities,
@@ -725,15 +621,15 @@ export function identityHandlerEntries(
     },
   };
 
-  const idpDisableHandler: IntentHandler = {
+  const idpDisableHandler: IntentHandler<IdpDisablePayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleIdpDisable(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          idpId: readString(p, 'idpId'),
+          idpId: p.idpId,
         },
         ctx.eventStore,
         entities,
@@ -742,20 +638,18 @@ export function identityHandlerEntries(
     },
   };
 
-  const idpRotateJwksHandler: IntentHandler = {
+  const idpRotateJwksHandler: IntentHandler<IdpRotateJwksPayload> = {
     async handle(ctx, envelope): Promise<HandlerResult> {
-      const p = envelope.payload as Record<string, unknown>;
+      const p = envelope.payload;
       const result = await handleIdpRotateJwks(
         {
           tenantId: ctx.tenantId,
           correlationId: ctx.correlationId,
           principalId: ctx.principalId,
-          idpId: readString(p, 'idpId'),
-          ...(readOptionalString(p, 'jwksUri') !== undefined
-            ? { jwksUri: readOptionalString(p, 'jwksUri') as string }
-            : {}),
-          ...(p['discoveryDocument'] !== undefined
-            ? { discoveryDocument: p['discoveryDocument'] as never }
+          idpId: p.idpId,
+          ...(p.jwksUri !== undefined ? { jwksUri: p.jwksUri } : {}),
+          ...(p.discoveryDocument !== undefined
+            ? { discoveryDocument: p.discoveryDocument }
             : {}),
         },
         ctx.eventStore,
@@ -767,25 +661,32 @@ export function identityHandlerEntries(
 
   // Register Phase-A3 IDP wrappers in the table below. Local-scoped
   // here so the closure-captured `entities` is in scope.
+  //
+  // Each entry uses `asWide` to erase the typed-payload generic at the
+  // `HandlerRegistry` boundary — the registry's `get(actionId)` surface
+  // returns the wide `IntentHandler` shape (typed against
+  // `IntentPayload`), because ingress dispatches by `actionId` string
+  // and doesn't know payload-shape statically. The narrowed types only
+  // live *inside* the closures, where they bite at compile time.
   return [
-    ['Identity.User.Create', withLogging('User.Create', userCreateHandler)],
-    ['Identity.Membership.Create', withLogging('Membership.Create', membershipCreateHandler)],
-    ['Identity.Invite.Issue', withLogging('Invite.Issue', inviteIssueHandler)],
-    ['Identity.Invite.Accept', withLogging('Invite.Accept', inviteAcceptHandler)],
-    ['Identity.User.SetPassword', withLogging('User.SetPassword', passwordSetHandler)],
-    ['Identity.Login.Password', withLogging('Login.Password', passwordLoginHandler)],
+    ['Identity.User.Create', asWide(withLogging('User.Create', userCreateHandler))],
+    ['Identity.Membership.Create', asWide(withLogging('Membership.Create', membershipCreateHandler))],
+    ['Identity.Invite.Issue', asWide(withLogging('Invite.Issue', inviteIssueHandler))],
+    ['Identity.Invite.Accept', asWide(withLogging('Invite.Accept', inviteAcceptHandler))],
+    ['Identity.User.SetPassword', asWide(withLogging('User.SetPassword', passwordSetHandler))],
+    ['Identity.Login.Password', asWide(withLogging('Login.Password', passwordLoginHandler))],
     // Phase A2 — sessions.
-    ['Identity.AuthSession.Issue', withLogging('AuthSession.Issue', sessionIssueHandler)],
-    ['Identity.AuthSession.Refresh', withLogging('AuthSession.Refresh', sessionRefreshHandler)],
-    ['Identity.AuthSession.Revoke', withLogging('AuthSession.Revoke', sessionRevokeHandler)],
-    ['Identity.AuthSession.RevokeAllForUser', withLogging('AuthSession.RevokeAllForUser', sessionRevokeAllHandler)],
+    ['Identity.AuthSession.Issue', asWide(withLogging('AuthSession.Issue', sessionIssueHandler))],
+    ['Identity.AuthSession.Refresh', asWide(withLogging('AuthSession.Refresh', sessionRefreshHandler))],
+    ['Identity.AuthSession.Revoke', asWide(withLogging('AuthSession.Revoke', sessionRevokeHandler))],
+    ['Identity.AuthSession.RevokeAllForUser', asWide(withLogging('AuthSession.RevokeAllForUser', sessionRevokeAllHandler))],
     // Phase A2.7-A2.9 — service credentials.
-    ['Identity.ApiKey.Create', withLogging('ApiKey.Create', apiKeyCreateHandler)],
-    ['Identity.ApiKey.Rotate', withLogging('ApiKey.Rotate', apiKeyRotateHandler)],
-    ['Identity.ApiKey.Revoke', withLogging('ApiKey.Revoke', apiKeyRevokeHandler)],
-    ['Identity.ServicePrincipal.Create', withLogging('ServicePrincipal.Create', spCreateHandler)],
-    ['Identity.ServicePrincipal.SetScopes', withLogging('ServicePrincipal.SetScopes', spSetScopesHandler)],
-    ['Identity.ServicePrincipal.Disable', withLogging('ServicePrincipal.Disable', spDisableHandler)],
+    ['Identity.ApiKey.Create', asWide(withLogging('ApiKey.Create', apiKeyCreateHandler))],
+    ['Identity.ApiKey.Rotate', asWide(withLogging('ApiKey.Rotate', apiKeyRotateHandler))],
+    ['Identity.ApiKey.Revoke', asWide(withLogging('ApiKey.Revoke', apiKeyRevokeHandler))],
+    ['Identity.ServicePrincipal.Create', asWide(withLogging('ServicePrincipal.Create', spCreateHandler))],
+    ['Identity.ServicePrincipal.SetScopes', asWide(withLogging('ServicePrincipal.SetScopes', spSetScopesHandler))],
+    ['Identity.ServicePrincipal.Disable', asWide(withLogging('ServicePrincipal.Disable', spDisableHandler))],
     // OAuth token-issue/revoke flow goes through dedicated /oauth
     // routes (RFC 6749 wire shape, not the standard /api/v1/intents
     // path), so it intentionally has no registry entries here. See

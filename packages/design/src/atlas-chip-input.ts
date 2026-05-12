@@ -257,14 +257,16 @@ export class AtlasChipInput extends AtlasElement {
 
     // Tapping the wrapper focuses the input — emulating native field UX.
     control?.addEventListener('mousedown', (e) => {
-      const target = e.target as Element | null;
+      const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('.chip-remove')) return;
       if (target === input) return;
       e.preventDefault(); // don't blur on a wrapper tap
       input?.focus();
     });
 
-    input?.addEventListener('keydown', (e) => this._onKey(e));
+    input?.addEventListener('keydown', (e) => {
+      if (input) this._onKey(e, input);
+    });
     input?.addEventListener('blur', () => {
       // Commit on blur if the consumer typed but never hit Enter — matches
       // the “tab away” behaviour users expect from chip inputs in mature
@@ -276,7 +278,7 @@ export class AtlasChipInput extends AtlasElement {
     // Delegated remove handler for chips.
     const chipsEl = root.querySelector<HTMLElement>('.chips');
     chipsEl?.addEventListener('click', (e) => {
-      const target = e.target as Element | null;
+      const target = e.target instanceof Element ? e.target : null;
       const btn = target?.closest<HTMLElement>('.chip-remove');
       if (!btn) return;
       const idx = Number.parseInt(btn.dataset['index'] ?? '', 10);
@@ -360,8 +362,7 @@ export class AtlasChipInput extends AtlasElement {
 
   // ── Keyboard / commit ────────────────────────────────────────
 
-  private _onKey(e: KeyboardEvent): void {
-    const input = e.currentTarget as HTMLInputElement;
+  private _onKey(e: KeyboardEvent, input: HTMLInputElement): void {
     const v = input.value;
     switch (e.key) {
       case 'Enter':

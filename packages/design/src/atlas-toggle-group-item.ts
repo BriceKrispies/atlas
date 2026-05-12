@@ -81,6 +81,13 @@ interface ToggleGroupParent extends HTMLElement {
   toggleFromItem(item: HTMLElement): void;
 }
 
+function isToggleGroupParent(el: Element | null): el is ToggleGroupParent {
+  return el instanceof HTMLElement
+    && el.tagName.toLowerCase() === 'atlas-toggle-group'
+    && 'toggleFromItem' in el
+    && typeof (el as { toggleFromItem: unknown }).toggleFromItem === 'function';
+}
+
 export class AtlasToggleGroupItem extends AtlasElement {
   declare value: string;
   declare label: string;
@@ -162,8 +169,8 @@ export class AtlasToggleGroupItem extends AtlasElement {
       return;
     }
     const parent = this.parentElement;
-    if (parent && parent.tagName.toLowerCase() === 'atlas-toggle-group') {
-      (parent as ToggleGroupParent).toggleFromItem(this);
+    if (isToggleGroupParent(parent)) {
+      parent.toggleFromItem(this);
     }
   };
 }

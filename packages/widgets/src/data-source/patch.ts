@@ -15,8 +15,15 @@ export type RowKey<R extends Row = Row> =
 
 export function keyOf<R extends Row>(row: R, rowKey: RowKey<R> | undefined): string | number {
   if (typeof rowKey === 'function') return rowKey(row);
-  if (typeof rowKey === 'string') return (row as Record<string, unknown>)[rowKey] as string | number;
-  return (row as Record<string, unknown>)['id'] as string | number;
+  // `R extends Row` (`Record<string, unknown>`) — index reads are typed
+  // `unknown`. Narrow at runtime so we never return non-keyable values
+  // silently; an unknown shape surfaces as a clear runtime error rather
+  // than a `NaN` key.
+  const raw = typeof rowKey === 'string' ? row[rowKey] : row['id'];
+  if (typeof raw === 'string' || typeof raw === 'number') return raw;
+  throw new Error(
+    `keyOf: row key ${typeof rowKey === 'string' ? rowKey : 'id'} is ${typeof raw}, expected string|number`,
+  );
 }
 
 /**
@@ -86,14 +93,17 @@ export function diff<R extends Row>(
 
 function shallowEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-  const ao = a as Record<string, unknown>;
-  const bo = b as Record<string, unknown>;
-  const ak = Object.keys(ao);
-  const bk = Object.keys(bo);
+  if (!isRecord(a) || !isRecord(b)) return false;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
   if (ak.length !== bk.length) return false;
   for (const k of ak) {
-    if (!Object.is(ao[k], bo[k])) return false;
+    if (!Object.is(a[k], b[k])) return false;
   }
   return true;
+}
+
+/** Type-guard: `unknown` → `Record<string, unknown>`. */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
 }

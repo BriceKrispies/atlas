@@ -1,5 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, escapeText, uid } from './util.ts';
+import { isHtmlElement } from './internal/assert.ts';
 import './atlas-icon.ts';
 import {
   MultiSelectCore,
@@ -9,6 +10,29 @@ import {
   type Delta,
   type Status,
 } from './multi-select-core.ts';
+
+/**
+ * Narrow JSON.parse's `any` return to `unknown` at the boundary so the
+ * downstream APIs can take `unknown` / `readonly unknown[]` cleanly.
+ */
+function parseJsonUnknown(raw: string): unknown {
+  const parsed: unknown = JSON.parse(raw);
+  return parsed;
+}
+
+/**
+ * `parseJsonUnknown` + array-shape guard. Returns `[]` when the parsed
+ * value isn't an array; suitable for setOptions which only cares about
+ * the array surface and re-validates each item internally.
+ */
+function parseJsonArray(raw: string): readonly unknown[] {
+  const parsed = parseJsonUnknown(raw);
+  if (Array.isArray(parsed)) {
+    const arr: readonly unknown[] = parsed;
+    return arr;
+  }
+  return [];
+}
 
 const sheet = createSheet(`
   :host {
@@ -501,7 +525,7 @@ export class AtlasMultiSelect extends AtlasElement {
       case 'options':
         if (newVal) {
           try {
-            this._core.setOptions(JSON.parse(newVal) as readonly unknown[]);
+            this._core.setOptions(parseJsonArray(newVal));
           } catch {
             /* ignore */
           }
@@ -510,7 +534,7 @@ export class AtlasMultiSelect extends AtlasElement {
       case 'value':
         if (newVal !== null) {
           try {
-            this.value = JSON.parse(newVal);
+            this.value = parseJsonUnknown(newVal);
           } catch {
             this.value = String(newVal)
               .split(',')
@@ -553,7 +577,7 @@ export class AtlasMultiSelect extends AtlasElement {
     const optsAttr = this.getAttribute('options');
     if (optsAttr && this.options.length === 0) {
       try {
-        this._core.setOptions(JSON.parse(optsAttr));
+        this._core.setOptions(parseJsonArray(optsAttr));
       } catch {
         /* ignore */
       }
@@ -561,7 +585,7 @@ export class AtlasMultiSelect extends AtlasElement {
     const valAttr = this.getAttribute('value');
     if (valAttr && this.value.length === 0) {
       try {
-        this.value = JSON.parse(valAttr);
+        this.value = parseJsonUnknown(valAttr);
       } catch {
         this.value = valAttr
           .split(',')
@@ -752,8 +776,8 @@ export class AtlasMultiSelect extends AtlasElement {
     // Persistent handlers — wired once, never rewired.
     const trigger = root.querySelector<HTMLElement>('.trigger');
     trigger?.addEventListener('click', (e: Event) => {
-      const target = e.target as Element | null;
-      if (target?.closest('.chip-remove')) return;
+      const target = e.target;
+      if (isHtmlElement(target) && target.closest('.chip-remove')) return;
       this.toggle();
     });
     trigger?.addEventListener('keydown', (e) =>
@@ -762,14 +786,17 @@ export class AtlasMultiSelect extends AtlasElement {
 
     const search = root.querySelector<HTMLInputElement>('.search');
     if (search) {
-      search.addEventListener('input', (e: Event) => {
-        const t = e.target as HTMLInputElement;
-        this._core.setQuery(t.value);
+      // The listener is wired onto `search` itself, so we can read its
+      // current value directly — no need to narrow `e.target` past the
+      // EventTarget base type at the boundary.
+      search.addEventListener('input', () => {
+        const q = search.value;
+        this._core.setQuery(q);
         this.dispatchEvent(
           new CustomEvent('search', {
             bubbles: true,
             composed: true,
-            detail: { query: t.value },
+            detail: { query: q },
           }),
         );
       });
@@ -951,8 +978,8 @@ export class AtlasMultiSelect extends AtlasElement {
   // ── DOM → Core (delegated handlers) ──────────────────────────
 
   private _onOptionsClick(e: MouseEvent): void {
-    const target = e.target as Element | null;
-    if (!target) return;
+    const target = e.target;
+    if (!isHtmlElement(target)) return;
     const retry = target.closest('[data-action="retry"]');
     if (retry) {
       void this.reload();
@@ -984,8 +1011,8 @@ export class AtlasMultiSelect extends AtlasElement {
   }
 
   private _onChipsClick(e: MouseEvent): void {
-    const target = e.target as Element | null;
-    if (!target) return;
+    const target = e.target;
+    if (!isHtmlElement(target)) return;
     const rm = target.closest<HTMLElement>('.chip-remove');
     if (!rm) return;
     e.stopPropagation();
@@ -1038,8 +1065,8 @@ export class AtlasMultiSelect extends AtlasElement {
     // modern browsers, but composedPath is explicit and unambiguous.
     const path = typeof e.composedPath === 'function' ? e.composedPath() : null;
     if (path && path.includes(this)) return;
-    const target = e.target as Node | null;
-    if (target && this.contains(target)) return;
+    const target = e.target;
+    if (target instanceof Node && this.contains(target)) return;
     this.close();
   }
 
@@ -1111,8 +1138,8 @@ export class AtlasMultiSelect extends AtlasElement {
         break;
       }
       case ' ': {
-        const target = e.target as Element | null;
-        if (target?.classList.contains('search')) return;
+        const target = e.target;
+        if (isHtmlElement(target) && target.classList.contains('search')) return;
         e.preventDefault();
         const visible = this._core.visibleOptions();
         const idx = this._core.getState().activeIndex;

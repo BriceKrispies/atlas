@@ -13,6 +13,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { CachedRead, SingleFlight } from '@atlas/platform-core';
 import type { CacheSetOptions } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 /** Manual deferred — gate compute open until concurrent callers join. */
 function deferred<T = void>(): {
@@ -142,7 +143,8 @@ describe('CachedRead', () => {
     for (const r of results) {
       expect(r.ok).toBe(false);
       if (!r.ok) {
-        expect((r.e as Error).message).toBe('compute failed');
+        expect(r.e).toBeInstanceOf(Error);
+        expect(r.e instanceof Error ? r.e.message : '').toBe('compute failed');
       }
     }
     // No value should be cached on compute failure.
@@ -165,7 +167,7 @@ describe('CachedRead', () => {
 
     expect(value).toEqual({ id: 'doc-1' });
     expect(cache.setCalls).toHaveLength(1);
-    const call = cache.setCalls[0]!;
+    const call = assertDefined(cache.setCalls[0], 'setCalls length asserted above');
     expect(call.key).toBe('cache:doc:t-7:p-42');
     expect(call.value).toEqual({ id: 'doc-1' });
     expect(call.opts.ttlSeconds).toBe(600);

@@ -72,7 +72,10 @@ async function validateCase(c: Case): Promise<CaseResult> {
   } catch (e) {
     return {
       case: c,
-      outcome: { tag: 'fail', reason: `JSON load error: ${(e as Error).message}` },
+      outcome: {
+        tag: 'fail',
+        reason: `JSON load error: ${e instanceof Error ? e.message : String(e)}`,
+      },
     };
   }
 
@@ -82,7 +85,7 @@ async function validateCase(c: Case): Promise<CaseResult> {
     validate(c.kind, value);
   } catch (e) {
     validationOk = false;
-    validationErrMsg = (e as Error).message;
+    validationErrMsg = e instanceof Error ? e.message : String(e);
   }
 
   // Invert outcome for `__invalid__` fixtures: a validation failure is the

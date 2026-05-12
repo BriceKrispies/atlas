@@ -18,6 +18,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { CapabilityBridge } from '../src/capabilities.ts';
 import { CapabilityDeniedError } from '../src/errors.ts';
 import type { CapabilityTraceEvent, WidgetManifest } from '../src/types.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 const baseManifest: WidgetManifest = {
   widgetId: 'demo.widget',
@@ -95,7 +96,11 @@ describe('CapabilityBridge — happy path', () => {
 
     await bridge.invoke('inst-x', 'navigation.go', { url: '/' });
     expect(handler).toHaveBeenCalledTimes(1);
-    const ctx = handler.mock.calls[0]![1];
+    const firstCall = assertDefined(
+      handler.mock.calls[0],
+      'handler must have been invoked exactly once',
+    );
+    const ctx = firstCall[1];
     expect(ctx.instanceId).toBe('inst-x');
     expect(ctx.manifest.widgetId).toBe('demo.widget');
   });
@@ -141,12 +146,18 @@ describe('CapabilityBridge — revoke', () => {
 describe('CapabilityBridge — register() input validation', () => {
   it('throws TypeError when handler is not a function', () => {
     const bridge = new CapabilityBridge();
+    // Adversarial test fixture: feed invalid runtime values (undefined / number)
+    // to assert the runtime typeof-function guard fires. The double-cast is
+    // unavoidable because the test is verifying the runtime check exists for
+    // callers that bypass TypeScript (JS consumers, dynamic imports).
+    /* eslint-disable atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: adversarial test fixture exercising runtime typeof-function guard against invalid handler arguments */
     expect(() =>
       bridge.register('x.y', undefined as unknown as () => unknown),
     ).toThrow(TypeError);
     expect(() =>
       bridge.register('x.y', 42 as unknown as () => unknown),
     ).toThrow(TypeError);
+    /* eslint-enable atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion */
   });
 });
 

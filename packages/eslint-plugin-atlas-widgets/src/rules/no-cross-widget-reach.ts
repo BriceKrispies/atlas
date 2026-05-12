@@ -11,14 +11,9 @@
  * becomes visible in review.
  */
 
-import type { Rule } from 'eslint';
-import type {
-  CallExpression,
-  Identifier,
-  ImportDeclaration,
-  MemberExpression,
-  Node as EstreeNode,
-} from 'estree';
+import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from '@typescript-eslint/utils';
+
+const createRule = ESLintUtils.RuleCreator.withoutDocs;
 
 const FORBIDDEN_GLOBALS = new Set<string>([
   'localStorage',
@@ -51,9 +46,8 @@ function isWidgetImport(source: unknown): boolean {
   return false;
 }
 
-type NodeWithParent = EstreeNode & { parent?: EstreeNode };
-
-const rule: Rule.RuleModule = {
+export default createRule({
+  name: 'no-cross-widget-reach',
   meta: {
     type: 'problem',
     docs: {
@@ -76,57 +70,57 @@ const rule: Rule.RuleModule = {
         'Widgets cannot read or write document.cookie — it is a shared side channel. Use a declared capability.',
     },
   },
-
-  create(context: Rule.RuleContext): Rule.RuleListener {
+  defaultOptions: [],
+  create(context) {
     return {
-      ImportDeclaration(node: ImportDeclaration): void {
-        const src = node.source && node.source.value;
+      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
+        const src = node.source.value;
         if (isWidgetImport(src)) {
           context.report({
-            node: node.source as unknown as Rule.Node,
+            node: node.source,
             messageId: 'import',
             data: { source: String(src) },
           });
         }
       },
 
-      Identifier(node: Identifier): void {
+      Identifier(node: TSESTree.Identifier): void {
         if (!FORBIDDEN_GLOBALS.has(node.name)) return;
         // Skip the node when it's the NAME in a declaration or member
         // expression, not a reference to the global. We only want to
         // flag actual reads/writes through the identifier.
-        const parent = (node as NodeWithParent).parent;
+        const parent = node.parent;
         if (!parent) return;
-        if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return;
-        if (parent.type === 'Property' && parent.key === node && !parent.computed) return;
-        if (parent.type === 'VariableDeclarator' && parent.id === node) return;
-        if (parent.type === 'FunctionDeclaration' && parent.id === node) return;
-        if (parent.type === 'FunctionExpression' && parent.id === node) return;
-        if (parent.type === 'ClassDeclaration' && parent.id === node) return;
-        if (parent.type === 'ClassExpression' && parent.id === node) return;
-        if (parent.type === 'MethodDefinition' && parent.key === node && !parent.computed) return;
-        if (parent.type === 'ImportSpecifier' && parent.imported === node) return;
-        if (parent.type === 'ImportDefaultSpecifier' && parent.local === node) return;
-        if (parent.type === 'ImportSpecifier' && parent.local === node) return;
-        if (parent.type === 'LabeledStatement' && parent.label === node) return;
+        if (parent.type === AST_NODE_TYPES.MemberExpression && parent.property === node && !parent.computed) return;
+        if (parent.type === AST_NODE_TYPES.Property && parent.key === node && !parent.computed) return;
+        if (parent.type === AST_NODE_TYPES.VariableDeclarator && parent.id === node) return;
+        if (parent.type === AST_NODE_TYPES.FunctionDeclaration && parent.id === node) return;
+        if (parent.type === AST_NODE_TYPES.FunctionExpression && parent.id === node) return;
+        if (parent.type === AST_NODE_TYPES.ClassDeclaration && parent.id === node) return;
+        if (parent.type === AST_NODE_TYPES.ClassExpression && parent.id === node) return;
+        if (parent.type === AST_NODE_TYPES.MethodDefinition && parent.key === node && !parent.computed) return;
+        if (parent.type === AST_NODE_TYPES.ImportSpecifier && parent.imported === node) return;
+        if (parent.type === AST_NODE_TYPES.ImportDefaultSpecifier && parent.local === node) return;
+        if (parent.type === AST_NODE_TYPES.ImportSpecifier && parent.local === node) return;
+        if (parent.type === AST_NODE_TYPES.LabeledStatement && parent.label === node) return;
         context.report({
-          node: node as unknown as Rule.Node,
+          node,
           messageId: 'globalRef',
           data: { name: node.name },
         });
       },
 
       // window.parent / window.top / window.opener / self.parent / globalThis.top
-      MemberExpression(node: MemberExpression): void {
+      MemberExpression(node: TSESTree.MemberExpression): void {
         const obj = node.object;
         const prop = node.property;
         const propName: string | false =
-          !node.computed && prop && prop.type === 'Identifier' ? prop.name : false;
+          !node.computed && prop.type === AST_NODE_TYPES.Identifier ? prop.name : false;
 
         const objName: string | null =
-          obj && obj.type === 'Identifier'
+          obj.type === AST_NODE_TYPES.Identifier
             ? obj.name
-            : obj && obj.type === 'ThisExpression'
+            : obj.type === AST_NODE_TYPES.ThisExpression
               ? 'this'
               : null;
 
@@ -136,7 +130,7 @@ const rule: Rule.RuleModule = {
           FORBIDDEN_WINDOW_PROPS.has(propName)
         ) {
           context.report({
-            node: node as unknown as Rule.Node,
+            node,
             messageId: 'windowProp',
             data: { name: propName },
           });
@@ -145,49 +139,46 @@ const rule: Rule.RuleModule = {
 
         if (objName === 'document' && propName === 'cookie') {
           context.report({
-            node: node as unknown as Rule.Node,
+            node,
             messageId: 'documentCookie',
           });
           return;
         }
       },
 
-      CallExpression(node: CallExpression): void {
+      CallExpression(node: TSESTree.CallExpression): void {
         const callee = node.callee;
-        if (!callee) return;
 
         // Direct call to postMessage(...) — identifier form.
-        if (callee.type === 'Identifier' && callee.name === 'postMessage') {
+        if (callee.type === AST_NODE_TYPES.Identifier && callee.name === 'postMessage') {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'postMessage',
           });
           return;
         }
 
-        if (callee.type === 'MemberExpression' && !callee.computed) {
+        if (callee.type === AST_NODE_TYPES.MemberExpression && !callee.computed) {
           const propName =
-            callee.property && callee.property.type === 'Identifier'
-              ? callee.property.name
-              : null;
+            callee.property.type === AST_NODE_TYPES.Identifier ? callee.property.name : null;
           const obj = callee.object;
           const objName: string | null =
-            obj && obj.type === 'Identifier' ? obj.name : null;
+            obj.type === AST_NODE_TYPES.Identifier ? obj.name : null;
 
           // anything.postMessage(...) — but only flag when the receiver is
           // plausibly a window handle. Common cases: parent.postMessage,
           // window.parent.postMessage, iframe.contentWindow.postMessage.
           if (propName === 'postMessage') {
             context.report({
-              node: callee as unknown as Rule.Node,
+              node: callee,
               messageId: 'postMessage',
             });
             return;
           }
 
-          if (objName === 'document' && propName && FORBIDDEN_DOCUMENT_QUERIES.has(propName)) {
+          if (objName === 'document' && propName !== null && FORBIDDEN_DOCUMENT_QUERIES.has(propName)) {
             context.report({
-              node: callee as unknown as Rule.Node,
+              node: callee,
               messageId: 'documentQuery',
               data: { name: propName },
             });
@@ -200,6 +191,4 @@ const rule: Rule.RuleModule = {
       // handler above — no separate NewExpression handler needed.
     };
   },
-};
-
-export default rule;
+});

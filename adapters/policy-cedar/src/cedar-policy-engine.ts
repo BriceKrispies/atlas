@@ -164,19 +164,37 @@ const defaultLoader: CedarWasmLoader = async () => {
   // The nodejs subpackage is published as CommonJS but exposes named
   // exports. The dynamic import returns a namespace whose `default` is
   // the module record; named exports are also reachable directly.
+  // The single boundary cast lives here, justified once: cedar-wasm
+  // ships no TS types for the dynamic-import shape, so we widen to a
+  // record-of-unknown and re-narrow each entry through a typed reader.
+  // The single boundary cast lives here, justified once: cedar-wasm
+  // ships no TS types for the dynamic-import namespace, so we widen to
+  // `unknown` and re-narrow each function entry through `pickFn` below.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- library: @cedar-policy/cedar-wasm/nodejs ships no TS types for the dynamic-import namespace; entries are narrowed structurally through pickFn
   const mod = (await import(
     '@cedar-policy/cedar-wasm/nodejs'
   )) as unknown as Record<string, unknown> & { default?: Record<string, unknown> };
-  const isAuthorized = (mod['isAuthorized'] ?? mod.default?.['isAuthorized']) as
-    | CedarWasm['isAuthorized']
-    | undefined;
-  const policySetTextToParts = (mod['policySetTextToParts'] ??
-    mod.default?.['policySetTextToParts']) as
-    | CedarWasm['policySetTextToParts']
-    | undefined;
-  const validate = (mod['validate'] ?? mod.default?.['validate']) as
-    | NonNullable<CedarWasm['validate']>
-    | undefined;
+  // Pull a function-typed export from either the namespace or its
+  // `default` member. We can verify "is a function" at runtime but
+  // cannot prove the signature matches the Cedar interface — that's
+  // the library boundary. The two `as F` casts are the per-entry
+  // narrowing exception consolidated to this helper.
+  function pickFn<F extends (...a: never[]) => unknown>(name: string): F | undefined {
+    const direct = mod[name];
+    if (typeof direct === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
+      return direct as F;
+    }
+    const fromDefault = mod.default?.[name];
+    if (typeof fromDefault === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
+      return fromDefault as F;
+    }
+    return undefined;
+  }
+  const isAuthorized = pickFn<CedarWasm['isAuthorized']>('isAuthorized');
+  const policySetTextToParts = pickFn<CedarWasm['policySetTextToParts']>('policySetTextToParts');
+  const validate = pickFn<NonNullable<CedarWasm['validate']>>('validate');
   if (typeof isAuthorized !== 'function') {
     throw new Error(
       'cedar-wasm: failed to resolve isAuthorized from @cedar-policy/cedar-wasm/nodejs',

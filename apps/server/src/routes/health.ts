@@ -8,6 +8,7 @@
  */
 
 import { Hono } from 'hono';
+import { errorMessage } from '../middleware/errors.ts';
 import type { AppState } from '../bootstrap.ts';
 
 const PACKAGE_VERSION = '0.1.0';
@@ -30,7 +31,7 @@ export function healthRoutes(state: AppState): Hono {
       checks['control_plane_db'] = 'ok';
     } catch (e) {
       ready = false;
-      checks['control_plane_db'] = (e as Error).message;
+      checks['control_plane_db'] = errorMessage(e);
     }
 
     if (state.controlPlaneRegistry.hasAction('Catalog.SeedPackage.Apply')) {

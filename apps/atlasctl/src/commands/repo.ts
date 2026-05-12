@@ -14,6 +14,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { isAbsolute, join, resolve as pathResolve } from 'node:path';
 import { request, type ClientOptions } from '../client.ts';
+import { asRecord, readString } from '../json.ts';
 import { emitResult, type OutputFlags } from '../output.ts';
 import { readRepoArray } from './push.ts';
 
@@ -115,9 +116,7 @@ export async function runRepoShow(
 
   if (flags.quiet) return 0;
 
-  const obj = (typeof detail === 'object' && detail !== null
-    ? (detail as Record<string, unknown>)
-    : {}) as Record<string, unknown>;
+  const obj = asRecord(detail) ?? {};
   const lines: string[] = [];
   lines.push(`slug:           ${str(obj['repoSlug']) ?? slug}`);
   lines.push(`repoId:         ${str(obj['repoId']) ?? repo.repoId}`);
@@ -214,9 +213,17 @@ export async function runRepoDownload(
   }
 
   const dest = createWriteStream(outPath);
-  // `fetch` returns a web ReadableStream; Node's `Readable.fromWeb` gives
-  // us a node-side stream we can pipe. Available in Node 18+.
-  const nodeStream = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
+  // `fetch` returns a web ReadableStream typed against the global lib's
+  // `ReadableStream<Uint8Array>`. Node's `Readable.fromWeb` typings expect
+  // `node:stream/web`'s `ReadableStream` which has a different generic
+  // parameter (`<any>`) — TypeScript treats the two as structurally
+  // distinct DOM-vs-node types. Passing through `unknown` is the
+  // documented Node-typings workaround until DefinitelyTyped unifies
+  // them; the runtime objects are interchangeable. Available in Node 18+.
+  const nodeStream = Readable.fromWeb(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: DOM ReadableStream<Uint8Array> vs node:stream/web ReadableStream<any> are structurally identical at runtime but TS-incompatible across the lib boundary.
+    res.body as Parameters<typeof Readable.fromWeb>[0],
+  );
   await pipeline(nodeStream, dest);
 
   const correlationId =
@@ -270,11 +277,8 @@ async function fetchLatestRevisionId(
       path: `/api/v1/repositories/${encodeURIComponent(repoId)}`,
     });
     if (res.status < 200 || res.status >= 300) return null;
-    return str(
-      typeof res.body === 'object' && res.body !== null
-        ? (res.body as Record<string, unknown>)['latestRevisionId']
-        : undefined,
-    );
+    const body = asRecord(res.body);
+    return body === null ? null : str(body['latestRevisionId']);
   } catch {
     return null;
   }
@@ -298,15 +302,18 @@ function resolveOutPath(
 
 function readFullRepoArray(body: unknown): RepoSummary[] {
   // Tolerant: accept bare arrays or { items | repositories | data: [...] }.
-  let arr: unknown;
-  if (Array.isArray(body)) arr = body;
-  else if (typeof body === 'object' && body !== null) {
-    const o = body as Record<string, unknown>;
-    if (Array.isArray(o['items'])) arr = o['items'];
-    else if (Array.isArray(o['repositories'])) arr = o['repositories'];
-    else if (Array.isArray(o['data'])) arr = o['data'];
+  let arr: readonly unknown[] | null = null;
+  if (Array.isArray(body)) {
+    arr = body;
+  } else {
+    const o = asRecord(body);
+    if (o !== null) {
+      if (Array.isArray(o['items'])) arr = o['items'];
+      else if (Array.isArray(o['repositories'])) arr = o['repositories'];
+      else if (Array.isArray(o['data'])) arr = o['data'];
+    }
   }
-  if (!Array.isArray(arr)) {
+  if (arr === null) {
     // Fall back to the lite reader so we still see ids if shape is
     // off-canon — used by `push.ts` for slug→id resolution.
     return readRepoArray(body).map((r) => ({
@@ -316,8 +323,8 @@ function readFullRepoArray(body: unknown): RepoSummary[] {
   }
   const out: RepoSummary[] = [];
   for (const e of arr) {
-    if (typeof e !== 'object' || e === null) continue;
-    const r = e as Record<string, unknown>;
+    const r = asRecord(e);
+    if (r === null) continue;
     const id = str(r['repoId']);
     const slug = str(r['repoSlug']);
     if (id === null || slug === null) continue;
@@ -340,11 +347,9 @@ function str(v: unknown): string | null {
 }
 
 function extractErrorCode(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null) return undefined;
-  const b = body as Record<string, unknown>;
-  if (typeof b['code'] === 'string') return b['code'];
-  if (typeof b['errorCode'] === 'string') return b['errorCode'];
-  return undefined;
+  const b = asRecord(body);
+  if (b === null) return undefined;
+  return readString(b, 'code') ?? readString(b, 'errorCode') ?? undefined;
 }
 
 function formatTable(rows: string[][]): string {

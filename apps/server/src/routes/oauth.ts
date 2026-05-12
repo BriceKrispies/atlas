@@ -41,6 +41,29 @@ import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
 
+/** Type guard: narrows `unknown` to a plain JSON object (not array, not null). */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Read a string field from an arbitrary value, returning `undefined` when absent/non-string. */
+function readString(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** Narrow a thrown value to a printable message. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/**
+ * OAuth response statuses are a closed set (RFC 6749 §5.2 + RFC 7009 §2.2).
+ * Constraining the parameter to the literal union eliminates the
+ * widening cast that Hono's `c.json()` overload would otherwise demand.
+ */
+type OAuthStatus = 400 | 401 | 403 | 404 | 500;
+
 /**
  * RFC 6749-shaped error envelope. The OAuth spec mandates
  * `error` + optional `error_description` keys on the JSON body —
@@ -51,15 +74,12 @@ function oauthError(
   c: AppCtx,
   error: string,
   description: string,
-  status: number,
+  status: OAuthStatus,
 ): Response {
-  return c.json(
-    { error, error_description: description },
-    status as 400 | 401 | 403 | 404 | 500,
-  );
+  return c.json({ error, error_description: description }, status);
 }
 
-const ATLAS_TO_OAUTH_ERROR: Record<string, { code: string; status: number }> = {
+const ATLAS_TO_OAUTH_ERROR: Record<string, { code: string; status: OAuthStatus }> = {
   OAUTH_INVALID_GRANT: { code: 'invalid_grant', status: 400 },
   OAUTH_INVALID_CLIENT: { code: 'invalid_client', status: 401 },
   OAUTH_INVALID_SCOPE: { code: 'invalid_scope', status: 400 },
@@ -89,24 +109,23 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
       return oauthError(c, 'invalid_request', 'tenant unresolved', 400);
     }
 
-    let grantType: string | undefined;
-    let clientId: string | undefined;
-    let clientSecret: string | undefined;
-    let scope: string | undefined;
+    // Body parsing supports both form-encoded (OAuth spec MUST) and JSON
+    // (common deviation). `c.req.parseBody()` returns `Record<string,
+    // string | File>` typed; `c.req.json()` returns `unknown`. Both are
+    // narrowed to `Record<string, unknown>` so we can index uniformly and
+    // pull strings via `readString`.
+    let bodyMap: Record<string, unknown>;
     const contentType = c.req.header('content-type') ?? '';
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      const form = await c.req.parseBody();
-      grantType = typeof form['grant_type'] === 'string' ? (form['grant_type'] as string) : undefined;
-      clientId = typeof form['client_id'] === 'string' ? (form['client_id'] as string) : undefined;
-      clientSecret = typeof form['client_secret'] === 'string' ? (form['client_secret'] as string) : undefined;
-      scope = typeof form['scope'] === 'string' ? (form['scope'] as string) : undefined;
+      bodyMap = await c.req.parseBody();
     } else {
-      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-      grantType = typeof body['grant_type'] === 'string' ? (body['grant_type'] as string) : undefined;
-      clientId = typeof body['client_id'] === 'string' ? (body['client_id'] as string) : undefined;
-      clientSecret = typeof body['client_secret'] === 'string' ? (body['client_secret'] as string) : undefined;
-      scope = typeof body['scope'] === 'string' ? (body['scope'] as string) : undefined;
+      const raw: unknown = await c.req.json().catch(() => ({}));
+      bodyMap = isJsonObject(raw) ? raw : {};
     }
+    const grantType = readString(bodyMap['grant_type']);
+    let clientId = readString(bodyMap['client_id']);
+    let clientSecret = readString(bodyMap['client_secret']);
+    const scope = readString(bodyMap['scope']);
 
     // HTTP Basic auth fallback for client credentials (RFC 6749 §2.3.1).
     const authHeader = c.req.header('authorization');
@@ -144,7 +163,7 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
         properties: {
           tenantId,
           route: 'oauth.token',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return oauthError(c, 'invalid_request', 'tenant not found', 404);
@@ -198,15 +217,15 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
     if (!tenantId) {
       return oauthError(c, 'invalid_request', 'tenant unresolved', 400);
     }
-    let token: string | undefined;
+    let bodyMap: Record<string, unknown>;
     const contentType = c.req.header('content-type') ?? '';
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      const form = await c.req.parseBody();
-      token = typeof form['token'] === 'string' ? (form['token'] as string) : undefined;
+      bodyMap = await c.req.parseBody();
     } else {
-      const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-      token = typeof body['token'] === 'string' ? (body['token'] as string) : undefined;
+      const raw: unknown = await c.req.json().catch(() => ({}));
+      bodyMap = isJsonObject(raw) ? raw : {};
     }
+    const token = readString(bodyMap['token']);
     if (!token) {
       return oauthError(c, 'invalid_request', 'missing token', 400);
     }
@@ -219,7 +238,7 @@ export function oauthRoutes(state: AppState): Hono<{ Variables: ServerVariables 
         properties: {
           tenantId,
           route: 'oauth.revoke',
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
       return oauthError(c, 'invalid_request', 'tenant not found', 404);

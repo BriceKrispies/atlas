@@ -187,8 +187,11 @@ export class AtlasBreadcrumbs extends AtlasElement {
     if (name === 'separator') this._render();
   }
 
-  private _isItem(el: Element): boolean {
-    return el.tagName.toLowerCase() === 'atlas-breadcrumb-item';
+  private _isItem(el: Element): el is HTMLElement {
+    return (
+      el instanceof HTMLElement &&
+      el.tagName.toLowerCase() === 'atlas-breadcrumb-item'
+    );
   }
 
   private _buildShell(): void {
@@ -218,7 +221,9 @@ export class AtlasBreadcrumbs extends AtlasElement {
   private _render(): void {
     if (!this._list) return;
     // Reset visual collapsed state on every render.
-    const items = Array.from(this.children).filter(this._isItem) as HTMLElement[];
+    const items = Array.from(this.children).filter((el): el is HTMLElement =>
+      this._isItem(el),
+    );
     for (const item of items) item.removeAttribute('collapsed');
 
     // Build the list. We use real <a>-style anchors via slotted items,
@@ -315,7 +320,9 @@ export class AtlasBreadcrumbs extends AtlasElement {
    */
   private _recomputeOverflow(): void {
     if (!this._list) return;
-    const items = Array.from(this.children).filter(this._isItem) as HTMLElement[];
+    const items = Array.from(this.children).filter((el): el is HTMLElement =>
+      this._isItem(el),
+    );
     if (items.length <= 2) {
       // No middle to collapse; hide the trigger.
       if (this._overflowItem) this._overflowItem.hidden = true;

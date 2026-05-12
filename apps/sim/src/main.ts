@@ -299,6 +299,22 @@ async function buildContext(
   };
 }
 
+/**
+ * Read a `SearchParams` shape out of the loose
+ * `Record<string, unknown>` the BDD surface accepts. The harness passes
+ * raw JSON from step files; the per-field type-checks here ensure the
+ * `searchCatalog` module call sees a well-typed value without a
+ * structural cast.
+ */
+function coerceSearchParams(raw: Record<string, unknown>): SearchParams {
+  const q = typeof raw['q'] === 'string' ? raw['q'] : '';
+  const out: SearchParams = { q };
+  if (typeof raw['type'] === 'string') out.type = raw['type'];
+  if (typeof raw['pageSize'] === 'number') out.pageSize = raw['pageSize'];
+  if (typeof raw['cursor'] === 'string') out.cursor = raw['cursor'];
+  return out;
+}
+
 function failureFromIngressError(e: IngressError): IngressFailure {
   const failure: IngressFailure = {
     code: e.code,
@@ -344,7 +360,7 @@ function buildActionSurface(ctx: BootedContext): AtlasSimAction {
       return getVariantTable(ctx.queryDeps, familyKey, params ?? {});
     },
     searchCatalog(params) {
-      return searchCatalog(ctx.queryDeps, params as unknown as SearchParams);
+      return searchCatalog(ctx.queryDeps, coerceSearchParams(params));
     },
 
     listContentPages() {

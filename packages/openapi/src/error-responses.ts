@@ -10,7 +10,7 @@
 
 const ERROR_ENVELOPE_REF = { $ref: '#/components/schemas/ErrorEnvelope' };
 
-export const STANDARD_ERROR_RESPONSES = {
+export const STANDARD_ERROR_RESPONSES: Record<string, unknown> = {
   BadRequest: {
     description: 'Malformed request — body shape, missing required fields, etc.',
     content: { 'application/json': { schema: ERROR_ENVELOPE_REF } },
@@ -35,7 +35,7 @@ export const STANDARD_ERROR_RESPONSES = {
     description: 'Internal error reaching downstream storage. Retry with the same idempotencyKey.',
     content: { 'application/json': { schema: ERROR_ENVELOPE_REF } },
   },
-} as const;
+};
 
 /** Default response set for an authenticated write operation (intent submit). */
 export function intentResponses(): Record<string, unknown> {
@@ -58,7 +58,7 @@ export function intentResponses(): Record<string, unknown> {
 
 /** Inline OpenAPI components.responses entries — referenced by intentResponses(). */
 export function buildErrorResponseComponents(): Record<string, unknown> {
-  return STANDARD_ERROR_RESPONSES as unknown as Record<string, unknown>;
+  return STANDARD_ERROR_RESPONSES;
 }
 
 /** The IntentAcceptedResponse schema — what 202 returns from POST /api/v1/intents. */

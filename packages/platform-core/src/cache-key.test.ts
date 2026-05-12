@@ -80,9 +80,11 @@ describe('cache-key parity (mirrors crates/core/src/cache.rs tests)', () => {
     try {
       buildCacheKey(artifact, keyValues);
     } catch (e) {
-      expect(e).toBeInstanceOf(CacheError);
-      expect((e as CacheError).kind).toBe('MissingRequiredKeyPart');
-      expect((e as CacheError).detail.placeholder).toBe('pageId');
+      if (!(e instanceof CacheError)) {
+        throw new Error(`expected CacheError, got ${String(e)}`);
+      }
+      expect(e.kind).toBe('MissingRequiredKeyPart');
+      expect(e.detail.placeholder).toBe('pageId');
     }
   });
 
@@ -105,13 +107,14 @@ describe('cache-key parity (mirrors crates/core/src/cache.rs tests)', () => {
       renderTags(artifact, keyValues);
       throw new Error('expected throw');
     } catch (e) {
-      expect(e).toBeInstanceOf(CacheError);
-      const err = e as CacheError;
+      if (!(e instanceof CacheError)) {
+        throw new Error(`expected CacheError, got ${String(e)}`);
+      }
       // render_tags hits the per-tag placeholder check before
       // validate_cache_key_inputs is reached, matching Rust's ordering:
       // it reports MissingPlaceholder, not MissingRequiredKeyPart.
-      expect(err.kind).toBe('MissingPlaceholder');
-      expect(err.detail.placeholder).toBe('pageId');
+      expect(e.kind).toBe('MissingPlaceholder');
+      expect(e.detail.placeholder).toBe('pageId');
     }
   });
 
@@ -125,8 +128,10 @@ describe('cache-key parity (mirrors crates/core/src/cache.rs tests)', () => {
       validateCacheArtifact(artifact);
       throw new Error('expected throw');
     } catch (e) {
-      expect(e).toBeInstanceOf(CacheError);
-      expect((e as CacheError).kind).toBe('InvalidPrivacyConfiguration');
+      if (!(e instanceof CacheError)) {
+        throw new Error(`expected CacheError, got ${String(e)}`);
+      }
+      expect(e.kind).toBe('InvalidPrivacyConfiguration');
     }
   });
 

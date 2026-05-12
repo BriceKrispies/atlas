@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   actionIdToOperationId,
   expandIntents,
@@ -17,13 +18,16 @@ const minimalEnvelope = {
   },
 } as const;
 
+// Build a manifest using only the fields ModuleManifest declares — earlier
+// versions of this test stamped a stray `manifestVersion`/`moduleType` on
+// the literal and laundered it through `as unknown as ModuleManifest`. The
+// extra fields aren't part of the contract; dropping them lets the literal
+// satisfy the interface directly.
 function makeManifest(actions: ModuleManifest['actions']): ModuleManifest {
   return {
-    manifestVersion: 2,
     moduleId: 'content-pages',
     displayName: 'Content Pages',
     version: '0.1.0',
-    moduleType: ['api'],
     capabilities: ['content-management'],
     actions,
     resources: [],
@@ -33,7 +37,38 @@ function makeManifest(actions: ModuleManifest['actions']): ModuleManifest {
     uiRoutes: [],
     jobs: [],
     cacheArtifacts: [],
-  } as unknown as ModuleManifest;
+  };
+}
+
+/**
+ * Type-guard: narrows `unknown` to a JSON-object (non-null, non-array).
+ * Once narrowed, members are still `unknown` — every leaf field stays
+ * typed at the boundary and must narrow before use.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Narrow a freshly-built openapi schema component to its `{ properties }`
+ * shape. Replaces a `someEntry as { properties?: … } | undefined` cast +
+ * non-null-bang chain: the runtime guard fails loudly if the generator
+ * stops emitting `properties` rather than crashing on a downstream
+ * undefined deref.
+ */
+function envelopeProps(
+  components: Readonly<Record<string, unknown>>,
+  key: string,
+): Record<string, unknown> {
+  const entry = assertDefined(components[key], `schemaComponents[${key}]`);
+  if (!isJsonObject(entry)) {
+    throw new Error(`schemaComponents[${key}] not an object`);
+  }
+  const props = entry['properties'];
+  if (!isJsonObject(props)) {
+    throw new Error(`schemaComponents[${key}].properties missing`);
+  }
+  return props;
 }
 
 describe('actionIdToOperationId', () => {
@@ -57,13 +92,13 @@ describe('expandIntents', () => {
         resourceType: 'Page',
         verb: 'create',
         auditLevel: 'INFO',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
       {
         actionId: 'ContentPages.Page.Delete',
         resourceType: 'Page',
         verb: 'delete',
         auditLevel: 'SENSITIVE',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
     ]);
 
     const result = expandIntents({
@@ -87,13 +122,13 @@ describe('expandIntents', () => {
         resourceType: 'Page',
         verb: 'create',
         auditLevel: 'INFO',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
       {
         actionId: 'Tenancy.Signup.Approve',
         resourceType: 'SignupRequest',
         verb: 'apply',
         auditLevel: 'SENSITIVE',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
     ]);
 
     const result = expandIntents({
@@ -116,9 +151,9 @@ describe('expandIntents', () => {
         resourceType: 'Page',
         verb: 'create',
         auditLevel: 'INFO',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
     ]);
-    const m2 = { ...makeManifest([]), moduleId: 'authz' } as ModuleManifest;
+    const m2 = { ...makeManifest([]), moduleId: 'authz' } satisfies ModuleManifest;
 
     const result = expandIntents({
       audience: 'tenant',
@@ -138,7 +173,7 @@ describe('expandIntents', () => {
         resourceType: 'Page',
         verb: 'create',
         auditLevel: 'INFO',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
     ]);
 
     const payloadSchema = {
@@ -157,15 +192,19 @@ describe('expandIntents', () => {
       envelopeSchema: minimalEnvelope,
     });
 
-    const envelope = result.schemaComponents['Envelope_contentPagesPageCreate'] as
-      | { properties?: Record<string, unknown> }
-      | undefined;
-    expect(envelope).toBeDefined();
-    const props = envelope!.properties!;
+    const props = envelopeProps(
+      result.schemaComponents,
+      'Envelope_contentPagesPageCreate',
+    );
     // payload mirror
     expect(props['payload']).toEqual(payloadSchema);
-    // eventType stamped to ContentPages.PageCreated
-    const eventType = props['eventType'] as Record<string, unknown>;
+    // eventType stamped to ContentPages.PageCreated. `eventType` is the
+    // generator's own output — assert its object shape via the type-guard
+    // before reading `.const`, no cast required.
+    const eventType = props['eventType'];
+    if (!isJsonObject(eventType)) {
+      throw new Error('eventType prop is not a JSON object');
+    }
     expect(eventType['const']).toBe('ContentPages.PageCreated');
   });
 
@@ -176,7 +215,7 @@ describe('expandIntents', () => {
         resourceType: 'Policy',
         verb: 'create',
         auditLevel: 'INFO',
-      } as ModuleManifest['actions'][number],
+      } satisfies ModuleManifest['actions'][number],
     ]);
 
     const result = expandIntents({
@@ -187,11 +226,7 @@ describe('expandIntents', () => {
       envelopeSchema: minimalEnvelope,
     });
 
-    const envelope = result.schemaComponents['Envelope_authzPolicyCreate'] as
-      | { properties?: Record<string, unknown> }
-      | undefined;
-    expect(envelope).toBeDefined();
-    const props = envelope!.properties!;
+    const props = envelopeProps(result.schemaComponents, 'Envelope_authzPolicyCreate');
     expect(props['payload']).toMatchObject({ type: 'object' });
   });
 });

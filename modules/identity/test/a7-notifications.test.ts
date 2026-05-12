@@ -16,6 +16,7 @@ import type {
   StoredEvent,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   BREAK_GLASS_RETENTION_TAG,
   IMPERSONATION_RETENTION_TAG,
@@ -34,11 +35,45 @@ import type {
 } from '@atlas/ports';
 
 // ---------------------------------------------------------------------
+// Local typed reader for notification envelopes. The production emitter
+// (`emitNotificationsForA7Event`) stamps `payload.channel` on every
+// `Notifications.*` follow-up — but the return type is the generic
+// `EventEnvelope` whose payload is `unknown`. This reader pulls the
+// channel out at runtime so tests don't have to cast each call site.
+// ---------------------------------------------------------------------
+/**
+ * Safe field reader for an envelope's payload (typed as `unknown`). Returns
+ * `undefined` when the payload isn't an object or the field is absent —
+ * never throws. Lets the payload-secrecy spot-check stay type-safe without
+ * narrowing the whole payload to a `Record` shape.
+ */
+function payloadField(env: EventEnvelope, key: string): unknown {
+  const p = env.payload;
+  if (p == null || typeof p !== 'object') return undefined;
+  if (!(key in p)) return undefined;
+  return (p as { [k: string]: unknown })[key]; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- guarded by `in p` check above
+}
+
+function channelOf(env: EventEnvelope): string {
+  const payload = env.payload;
+  if (payload != null && typeof payload === 'object' && 'channel' in payload) {
+    const ch: unknown = (payload as { channel: unknown }).channel;
+    if (typeof ch === 'string') return ch;
+  }
+  throw new Error(
+    `notification envelope ${env.eventId} (${env.eventType}) is missing string payload.channel`,
+  );
+}
+
+// ---------------------------------------------------------------------
 // Fixtures (mirroring a7-acceptance.test.ts)
 // ---------------------------------------------------------------------
 
 class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
+  // Internally typed as `StoredEvent[]` so the dedupe-on-idempotency branch
+  // returns without a narrowing cast — everything pushed is a `StoredEvent`
+  // by construction (we always stamp `seq` before insert).
+  events: StoredEvent[] = [];
   private nextSeq = 0n;
   async append(envelope: EventEnvelope): Promise<StoredEvent> {
     const existing = this.events.find(
@@ -47,7 +82,7 @@ class InMemoryEventStore implements EventStore {
         e.idempotencyKey === envelope.idempotencyKey,
     );
     if (existing) {
-      return existing as StoredEvent;
+      return existing;
     }
     this.nextSeq += 1n;
     const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
@@ -65,6 +100,13 @@ class InMemoryEventStore implements EventStore {
   }
 }
 
+// In-memory `EntityStore` is a type-erased map. The port API is generic in
+// `TAttrs` (callers choose the attrs shape per call) but the underlying
+// storage is one heterogeneous `Map<string, Entity<unknown>>` — so every
+// boundary between storage and a generic return type IS a narrowing. We
+// accept those at the four boundary points below, mirroring the same
+// pattern used by the production `PostgresEntityStore` and by the shared
+// `lib/fixtures.ts` (boundary: test-fixture type-erased storage).
 class InMemoryEntityStore implements PortEntityStore {
   rows = new Map<string, Entity<unknown>>();
   private k(t: string, ty: string, id: string): string {
@@ -73,6 +115,7 @@ class InMemoryEntityStore implements PortEntityStore {
   async get<T = unknown>(t: string, ty: string, id: string): Promise<Entity<T> | null> {
     const r = this.rows.get(this.k(t, ty, id));
     if (!r || r.status === 'deleted') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
     return r as Entity<T>;
   }
   async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -89,7 +132,7 @@ class InMemoryEntityStore implements PortEntityStore {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    this.rows.set(key, row as Entity<unknown>);
+    this.rows.set(key, row);
     return row;
   }
   async delete(t: string, ty: string, id: string): Promise<void> {
@@ -99,20 +142,28 @@ class InMemoryEntityStore implements PortEntityStore {
   }
   async list<T = unknown>(t: string, ty: string, opts?: EntityListOptions): Promise<Entity<T>[]> {
     const desired = opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
+    const filtered = Array.from(this.rows.values())
       .filter((r) => r.tenantId === t && r.entityType === ty)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
+      .filter((r) => (desired === null ? true : r.status === desired));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return filtered as Entity<T>[];
   }
   async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
     const all = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.entityType === ty,
     );
-    if (!opts.attrsEqual) return all as Entity<T>[];
+    if (!opts.attrsEqual) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+      return all as Entity<T>[];
+    }
     const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
+    const matched = all.filter((row) => {
+      if (row.attrs == null || typeof row.attrs !== 'object') return false;
+      const attrs = row.attrs as { [k: string]: unknown }; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+      return preds.every(([k, v]) => attrs[k] === v);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return matched as Entity<T>[];
   }
 }
 
@@ -153,7 +204,7 @@ describe('a7-notifications: ImpersonationStarted', () => {
       f.events,
     );
     expect(followups).toHaveLength(2);
-    const channels = followups.map((e) => (e.payload as { channel: string }).channel);
+    const channels = followups.map(channelOf);
     expect(channels).toEqual(['tenant_admin', 'ops_pager']);
     for (const e of followups) {
       expect(e.eventType).toBe('Notifications.ImpersonationStarted');
@@ -193,7 +244,7 @@ describe('a7-notifications: ImpersonationEnded reason=tenant_revoked', () => {
       f.entities,
     );
     const followups = await emitNotificationsForA7Event(end.envelope, f.events);
-    const channels = followups.map((e) => (e.payload as { channel: string }).channel);
+    const channels = followups.map(channelOf);
     expect(channels).toContain('tenant_admin');
     expect(channels).toContain('ops_pager');
     expect(followups).toHaveLength(2);
@@ -226,7 +277,9 @@ describe('a7-notifications: ImpersonationEnded reason=tenant_revoked', () => {
     );
     const followups = await emitNotificationsForA7Event(end.envelope, f.events);
     expect(followups).toHaveLength(1);
-    expect((followups[0]!.payload as { channel: string }).channel).toBe('tenant_admin');
+    expect(channelOf(assertDefined(followups[0], 'length checked above'))).toBe(
+      'tenant_admin',
+    );
   });
 });
 
@@ -251,7 +304,7 @@ describe('a7-notifications: BreakGlassIssued', () => {
       f.events,
     );
     expect(followups).toHaveLength(2);
-    const channels = followups.map((e) => (e.payload as { channel: string }).channel);
+    const channels = followups.map(channelOf);
     expect(channels).toEqual(['tenant_admin', 'security_pager']);
     for (const e of followups) {
       expect(e.eventType).toBe('Notifications.BreakGlassIssued');
@@ -351,7 +404,9 @@ describe('a7-notifications: idempotency-key shape', () => {
       { channels: ['security_pager'] },
     );
     expect(followups).toHaveLength(1);
-    expect((followups[0]!.payload as { channel: string }).channel).toBe('security_pager');
+    expect(channelOf(assertDefined(followups[0], 'length checked above'))).toBe(
+      'security_pager',
+    );
   });
 });
 
@@ -385,11 +440,10 @@ describe('a7-notifications: payload secrecy', () => {
       expect(json).not.toContain(tokenHash);
       expect(json).not.toContain(tokenLookup);
       // Spot-check: no field literally named token-something.
-      const payload = e.payload as Record<string, unknown>;
-      expect(payload['tokenHash']).toBeUndefined();
-      expect(payload['tokenLookup']).toBeUndefined();
-      expect(payload['plaintextToken']).toBeUndefined();
-      expect(payload['bearerToken']).toBeUndefined();
+      expect(payloadField(e, 'tokenHash')).toBeUndefined();
+      expect(payloadField(e, 'tokenLookup')).toBeUndefined();
+      expect(payloadField(e, 'plaintextToken')).toBeUndefined();
+      expect(payloadField(e, 'bearerToken')).toBeUndefined();
     }
   });
 });

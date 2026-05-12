@@ -65,9 +65,9 @@ class AtlasChartTimeRange extends AtlasElement {
       btn.textContent = preset.label;
       btn.addEventListener('click', () => {
         if (preset.key === 'all') {
-          store?.commit('setTimeRange', { preset: null, from: null, to: null });
+          store?.commit({ kind: 'setTimeRange', preset: null, from: null, to: null });
         } else {
-          store?.commit('setTimeRange', { preset: preset.key });
+          store?.commit({ kind: 'setTimeRange', preset: preset.key });
         }
       });
       this.appendChild(btn);

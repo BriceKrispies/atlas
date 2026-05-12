@@ -164,12 +164,17 @@ export function wrapStoreWithHistory(inner: PageStore, history: HistoryStack): W
           } catch (err) {
             // Replaces console.error: route the listener throw through
             // the frontend telemetry pipeline so log shippers see it.
+            const code =
+              err !== null && typeof err === 'object' && 'code' in err && typeof err.code === 'string'
+                ? err.code
+                : 'unknown';
+            const message = err instanceof Error ? err.message : String(err);
             emitTelemetry({
               eventName: 'Atlas.Listener.Threw',
               source: 'authoring.page-editor.history',
               pageId,
-              'error.code': (err as { code?: string })?.code ?? 'unknown',
-              'error.message': (err as Error)?.message ?? String(err),
+              'error.code': code,
+              'error.message': message,
             });
           }
         }

@@ -336,9 +336,9 @@ describe('handleInviteAccept — configuration knobs', () => {
       fx.events,
       fx.entities,
     );
-    const hardExpiresMs = new Date(
-      result.sessionResult!.document.hardExpiresAt,
-    ).getTime();
+    const sessionResult = result.sessionResult;
+    if (!sessionResult) throw new Error('invite-accept did not produce a sessionResult');
+    const hardExpiresMs = new Date(sessionResult.document.hardExpiresAt).getTime();
     expect(hardExpiresMs - before).toBeLessThanOrEqual(60 * 60 * 1000 + 5000);
     expect(hardExpiresMs - before).toBeGreaterThanOrEqual(60 * 60 * 1000 - 5000);
   });

@@ -3,40 +3,8 @@
  * EditorAPI end-to-end in a linkedom DOM.
  */
 
-import { parseHTML } from 'linkedom';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-
-// --- set up browser-ish globals ---------------------------------------
-const dom = parseHTML('<!doctype html><html><head></head><body></body></html>');
-(globalThis as unknown as Record<string, unknown>)['window'] = dom.window;
-(globalThis as unknown as Record<string, unknown>)['document'] = dom.document;
-(globalThis as unknown as Record<string, unknown>)['HTMLElement'] = dom.HTMLElement;
-(globalThis as unknown as Record<string, unknown>)['DocumentFragment'] = dom.DocumentFragment;
-(globalThis as unknown as Record<string, unknown>)['customElements'] = dom.customElements;
-(globalThis as unknown as Record<string, unknown>)['Node'] = dom.Node;
-(globalThis as unknown as Record<string, unknown>)['NodeFilter'] = (dom as { NodeFilter?: unknown }).NodeFilter ?? { SHOW_ELEMENT: 1 };
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = ((v: unknown) => JSON.parse(JSON.stringify(v))) as typeof structuredClone;
-}
-if (typeof globalThis.document.createTreeWalker !== 'function') {
-  (globalThis.document as unknown as { createTreeWalker: (root: Element) => { nextNode: () => Element | null } }).createTreeWalker = (root: Element) => {
-    const elements: Element[] = [];
-    const walk = (el: Element): void => {
-      elements.push(el);
-      for (const child of (el.children as unknown as Iterable<Element>) ?? []) walk(child);
-    };
-    for (const child of (root.children as unknown as Iterable<Element>) ?? []) walk(child);
-    let i = -1;
-    return {
-      nextNode(): Element | null {
-        i += 1;
-        return i < elements.length ? elements[i]! : null;
-      },
-    };
-  };
-}
+import { customElements, document, HTMLElementCtor, loadFixture } from './_lib/setup.ts';
+import { must } from '../src/internal/assert.ts';
 
 // ---- import package under test --------------------------------------
 const pkg = await import('../src/index.ts');
@@ -49,20 +17,19 @@ const {
   EditorAPI,
   freshInstanceId,
 } = pkg;
+import type { PageDocument, PageStore, WidgetInstance } from '../src/page-store.ts';
+import type { TemplateManifest } from '../src/registry.ts';
+import type { WidgetRegistryLike } from '../src/drop-zones.ts';
 
-const widgetHostPkg = await import('@atlas/widget-host');
-const { WidgetRegistry } = widgetHostPkg as { WidgetRegistry: new () => { register: (args: { manifest: unknown; element: CustomElementConstructor }) => void } };
+const { WidgetRegistry } = await import('@atlas/widget-host');
+import type { WidgetManifest } from '@atlas/widget-host';
 
 // ---- fixtures --------------------------------------------------------
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = resolve(__dirname, '../../../../specs/fixtures');
-const readFixture = (name: string): unknown =>
-  JSON.parse(readFileSync(resolve(fixturesDir, name), 'utf8'));
 
-const templateOneColumn = readFixture('page_template__valid__one_column.json') as Record<string, unknown>;
-const templateTwoColumn = readFixture('page_template__valid__two_column.json') as Record<string, unknown>;
-const docWelcome = readFixture('page_document__valid__welcome.json') as Record<string, unknown>;
-const announcementsManifest = readFixture('widget_manifest__valid__announcements.json') as Record<string, unknown>;
+const templateOneColumn = loadFixture<TemplateManifest>('page_template__valid__one_column.json');
+const templateTwoColumn = loadFixture<TemplateManifest>('page_template__valid__two_column.json');
+const docWelcome = loadFixture<PageDocument>('page_document__valid__welcome.json');
+const announcementsManifest = loadFixture<Record<string, unknown>>('widget_manifest__valid__announcements.json');
 
 // ---- utilities -------------------------------------------------------
 
@@ -83,7 +50,7 @@ function findDescendant(
 ): Element | null {
   if (!node) return null;
   if (predicate(node)) return node;
-  for (const child of (node.children as unknown as Iterable<Element>) ?? []) {
+  for (const child of node.children) {
     const found = findDescendant(child, predicate);
     if (found) return found;
   }
@@ -97,12 +64,12 @@ function findAllDescendants(
 ): Element[] {
   if (!node) return out;
   if (predicate(node)) out.push(node);
-  for (const child of (node.children as unknown as Iterable<Element>) ?? []) findAllDescendants(child, predicate, out);
+  for (const child of node.children) findAllDescendants(child, predicate, out);
   return out;
 }
 
 // ---- stub template + widget classes ---------------------------------
-class OneColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class OneColumnTemplate extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -110,7 +77,7 @@ class OneColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof 
 }
 customElements.define('tpl-one-column', OneColumnTemplate);
 
-class TwoColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class TwoColumnTemplate extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -118,7 +85,7 @@ class TwoColumnTemplate extends (globalThis as unknown as { HTMLElement: typeof 
 }
 customElements.define('tpl-two-column', TwoColumnTemplate);
 
-class AnnouncementsWidget extends (globalThis as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement {
+class AnnouncementsWidget extends HTMLElementCtor {
   _mounted = false;
   connectedCallback(): void {
     this._mounted = true;
@@ -126,29 +93,53 @@ class AnnouncementsWidget extends (globalThis as unknown as { HTMLElement: typeo
 }
 customElements.define('stub-announcements-widget-ed', AnnouncementsWidget);
 
-function cleanAnnouncementsManifest(): Record<string, unknown> {
+function cleanAnnouncementsManifest(): WidgetManifest {
   const clean: Record<string, unknown> = { ...announcementsManifest };
   delete clean['$schema'];
   delete clean['$comment'];
   delete clean['$invariants'];
-  return clean;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the fixture is a schema-validated WidgetManifest with documentation-only `$schema/$comment/$invariants` keys stripped; what remains satisfies WidgetManifest. The runtime validator inside WidgetRegistry.register re-checks.
+  return clean as WidgetManifest;
 }
 
-function makeWidgetRegistry(): { register: (args: { manifest: unknown; element: CustomElementConstructor }) => void; has?: (id: string) => boolean; get?: (id: string) => unknown; list?: () => Array<{ widgetId: string; displayName?: string }> } {
+/**
+ * Returns a `WidgetRegistryLike` view over a fresh `WidgetRegistry`.
+ *
+ * `WidgetRegistry` (widget-host) and `WidgetRegistryLike` (page-templates
+ * drop-zones) are structurally compatible at runtime — both expose
+ * `has` / `get` / `list` — but their declared `list()` return types
+ * disagree on whether the entries carry an index signature. The wrapper
+ * narrows the published shape and assigns through the structural
+ * interface so call sites stay cast-free.
+ */
+function makeWidgetRegistry(): WidgetRegistryLike {
   const wr = new WidgetRegistry();
   wr.register({ manifest: cleanAnnouncementsManifest(), element: AnnouncementsWidget });
-  return wr;
+  return {
+    has: (id) => wr.has(id),
+    get: (id) => wr.get(id),
+    // `WidgetRegistryListing` is structurally compatible with the entry
+    // shape `WidgetRegistryLike.list()` advertises; we re-shape each
+    // entry into a plain string-keyed record so the index signature is
+    // present in the published type.
+    list: () =>
+      wr.list().map((l) => ({
+        widgetId: l.widgetId,
+        version: l.version,
+        displayName: l.displayName,
+      })),
+  };
 }
 
 function makeTemplateRegistry(): InstanceType<typeof TemplateRegistry> {
   const tr = new TemplateRegistry();
-  tr.register({ manifest: templateOneColumn as never, element: OneColumnTemplate });
-  tr.register({ manifest: templateTwoColumn as never, element: TwoColumnTemplate });
+  tr.register({ manifest: templateOneColumn, element: OneColumnTemplate });
+  tr.register({ manifest: templateTwoColumn, element: TwoColumnTemplate });
   return tr;
 }
 
-function makeWelcomeDoc(): Record<string, unknown> {
-  return structuredClone(docWelcome) as Record<string, unknown>;
+function makeWelcomeDoc(): PageDocument {
+  return structuredClone(docWelcome);
 }
 
 // ==== 1. computeValidTargets ==========================================
@@ -157,27 +148,33 @@ async function testComputeValidTargets_basic(): Promise<void> {
   const reg = makeWidgetRegistry();
   const result = computeValidTargets(
     'content.announcements',
-    docWelcome as never,
-    templateTwoColumn as never,
+    docWelcome,
+    templateTwoColumn,
     reg,
     null,
   );
   const main = result.validRegions.find((r) => r.regionName === 'main');
   const sidebar = result.validRegions.find((r) => r.regionName === 'sidebar');
-  assert(main, 'main region valid for announcements');
-  assert(sidebar, 'sidebar region valid for announcements');
-  assertEq(main!.canInsertAt.length, 2, 'main insertion slots');
-  assert(main!.canInsertAt.every((b) => b === true), 'all main positions valid');
-  assertEq(sidebar!.canInsertAt.length, 2, 'sidebar insertion slots');
+  const mainR = must(main, 'main region valid for announcements');
+  const sidebarR = must(sidebar, 'sidebar region valid for announcements');
+  assertEq(mainR.canInsertAt.length, 2, 'main insertion slots');
+  assert(mainR.canInsertAt.every((b) => b === true), 'all main positions valid');
+  assertEq(sidebarR.canInsertAt.length, 2, 'sidebar insertion slots');
 }
 
 async function testComputeValidTargets_anyRegionAllowed(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const tpl = { regions: [{ name: 'header' }, { name: 'footer' }] };
+  const tpl: TemplateManifest = {
+    templateId: 't',
+    version: '0.1.0',
+    element: 'x',
+    regions: [{ name: 'header' }, { name: 'footer' }],
+  };
+  const doc: PageDocument = { pageId: 'p', regions: { header: [], footer: [] } };
   const result = computeValidTargets(
     'content.announcements',
-    { regions: { header: [], footer: [] } } as never,
-    tpl as never,
+    doc,
+    tpl,
     reg,
   );
   assertEq(result.validRegions.length, 2, 'both regions valid');
@@ -186,37 +183,58 @@ async function testComputeValidTargets_anyRegionAllowed(): Promise<void> {
 
 async function testComputeValidTargets_unknownWidget(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const tpl = { regions: [{ name: 'main' }] };
+  const tpl: TemplateManifest = {
+    templateId: 't',
+    version: '0.1.0',
+    element: 'x',
+    regions: [{ name: 'main' }],
+  };
+  const doc: PageDocument = { pageId: 'p', regions: { main: [] } };
   const result = computeValidTargets(
     'content.does-not-exist',
-    { regions: { main: [] } } as never,
-    tpl as never,
+    doc,
+    tpl,
     reg,
   );
   assertEq(result.validRegions.length, 0, 'no valid regions for unknown widget');
   assertEq(result.invalidRegions.length, 1, 'one invalid region');
-  assertEq(result.invalidRegions[0]!.reason, 'unknown-widget', 'reason unknown-widget');
+  const invalid = must(result.invalidRegions[0], 'one invalid region present');
+  assertEq(invalid.reason, 'unknown-widget', 'reason unknown-widget');
 }
 
 async function testComputeValidTargets_maxWidgetsAtCap_newPlacement(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const tpl = { regions: [{ name: 'main', maxWidgets: 1 }] };
-  const doc = {
+  const tpl: TemplateManifest = {
+    templateId: 't',
+    version: '0.1.0',
+    element: 'x',
+    regions: [{ name: 'main', maxWidgets: 1 }],
+  };
+  const doc: PageDocument = {
+    pageId: 'p',
     regions: {
       main: [{ widgetId: 'content.announcements', instanceId: 'x', config: {} }],
     },
   };
-  const result = computeValidTargets('content.announcements', doc as never, tpl as never, reg, null);
-  const main = result.validRegions.find((r) => r.regionName === 'main');
-  assert(main, 'main is returned with capped state');
-  assertEq(main!.reason, 'max-widgets', 'reason is max-widgets');
-  assert(main!.canInsertAt.every((b) => b === false), 'no insertion allowed');
+  const result = computeValidTargets('content.announcements', doc, tpl, reg, null);
+  const main = must(
+    result.validRegions.find((r) => r.regionName === 'main'),
+    'main is returned with capped state',
+  );
+  assertEq(main.reason, 'max-widgets', 'reason is max-widgets');
+  assert(main.canInsertAt.every((b) => b === false), 'no insertion allowed');
 }
 
 async function testComputeValidTargets_maxWidgetsMoveWithin(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const tpl = { regions: [{ name: 'main', maxWidgets: 2 }] };
-  const doc = {
+  const tpl: TemplateManifest = {
+    templateId: 't',
+    version: '0.1.0',
+    element: 'x',
+    regions: [{ name: 'main', maxWidgets: 2 }],
+  };
+  const doc: PageDocument = {
+    pageId: 'p',
     regions: {
       main: [
         { widgetId: 'content.announcements', instanceId: 'a', config: {} },
@@ -226,14 +244,16 @@ async function testComputeValidTargets_maxWidgetsMoveWithin(): Promise<void> {
   };
   const result = computeValidTargets(
     'content.announcements',
-    doc as never,
-    tpl as never,
+    doc,
+    tpl,
     reg,
     { regionName: 'main', index: 0 },
   );
-  const main = result.validRegions.find((r) => r.regionName === 'main');
-  assert(main, 'main valid');
-  assert(main!.canInsertAt.every((b) => b === true), 'move-within allowed at cap');
+  const main = must(
+    result.validRegions.find((r) => r.regionName === 'main'),
+    'main valid',
+  );
+  assert(main.canInsertAt.every((b) => b === true), 'move-within allowed at cap');
 }
 
 // ==== 2. EditorController primitives ==================================
@@ -241,11 +261,11 @@ async function testComputeValidTargets_maxWidgetsMoveWithin(): Promise<void> {
 async function testController_applyAdd_basic(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  const entry = {
+  const entry: WidgetInstance = {
     widgetId: 'content.announcements',
     instanceId: 'w-new-1',
     config: { mode: 'text', text: 'Hi' },
@@ -253,20 +273,21 @@ async function testController_applyAdd_basic(): Promise<void> {
   const res = ctrl.applyAdd({ entry, region: 'sidebar', index: 1 });
   assert(res.ok, `applyAdd ok: ${JSON.stringify(res)}`);
   if (res.ok) {
-    const nextDoc = res.nextDoc as unknown as { regions: { sidebar: Array<{ instanceId: string }> } };
-    assertEq(nextDoc.regions.sidebar.length, 2, 'sidebar grew to 2');
-    assertEq(nextDoc.regions.sidebar[1]!.instanceId, 'w-new-1', 'inserted at index 1');
+    const sidebar = must(res.nextDoc.regions?.['sidebar'], 'sidebar region present');
+    assertEq(sidebar.length, 2, 'sidebar grew to 2');
+    const inserted = must(sidebar[1], 'inserted entry at index 1');
+    assertEq(inserted.instanceId, 'w-new-1', 'inserted at index 1');
   }
 }
 
 async function testController_applyAdd_appendDefaults(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  const entry = { widgetId: 'content.announcements', instanceId: 'w-new-2', config: {} };
+  const entry: WidgetInstance = { widgetId: 'content.announcements', instanceId: 'w-new-2', config: {} };
   const res = ctrl.applyAdd({ entry, region: 'main' });
   assert(res.ok, 'applyAdd with no index appends');
   if (res.ok) {
@@ -277,8 +298,8 @@ async function testController_applyAdd_appendDefaults(): Promise<void> {
 async function testController_applyAdd_rejectsUnknownWidget(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyAdd({
@@ -293,8 +314,8 @@ async function testController_applyAdd_rejectsUnknownWidget(): Promise<void> {
 async function testController_applyAdd_rejectsDuplicateInstance(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyAdd({
@@ -309,8 +330,8 @@ async function testController_applyAdd_rejectsDuplicateInstance(): Promise<void>
 async function testController_applyMove_crossRegion(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   ctrl.applyAdd({
@@ -320,9 +341,10 @@ async function testController_applyMove_crossRegion(): Promise<void> {
   const res = ctrl.applyMove({ instanceId: 'w-main-2', region: 'sidebar', index: 1 });
   assert(res.ok, `move ok: ${JSON.stringify(res)}`);
   if (res.ok) {
-    const nextDoc = res.nextDoc as unknown as { regions: { main: unknown[]; sidebar: unknown[] } };
-    assertEq(nextDoc.regions.main.length, 1, 'main shrunk to 1');
-    assertEq(nextDoc.regions.sidebar.length, 2, 'sidebar grew to 2');
+    const main = must(res.nextDoc.regions?.['main'], 'main region present');
+    const sidebar = must(res.nextDoc.regions?.['sidebar'], 'sidebar region present');
+    assertEq(main.length, 1, 'main shrunk to 1');
+    assertEq(sidebar.length, 2, 'sidebar grew to 2');
     assertEq(res.to?.region, 'sidebar', 'to region correct');
     assertEq(res.to?.index, 1, 'to index correct');
   }
@@ -331,8 +353,8 @@ async function testController_applyMove_crossRegion(): Promise<void> {
 async function testController_applyMove_noop(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyMove({ instanceId: 'w-main-1', region: 'main', index: 0 });
@@ -343,8 +365,8 @@ async function testController_applyMove_noop(): Promise<void> {
 async function testController_applyMove_rejectsRequiredEmpty(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyMove({ instanceId: 'w-main-1', region: 'sidebar', index: 0 });
@@ -355,8 +377,8 @@ async function testController_applyMove_rejectsRequiredEmpty(): Promise<void> {
 async function testController_applyMove_rejectsUnknownInstance(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyMove({ instanceId: 'nope', region: 'main', index: 0 });
@@ -367,34 +389,35 @@ async function testController_applyMove_rejectsUnknownInstance(): Promise<void> 
 async function testController_applyUpdate(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyUpdate({ instanceId: 'w-main-1', config: { mode: 'text', text: 'Updated' } });
   assert(res.ok, 'update ok');
-  const found = ctrl.findInstance('w-main-1');
-  assertEq((found?.entry.config as { text: string })?.text, 'Updated', 'config replaced');
+  const found = must(ctrl.findInstance('w-main-1'), 'w-main-1 found');
+  assertEq(found.entry.config?.['text'], 'Updated', 'config replaced');
 }
 
 async function testController_applyRemove(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const doc = makeWelcomeDoc() as { regions: { sidebar: unknown[] } };
-  doc.regions.sidebar.push({
+  const doc = makeWelcomeDoc();
+  const sidebar = must(doc.regions?.['sidebar'], 'welcome doc has sidebar region');
+  sidebar.push({
     widgetId: 'content.announcements',
     instanceId: 'w-side-2',
     config: {},
   });
   const ctrl = new EditorController({
-    pageDoc: doc as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: doc,
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyRemove({ instanceId: 'w-side-2' });
   assert(res.ok, 'remove ok');
   if (res.ok) {
-    const nextDoc = res.nextDoc as unknown as { regions: { sidebar: unknown[] } };
-    assertEq(nextDoc.regions.sidebar.length, 1, 'sidebar shrunk');
+    const sidebarAfter = must(res.nextDoc.regions?.['sidebar'], 'sidebar region present');
+    assertEq(sidebarAfter.length, 1, 'sidebar shrunk');
   }
   assert(ctrl.findInstance('w-side-2') === null, 'instance gone from doc');
 }
@@ -402,8 +425,8 @@ async function testController_applyRemove(): Promise<void> {
 async function testController_applyRemove_refusesRequiredEmpty(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const res = ctrl.applyRemove({ instanceId: 'w-main-1' });
@@ -414,14 +437,13 @@ async function testController_applyRemove_refusesRequiredEmpty(): Promise<void> 
 async function testController_findInstanceAndList(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  const found = ctrl.findInstance('w-main-1');
-  assert(found, 'instance found');
-  assertEq(found!.region, 'main', 'found in main');
-  assertEq(found!.index, 0, 'at index 0');
+  const found = must(ctrl.findInstance('w-main-1'), 'instance found');
+  assertEq(found.region, 'main', 'found in main');
+  assertEq(found.index, 0, 'at index 0');
 
   const list = ctrl.listEntries();
   assertEq(list.length, 2, 'two entries in welcome doc');
@@ -434,11 +456,11 @@ async function testController_findInstanceAndList(): Promise<void> {
 async function testAPI_addAndList(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
-  const saves: unknown[] = [];
+  const saves: PageDocument[] = [];
   const api = new EditorAPI({
     controller: ctrl,
     onCommit: async (doc) => {
@@ -455,48 +477,53 @@ async function testAPI_addAndList(): Promise<void> {
   if (res.ok) assertEq(res.instanceId, 'w-agent-1', 'returned instanceId');
   assertEq(saves.length, 1, 'onCommit called');
   assertEq(api.list().length, 3, 'list has 3 entries');
-  const got = api.get('w-agent-1');
-  assertEq((got?.config as { text?: string } | undefined)?.text, 'from agent', 'get returns config');
+  const got = must(api.get('w-agent-1'), 'w-agent-1 retrievable');
+  assertEq(got.config['text'], 'from agent', 'get returns config');
 }
 
 async function testAPI_addGeneratesInstanceId(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
   const res = await api.add({ widgetId: 'content.announcements', region: 'sidebar' });
   assert(res.ok, 'add ok');
-  if (res.ok) assert(res.instanceId && res.instanceId.startsWith('w-announcements-'), 'auto-id generated with widget suffix');
+  if (res.ok) {
+    const id = must(res.instanceId, 'instanceId generated');
+    assert(id.startsWith('w-announcements-'), 'auto-id generated with widget suffix');
+  }
 }
 
 async function testAPI_moveById(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const doc = makeWelcomeDoc() as { regions: { main: unknown[] } };
-  doc.regions.main.push({
+  const doc = makeWelcomeDoc();
+  const main = must(doc.regions?.['main'], 'welcome doc has main region');
+  main.push({
     widgetId: 'content.announcements',
     instanceId: 'w-main-2',
     config: {},
   });
   const ctrl = new EditorController({
-    pageDoc: doc as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: doc,
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
   const res = await api.move({ instanceId: 'w-main-2', region: 'sidebar', index: 0 });
   assert(res.ok, 'move ok');
-  assertEq(api.get('w-main-2')?.region, 'sidebar', 'now in sidebar');
-  assertEq(api.get('w-main-2')?.index, 0, 'at index 0');
+  const after = must(api.get('w-main-2'), 'w-main-2 retrievable after move');
+  assertEq(after.region, 'sidebar', 'now in sidebar');
+  assertEq(after.index, 0, 'at index 0');
 }
 
 async function testAPI_updateConfig(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
@@ -505,24 +532,22 @@ async function testAPI_updateConfig(): Promise<void> {
     config: { mode: 'text', text: 'Updated by agent' },
   });
   assert(res.ok, 'update ok');
-  assertEq(
-    (api.get('w-main-1')?.config as { text?: string } | undefined)?.text,
-    'Updated by agent',
-    'config replaced',
-  );
+  const after = must(api.get('w-main-1'), 'w-main-1 retrievable after update');
+  assertEq(after.config['text'], 'Updated by agent', 'config replaced');
 }
 
 async function testAPI_remove(): Promise<void> {
   const reg = makeWidgetRegistry();
-  const doc = makeWelcomeDoc() as { regions: { main: unknown[] } };
-  doc.regions.main.push({
+  const doc = makeWelcomeDoc();
+  const main = must(doc.regions?.['main'], 'welcome doc has main region');
+  main.push({
     widgetId: 'content.announcements',
     instanceId: 'w-main-2',
     config: {},
   });
   const ctrl = new EditorController({
-    pageDoc: doc as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: doc,
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({ controller: ctrl, onCommit: async () => {} });
@@ -534,8 +559,8 @@ async function testAPI_remove(): Promise<void> {
 async function testAPI_rejectsNotEditable(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({
@@ -551,8 +576,8 @@ async function testAPI_rejectsNotEditable(): Promise<void> {
 async function testAPI_persistError(): Promise<void> {
   const reg = makeWidgetRegistry();
   const ctrl = new EditorController({
-    pageDoc: makeWelcomeDoc() as never,
-    templateManifest: templateTwoColumn as never,
+    pageDoc: makeWelcomeDoc(),
+    templateManifest: templateTwoColumn,
     widgetRegistry: reg,
   });
   const api = new EditorAPI({
@@ -575,25 +600,25 @@ async function testFreshInstanceId(): Promise<void> {
 
 // ==== 4. <content-page edit> DOM shape ================================
 
-class StubPageStore {
-  _map: Map<string, unknown>;
-  saveCalls: Array<{ pageId: string; doc: unknown }> = [];
+class StubPageStore implements PageStore {
+  _map: Map<string, PageDocument>;
+  saveCalls: Array<{ pageId: string; doc: PageDocument }> = [];
 
-  constructor(seed?: Record<string, unknown>) {
+  constructor(seed?: Record<string, PageDocument>) {
     this._map = new Map();
     for (const [id, doc] of Object.entries(seed ?? {})) {
       this._map.set(id, structuredClone(doc));
     }
   }
-  async get(pageId: string): Promise<unknown> {
+  async get(pageId: string): Promise<PageDocument | null> {
     const d = this._map.get(pageId);
     return d ? structuredClone(d) : null;
   }
-  async save(pageId: string, doc: unknown): Promise<void> {
+  async save(pageId: string, doc: PageDocument): Promise<void> {
     this.saveCalls.push({ pageId, doc: structuredClone(doc) });
     this._map.set(pageId, structuredClone(doc));
   }
-  async list(): Promise<unknown[]> {
+  async list(): Promise<PageDocument[]> {
     return [...this._map.values()].map((d) => structuredClone(d));
   }
   async delete(pageId: string): Promise<void> {
@@ -601,74 +626,100 @@ class StubPageStore {
   }
 }
 
+// Shape of <content-page> the dry-run pokes properties on.
+type EditorEl = {
+  add: (args: unknown) => Promise<{
+    ok: boolean;
+    action?: string;
+    instanceId?: string;
+    reason?: string;
+  }>;
+  list: () => unknown;
+  remove: (args: { instanceId: string }) => Promise<{ ok: boolean; reason?: string }>;
+  move: (args: unknown) => Promise<{ ok: boolean }>;
+  update: (args: unknown) => Promise<{ ok: boolean }>;
+};
+type ContentPageEl = HTMLElement & {
+  pageId?: string;
+  pageStore?: PageStore;
+  templateRegistry?: unknown;
+  widgetRegistry?: unknown;
+  correlationId?: string;
+  edit?: boolean;
+  canEdit?: boolean;
+  editor?: EditorEl;
+};
+
 async function testContentPage_dropSlotsAndCellsHaveUniqueNames(): Promise<void> {
   const pageStore = new StubPageStore({ welcome: makeWelcomeDoc() });
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown> & { editor?: unknown };
-  page['pageId'] = 'welcome';
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = widgetRegistry;
-  page['correlationId'] = 'cid-editor-dom';
-  page['edit'] = true;
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = 'welcome';
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.correlationId = 'cid-editor-dom';
+  page.edit = true;
   page.setAttribute('edit', '');
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  const editor = page['editor'] as { add: (...a: unknown[]) => unknown; list: (...a: unknown[]) => unknown; remove: (args: { instanceId: string }) => Promise<{ ok: boolean }> } | null;
-  assert(editor, 'page.editor is exposed');
-  assert(typeof editor!.add === 'function', 'editor.add exists');
-  assert(typeof editor!.list === 'function', 'editor.list exists');
+  const editor = must(page.editor, 'page.editor is exposed');
+  assert(typeof editor.add === 'function', 'editor.add exists');
+  assert(typeof editor.list === 'function', 'editor.list exists');
 
   let emptySlots = findAllDescendants(
     page,
     (el) =>
       el.tagName === 'SECTION' &&
-      el.getAttribute?.('data-editor-slot') !== null &&
-      el.getAttribute?.('data-empty') === 'true',
+      el.getAttribute('data-editor-slot') !== null &&
+      el.getAttribute('data-empty') === 'true',
   );
   assertEq(emptySlots.length, 0, 'filled sections are not marked data-empty');
 
-  const cells = findAllDescendants(page, (el) => el.getAttribute?.('data-widget-cell') !== null);
+  const cells = findAllDescendants(page, (el) => el.getAttribute('data-widget-cell') !== null);
   assertEq(cells.length, 2, 'two cells (main + sidebar)');
   for (const c of cells) {
-    const instanceId = c.getAttribute('data-instance-id');
-    assert(instanceId, 'cell has data-instance-id');
+    const instanceId = must(c.getAttribute('data-instance-id'), 'cell has data-instance-id');
     assertEq(c.getAttribute('name'), `cell-${instanceId}`, 'cell has unique name');
     assertEq(c.getAttribute('tabindex'), '0', 'cell tabbable');
     assert(!c.hasAttribute('draggable'), 'cell is NOT native-draggable');
   }
 
   const legacy = findAllDescendants(page, (el) =>
-    el.getAttribute?.('data-drop-zone') !== null ||
-    el.getAttribute?.('data-drop-slot') !== null ||
-    el.getAttribute?.('data-drop-target') !== null ||
-    el.getAttribute?.('data-drop-empty') !== null ||
-    el.getAttribute?.('data-drop-indicator') !== null,
+    el.getAttribute('data-drop-zone') !== null ||
+    el.getAttribute('data-drop-slot') !== null ||
+    el.getAttribute('data-drop-target') !== null ||
+    el.getAttribute('data-drop-empty') !== null ||
+    el.getAttribute('data-drop-indicator') !== null,
   );
   assertEq(legacy.length, 0, 'no legacy drop-zone / drop-slot child markers');
 
   const deleteButtons = findAllDescendants(page, (el) => {
-    const name = el.getAttribute?.('name');
+    const name = el.getAttribute('name');
     return typeof name === 'string' && name.startsWith('delete-');
   });
   assertEq(deleteButtons.length, 2, 'one delete button per cell');
 
-  const sidebarCell = cells.find((c) => {
-    let node: Element | null = c;
-    while (node && node.nodeType === 1) {
-      const slot = node.getAttribute?.('data-slot');
-      if (slot) return slot === 'sidebar';
-      node = node.parentNode as Element | null;
-    }
-    return false;
-  });
-  assert(sidebarCell, 'sidebar cell located');
-  const res = await editor!.remove({
-    instanceId: sidebarCell!.getAttribute('data-instance-id') as string,
-  });
+  const sidebarCell = must(
+    cells.find((c) => {
+      let node: Element | null = c;
+      while (node) {
+        const slot = node.getAttribute('data-slot');
+        if (slot) return slot === 'sidebar';
+        // `parentElement` is `Element | null` — exactly the narrowing
+        // we want (skips DocumentFragment/Document parents and avoids
+        // the `Node` widening of `parentNode`).
+        node = node.parentElement;
+      }
+      return false;
+    }),
+    'sidebar cell located',
+  );
+  const sidebarId = must(sidebarCell.getAttribute('data-instance-id'), 'sidebar cell has instance id');
+  const res = await editor.remove({ instanceId: sidebarId });
   assert(res.ok, 'sidebar remove succeeded');
   await waitMicrotasks(40);
 
@@ -676,17 +727,14 @@ async function testContentPage_dropSlotsAndCellsHaveUniqueNames(): Promise<void>
     page,
     (el) =>
       el.tagName === 'SECTION' &&
-      el.getAttribute?.('data-editor-slot') !== null &&
-      el.getAttribute?.('data-empty') === 'true',
+      el.getAttribute('data-editor-slot') !== null &&
+      el.getAttribute('data-empty') === 'true',
   );
   assertEq(emptySlots.length, 1, 'one section marked empty for the emptied region');
+  const emptySection = must(emptySlots[0], 'emptied section');
+  assertEq(emptySection.getAttribute('data-slot'), 'sidebar', 'the empty section is sidebar');
   assertEq(
-    emptySlots[0]!.getAttribute('data-slot'),
-    'sidebar',
-    'the empty section is sidebar',
-  );
-  assertEq(
-    emptySlots[0]!.getAttribute('name'),
+    emptySection.getAttribute('name'),
     'drop-slot-sidebar',
     'slot name is region-keyed (no index suffix)',
   );
@@ -700,18 +748,20 @@ async function testContentPage_editorAPI_add_moves_remove_persist(): Promise<voi
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown> & { editor?: { add: (args: unknown) => Promise<{ ok: boolean; action?: string; instanceId?: string }>; move: (args: unknown) => Promise<{ ok: boolean }>; update: (args: unknown) => Promise<{ ok: boolean }>; remove: (args: unknown) => Promise<{ ok: boolean }> } };
-  page['pageId'] = 'welcome';
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = widgetRegistry;
-  page['correlationId'] = 'cid-api-persist';
-  page['edit'] = true;
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = 'welcome';
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.correlationId = 'cid-api-persist';
+  page.edit = true;
   page.setAttribute('edit', '');
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  const addRes = await page.editor!.add({
+  const editor = must(page.editor, 'editor exposed');
+
+  const addRes = await editor.add({
     widgetId: 'content.announcements',
     region: 'sidebar',
     index: 1,
@@ -721,35 +771,43 @@ async function testContentPage_editorAPI_add_moves_remove_persist(): Promise<voi
   assert(addRes.ok, `add ok: ${JSON.stringify(addRes)}`);
   await waitMicrotasks(40);
   assert(pageStore.saveCalls.length >= 1, 'pageStore.save called');
-  const last1 = pageStore.saveCalls[pageStore.saveCalls.length - 1]!.doc as { regions: { sidebar: unknown[] } };
-  assertEq(last1.regions.sidebar.length, 2, 'sidebar grew after add');
+  const last1 = must(pageStore.saveCalls[pageStore.saveCalls.length - 1], 'last save call').doc;
+  const sidebar1 = must(last1.regions?.['sidebar'], 'sidebar region present');
+  assertEq(sidebar1.length, 2, 'sidebar grew after add');
 
-  const moveRes = await page.editor!.move({
+  const moveRes = await editor.move({
     instanceId: 'w-agent-1',
     region: 'main',
     index: 0,
   });
   assert(moveRes.ok, `move ok: ${JSON.stringify(moveRes)}`);
   await waitMicrotasks(40);
-  const last2 = pageStore.saveCalls[pageStore.saveCalls.length - 1]!.doc as { regions: { main: Array<{ instanceId: string }> } };
-  assertEq(last2.regions.main[0]!.instanceId, 'w-agent-1', 'agent widget moved to main[0]');
+  const last2 = must(pageStore.saveCalls[pageStore.saveCalls.length - 1], 'last save call').doc;
+  const main2 = must(last2.regions?.['main'], 'main region present');
+  const moved = must(main2[0], 'agent widget at main[0]');
+  assertEq(moved.instanceId, 'w-agent-1', 'agent widget moved to main[0]');
 
-  const updRes = await page.editor!.update({
+  const updRes = await editor.update({
     instanceId: 'w-agent-1',
     config: { mode: 'text', text: 'revised' },
   });
   assert(updRes.ok, 'update ok');
   await waitMicrotasks(40);
-  const last3 = pageStore.saveCalls[pageStore.saveCalls.length - 1]!.doc as { regions: { main: Array<{ instanceId: string; config: { text?: string } }> } };
-  const agentEntry = last3.regions.main.find((e) => e.instanceId === 'w-agent-1');
-  assertEq(agentEntry?.config.text, 'revised', 'config updated');
+  const last3 = must(pageStore.saveCalls[pageStore.saveCalls.length - 1], 'last save call').doc;
+  const main3 = must(last3.regions?.['main'], 'main region present');
+  const agentEntry = must(
+    main3.find((e) => e.instanceId === 'w-agent-1'),
+    'agent entry present',
+  );
+  assertEq(agentEntry.config?.['text'], 'revised', 'config updated');
 
-  const rmRes = await page.editor!.remove({ instanceId: 'w-agent-1' });
+  const rmRes = await editor.remove({ instanceId: 'w-agent-1' });
   assert(rmRes.ok, 'remove ok');
   await waitMicrotasks(40);
-  const last4 = pageStore.saveCalls[pageStore.saveCalls.length - 1]!.doc as { regions: { main: Array<{ instanceId: string }> } };
+  const last4 = must(pageStore.saveCalls[pageStore.saveCalls.length - 1], 'last save call').doc;
+  const main4 = must(last4.regions?.['main'], 'main region present');
   assert(
-    !last4.regions.main.some((e) => e.instanceId === 'w-agent-1'),
+    !main4.some((e) => e.instanceId === 'w-agent-1'),
     'agent widget gone',
   );
 
@@ -762,18 +820,19 @@ async function testContentPage_editorAPI_rejectsRequiredEmpty(): Promise<void> {
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown> & { editor?: { remove: (args: unknown) => Promise<{ ok: boolean; reason?: string }> } };
-  page['pageId'] = 'welcome';
-  page['pageStore'] = pageStore;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = widgetRegistry;
-  page['correlationId'] = 'cid-api-required';
-  page['edit'] = true;
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = 'welcome';
+  page.pageStore = pageStore;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.correlationId = 'cid-api-required';
+  page.edit = true;
   page.setAttribute('edit', '');
   document.body.appendChild(page);
   await waitMicrotasks(40);
 
-  const res = await page.editor!.remove({ instanceId: 'w-main-1' });
+  const editor = must(page.editor, 'editor exposed');
+  const res = await editor.remove({ instanceId: 'w-main-1' });
   assert(!res.ok, 'rejected');
   assertEq(res.reason, 'required-region-empty', 'reason required-region-empty');
 
@@ -795,24 +854,24 @@ async function testCanEditFalseGate(): Promise<void> {
   }) as typeof console.debug;
 
   try {
-    const page = document.createElement('content-page') as HTMLElement & Record<string, unknown>;
-    page['pageId'] = 'welcome';
-    page['pageStore'] = pageStore;
-    page['templateRegistry'] = templateRegistry;
-    page['widgetRegistry'] = widgetRegistry;
-    page['correlationId'] = 'cid-editor-denied';
-    page['edit'] = true;
-    page['canEdit'] = false;
+    const page = document.createElement('content-page') as ContentPageEl;
+    page.pageId = 'welcome';
+    page.pageStore = pageStore;
+    page.templateRegistry = templateRegistry;
+    page.widgetRegistry = widgetRegistry;
+    page.correlationId = 'cid-editor-denied';
+    page.edit = true;
+    page.canEdit = false;
     page.setAttribute('edit', '');
     document.body.appendChild(page);
     await waitMicrotasks(40);
 
     const palette = findDescendant(
       page,
-      (el) => el.tagName != null && el.tagName.toLowerCase() === 'widget-palette',
+      (el) => el.tagName.toLowerCase() === 'widget-palette',
     );
     assert(!palette, 'palette NOT rendered when canEdit=false');
-    assert(!page['editor'], 'editor API NOT exposed when canEdit=false');
+    assert(!page.editor, 'editor API NOT exposed when canEdit=false');
 
     const denied = telemetryEvents.find(
       (e) => e.event === 'atlas.content-page.edit.denied',
@@ -830,27 +889,29 @@ async function testCanEditFalseGate(): Promise<void> {
 
 async function testValidatingStoreRejection_asPersistFailed(): Promise<void> {
   const inner = new InMemoryPageStore();
-  await inner.save('welcome', makeWelcomeDoc() as never);
+  await inner.save('welcome', makeWelcomeDoc());
   const store = new ValidatingPageStore(inner);
   const templateRegistry = makeTemplateRegistry();
   const widgetRegistry = makeWidgetRegistry();
 
-  const page = document.createElement('content-page') as HTMLElement & Record<string, unknown> & { editor?: { add: (args: unknown) => Promise<{ ok: boolean; reason?: string }> } };
-  page['pageId'] = 'welcome';
-  page['pageStore'] = store;
-  page['templateRegistry'] = templateRegistry;
-  page['widgetRegistry'] = widgetRegistry;
-  page['correlationId'] = 'cid-editor-reject';
-  page['edit'] = true;
+  const page = document.createElement('content-page') as ContentPageEl;
+  page.pageId = 'welcome';
+  page.pageStore = store;
+  page.templateRegistry = templateRegistry;
+  page.widgetRegistry = widgetRegistry;
+  page.correlationId = 'cid-editor-reject';
+  page.edit = true;
   page.setAttribute('edit', '');
   document.body.appendChild(page);
   await waitMicrotasks(40);
+
+  const editor = must(page.editor, 'editor exposed');
 
   const origSave = store.save.bind(store);
   store.save = async () => {
     throw new Error('schema violation: missing tenantId');
   };
-  const res = await page.editor!.add({
+  const res = await editor.add({
     widgetId: 'content.announcements',
     region: 'sidebar',
   });
@@ -899,12 +960,11 @@ async function main(): Promise<void> {
   await testCanEditFalseGate();
   await testValidatingStoreRejection_asPersistFailed();
 
-  // eslint-disable-next-line no-console
   console.log('OK');
 }
 
 main().catch((err: unknown) => {
-  // eslint-disable-next-line no-console
-  console.error('FAIL:', (err as Error | undefined)?.stack ?? err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  console.error('FAIL:', stack ?? err);
   process.exit(1);
 });

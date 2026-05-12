@@ -142,7 +142,6 @@ class PostgresWorkerSubscription implements WorkerSubscription {
       // will see termination; ack() will reject.
       this.closed = true;
       this.signal();
-      // eslint-disable-next-line no-console
       console.error('PostgresWorkerSource: LISTEN setup failed', err);
     }
   }
@@ -161,7 +160,6 @@ class PostgresWorkerSubscription implements WorkerSubscription {
     try {
       // Loop until a query returns fewer than the batch size — i.e. the
       // gap is empty. Each iteration advances the in-memory cursor.
-      // eslint-disable-next-line no-constant-condition
       while (!this.closed) {
         const after = this.cursor;
         const rows = await this.sql<EventRow[]>`
@@ -184,7 +182,6 @@ class PostgresWorkerSubscription implements WorkerSubscription {
         if (rows.length < DRAIN_BATCH_SIZE) break;
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('PostgresWorkerSource: drain failed', err);
     } finally {
       this.draining = false;
@@ -198,24 +195,25 @@ class PostgresWorkerSubscription implements WorkerSubscription {
   events(): AsyncIterable<EventEnvelope> {
     const self = this;
     return {
-      [Symbol.asyncIterator](): AsyncIterator<EventEnvelope> {
+      [Symbol.asyncIterator](): AsyncIterator<EventEnvelope, void> {
         return {
-          async next(): Promise<IteratorResult<EventEnvelope>> {
-            // eslint-disable-next-line no-constant-condition
+          // TReturn=void so terminal `value: undefined` is well-typed
+          // (no more `undefined as unknown as EventEnvelope`).
+          async next(): Promise<IteratorResult<EventEnvelope, void>> {
             while (true) {
-              if (self.queue.length > 0) {
-                const ev = self.queue.shift()!;
+              const ev = self.queue.shift();
+              if (ev !== undefined) {
                 return { value: ev, done: false };
               }
               if (self.closed) {
-                return { value: undefined as unknown as EventEnvelope, done: true };
+                return { value: undefined, done: true };
               }
               await self.waker;
             }
           },
-          async return(): Promise<IteratorResult<EventEnvelope>> {
+          async return(): Promise<IteratorResult<EventEnvelope, void>> {
             await self.close();
-            return { value: undefined as unknown as EventEnvelope, done: true };
+            return { value: undefined, done: true };
           },
         };
       },

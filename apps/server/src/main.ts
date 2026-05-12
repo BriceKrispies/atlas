@@ -179,7 +179,7 @@ async function main(): Promise<void> {
       event: 'Server.Boot.Failed',
       error: {
         code: 'BOOT_FAILED',
-        message: (e as Error).message,
+        message: e instanceof Error ? e.message : String(e),
         ...(e instanceof Error && e.stack !== undefined ? { stack: e.stack } : {}),
       },
     });
@@ -215,7 +215,7 @@ async function main(): Promise<void> {
         event: 'Server.Shutdown.CloseError',
         error: {
           code: 'HTTP_CLOSE_FAILED',
-          message: (e as Error).message,
+          message: e instanceof Error ? e.message : String(e),
         },
       });
     }

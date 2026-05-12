@@ -17,6 +17,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   handleUserCreate,
   handlePasswordSet,
@@ -25,6 +27,31 @@ import {
   type UserDocument,
 } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
+
+/** Type-guard form of the record check — flips `unknown` to a record. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Narrows an `unknown` field that the test expects to be a record. */
+function recordOf(value: unknown, what: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`${what}: expected record, got ${typeof value}`);
+  }
+  return value;
+}
+
+/**
+ * Reads a record-shaped payload from an event envelope. The audit-only
+ * LoginSucceeded / LoginRejected / AccountLocked / UserUpdated emissions
+ * all carry record payloads — see `password-login.ts` emit sites.
+ */
+function payloadRecord(env: EventEnvelope): Record<string, unknown> {
+  return recordOf(
+    env.payload,
+    `payload on ${env.eventType} (${env.eventId})`,
+  );
+}
 
 async function seedUserWithPassword(
   fx: ReturnType<typeof newFixture>,
@@ -195,8 +222,8 @@ describe('handlePasswordLogin — configuration knobs', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as { ip?: string };
-    expect(payload.ip).toBe('198.51.100.99');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['ip']).toBe('198.51.100.99');
     expect(result.sessionResult?.document.ip).toBe('198.51.100.99');
   });
 
@@ -232,18 +259,14 @@ describe('handlePasswordLogin — reject paths', () => {
       fx.entities,
     );
     expect(result.envelope.eventType).toBe('Identity.LoginRejected');
-    const payload = result.envelope.payload as {
-      reason: string;
-      email?: string;
-      emailHash?: string;
-    };
-    expect(payload.reason).toBe('unknown_user');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['reason']).toBe('unknown_user');
     // Crucial PII guarantee: unknown_user reject does NOT carry the
     // plaintext email. Only the SHA-256 hash. This prevents an attacker
     // probing emails from leaving a forever-PII trail in the event log
     // for non-customers.
-    expect(payload.email).toBeUndefined();
-    expect(payload.emailHash).toBeDefined();
+    expect(payload['email']).toBeUndefined();
+    expect(payload['emailHash']).toBeDefined();
     expect(result.user).toBeNull();
     expect(result.sessionResult).toBeUndefined();
     // ADR 0008 §2: system-initiated audit captures the bootstrap robot
@@ -265,12 +288,9 @@ describe('handlePasswordLogin — reject paths', () => {
       fx.entities,
     );
     expect(result.envelope.eventType).toBe('Identity.LoginRejected');
-    const payload = result.envelope.payload as {
-      reason: string;
-      email?: string;
-    };
-    expect(payload.reason).toBe('wrong_password');
-    expect(payload.email).toBe('wrong@example.com');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['reason']).toBe('wrong_password');
+    expect(payload['email']).toBe('wrong@example.com');
     expect(result.sessionResult).toBeUndefined();
   });
 
@@ -290,8 +310,10 @@ describe('handlePasswordLogin — reject paths', () => {
     expect(result.follow.map((e) => e.eventType)).toEqual([
       'Identity.UserUpdated',
     ]);
-    const payload = result.follow[0]?.payload as { document: UserDocument };
-    expect(payload.document.failedLoginCount).toBe(1);
+    const follow0 = assertDefined(result.follow[0], 'expected UserUpdated follow event');
+    expect(payloadRecord(follow0)['document']).toMatchObject({
+      failedLoginCount: 1,
+    });
   });
 
   it('account_locked: 5th consecutive wrong_password emits AccountLocked instead of UserUpdated', async () => {
@@ -323,12 +345,17 @@ describe('handlePasswordLogin — reject paths', () => {
       fx.events,
       fx.entities,
     );
-    expect(fifth.follow[0]?.eventType).toBe('Identity.AccountLocked');
-    const lockedDoc = (
-      fifth.follow[0]?.payload as { document: UserDocument }
-    ).document;
-    expect(lockedDoc.failedLoginCount).toBe(5);
-    expect(lockedDoc.lockedUntil).toBeDefined();
+    const lockedFollow = assertDefined(
+      fifth.follow[0],
+      'expected AccountLocked follow event on attempt 5',
+    );
+    expect(lockedFollow.eventType).toBe('Identity.AccountLocked');
+    const lockedDoc = recordOf(
+      payloadRecord(lockedFollow)['document'],
+      'AccountLocked document',
+    );
+    expect(lockedDoc['failedLoginCount']).toBe(5);
+    expect(lockedDoc['lockedUntil']).toBeDefined();
   });
 
   it('account_locked rejects subsequent attempts with reason=account_locked (no UserUpdated follow)', async () => {
@@ -359,8 +386,8 @@ describe('handlePasswordLogin — reject paths', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as { reason: string };
-    expect(payload.reason).toBe('account_locked');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['reason']).toBe('account_locked');
     expect(result.follow).toEqual([]);
   });
 
@@ -387,8 +414,8 @@ describe('handlePasswordLogin — reject paths', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as { reason: string };
-    expect(payload.reason).toBe('user_inactive');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['reason']).toBe('user_inactive');
   });
 
   it('throws no IdentityError on rejection — rejection is a normal Result, not an error', async () => {
@@ -445,7 +472,7 @@ describe('handlePasswordLogin — tenant scoping', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as { reason: string };
-    expect(payload.reason).toBe('unknown_user');
+    const payload = payloadRecord(result.envelope);
+    expect(payload['reason']).toBe('unknown_user');
   });
 });

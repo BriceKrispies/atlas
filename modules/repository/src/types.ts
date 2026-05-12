@@ -34,6 +34,13 @@ export interface RepositoryCreateCommand {
   description?: string;
 }
 
+export interface RepositoryCreatedPayload {
+  repoId: string;
+  repoSlug: string;
+  name: string;
+  description: string | null;
+}
+
 export interface RepositoryCreateResult {
   /**
    * The primary event. `null` when the create was a no-op idempotent
@@ -41,17 +48,13 @@ export interface RepositoryCreateResult {
    * so no new event is emitted (see the handler docblock for the
    * design rationale).
    */
-  envelope: import('@atlas/platform-core').EventEnvelope | null;
+  envelope: import('@atlas/platform-core').EventEnvelope<
+    'Repository.Created',
+    RepositoryCreatedPayload
+  > | null;
   repository: RepositoryRecord;
   /** True when the call was a no-op retry against an existing slug. */
   preexisting: boolean;
-}
-
-export interface RepositoryCreatedPayload {
-  repoId: string;
-  repoSlug: string;
-  name: string;
-  description: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,11 +75,6 @@ export interface RepositoryUploadCommand {
   bytesBase64: string;
 }
 
-export interface RepositoryUploadResult {
-  envelope: import('@atlas/platform-core').EventEnvelope;
-  revision: RevisionRecord;
-}
-
 export interface RepositoryUploadedPayload {
   repoId: string;
   revisionId: string;
@@ -84,6 +82,14 @@ export interface RepositoryUploadedPayload {
   contentHash: string;
   /** Principal that pushed the revision (mirrors `RevisionRecord.pushedBy`). */
   pushedBy: string;
+}
+
+export interface RepositoryUploadResult {
+  envelope: import('@atlas/platform-core').EventEnvelope<
+    'Repository.Uploaded',
+    RepositoryUploadedPayload
+  >;
+  revision: RevisionRecord;
 }
 
 // ---------------------------------------------------------------------------

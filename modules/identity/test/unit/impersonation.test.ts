@@ -33,6 +33,20 @@ import {
 } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 
+/**
+ * Narrows an event's `unknown`-typed payload to a string-keyed record so
+ * tests can read fields without per-call `as` casts. Throws on a
+ * malformed envelope. Centralising the cast keeps
+ * `no-unsafe-type-assertion` intact at every call site.
+ */
+function payloadOf(payload: unknown): Record<string, unknown> {
+  if (payload === null || typeof payload !== 'object') {
+    throw new Error(`expected payload to be an object, got: ${typeof payload}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof guard narrows object to string-keyed record; centralised so call sites stay cast-free.
+  return payload as Record<string, unknown>;
+}
+
 const VALID = {
   operatorId: 'op-1',
   targetUserId: 'user-target-1',
@@ -125,17 +139,11 @@ describe('handleImpersonationStart — happy path', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as {
-      reason: string;
-      ticketUrl: string;
-      expiresAt: string;
-      operatorId: string;
-      targetUserId: string;
-    };
-    expect(payload.reason).toBe(VALID.reason);
-    expect(payload.ticketUrl).toBe(VALID.ticketUrl);
-    expect(payload.operatorId).toBe(VALID.operatorId);
-    expect(payload.targetUserId).toBe(VALID.targetUserId);
+    const payload = payloadOf(result.envelope.payload);
+    expect(payload['reason']).toBe(VALID.reason);
+    expect(payload['ticketUrl']).toBe(VALID.ticketUrl);
+    expect(payload['operatorId']).toBe(VALID.operatorId);
+    expect(payload['targetUserId']).toBe(VALID.targetUserId);
   });
 
   it('honors custom maxDurationMin within the 8-hour cap', async () => {
@@ -350,12 +358,9 @@ describe('handleImpersonationAction', () => {
       },
       fx.events,
     );
-    const payload = result.envelope.payload as {
-      resourceType?: string;
-      resourceId?: string;
-    };
-    expect(payload.resourceType).toBe('Page');
-    expect(payload.resourceId).toBe('page-123');
+    const payload = payloadOf(result.envelope.payload);
+    expect(payload['resourceType']).toBe('Page');
+    expect(payload['resourceId']).toBe('page-123');
   });
 
   it('omits resourceType / resourceId from payload when not provided', async () => {
@@ -371,7 +376,7 @@ describe('handleImpersonationAction', () => {
       },
       fx.events,
     );
-    const payload = result.envelope.payload as Record<string, unknown>;
+    const payload = payloadOf(result.envelope.payload);
     expect('resourceType' in payload).toBe(false);
     expect('resourceId' in payload).toBe(false);
   });

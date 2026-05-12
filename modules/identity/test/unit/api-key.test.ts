@@ -336,9 +336,11 @@ describe('handleApiKeyRotate — happy path', () => {
       fx.events,
       fx.entities,
     );
-    const overlapMs = new Date(
-      result.predecessor.rotationOverlapUntil!,
-    ).getTime();
+    const rotationOverlapUntil = result.predecessor.rotationOverlapUntil;
+    if (!rotationOverlapUntil) {
+      throw new Error('rotation rollover predecessor missing rotationOverlapUntil');
+    }
+    const overlapMs = new Date(rotationOverlapUntil).getTime();
     expect(overlapMs - before).toBeLessThanOrEqual(60 * 60 * 1000 + 5000);
     expect(overlapMs - before).toBeGreaterThanOrEqual(60 * 60 * 1000 - 5000);
   });

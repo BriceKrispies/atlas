@@ -25,6 +25,7 @@ import { adminLoggingRoutes } from './admin-logging.ts';
 import { executionContextMiddleware } from '../middleware/execution-context.ts';
 import type { AppState } from '../bootstrap.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
+import { buildFakeAppState } from '../../test/lib/factories.ts';
 
 interface Rig {
   app: Hono<{ Variables: ServerVariables }>;
@@ -32,16 +33,35 @@ interface Rig {
   levelController: InMemoryLevelController;
 }
 
-function makeRig(opts: { adminPrincipal?: boolean; principal?: 'anonymous' | 'admin' | 'plain' } = {}): Rig {
+/**
+ * Build a typed `AppState` for the admin-logging route tests. Reuses the
+ * shared `buildFakeAppState` factory (which throws-on-access for unwired
+ * fields) and overrides the three fields this route actually reads:
+ * `logPipeline`, `levelController`, and `inspectionSink`. Earlier code
+ * laundered an `{ config, logPipeline, levelController, inspectionSink }`
+ * literal through `as unknown as AppState`, which silently hid drift the
+ * day AppState grew a new required field.
+ */
+function buildAdminLoggingState(): {
+  state: AppState;
+  inspectionSink: MemoryRingBufferSink;
+  levelController: InMemoryLevelController;
+} {
   const levelController = new InMemoryLevelController('info');
   const inspectionSink = new MemoryRingBufferSink({ capacity: 100 });
   const logPipeline = new LogPipeline([new CollectorSink(), inspectionSink], levelController);
-  const state = {
-    config: { tenantId: 'dev-tenant', environment: 'test' },
+  const fake = buildFakeAppState({ tenantId: 'dev-tenant' });
+  const state: AppState = {
+    ...fake.state,
     logPipeline,
     levelController,
     inspectionSink,
-  } as unknown as AppState;
+  };
+  return { state, inspectionSink, levelController };
+}
+
+function makeRig(opts: { adminPrincipal?: boolean; principal?: 'anonymous' | 'admin' | 'plain' } = {}): Rig {
+  const { state, inspectionSink, levelController } = buildAdminLoggingState();
 
   const app = new Hono<{ Variables: ServerVariables }>();
   app.use('*', executionContextMiddleware(state));
@@ -69,6 +89,44 @@ function makeRig(opts: { adminPrincipal?: boolean; principal?: 'anonymous' | 'ad
   return { app, inspectionSink, levelController };
 }
 
+/**
+ * Type-guard: narrows `unknown` to a JSON object. Indexing the result is
+ * still `unknown` — leaf fields must narrow before use.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Read the response body as a JSON object. Throws (failing the test loudly)
+ * if the body is not a JSON object. Routes the `Promise<any>` produced by
+ * `Response.json()` through a single typed boundary so per-call sites don't
+ * each need a `(await r.json()) as <Type>` escape-hatch cast.
+ */
+async function readBodyObject(r: Response): Promise<Record<string, unknown>> {
+  const raw: unknown = await r.json();
+  if (!isJsonObject(raw)) {
+    throw new Error('Test invariant: response body was not a JSON object');
+  }
+  return raw;
+}
+
+function readNumber(v: unknown, label: string): number {
+  if (typeof v !== 'number') throw new Error(`Test invariant: ${label} not number`);
+  return v;
+}
+
+function readString(v: unknown, label: string): string {
+  if (typeof v !== 'string') throw new Error(`Test invariant: ${label} not string`);
+  return v;
+}
+
+function readEvents(v: unknown): LogEvent[] {
+  if (!Array.isArray(v)) throw new Error('Test invariant: events not an array');
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: array shape narrowed via Array.isArray; the events are produced by MemoryRingBufferSink which only emits LogEvent values, so element shape is contract-pinned.
+  return v as LogEvent[];
+}
+
 describe('admin-logging route — gate', () => {
   it('rejects anonymous (no principal) with 401', async () => {
     const { app } = makeRig({ principal: 'anonymous' });
@@ -94,7 +152,7 @@ describe('admin-logging route — levels snapshot', () => {
     const { app } = makeRig({ principal: 'admin' });
     const r = await app.request('/api/v1/admin/logging/levels');
     expect(r.status).toBe(200);
-    const body = (await r.json()) as Record<string, unknown>;
+    const body = await readBodyObject(r);
     expect(body['default']).toBe('info');
     expect(body['global']).toBe('info');
     expect(body['byModule']).toEqual({});
@@ -219,26 +277,26 @@ describe('admin-logging route — inspect', () => {
 
     const r = await app.request('/api/v1/admin/logging/correlation/corr-A/recent');
     expect(r.status).toBe(200);
-    const body = (await r.json()) as { correlationId: string; count: number; events: LogEvent[] };
-    expect(body.correlationId).toBe('corr-A');
-    expect(body.count).toBe(2);
-    expect(body.events.map((e) => e.message)).toEqual(['two', 'one']);
+    const body = await readBodyObject(r);
+    expect(readString(body['correlationId'], 'correlationId')).toBe('corr-A');
+    expect(readNumber(body['count'], 'count')).toBe(2);
+    expect(readEvents(body['events']).map((e) => e.message)).toEqual(['two', 'one']);
   });
 
   it('honors ?limit', async () => {
     const { app, inspectionSink } = makeRig({ principal: 'admin' });
     for (let i = 0; i < 10; i++) inspectionSink.write(makeEvent('corr-A', `m${i}`));
     const r = await app.request('/api/v1/admin/logging/correlation/corr-A/recent?limit=3');
-    const body = (await r.json()) as { count: number };
-    expect(body.count).toBe(3);
+    const body = await readBodyObject(r);
+    expect(readNumber(body['count'], 'count')).toBe(3);
   });
 
   it('returns empty array when correlationId not seen', async () => {
     const { app } = makeRig({ principal: 'admin' });
     const r = await app.request('/api/v1/admin/logging/correlation/unknown/recent');
     expect(r.status).toBe(200);
-    const body = (await r.json()) as { count: number; events: LogEvent[] };
-    expect(body.count).toBe(0);
-    expect(body.events).toEqual([]);
+    const body = await readBodyObject(r);
+    expect(readNumber(body['count'], 'count')).toBe(0);
+    expect(readEvents(body['events'])).toEqual([]);
   });
 });

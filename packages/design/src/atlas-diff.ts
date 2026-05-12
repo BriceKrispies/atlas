@@ -160,7 +160,7 @@ export class AtlasDiff extends AtlasElement {
 
   private _built = false;
   private _scheduled = false;
-  private _idleHandle: number | null = null;
+  private _idleHandle: number | ReturnType<typeof setTimeout> | null = null;
   private _shellHeader: HTMLElement | null = null;
   private _shellBody: HTMLElement | null = null;
 
@@ -206,7 +206,7 @@ export class AtlasDiff extends AtlasElement {
   private _cancelIdle(): void {
     if (this._idleHandle != null) {
       const w = window as Window & { cancelIdleCallback?: (h: number) => void };
-      if (typeof w.cancelIdleCallback === 'function') {
+      if (typeof w.cancelIdleCallback === 'function' && typeof this._idleHandle === 'number') {
         w.cancelIdleCallback(this._idleHandle);
       } else {
         clearTimeout(this._idleHandle);
@@ -229,7 +229,7 @@ export class AtlasDiff extends AtlasElement {
     if (typeof w.requestIdleCallback === 'function') {
       this._idleHandle = w.requestIdleCallback(run, { timeout: 200 });
     } else {
-      this._idleHandle = window.setTimeout(run, 0) as unknown as number;
+      this._idleHandle = setTimeout(run, 0);
     }
   }
 

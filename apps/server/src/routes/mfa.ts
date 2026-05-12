@@ -34,6 +34,9 @@ import {
   identityDispatcher,
   IdentityError,
   type MfaChallengeMethod,
+  type MfaChallengeSubmitCommand,
+  type WebAuthnAssertFinishCommand,
+  type WebAuthnRegisterFinishCommand,
 } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
@@ -45,6 +48,96 @@ type AppCtx = Context<{ Variables: ServerVariables }>;
 
 function s(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+/**
+ * Type guard: narrows `unknown` to a plain JSON object (not array, not
+ * null). Indexing returns `unknown` because JSON values are unknown by
+ * nature — each leaf field still needs its own narrow before use.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Parse the request body as a JSON object. Returns `{}` on parse failure
+ * or when the body is non-object (array, primitive, null). Routes then
+ * pull individual fields with `s(body['key'])` and validate per-field.
+ *
+ * The runtime guard collapses the `c.req.json()` `unknown` boundary into
+ * a typed `Record<string, unknown>` via a type-predicate guard — no
+ * type-system escape-hatch cast required.
+ */
+async function readBodyObject(c: AppCtx): Promise<Record<string, unknown>> {
+  const raw: unknown = await c.req.json().catch(() => ({}));
+  return isJsonObject(raw) ? raw : {};
+}
+
+function asMfaMethod(v: unknown): MfaChallengeMethod | null {
+  // The switch narrows the string literal type, so no cast is required.
+  if (typeof v !== 'string') return null;
+  switch (v) {
+    case 'totp':
+    case 'webauthn':
+    case 'recovery_code':
+    case 'bypass':
+      return v;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The WebAuthn assertion / registration response is a complex JSON shape
+ * produced by `navigator.credentials.{create,get}()`. Validating its
+ * full structure here would duplicate the schema check that
+ * `@simplewebauthn/server` performs inside `verifyRegistrationResponse`
+ * / `verifyAuthenticationResponse`. The narrow we DO enforce: the field
+ * must be a non-null object so we don't hand the verifier a primitive
+ * or null and trigger a less-helpful crash. The library is the schema
+ * authority for the field's interior.
+ */
+function readWebAuthnResponseJson(v: unknown): Record<string, unknown> | null {
+  return isJsonObject(v) ? v : null;
+}
+
+/** Inner-shape parsers for the unified MFA challenge submit body. */
+function readTotpField(
+  v: unknown,
+): { factorId: string; presentedCode: string } | null {
+  if (!isJsonObject(v)) return null;
+  const factorId = s(v['factorId']);
+  const presentedCode = s(v['presentedCode']);
+  if (!factorId || !presentedCode) return null;
+  return { factorId, presentedCode };
+}
+
+function readWebAuthnChallengeField(
+  v: unknown,
+): { challengeId: string; response: Record<string, unknown> } | null {
+  if (!isJsonObject(v)) return null;
+  const challengeId = s(v['challengeId']);
+  const response = readWebAuthnResponseJson(v['response']);
+  if (!challengeId || !response) return null;
+  return { challengeId, response };
+}
+
+function readRecoveryCodeField(
+  v: unknown,
+): { presentedCode: string } | null {
+  if (!isJsonObject(v)) return null;
+  const presentedCode = s(v['presentedCode']);
+  if (!presentedCode) return null;
+  return { presentedCode };
+}
+
+function readBypassField(
+  v: unknown,
+): { presentedSecret: string } | null {
+  if (!isJsonObject(v)) return null;
+  const presentedSecret = s(v['presentedSecret']);
+  if (!presentedSecret) return null;
+  return { presentedSecret };
 }
 
 async function adaptersFor(state: AppState, tenantId: string): Promise<{
@@ -76,7 +169,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const name = s(body['name']) ?? 'Authenticator app';
     const accountLabel = s(body['accountLabel']) ?? principal.userId;
     const ad = await adaptersFor(state, principal.tenantId);
@@ -115,7 +208,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const factorId = s(body['factorId']);
     const presentedCode = s(body['presentedCode']);
     if (!factorId || !presentedCode) {
@@ -151,7 +244,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const factorKind = body['factorKind'] === 'passkey' ? 'passkey' : 'webauthn_mfa';
     const ad = await adaptersFor(state, principal.tenantId);
     const r = await handleWebAuthnRegisterBegin(
@@ -161,7 +254,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
         userId: principal.userId,
         userName:
           (typeof principal.attributes?.['email'] === 'string'
-            ? (principal.attributes['email'] as string)
+            ? principal.attributes['email']
             : undefined) ?? principal.userId,
         rpId,
         factorKind,
@@ -177,11 +270,11 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const challengeId = s(body['challengeId']);
     const factorKind = body['factorKind'] === 'passkey' ? 'passkey' : 'webauthn_mfa';
     const factorName = s(body['factorName']) ?? 'WebAuthn factor';
-    const response = body['response'];
+    const response = readWebAuthnResponseJson(body['response']);
     if (!challengeId || !response) {
       return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'challengeId + response required', 400, cid);
     }
@@ -194,7 +287,8 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
           principalId: principal.principalId,
           userId: principal.userId,
           challengeId,
-          response: response as never,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied RegistrationResponseJSON; @simplewebauthn/server validates the interior shape inside verifyRegistrationResponse. The object-shape narrow is in readWebAuthnResponseJson.
+          response: response as unknown as WebAuthnRegisterFinishCommand['response'],
           expectedOrigin,
           rpId,
           factorKind,
@@ -217,7 +311,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const factorKind = body['factorKind'] === 'passkey' ? 'passkey' : 'webauthn_mfa';
     const ad = await adaptersFor(state, principal.tenantId);
     const r = await handleWebAuthnAssertBegin(
@@ -239,10 +333,10 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const challengeId = s(body['challengeId']);
     const factorKind = body['factorKind'] === 'passkey' ? 'passkey' : 'webauthn_mfa';
-    const response = body['response'];
+    const response = readWebAuthnResponseJson(body['response']);
     if (!challengeId || !response) {
       return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'challengeId + response required', 400, cid);
     }
@@ -254,7 +348,8 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
           correlationId: cid,
           principalId: principal.principalId,
           challengeId,
-          response: response as never,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied AuthenticationResponseJSON; @simplewebauthn/server validates the interior shape inside verifyAuthenticationResponse. The object-shape narrow is in readWebAuthnResponseJson.
+          response: response as unknown as WebAuthnAssertFinishCommand['response'],
           expectedOrigin,
           rpId,
           factorKind,
@@ -325,7 +420,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const presentedCode = s(body['presentedCode']);
     if (!presentedCode) {
       return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'presentedCode required', 400, cid);
@@ -388,7 +483,7 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal?.userId) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const targetUserId = s(body['userId']);
     if (!targetUserId) {
       return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'userId required', 400, cid);
@@ -427,12 +522,51 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, cid);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const sessionId = s(body['sessionId']);
-    const method = s(body['method']) as MfaChallengeMethod | null;
+    const method = asMfaMethod(body['method']);
     if (!sessionId || !method) {
       return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'sessionId + method required', 400, cid);
     }
+
+    // Per-method inner-field validation. Each inner shape is narrowed at
+    // the boundary so the handler receives a typed command, not a raw
+    // request body. `expectedOrigin` / `rpId` for the WebAuthn path are
+    // injected from the server's own config — the client cannot supply
+    // them, which closes the "client-controlled origin defeats origin
+    // verification" path.
+    const totp = method === 'totp' ? readTotpField(body['totp']) : null;
+    const webauthnInner =
+      method === 'webauthn' ? readWebAuthnChallengeField(body['webauthn']) : null;
+    const recoveryCode =
+      method === 'recovery_code' ? readRecoveryCodeField(body['recoveryCode']) : null;
+    const bypass = method === 'bypass' ? readBypassField(body['bypass']) : null;
+    if (
+      (method === 'totp' && !totp) ||
+      (method === 'webauthn' && !webauthnInner) ||
+      (method === 'recovery_code' && !recoveryCode) ||
+      (method === 'bypass' && !bypass)
+    ) {
+      return errorResponse(
+        c,
+        'SCHEMA_VALIDATION_FAILED',
+        `method=${method} requires its inner payload`,
+        400,
+        cid,
+      );
+    }
+
+    type WebAuthnSubmitField = NonNullable<MfaChallengeSubmitCommand['webauthn']>;
+    const webauthn: WebAuthnSubmitField | null = webauthnInner
+      ? {
+          challengeId: webauthnInner.challengeId,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied AuthenticationResponseJSON; @simplewebauthn/server validates the interior shape during verifyAuthenticationResponse. The object-shape narrow is in readWebAuthnResponseJson.
+          response: webauthnInner.response as unknown as WebAuthnSubmitField['response'],
+          expectedOrigin,
+          rpId,
+        }
+      : null;
+
     const ad = await adaptersFor(state, principal.tenantId);
     try {
       const r = await handleMfaChallengeSubmit(
@@ -442,14 +576,10 @@ export function mfaRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
           principalId: principal.principalId,
           sessionId,
           method,
-          ...(body['totp'] !== undefined ? { totp: body['totp'] as never } : {}),
-          ...(body['webauthn'] !== undefined
-            ? { webauthn: body['webauthn'] as never }
-            : {}),
-          ...(body['recoveryCode'] !== undefined
-            ? { recoveryCode: body['recoveryCode'] as never }
-            : {}),
-          ...(body['bypass'] !== undefined ? { bypass: body['bypass'] as never } : {}),
+          ...(totp !== null ? { totp } : {}),
+          ...(webauthn !== null ? { webauthn } : {}),
+          ...(recoveryCode !== null ? { recoveryCode } : {}),
+          ...(bypass !== null ? { bypass } : {}),
         },
         ad.eventStore,
         ad.entities,

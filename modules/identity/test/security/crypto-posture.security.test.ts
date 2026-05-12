@@ -49,10 +49,12 @@ describe('F-CRYPTO-3 scrypt parameters', () => {
   it('uses N >= 2^17 (131072) per OWASP 2024 guidance', async () => {
     const phc = await hashPassword('correct-horse-Battery-staple');
     const match = /\$scrypt\$N=(\d+),r=(\d+),p=(\d+)\$/.exec(phc);
-    expect(match, `unexpected PHC envelope: ${phc}`).not.toBeNull();
-    const N = Number(match![1]);
-    const r = Number(match![2]);
-    const p = Number(match![3]);
+    if (match === null) {
+      throw new Error(`unexpected PHC envelope: ${phc}`);
+    }
+    const N = Number(match[1]);
+    const r = Number(match[2]);
+    const p = Number(match[3]);
     // Sanity: r and p match the OWASP shape (r=8 is fixed; p is the
     // tunable that compensates when N is dialed down, so we want either
     // N≥2^17 with p=1, or a documented N/p combination from the OWASP

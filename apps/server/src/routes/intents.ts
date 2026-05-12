@@ -21,6 +21,29 @@ import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
 
+/**
+ * Narrow `unknown` to a human-readable message string. `instanceof Error`
+ * covers the common throw shape; everything else falls back to `String(v)`.
+ * Mirrors the helper in `middleware/principal.ts` — we keep the duplicate
+ * tiny rather than coupling routes to middleware internals.
+ */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/** Type guard for plain JSON objects (not arrays, not null). */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Read a string `.code` field off an arbitrary thrown value, or null. */
+function errorCode(err: unknown): string | null {
+  if (!isJsonObject(err)) return null;
+  const code = err['code'];
+  return typeof code === 'string' ? code : null;
+}
+
 export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables }> {
   const app = new Hono<{ Variables: ServerVariables }>();
 
@@ -37,9 +60,9 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       return errorResponse(c, 'PRINCIPAL_REQUIRED', 'authentication required', 401, correlationId);
     }
 
-    let envelope: IntentEnvelope;
+    let raw: unknown;
     try {
-      envelope = (await c.req.json()) as IntentEnvelope;
+      raw = await c.req.json();
     } catch (e) {
       ctx.logger.info('intent rejected', {
         event: 'Intent.Rejected',
@@ -48,11 +71,33 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       return errorResponse(
         c,
         'BAD_REQUEST',
-        `Invalid JSON body: ${(e as Error).message}`,
+        `Invalid JSON body: ${errorMessage(e)}`,
         400,
         correlationId,
       );
     }
+    if (!isJsonObject(raw)) {
+      ctx.logger.info('intent rejected', {
+        event: 'Intent.Rejected',
+        properties: { code: 'BAD_REQUEST', reason: 'body-not-object' },
+      });
+      return errorResponse(
+        c,
+        'BAD_REQUEST',
+        'Invalid JSON body: expected an object',
+        400,
+        correlationId,
+      );
+    }
+    // Boundary: the envelope's full shape — including the per-action
+    // `payload` schema — is validated inside `submitIntent` via the
+    // schema registry (see `packages/ingress/src/submit-intent.ts:177`).
+    // Re-validating every IntentEnvelope field here would duplicate that
+    // surface. The object-shape narrow above closes the "primitive /
+    // array / null defeats `.correlationId`" path; submitIntent owns the
+    // rest. Same pattern as mfa.ts WebAuthn response handling.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: submitIntent's schema validator is the authority on IntentEnvelope shape; object-narrow done above
+    const envelope: IntentEnvelope = raw as unknown as IntentEnvelope;
 
     // Stamp correlation id from the resolved request flow if the body left it
     // empty — submitIntent's defaults expect it populated.
@@ -87,7 +132,7 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
         event: 'Intent.Rejected',
         properties: {
           code: 'BUNDLE_BUILD_FAILED',
-          reason: (e as Error).message,
+          reason: errorMessage(e),
           actionId: action,
         },
       });
@@ -116,18 +161,18 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
       });
       return c.json(response, 202);
     } catch (e) {
-      const err = e as Error;
+      const message = errorMessage(e);
       // Truncate user-supplied error text (e.g. schema validation strings)
       // before logging at info — avoids unbounded log-line growth and
       // keeps PII / pasted secrets from accidentally landing in the
       // structured log stream.
-      const reason = err.message.length > 200
-        ? `${err.message.slice(0, 200)}…`
-        : err.message;
+      const reason = message.length > 200
+        ? `${message.slice(0, 200)}…`
+        : message;
       ctx.logger.info('intent rejected', {
         event: 'Intent.Rejected',
         properties: {
-          code: (e as { code?: string }).code ?? 'INTERNAL_ERROR',
+          code: errorCode(e) ?? 'INTERNAL_ERROR',
           reason,
           actionId: action,
         },
@@ -143,7 +188,7 @@ export function intentRoutes(state: AppState): Hono<{ Variables: ServerVariables
           event: 'Intent.MetricObserve.Failed',
           properties: {
             actionId: action,
-            cause: (cause as Error).message,
+            cause: errorMessage(cause),
           },
         });
       }

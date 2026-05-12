@@ -27,6 +27,32 @@ export type SurfaceState =
   | 'error'
   | 'unauthorized';
 
+/** Narrow an arbitrary string to a `SurfaceState` value. */
+function asSurfaceState(v: string | null): SurfaceState | null {
+  switch (v) {
+    case 'loading':
+    case 'empty':
+    case 'success':
+    case 'error':
+    case 'unauthorized':
+      return v;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Read the `correlationId` off any object without an `as unknown as` cast.
+ * The field is a soft convention: subclasses (page shells, content-page
+ * elements) may carry one, but it's not on the base class. We check
+ * shape-first to keep the access type-safe.
+ */
+function readCorrelationId(v: object): string | undefined {
+  if (!('correlationId' in v)) return undefined;
+  const cid: unknown = (v as { correlationId: unknown }).correlationId;
+  return typeof cid === 'string' && cid.length > 0 ? cid : undefined;
+}
+
 /** Tags we've already warned about for conflicting re-registration. */
 const _defineWarned = new Set<string>();
 
@@ -126,14 +152,22 @@ export class AtlasElement extends HTMLElement {
     };
   }
 
+  /**
+   * Narrowed access to `this.constructor` as `typeof AtlasElement` (or a
+   * subclass). `Function` is the unhelpful default; this protected getter
+   * centralises the boundary so the rest of the class can read static
+   * fields without scattered casts.
+   */
+  protected _ctor(): typeof AtlasElement {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-constructor-narrowing
+    return this.constructor as typeof AtlasElement;
+  }
+
   connectedCallback(): void {
     this._applyTestId();
 
     // Set up reactive render if the subclass has a render method
-    if (
-      (this.constructor as typeof AtlasElement).prototype.render !==
-      AtlasElement.prototype.render
-    ) {
+    if (this._ctor().prototype.render !== AtlasElement.prototype.render) {
       this._renderDispose = effect(() => this._safeRender());
     }
 
@@ -155,14 +189,13 @@ export class AtlasElement extends HTMLElement {
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
+      const correlationId = this._effectiveCorrelationId();
       emitTelemetry({
         eventName: 'Atlas.Render.Failed',
         surfaceId: this.surfaceId,
         tagName: this.tagName.toLowerCase(),
         error: { message: error.message, stack: error.stack },
-        ...(this._effectiveCorrelationId()
-          ? { correlationId: this._effectiveCorrelationId() as string }
-          : {}),
+        ...(correlationId ? { correlationId } : {}),
       });
       if (isDevMode()) throw error;
     }
@@ -188,11 +221,11 @@ export class AtlasElement extends HTMLElement {
     }
     while (node) {
       if (node instanceof AtlasSurface) return node;
-      const parent = (node as Element).parentElement;
+      const parent = node.parentElement;
       if (parent) {
         node = parent;
       } else {
-        const root = (node as Node).getRootNode?.();
+        const root = node.getRootNode?.();
         node = root instanceof ShadowRoot ? root.host : null;
       }
     }
@@ -261,12 +294,12 @@ export class AtlasElement extends HTMLElement {
    * `correlationId` field aren't forced into an `override` modifier.
    */
   protected _effectiveCorrelationId(): string | undefined {
-    const own = (this as unknown as { correlationId?: unknown }).correlationId;
-    if (typeof own === 'string' && own) return own;
+    const own = readCorrelationId(this);
+    if (own) return own;
     const s = this.surface;
     if (s) {
-      const sid = (s as unknown as { correlationId?: unknown }).correlationId;
-      if (typeof sid === 'string' && sid) return sid;
+      const sid = readCorrelationId(s);
+      if (sid) return sid;
     }
     return undefined;
   }
@@ -342,16 +375,24 @@ export class AtlasSurface extends AtlasElement {
   /** Unsubscribe handle for the tag-based SSE subscription. */
   private _subscribesToUnsub: (() => void) | null = null;
 
+  /**
+   * Narrowed access to `this.constructor` as `typeof AtlasSurface` (or
+   * any subclass). Overrides `AtlasElement._ctor` so surface code can
+   * read static `surfaceId`, `loading`, and `empty` without scattered
+   * casts.
+   */
+  protected override _ctor(): typeof AtlasSurface {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-constructor-narrowing
+    return this.constructor as typeof AtlasSurface;
+  }
+
   /** Whether this surface uses the managed load lifecycle */
   get _managed(): boolean {
-    return (
-      (this.constructor as typeof AtlasSurface).prototype.load !==
-      AtlasSurface.prototype.load
-    );
+    return this._ctor().prototype.load !== AtlasSurface.prototype.load;
   }
 
   override get surfaceId(): string {
-    return (this.constructor as typeof AtlasSurface).surfaceId;
+    return this._ctor().surfaceId;
   }
 
   protected override _applyTestId(): void {
@@ -367,17 +408,16 @@ export class AtlasSurface extends AtlasElement {
    * no-op when the value didn't change.
    */
   setState(state: SurfaceState): void {
-    const prev = this.getAttribute('data-state') as SurfaceState | null;
+    const prev = asSurfaceState(this.getAttribute('data-state'));
     if (prev === state) return;
     this.setAttribute('data-state', state);
+    const correlationId = this._effectiveCorrelationId();
     emitTelemetry({
       eventName: `Surface.State.${prev ?? 'init'}.${state}`,
       surfaceId: this.surfaceId,
       from: prev ?? 'init',
       to: state,
-      ...(this._effectiveCorrelationId()
-        ? { correlationId: this._effectiveCorrelationId() as string }
-        : {}),
+      ...(correlationId ? { correlationId } : {}),
     });
   }
 
@@ -388,7 +428,7 @@ export class AtlasSurface extends AtlasElement {
       this._showLoading();
       void this._runLoad();
     } else {
-      const proto = (this.constructor as typeof AtlasSurface).prototype;
+      const proto = this._ctor().prototype;
       if (
         proto.render !== AtlasSurface.prototype.render &&
         proto.render !== AtlasElement.prototype.render
@@ -483,7 +523,7 @@ export class AtlasSurface extends AtlasElement {
   }
 
   protected _buildLoadingMarkup(): HTMLElement {
-    const cfg = (this.constructor as typeof AtlasSurface).loading;
+    const cfg = this._ctor().loading;
     const rows = cfg?.rows ?? 5;
     const skeleton = document.createElement('atlas-skeleton');
     skeleton.setAttribute('rows', String(rows));
@@ -492,7 +532,7 @@ export class AtlasSurface extends AtlasElement {
   }
 
   protected _buildEmptyMarkup(): HTMLElement {
-    const cfg = (this.constructor as typeof AtlasSurface).empty;
+    const cfg = this._ctor().empty;
     const heading = cfg?.heading ?? 'Nothing here yet';
     const body = cfg?.body ?? '';
     const action = cfg?.action ?? '';
@@ -620,7 +660,7 @@ export class AtlasSurface extends AtlasElement {
       const data = await this.load();
       this.data = data;
 
-      const emptyCfg = (this.constructor as typeof AtlasSurface).empty;
+      const emptyCfg = this._ctor().empty;
       const isEmpty =
         emptyCfg &&
         (data == null || (Array.isArray(data) && data.length === 0));

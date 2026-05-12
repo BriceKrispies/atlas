@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   openSpecimen,
   selectVariant,
@@ -16,10 +17,10 @@ test.describe('content-page edit mode — delete', () => {
     await selectVariant(page, 'Edit');
     await waitForEditor(page, 'dashboard');
 
-    const [id] = await widgetInstanceIdsInRegion(page, 'sidebar');
-    expect(id).toBeTruthy();
+    const [rawId] = await widgetInstanceIdsInRegion(page, 'sidebar');
+    const id = assertDefined(rawId, 'sidebar widget instance id');
 
-    await deleteButton(page, id as string).click({ force: true });
+    await deleteButton(page, id).click({ force: true });
 
     await expect
       .poll(async () => (await widgetTextsInRegion(page, 'sidebar')).length)
@@ -31,10 +32,10 @@ test.describe('content-page edit mode — delete', () => {
     await selectVariant(page, 'Edit');
     await waitForEditor(page, 'dashboard');
 
-    const [id] = await widgetInstanceIdsInRegion(page, 'main');
-    expect(id).toBeTruthy();
+    const [rawId] = await widgetInstanceIdsInRegion(page, 'main');
+    const id = assertDefined(rawId, 'main widget instance id');
 
-    await deleteButton(page, id as string).click({ force: true });
+    await deleteButton(page, id).click({ force: true });
 
     await expect
       .poll(async () => (await widgetTextsInRegion(page, 'main')).length)
@@ -80,32 +81,38 @@ test.describe('content-page edit mode — delete', () => {
     await selectVariant(page, 'Edit');
     await waitForEditor(page, 'dashboard');
 
-    const [mainId] = await widgetInstanceIdsInRegion(page, 'main');
-    const [sidebarId] = await widgetInstanceIdsInRegion(page, 'sidebar');
+    const [rawMainId] = await widgetInstanceIdsInRegion(page, 'main');
+    const [rawSidebarId] = await widgetInstanceIdsInRegion(page, 'sidebar');
+    const mainId = assertDefined(rawMainId, 'main widget instance id');
+    const sidebarId = assertDefined(rawSidebarId, 'sidebar widget instance id');
 
     // Capture the sidebar cell's bounding box before the delete so we can
     // assert it hasn't moved.
     const sidebarCell = page.locator(
       `[data-widget-cell][data-instance-id="${sidebarId}"]`,
     );
-    const boxBefore = await sidebarCell.boundingBox();
-    expect(boxBefore).not.toBeNull();
+    const boxBefore = assertDefined(
+      await sidebarCell.boundingBox(),
+      'sidebar cell bounding box before delete',
+    );
 
-    await deleteButton(page, mainId as string).click({ force: true });
+    await deleteButton(page, mainId).click({ force: true });
 
     await expect
       .poll(async () => (await widgetInstanceIdsInRegion(page, 'main')).length)
       .toBe(0);
 
     // Sidebar cell is the same DOM node, at the same position.
-    const boxAfter = await sidebarCell.boundingBox();
-    expect(boxAfter).not.toBeNull();
-    expect(boxAfter!.x).toBe(boxBefore!.x);
-    expect(boxAfter!.y).toBe(boxBefore!.y);
+    const boxAfter = assertDefined(
+      await sidebarCell.boundingBox(),
+      'sidebar cell bounding box after delete',
+    );
+    expect(boxAfter.x).toBe(boxBefore.x);
+    expect(boxAfter.y).toBe(boxBefore.y);
 
     // Chrome on the surviving cell is still live (was fully torn down in
     // the old remount-on-commit path).
-    await expect(dragHandle(page, sidebarId as string)).toBeAttached();
-    await expect(deleteButton(page, sidebarId as string)).toBeAttached();
+    await expect(dragHandle(page, sidebarId)).toBeAttached();
+    await expect(deleteButton(page, sidebarId)).toBeAttached();
   });
 });

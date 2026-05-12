@@ -22,16 +22,14 @@ export async function load(path: string): Promise<unknown> {
   try {
     text = await readFile(path, 'utf8');
   } catch (e) {
-    throw new JsonLoadError(path, `Failed to read '${path}': ${(e as Error).message}`, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new JsonLoadError(path, `Failed to read '${path}': ${msg}`, e);
   }
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new JsonLoadError(
-      path,
-      `Failed to parse JSON '${path}': ${(e as Error).message}`,
-      e,
-    );
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new JsonLoadError(path, `Failed to parse JSON '${path}': ${msg}`, e);
   }
 }
 
@@ -50,7 +48,8 @@ export function stripDocFields(value: unknown): unknown {
   }
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const entries: ReadonlyArray<[string, unknown]> = Object.entries(value);
+    for (const [k, v] of entries) {
       if (k.startsWith('$')) continue;
       out[k] = stripDocFields(v);
     }

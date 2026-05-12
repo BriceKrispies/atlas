@@ -67,7 +67,9 @@ export function cryptoContract(makeCrypto: () => Promise<Crypto>): void {
       const plaintext = utf8.encode('atlas');
       const { ciphertext, tag } = c.aesGcmEncrypt(key, iv, plaintext);
       const tampered = new Uint8Array(ciphertext);
-      tampered[0]! ^= 0xff;
+      const first = tampered[0];
+      if (first === undefined) throw new Error('ciphertext empty');
+      tampered[0] = first ^ 0xff;
       expect(() => c.aesGcmDecrypt(key, iv, tampered, tag)).toThrow();
     });
 

@@ -22,7 +22,7 @@
  */
 
 import type { Context, Next } from 'hono';
-import { jwtVerify } from 'jose';
+import { jwtVerify, type JWTPayload } from 'jose';
 import type { AtlasExecutionContext, Principal } from '@atlas/platform-core';
 import { createRootContext } from '@atlas/logging';
 import {
@@ -49,13 +49,37 @@ import {
 import { JwksCache } from './jwks-cache.ts';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
-import { errorResponse } from './errors.ts';
+import { errorResponse, errorMessage } from './errors.ts';
 import { correlationIdFor } from './correlation.ts';
 import { resolveHostTenant } from './tenant-resolution.ts';
 import { parseSessionCookie } from './cookie.ts';
 
 const DEBUG_PRINCIPAL_HEADER = 'X-Debug-Principal';
 const VALID_DEBUG_TYPES = new Set(['user', 'service', 'anonymous']);
+
+/**
+ * Runtime guard for "looks like a JWT payload object" — a JSON-parsed value
+ * that is a plain object (not null, not an array). Returns the value typed
+ * as `Record<string, unknown>` so individual claim reads stay `unknown`
+ * until each is narrowed at point-of-use.
+ */
+function isClaimsObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Pull a string claim out of a JWT payload. Returns the string when the
+ * named key is present and is a string; `null` otherwise. Mirrors the
+ * Rust ingress' lenient claim handling — a missing/non-string claim is
+ * not an error here, the caller decides whether the absence is fatal.
+ */
+function getStringClaim(
+  claims: Record<string, unknown>,
+  name: string,
+): string | null {
+  const v = claims[name];
+  return typeof v === 'string' ? v : null;
+}
 
 /**
  * Validate a tenant id. Mirrors the Rust counterpart `validate_tenant_id`
@@ -193,18 +217,21 @@ function jwtUnverifiedIssuer(
 ): string | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
+  const payloadSegment = parts[1];
+  if (payloadSegment === undefined || payloadSegment.length === 0) return null;
   try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1]!, 'base64url').toString('utf8'),
-    ) as Record<string, unknown>;
-    return typeof payload['iss'] === 'string' ? (payload['iss'] as string) : null;
+    const raw: unknown = JSON.parse(
+      Buffer.from(payloadSegment, 'base64url').toString('utf8'),
+    );
+    if (!isClaimsObject(raw)) return null;
+    return getStringClaim(raw, 'iss');
   } catch (e) {
     ctx?.logger.warn('auth scheme failed; falling through', {
       event: 'Identity.AuthScheme.Jwt.Failed',
       properties: {
         scheme: 'jwt',
         stage: 'unverified-issuer-decode',
-        cause: (e as Error).message,
+        cause: errorMessage(e),
       },
     });
     return null;
@@ -257,7 +284,7 @@ async function tryBearerSchemes(
     // Tenant unknown / migration error — treat as JWT-fallback.
     c.get('ctx').logger.warn('tenant migrate failed; falling through to JWT', {
       event: 'Tenancy.EnsureMigrated.Failed',
-      properties: { tenantId, scheme: 'bearer', cause: (e as Error).message },
+      properties: { tenantId, scheme: 'bearer', cause: errorMessage(e) },
     });
     return null;
   }
@@ -364,11 +391,11 @@ async function tryAccessToken(
   const presentedHash = hashSecret(token);
   const lookup = lookupOf(token);
   // Scan the lookup bucket. The index makes this O(bucket size).
-  const candidates = await (entities as unknown as {
-    query: <T>(t: string, type: string, opts: { attrsEqual: Record<string, unknown> }) => Promise<{ attrs: T }[]>;
-  }).query<AuthSessionDocument>(tenantId, 'AuthSession', {
-    attrsEqual: { accessTokenLookup: lookup },
-  });
+  const candidates = await entities.query<AuthSessionDocument>(
+    tenantId,
+    'AuthSession',
+    { attrsEqual: { accessTokenLookup: lookup } },
+  );
   for (const row of candidates) {
     if (!constantTimeEqual(row.attrs.accessTokenHash, presentedHash)) continue;
     const session = row.attrs;
@@ -391,7 +418,7 @@ async function tryAccessToken(
         properties: {
           scheme: 'session',
           sessionId: session.sessionId,
-          cause: (e as Error).message,
+          cause: errorMessage(e),
         },
       });
     }
@@ -495,7 +522,7 @@ export function principalMiddleware(state: AppState) {
                       properties: {
                         scheme: 'cookie',
                         sessionId: session.sessionId,
-                        cause: (e as Error).message,
+                        cause: errorMessage(e),
                       },
                     });
                   }
@@ -519,7 +546,7 @@ export function principalMiddleware(state: AppState) {
               properties: {
                 scheme: 'cookie',
                 tenantId,
-                cause: (e as Error).message,
+                cause: errorMessage(e),
               },
             });
           }
@@ -628,7 +655,7 @@ export function principalMiddleware(state: AppState) {
     // `iss` mismatch with the IDP row OR JWKS verification failure
     // both surface as PRINCIPAL_INVALID/401 (Rust parity).
     const claimedIssuer = jwtUnverifiedIssuer(token, c.get('ctx'));
-    let claims: Record<string, unknown> | null = null;
+    let claims: JWTPayload | null = null;
     let resolvedAudience: string | undefined;
     let resolvedTenantId: string | null = null;
 
@@ -647,11 +674,11 @@ export function principalMiddleware(state: AppState) {
               audience: idp.audience,
               issuer: idp.issuer,
             });
-            claims = payload as Record<string, unknown>;
+            claims = payload;
           } catch (e) {
             // On `kid` miss, force one refetch (rate-limited inside
             // the cache) and retry. Other failures bubble out.
-            const errStr = (e as Error).message;
+            const errStr = errorMessage(e);
             if (errStr.includes('kid') || errStr.includes('no applicable key')) {
               const refetched = jwksCache.resolve(
                 hostTenantId,
@@ -664,7 +691,7 @@ export function principalMiddleware(state: AppState) {
                   audience: idp.audience,
                   issuer: idp.issuer,
                 });
-                claims = payload as Record<string, unknown>;
+                claims = payload;
               } catch (e2) {
                 c.get('ctx').logger.warn('auth scheme failed; falling through', {
                   event: 'Identity.AuthScheme.Jwt.Failed',
@@ -672,7 +699,7 @@ export function principalMiddleware(state: AppState) {
                     scheme: 'jwt',
                     stage: 'verify-after-jwks-refresh',
                     issuer: idp.issuer,
-                    cause: (e2 as Error).message,
+                    cause: errorMessage(e2),
                   },
                 });
                 return errorResponse(
@@ -702,7 +729,7 @@ export function principalMiddleware(state: AppState) {
             scheme: 'jwt',
             stage: 'per-tenant-idp-resolve',
             tenantId: hostTenantId,
-            cause: (e as Error).message,
+            cause: errorMessage(e),
           },
         });
       }
@@ -731,13 +758,13 @@ export function principalMiddleware(state: AppState) {
           audience: state.config.oidc.audience,
           issuer: state.config.oidc.issuerUrl,
         });
-        claims = payload as Record<string, unknown>;
+        claims = payload;
         resolvedAudience = state.config.oidc.audience;
       } catch (e) {
         return errorResponse(
           c,
           'PRINCIPAL_INVALID',
-          `JWT verification failed: ${(e as Error).message}`,
+          `JWT verification failed: ${errorMessage(e)}`,
           401,
           correlationId,
         );

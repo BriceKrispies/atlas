@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type {
   CreateSignupRequestInput,
@@ -192,7 +193,7 @@ class InMemoryEventStore implements EventStore {
       (e) => e.tenantId === envelope.tenantId && e.idempotencyKey === envelope.idempotencyKey,
     );
     if (existing) {
-      return { ...existing, seq: existing.seq ?? 0n } as StoredEvent;
+      return { ...existing, seq: existing.seq ?? 0n } satisfies StoredEvent;
     }
     const stored: StoredEvent = { ...envelope, seq: this.nextSeq++ };
     this.events.push(stored);
@@ -245,20 +246,11 @@ function buildHarness(): Harness {
   const revokeCalls: { tenantId: string; email: string; correlationId: string }[] = [];
   const issueInviteCalls: { tenantId: string; email: string; correlationId: string }[] = [];
   const callOrder: string[] = [];
-  const h: Harness = {
-    signupRequests,
-    tenants,
-    customDomains,
-    mailer,
-    eventStore,
-    ensureProvisionedCalls,
-    revokeCalls,
-    issueInviteCalls,
-    callOrder,
-    mintCount: 0,
-    // assigned below
-    deps: undefined as unknown as SignupApproveDeps,
-  };
+  // Boxed counter so the issueInvite closure can mutate it without
+  // needing a reference to the Harness object (avoids the
+  // construct-then-assign tangle that earlier versions resolved with an
+  // `undefined as unknown as SignupApproveDeps` placeholder).
+  const mintCounter = { count: 0 };
 
   // Wrap markApproved to record order
   const origMark = signupRequests.markApproved.bind(signupRequests);
@@ -281,7 +273,7 @@ function buildHarness(): Harness {
     return origAppend(env);
   };
 
-  h.deps = {
+  const deps: SignupApproveDeps = {
     signupRequests,
     tenants,
     customDomains,
@@ -301,14 +293,28 @@ function buildHarness(): Harness {
     issueInvite: async (input) => {
       callOrder.push('issueInvite');
       issueInviteCalls.push({ ...input });
-      h.mintCount += 1;
-      return { plaintextToken: `tok-${h.mintCount}` };
+      mintCounter.count += 1;
+      return { plaintextToken: `tok-${mintCounter.count}` };
     },
     buildMagicLinkUrl: ({ presentedToken, hostname, acceptedEmail }) =>
       `http://${hostname}/signup/confirm?token=${presentedToken}&email=${encodeURIComponent(acceptedEmail)}`,
   };
 
-  return h;
+  return {
+    signupRequests,
+    tenants,
+    customDomains,
+    mailer,
+    eventStore,
+    ensureProvisionedCalls,
+    revokeCalls,
+    issueInviteCalls,
+    callOrder,
+    get mintCount() {
+      return mintCounter.count;
+    },
+    deps,
+  };
 }
 
 function seedPendingSignup(h: Harness): SignupRequest {
@@ -365,7 +371,10 @@ describe('handleSignupApprove', () => {
 
     // mailer.send called once with the expected EmailMessage shape
     expect(h.mailer.sends).toHaveLength(1);
-    const sent = h.mailer.sends[0]!;
+    const sent = assertDefined(
+      h.mailer.sends[0],
+      'mailer.sends asserted length === 1 immediately above',
+    );
     expect(sent.to).toBe('admin@acme.test');
     expect(sent.subject).toContain('Acme Inc');
     expect(sent.body).toContain(result.magicLinkUrl);
@@ -387,7 +396,10 @@ describe('handleSignupApprove', () => {
 
     // Tenancy.SignupApproved event appended with right tags + payload
     expect(h.eventStore.events).toHaveLength(1);
-    const evt = h.eventStore.events[0]!;
+    const evt = assertDefined(
+      h.eventStore.events[0],
+      'eventStore.events asserted length === 1 immediately above',
+    );
     expect(evt.eventType).toBe(TENANCY_SIGNUP_APPROVED_EVENT_TYPE);
     expect(evt.schemaId).toBe(TENANCY_SIGNUP_APPROVED_SCHEMA_ID);
     expect(evt.tenantId).toBe('acme');

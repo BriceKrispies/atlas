@@ -84,6 +84,10 @@ export class CachedRead<V = unknown> {
     // Try cache first — hit returns immediately, no single-flight needed.
     const cached = await this.cache.get(key);
     if (cached !== null) {
+      // Cache stores `unknown` (domain-agnostic port). The caller asks
+      // for `V`; the runtime invariant is that the writer used the same
+      // key under the same `V` — there is no safer typed read here.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: cache port erases V; writer/reader must agree on key→type
       return cached as V;
     }
 

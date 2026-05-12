@@ -14,6 +14,8 @@
 import type { ProjectionStore } from '@atlas/ports';
 import type postgres from 'postgres';
 
+import { jsonParam } from './seeds/sql-json.ts';
+
 export class PostgresProjectionStore implements ProjectionStore {
   constructor(private readonly sql: postgres.Sql) {}
 
@@ -29,7 +31,7 @@ export class PostgresProjectionStore implements ProjectionStore {
   async set(key: string, value: unknown): Promise<void> {
     await this.sql`
       INSERT INTO projections (projection_key, value, updated_at)
-      VALUES (${key}, ${this.sql.json(value as never)}, now())
+      VALUES (${key}, ${jsonParam(this.sql, value)}, now())
       ON CONFLICT (projection_key) DO UPDATE SET
         value = EXCLUDED.value,
         updated_at = now()

@@ -25,6 +25,12 @@ import type { RepositoryStore } from '@atlas/ports';
 import { REPOSITORY_CREATED_EVENT_TYPE } from '../events.ts';
 import type { RepositoryCreatedPayload } from '../types.ts';
 
+function isRepositoryCreatedEvent(
+  envelope: EventEnvelope,
+): envelope is EventEnvelope<'Repository.Created', RepositoryCreatedPayload> {
+  return envelope.eventType === REPOSITORY_CREATED_EVENT_TYPE;
+}
+
 /**
  * Apply a single envelope to the canonical `RepositoryStore`.
  * Idempotent: existing slugs are preserved unchanged.
@@ -33,8 +39,8 @@ export async function applyRepositorySummary(
   envelope: EventEnvelope,
   repositories: RepositoryStore,
 ): Promise<void> {
-  if (envelope.eventType !== REPOSITORY_CREATED_EVENT_TYPE) return;
-  const payload = envelope.payload as RepositoryCreatedPayload;
+  if (!isRepositoryCreatedEvent(envelope)) return;
+  const payload = envelope.payload;
   const principalId = envelope.principalId ?? 'unknown';
 
   // Idempotent: if the slug already exists in this tenant, leave the

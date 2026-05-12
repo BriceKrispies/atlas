@@ -115,7 +115,7 @@ export const USER_ENTITY_TYPE = 'User';
  * overwrites the first). Bumping this to a hard error is a one-line
  * change if a duplicate ever sneaks in.
  */
-export function generateCedarSchema(manifests: ModuleManifest[]): CedarSchemaJson {
+export function generateCedarSchema(manifests: readonly ModuleManifest[]): CedarSchemaJson {
   const entityTypes: Record<string, EntityType> = {
     [USER_ENTITY_TYPE]: userEntityType(),
   };

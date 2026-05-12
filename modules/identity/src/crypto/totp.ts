@@ -14,6 +14,7 @@
  */
 
 import type { SecretStore } from '@atlas/ports';
+import { must } from '../internal/assert.ts';
 import { getIdentityCrypto } from './runtime.ts';
 
 /** Name under which `IDENTITY_ENCRYPTION_KEY` (32 bytes base64) is read from `SecretStore`. */
@@ -82,12 +83,15 @@ export function hotp(secret: Uint8Array, counter: number): string {
   new DataView(counterBuf.buffer).setUint32(0, Math.floor(counter / 0x100000000), false);
   new DataView(counterBuf.buffer).setUint32(4, counter & 0xffffffff, false);
   const hmac = getIdentityCrypto().hmacSha1(secret, counterBuf);
-  const offset = hmac[hmac.length - 1]! & 0x0f;
-  const code =
-    ((hmac[offset]! & 0x7f) << 24) |
-    (hmac[offset + 1]! << 16) |
-    (hmac[offset + 2]! << 8) |
-    hmac[offset + 3]!;
+  // HMAC-SHA1 produces 20 bytes; offset is bounded to [0,15] by the low
+  // nibble of the last byte, so offset..offset+3 are always in range.
+  const lastByte = must(hmac[hmac.length - 1], 'hotp: hmac has trailing byte');
+  const offset = lastByte & 0x0f;
+  const b0 = must(hmac[offset], 'hotp: hmac[offset] in range');
+  const b1 = must(hmac[offset + 1], 'hotp: hmac[offset+1] in range');
+  const b2 = must(hmac[offset + 2], 'hotp: hmac[offset+2] in range');
+  const b3 = must(hmac[offset + 3], 'hotp: hmac[offset+3] in range');
+  const code = ((b0 & 0x7f) << 24) | (b1 << 16) | (b2 << 8) | b3;
   return String(code % 10 ** TOTP_DIGITS).padStart(TOTP_DIGITS, '0');
 }
 
@@ -200,7 +204,9 @@ export function decryptSecret(
 
 function b64Encode(bytes: Uint8Array): string {
   let s = '';
-  for (let i = 0; i < bytes.length; i += 1) s += String.fromCharCode(bytes[i]!);
+  for (let i = 0; i < bytes.length; i += 1) {
+    s += String.fromCharCode(must(bytes[i], 'b64Encode: index within bounds'));
+  }
   return globalThis.btoa(s);
 }
 

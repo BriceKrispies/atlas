@@ -18,6 +18,17 @@ import type {
   IntentResponse,
   SearchDocument,
 } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
+// ---------------- Window surface accessors ----------------
+//
+// `window.__atlas` and `window.__atlas_debug` are declared as optional on
+// the `Window` interface (see `apps/sim/src/types.ts`) because they are
+// only mounted inside the BDD harness build. Each probe asserts presence
+// inside the `page.evaluate` browser context — if a probe lands against a
+// non-BDD build the error names which surface is missing rather than
+// blowing up with a generic TypeError. The asserts are inlined into each
+// evaluate callback because `page.evaluate` serialises its function to
+// the browser and cannot close over Node-side helpers.
 
 export interface EventReadFilter {
   type?: string;
@@ -71,10 +82,11 @@ export async function submitIntent(
   page: Page,
   envelope: IntentEnvelope,
 ): Promise<IntentResponse> {
-  const response = await page.evaluate(
-    (e) => window.__atlas!.submitIntent(e),
-    envelope,
-  );
+  const response = await page.evaluate((e) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.submitIntent(e);
+  }, envelope);
   await settleWorker(page);
   return response;
 }
@@ -83,10 +95,11 @@ export async function submitIntentRaw(
   page: Page,
   envelope: IntentEnvelope,
 ): Promise<SubmitRawResult> {
-  const result = (await page.evaluate(
-    (e) => window.__atlas!.submitIntentRaw(e),
-    envelope,
-  )) as SubmitRawResult;
+  const result = await page.evaluate((e) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.submitIntentRaw(e);
+  }, envelope);
   // Settle even on a failed intent — the worker might still have
   // queued events from earlier mutations in the same scenario.
   await settleWorker(page);
@@ -94,7 +107,11 @@ export async function submitIntentRaw(
 }
 
 export function getFamilyDetail(page: Page, familyKey: string): Promise<unknown> {
-  return page.evaluate((k) => window.__atlas!.getFamilyDetail(k), familyKey);
+  return page.evaluate((k) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.getFamilyDetail(k);
+  }, familyKey);
 }
 
 export function getVariantTable(
@@ -103,20 +120,35 @@ export function getVariantTable(
   params: Record<string, unknown> = {},
 ): Promise<unknown> {
   return page.evaluate(
-    ([k, p]) => window.__atlas!.getVariantTable(k as string, p as Record<string, unknown>),
+    ([k, p]) => {
+      const action = window.__atlas;
+      if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+      return action.getVariantTable(
+        k as string,
+        p as Record<string, unknown>,
+      );
+    },
     [familyKey, params] as const,
   );
 }
 
 export function getTaxonomyNodes(page: Page, treeKey: string): Promise<unknown> {
-  return page.evaluate((k) => window.__atlas!.getTaxonomyNodes(k), treeKey);
+  return page.evaluate((k) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.getTaxonomyNodes(k);
+  }, treeKey);
 }
 
 export function searchCatalog(
   page: Page,
   params: Record<string, unknown>,
 ): Promise<unknown> {
-  return page.evaluate((p) => window.__atlas!.searchCatalog(p), params);
+  return page.evaluate((p) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.searchCatalog(p);
+  }, params);
 }
 
 // ---------------- Debug / probe surface ----------------
@@ -132,47 +164,60 @@ export interface AtlasSnapshot {
 }
 
 export function snapshot(page: Page): Promise<AtlasSnapshot> {
-  return page.evaluate(() => window.__atlas_debug!.snapshot()) as Promise<AtlasSnapshot>;
+  return page.evaluate(() => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.snapshot();
+  });
 }
 
 export function readEvents(
   page: Page,
   filter: EventReadFilter = {},
 ): Promise<EventEnvelope[]> {
-  return page.evaluate(
-    (f) => window.__atlas_debug!.readEvents(f),
-    filter,
-  ) as Promise<EventEnvelope[]>;
+  return page.evaluate((f) => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readEvents(f);
+  }, filter);
 }
 
 export function readEventById(
   page: Page,
   id: string,
 ): Promise<EventEnvelope | null> {
-  return page.evaluate(
-    (i) => window.__atlas_debug!.readEventById(i),
-    id,
-  ) as Promise<EventEnvelope | null>;
+  return page.evaluate((i) => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readEventById(i);
+  }, id);
 }
 
 export function readEventTags(
   page: Page,
   id: string,
 ): Promise<string[] | null> {
-  return page.evaluate(
-    (i) => window.__atlas_debug!.readEventTags(i),
-    id,
-  ) as Promise<string[] | null>;
+  return page.evaluate((i) => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readEventTags(i);
+  }, id);
 }
 
 export function readProjection(page: Page, key: string): Promise<unknown> {
-  return page.evaluate((k) => window.__atlas_debug!.readProjection(k), key);
+  return page.evaluate((k) => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readProjection(k);
+  }, key);
 }
 
 export function readAllProjections(page: Page): Promise<unknown[]> {
-  return page.evaluate(() => window.__atlas_debug!.readAllProjections()) as Promise<
-    unknown[]
-  >;
+  return page.evaluate(() => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readAllProjections();
+  });
 }
 
 export function readSearchDocs(
@@ -181,24 +226,32 @@ export function readSearchDocs(
   type?: string,
 ): Promise<SearchDocument[]> {
   return page.evaluate(
-    ([t, ty]) =>
-      window.__atlas_debug!.readSearchDocs(
+    ([t, ty]) => {
+      const dbg = window.__atlas_debug;
+      if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+      return dbg.readSearchDocs(
         t as string,
         ty as string | undefined,
-      ),
+      );
+    },
     [tenantId, type] as const,
-  ) as Promise<SearchDocument[]>;
-}
-
-export function readCatalogState(page: Page, tenantId: string): Promise<unknown> {
-  return page.evaluate(
-    (t) => window.__atlas_debug!.readCatalogState(t),
-    tenantId,
   );
 }
 
+export function readCatalogState(page: Page, tenantId: string): Promise<unknown> {
+  return page.evaluate((t) => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.readCatalogState(t);
+  }, tenantId);
+}
+
 export function reset(page: Page): Promise<void> {
-  return page.evaluate(() => window.__atlas_debug!.reset()) as Promise<void>;
+  return page.evaluate(() => {
+    const dbg = window.__atlas_debug;
+    if (!dbg) throw new Error('window.__atlas_debug is not mounted — non-BDD build?');
+    return dbg.reset();
+  });
 }
 
 // ---------------- Convenience helpers ----------------
@@ -218,7 +271,10 @@ export async function readSingleEventByType(
       `expected exactly 1 ${type} event for correlationId=${correlationId}, got ${matches.length}`,
     );
   }
-  return matches[0]!;
+  return assertDefined(
+    matches[0],
+    `length-checked match[0] for ${type}/${correlationId}`,
+  );
 }
 
 /**

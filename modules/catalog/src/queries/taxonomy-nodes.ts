@@ -1,6 +1,7 @@
 import type { ProjectionStore } from '@atlas/ports';
 import type { TaxonomyNavigationResponse } from '../responses.ts';
 import { projectionKey } from '../projections/taxonomy-navigation.ts';
+import { readProjection } from '../internal/projection-read.ts';
 
 export async function queryTaxonomyNodes(
   tenantId: string,
@@ -8,5 +9,5 @@ export async function queryTaxonomyNodes(
   projections: ProjectionStore,
 ): Promise<TaxonomyNavigationResponse | null> {
   const v = await projections.get(projectionKey(treeKey, tenantId));
-  return (v as TaxonomyNavigationResponse | null) ?? null;
+  return readProjection<TaxonomyNavigationResponse>(v);
 }

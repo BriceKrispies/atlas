@@ -77,7 +77,7 @@ class AtlasChartConfigField extends AtlasElement {
     }
     select.addEventListener('change', () => {
       if (!this.field) return;
-      store?.commit('setConfig', { field: this.field, value: select.value });
+      store?.commit({ kind: 'setConfig', field: this.field, value: select.value });
     });
     wrap.appendChild(select);
     this.appendChild(wrap);

@@ -41,15 +41,13 @@ async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`) as
-        (Element & { editor?: unknown }) | null;
-      if (cp && cp.editor) return true;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`);
+      if (cp && 'editor' in cp && cp.editor) return true;
       const all = root.querySelectorAll('*');
       for (const el of all) {
-        const e = el as Element & { shadowRoot?: ShadowRoot };
-        if (e.shadowRoot) stack.push(e.shadowRoot);
+        if (el.shadowRoot) stack.push(el.shadowRoot);
       }
     }
     return false;
@@ -79,34 +77,40 @@ async function openEditor(page: Page, pageId: string): Promise<void> {
  */
 async function mountOutline(page: Page): Promise<void> {
   await page.evaluate(async () => {
+    interface ShellEl extends Element {
+      editorState?: unknown;
+    }
+    interface OutlineEl extends HTMLElement {
+      controller: unknown;
+    }
     // Side-effect import registers the custom element. Vite serves the
     // module at this path; TypeScript doesn't resolve absolute browser
-    // paths so we cast through `unknown`.
+    // paths, so route through Function to keep the bundler from rewriting
+    // the specifier. The dynamic import returns `unknown` — we discard it.
     const mod = '/src/page-editor/left-panel/index.ts';
-    await (new Function('m', 'return import(m)') as (m: string) => Promise<unknown>)(mod);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
+    const dyn = new Function('m', 'return import(m)');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
+    await (dyn as (m: string) => Promise<unknown>)(mod);
     const stack: Array<Document | ShadowRoot | Element> = [document];
-    let shell: (Element & { editorState?: unknown }) | null = null;
+    let shell: ShellEl | null = null;
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { editorState?: unknown }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector<ShellEl>('authoring-page-editor-shell');
       if (el && el.editorState) {
         shell = el;
         break;
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     if (!shell?.editorState) throw new Error('shell controller not ready');
     // Remove any previous test-mount.
     document.querySelectorAll('page-editor-outline[data-test-mount]').forEach((n) => n.remove());
-    const outline = document.createElement('page-editor-outline') as HTMLElement & {
-      controller: unknown;
-    };
+    const outline = document.createElement('page-editor-outline') as OutlineEl;
     outline.setAttribute('data-test-mount', 'true');
     outline.controller = shell.editorState;
     document.body.appendChild(outline);
@@ -114,29 +118,37 @@ async function mountOutline(page: Page): Promise<void> {
 }
 
 async function readOutlineState(page: Page, pageId: string): Promise<OutlineSnapshot | null> {
-  return (await readEditorState(page, `${pageId}:outline`)) as OutlineSnapshot | null;
+  const raw = await readEditorState(page, `${pageId}:outline`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the outline-surface snapshot shape is contract-pinned by the outline element.
+  return raw as OutlineSnapshot | null;
 }
 
-async function readShellSnapshot(page: Page): Promise<{ regions: Array<{ name: string; widgetIds: string[] }> } | null> {
-  return page.evaluate(() => {
+interface ShellSnapshot {
+  regions: Array<{ name: string; widgetIds: string[] }>;
+}
+
+async function readShellSnapshot(page: Page): Promise<ShellSnapshot | null> {
+  const raw = await page.evaluate(() => {
+    interface ShellEl extends Element {
+      getEditorSnapshot?: () => unknown;
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { getEditorSnapshot?: () => unknown }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector<ShellEl>('authoring-page-editor-shell');
       if (el?.getEditorSnapshot) {
-        const snap = el.getEditorSnapshot() as { regions: Array<{ name: string; widgetIds: string[] }> } | null;
-        return snap;
+        return el.getEditorSnapshot();
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
   });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the shell's imperative getEditorSnapshot returns unknown; ShellSnapshot is contract-pinned by the shell element and asserted in-test.
+  return raw as ShellSnapshot | null;
 }
 
 async function clickOutlineRow(page: Page, instanceId: string, modifier?: 'Shift'): Promise<void> {

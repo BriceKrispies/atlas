@@ -12,6 +12,11 @@ interface ProjectionUpdatedEvent {
   resourceType?: string;
 }
 
+/** Extract the message string from an unknown thrown value. */
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 class PoliciesListPage extends AtlasSurface {
   static override surfaceId = 'admin.authz.policies-list';
   static override loading = { rows: 5 };
@@ -22,13 +27,20 @@ class PoliciesListPage extends AtlasSurface {
     action: 'New policy',
   };
 
+  /**
+   * Narrow the inherited `data: unknown` to the load() return shape so
+   * render() and the test-state reader read it without an `as` cast.
+   * `AtlasSurface._runLoad` assigns this field with the load() result.
+   */
+  declare data: readonly PolicySummary[] | null;
+
   override async load(): Promise<readonly PolicySummary[]> {
     const result = await listPolicies();
     return result;
   }
 
   override render(): DocumentFragment {
-    const rows = (this.data as readonly PolicySummary[] | null) ?? [];
+    const rows = this.data ?? [];
     // Body-slot pattern (ADR-0001): the heading + actions live in the
     // surface frame and stay visible across loading/empty/error states.
     // Only the contents of `[data-surface-body]` get swapped when the
@@ -144,7 +156,7 @@ class PoliciesListPage extends AtlasSurface {
     // on unmount. Reader returns the externally-observable shape.
     this._disposeTestState = registerTestState(this.surfaceId, () => ({
       state: this.getAttribute('data-state') ?? 'unknown',
-      rowCount: (this.data as readonly PolicySummary[] | null)?.length ?? 0,
+      rowCount: this.data?.length ?? 0,
     }));
 
     // Reload when a Policy projection event lands.
@@ -189,7 +201,7 @@ class PoliciesListPage extends AtlasSurface {
       this.emit('Atlas.Action.Failed', {
         event: 'Authz.PolicyActivate.Failed',
         version,
-        cause: (e as Error)?.message ?? String(e),
+        cause: errorMessage(e),
       });
     }
   }
@@ -203,7 +215,7 @@ class PoliciesListPage extends AtlasSurface {
       this.emit('Atlas.Action.Failed', {
         event: 'Authz.PolicyArchive.Failed',
         version,
-        cause: (e as Error)?.message ?? String(e),
+        cause: errorMessage(e),
       });
     }
   }

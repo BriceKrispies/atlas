@@ -358,11 +358,13 @@ describe('handleJitProvision — smoke', () => {
       fx.entities,
     );
     await dispatchAll(fx);
-    return (await fx.entities.get<IdentityProviderDocument>(
+    const entity = await fx.entities.get<IdentityProviderDocument>(
       fx.tenantId,
       'IdentityProvider',
       idp.idpId,
-    ))!.attrs;
+    );
+    if (!entity) throw new Error(`IdentityProvider ${idp.idpId} missing after activation`);
+    return entity.attrs;
   }
 
   it('creates a new User + Membership on first login', async () => {

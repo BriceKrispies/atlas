@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   openSpecimen,
   selectVariant,
@@ -64,15 +65,13 @@ test.describe('DnD subsystem — observable markers', () => {
 
     const chip = paletteChip(page, 'content.announcements');
     const slot = dropSlot(page, 'sidebar');
-    const cb = await chip.boundingBox();
-    const zb = await slot.boundingBox();
-    expect(cb).not.toBeNull();
-    expect(zb).not.toBeNull();
+    const cb = assertDefined(await chip.boundingBox(), 'palette chip bounding box');
+    const zb = assertDefined(await slot.boundingBox(), 'sidebar drop slot bounding box');
 
-    const cx = cb!.x + cb!.width / 2;
-    const cy = cb!.y + cb!.height / 2;
-    const tx = zb!.x + zb!.width / 2;
-    const ty = zb!.y + zb!.height / 2;
+    const cx = cb.x + cb.width / 2;
+    const cy = cb.y + cb.height / 2;
+    const tx = zb.x + zb.width / 2;
+    const ty = zb.y + zb.height / 2;
 
     await page.mouse.move(cx, cy);
     await page.mouse.down();

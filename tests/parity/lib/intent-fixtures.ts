@@ -60,7 +60,7 @@ export function validIntent(opts: BuildIntentOpts): IntentEnvelope {
   const { payload: payloadOverride, ...rest } = opts.overrides;
   const merged: IntentEnvelope = { ...base, ...rest };
   if (payloadOverride) {
-    merged.payload = { ...base.payload, ...payloadOverride } as IntentEnvelope['payload'];
+    merged.payload = { ...base.payload, ...payloadOverride } satisfies IntentEnvelope['payload'];
   }
   return merged;
 }
@@ -110,6 +110,7 @@ export function intentWithSchemaMismatch(opts: {
     principalId: opts.principalId,
     idempotencyKey: uniqueIdempotencyKey('itest-schema-mis'),
   });
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: adversarial test fixture; deliberately fabricates a payload that violates the actionId/resourceType invariants of IntentPayload so the AJV path can reject it.
   env.payload = { someOtherField: "doesn't match the schema" } as unknown as IntentEnvelope['payload'];
   return env;
 }

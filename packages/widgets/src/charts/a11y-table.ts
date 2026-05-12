@@ -14,11 +14,13 @@ export function renderChartDataTable(data: NormalizedData | null | undefined, ty
   table.className = 'atlas-visually-hidden';
   table.setAttribute('aria-label', `${type} chart data table`);
 
-  if ((data as { slices?: Slice[] } | null)?.slices) {
-    return renderSlicesTable(table, (data as { slices: Slice[] }).slices);
+  // `NormalizedData` is a discriminated union over `slices` vs `series` —
+  // use `in` to narrow without structural casts.
+  if (data && 'slices' in data && data.slices) {
+    return renderSlicesTable(table, data.slices);
   }
-  if ((data as { series?: Series[] } | null)?.series) {
-    return renderSeriesTable(table, (data as { series: Series[] }).series);
+  if (data && 'series' in data && data.series) {
+    return renderSeriesTable(table, data.series);
   }
   return table;
 }

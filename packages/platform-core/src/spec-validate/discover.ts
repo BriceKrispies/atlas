@@ -88,11 +88,11 @@ export function parseFilename(path: string): ParseResult {
   if (parts.length !== 3) {
     return { tag: 'no_match', path };
   }
-  // After confirming length === 3, indexed access is safe but TS still
-  // sees `string | undefined` under noUncheckedIndexedAccess.
-  const kindStr = parts[0]!;
-  const expectStr = parts[1]!;
-  const name = parts[2]!;
+  // Destructuring after the length check; `parts.length === 3` guarantees
+  // these are defined, but TS sees `string | undefined` under
+  // noUncheckedIndexedAccess. Default-to-empty is a no-op (impossible branch)
+  // that lets TS narrow to `string` without `!` or unsafe cast.
+  const [kindStr = '', expectStr = '', name = ''] = parts;
 
   const kind = asKind(kindStr);
   if (kind === null) return { tag: 'no_match', path };
@@ -153,7 +153,7 @@ async function walk(
     // path returned no cases instead of staring at silence.
     logger?.debug('spec-validate.discover: readdir failed', {
       dir,
-      error: (err as Error)?.message ?? String(err),
+      error: err instanceof Error ? err.message : String(err),
     });
     return;
   }
@@ -165,7 +165,7 @@ async function walk(
     } catch (err) {
       logger?.debug('spec-validate.discover: stat failed', {
         path: full,
-        error: (err as Error)?.message ?? String(err),
+        error: err instanceof Error ? err.message : String(err),
       });
       continue;
     }

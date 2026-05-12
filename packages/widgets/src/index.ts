@@ -25,3 +25,26 @@ import './charts/atlas-chart-export-button.ts';
 import './charts/atlas-chart-config-panel.ts';
 
 export * from './data-source/index.ts';
+
+// Data-table typed column primitives. Consumers declare
+// `columns: Columns<MyRow>` so every formatter / matcher / comparator
+// sees the precise value type without casts.
+export type {
+  AnyColumn,
+  BuiltinFormat,
+  CellFormatterFn,
+  Column,
+  ColumnConfig,
+  ColumnFormat,
+  Columns,
+  DataTableState,
+  DerivedColumn,
+  Status,
+} from './data-table/data-table-core.ts';
+export type {
+  FilterableColumn,
+  FilterConfig,
+  FilterType,
+  FilterValueFor,
+  RangeFilter,
+} from './data-table/filter-core.ts';

@@ -205,9 +205,12 @@ export class AtlasFormField extends AtlasElement {
     if (opted) return opted;
 
     // 2. Legacy heuristic: first non-part child.
-    const candidates = Array.from(this.children).filter(
-      (c) => !c.matches('[data-atlas-field-part]'),
-    ) as HTMLElement[];
+    const candidates: HTMLElement[] = [];
+    for (const c of this.children) {
+      if (c instanceof HTMLElement && !c.matches('[data-atlas-field-part]')) {
+        candidates.push(c);
+      }
+    }
     if (candidates.length === 1) return candidates[0] ?? null;
     if (candidates.length > 1 && typeof console !== 'undefined') {
       console.warn(

@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { StoredEvent, WorkerSource, WorkerSubscription } from '@atlas/ports';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 /**
  * Per-test factory. Each `test()` calls this once at the start and the
@@ -92,9 +93,14 @@ export function runWorkerSourceContract(
           const s3 = await f.appendEvent(makeEvent({ tenantId: 'tenant-a' }));
           const events = await drain(sub, 3, 1000);
           expect(events.map((e) => e.eventId)).toEqual([s1.eventId, s2.eventId, s3.eventId]);
-          // Strictly ascending seq.
+          // Strictly ascending seq. Bounded loop + WorkerSource contract
+          // guarantees `seq` populated on every yielded envelope.
           for (let i = 1; i < events.length; i++) {
-            expect(events[i - 1]!.seq! < events[i]!.seq!).toBe(true);
+            const prev = assertDefined(events[i - 1], `events[${i - 1}] in drained batch`);
+            const curr = assertDefined(events[i], `events[${i}] in drained batch`);
+            const prevSeq = assertDefined(prev.seq, 'seq populated on yielded envelope');
+            const currSeq = assertDefined(curr.seq, 'seq populated on yielded envelope');
+            expect(prevSeq < currSeq).toBe(true);
           }
         } finally {
           await sub.close();
@@ -111,17 +117,18 @@ export function runWorkerSourceContract(
         for (let i = 0; i < 5; i++) {
           stored.push(await f.appendEvent(makeEvent({ tenantId: 'tenant-a' })));
         }
-        const after = stored[1]!.seq;
+        const after = assertDefined(stored[1], 'stored[1] after 5 appends').seq;
         const sub = f.source.subscribe('tenant-a', after);
         try {
           const events = await drain(sub, 3, 1000);
           expect(events.map((e) => e.eventId)).toEqual([
-            stored[2]!.eventId,
-            stored[3]!.eventId,
-            stored[4]!.eventId,
+            assertDefined(stored[2], 'stored[2] after 5 appends').eventId,
+            assertDefined(stored[3], 'stored[3] after 5 appends').eventId,
+            assertDefined(stored[4], 'stored[4] after 5 appends').eventId,
           ]);
           for (const e of events) {
-            expect(e.seq! > after).toBe(true);
+            const seq = assertDefined(e.seq, 'seq populated on yielded envelope');
+            expect(seq > after).toBe(true);
           }
         } finally {
           await sub.close();
@@ -145,7 +152,7 @@ export function runWorkerSourceContract(
         const sub1 = f.source.subscribe('tenant-a', 0n);
         const drained = await drain(sub1, 3, 1000);
         expect(drained.length).toBe(3);
-        await sub1.ack(stored[1]!.seq);
+        await sub1.ack(assertDefined(stored[1], 'stored[1] after 3 appends').seq);
         await sub1.close();
 
         const sub2 = f.source.subscribe('tenant-a', 0n);
@@ -177,8 +184,10 @@ export function runWorkerSourceContract(
         const sub = f.source.subscribe('tenant-a', 0n);
         try {
           await drain(sub, 5, 1000);
-          await sub.ack(stored[4]!.seq);
-          await expect(sub.ack(stored[2]!.seq)).resolves.toBeUndefined();
+          const high = assertDefined(stored[4], 'stored[4] after 5 appends').seq;
+          const low = assertDefined(stored[2], 'stored[2] after 5 appends').seq;
+          await sub.ack(high);
+          await expect(sub.ack(low)).resolves.toBeUndefined();
         } finally {
           await sub.close();
         }
@@ -198,7 +207,8 @@ export function runWorkerSourceContract(
           const events = await drain(sub, 1, 1000);
           const elapsed = Date.now() - appendStart;
           expect(events.length).toBe(1);
-          expect(events[0]!.eventId).toBe(stored.eventId);
+          const firstEvent = assertDefined(events[0], 'events[0] after drain(sub, 1)');
+          expect(firstEvent.eventId).toBe(stored.eventId);
           expect(elapsed).toBeLessThan(1500);
         } finally {
           await sub.close();

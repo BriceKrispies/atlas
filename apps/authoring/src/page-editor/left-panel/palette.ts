@@ -28,6 +28,7 @@
  */
 
 import { AtlasElement, AtlasSurface } from '@atlas/core';
+import { readDetailValue, isHtmlInputElement } from '@atlas/design/internal/assert.ts';
 import { registerTestState, makeCommit, type CommitRecord } from '@atlas/test-state';
 import { editorWidgetSchemas, editorWidgetManifests } from '../editor-widgets/index.ts';
 import type { PageEditorController, PageEditorStateSnapshot } from '../state.ts';
@@ -225,10 +226,13 @@ export class PageEditorPaletteElement extends AtlasSurface {
     if (c.at <= this._seenAddCommitAt) return;
     this._seenAddCommitAt = c.at;
     if (c.intent !== 'addWidget') return;
-    const patch = c.patch as { widgetId?: string } | undefined;
-    const widgetId = patch?.widgetId;
-    if (typeof widgetId !== 'string' || widgetId.length === 0) return;
-    const next = [widgetId, ...this._recents.filter((w) => w !== widgetId)];
+    // commit.patch is `unknown`; runtime-narrow before reading widgetId
+    // instead of asserting the patch shape.
+    const patch = c.patch;
+    if (patch === null || typeof patch !== 'object') return;
+    const widgetIdRaw: unknown = (patch as { widgetId?: unknown }).widgetId;
+    if (typeof widgetIdRaw !== 'string' || widgetIdRaw.length === 0) return;
+    const next = [widgetIdRaw, ...this._recents.filter((w) => w !== widgetIdRaw)];
     this._recents = next.slice(0, RECENTS_LIMIT);
   }
 
@@ -302,13 +306,10 @@ export class PageEditorPaletteElement extends AtlasSurface {
     searchInput.setAttribute('placeholder', 'Search widgets…');
     searchInput.value = this._search;
     const onSearchEvent = (ev: Event): void => {
-      const detail = (ev as unknown as CustomEvent<{ value?: string }>).detail;
-      const next =
-        (detail && typeof detail === 'object' && typeof detail.value === 'string'
-          ? detail.value
-          : undefined)
-        ?? (ev.target as HTMLInputElement | null)?.value
-        ?? '';
+      const detailValue = readDetailValue(ev);
+      const target = ev.target;
+      const targetValue = isHtmlInputElement(target) ? target.value : undefined;
+      const next = detailValue ?? targetValue ?? '';
       this._setSearch(next);
     };
     searchInput.addEventListener('input', onSearchEvent);
@@ -335,9 +336,7 @@ export class PageEditorPaletteElement extends AtlasSurface {
       regionSelect.options = regions.map((r) => ({ value: r.name, label: r.name }));
       regionSelect.value = this._selectedRegion ?? regions[0]?.name ?? '';
       regionSelect.addEventListener('change', (ev) => {
-        const next = (ev as CustomEvent<{ value: string }>).detail?.value
-          ?? regionSelect.value
-          ?? '';
+        const next = readDetailValue(ev) ?? regionSelect.value ?? '';
         this._setSelectedRegion(next);
       });
       regionRow.appendChild(regionSelect);
@@ -489,3 +488,9 @@ export class PageEditorPaletteElement extends AtlasSurface {
 }
 
 AtlasElement.define('page-editor-palette', PageEditorPaletteElement);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'page-editor-palette': PageEditorPaletteElement;
+  }
+}

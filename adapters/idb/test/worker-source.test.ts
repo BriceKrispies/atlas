@@ -42,12 +42,23 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
   }
 }
 
+/**
+ * Pull the next event from the iterator with a timeout, and narrow the
+ * result to its yielded value. Throws if the iterator finished before a
+ * value arrived — callers that want to observe `done=true` should use
+ * `iter.next()` directly via `withTimeout` (see the close-resolves test).
+ *
+ * Narrowing here lets call sites read `.eventId` / `.seq` without the
+ * `any`-typed `IteratorReturnResult` branch leaking through `?.`.
+ */
 async function nextEvent(
   iter: AsyncIterator<EventEnvelope>,
   ms: number,
   label: string,
-): Promise<IteratorResult<EventEnvelope>> {
-  return withTimeout(iter.next(), ms, label);
+): Promise<EventEnvelope> {
+  const got = await withTimeout(iter.next(), ms, label);
+  if (got.done === true) throw new Error(`iterator finished before yielding: ${label}`);
+  return got.value;
 }
 
 describe('IdbWorkerSource', () => {
@@ -66,9 +77,8 @@ describe('IdbWorkerSource', () => {
     const appended = await events.append(makeEvent('tenant-ws', 'a'));
 
     const got = await nextEvent(iter, 1500, 'first event');
-    expect(got.done).toBe(false);
-    expect(got.value?.eventId).toBe(appended.eventId);
-    expect(got.value?.seq).toBe(appended.seq);
+    expect(got.eventId).toBe(appended.eventId);
+    expect(got.seq).toBe(appended.seq);
 
     await sub.close();
     db.close();
@@ -84,23 +94,25 @@ describe('IdbWorkerSource', () => {
     const sub1 = source.subscribe('tenant-ws', 0n);
     const iter1 = sub1.events()[Symbol.asyncIterator]();
     const got1 = await nextEvent(iter1, 1500, 'first delivery');
-    expect(got1.value?.eventId).toBe(first.eventId);
+    expect(got1.eventId).toBe(first.eventId);
     await sub1.ack(first.seq);
     await sub1.close();
 
     // Cursor should now hold first.seq. Verify durability directly.
     const cursor = await db.get('worker_cursors', `tenant-ws test-module`);
-    expect(cursor).toBeDefined();
-    expect(cursor?.lastSeq).toBe(Number(first.seq));
+    if (cursor === undefined) {
+      throw new Error('expected worker_cursors row for tenant-ws/test-module after ack');
+    }
+    expect(cursor.lastSeq).toBe(Number(first.seq));
 
     // New subscription resuming from the persisted cursor should NOT
     // re-deliver `first`. Append a second event and confirm only that one
     // arrives.
     const second = await eventStore.append(makeEvent('tenant-ws', 'second'));
-    const sub2 = source.subscribe('tenant-ws', BigInt(cursor!.lastSeq));
+    const sub2 = source.subscribe('tenant-ws', BigInt(cursor.lastSeq));
     const iter2 = sub2.events()[Symbol.asyncIterator]();
     const got2 = await nextEvent(iter2, 1500, 'second delivery');
-    expect(got2.value?.eventId).toBe(second.eventId);
+    expect(got2.eventId).toBe(second.eventId);
 
     await sub2.close();
     db.close();

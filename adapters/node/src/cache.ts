@@ -23,6 +23,8 @@ import type { CacheSetOptions } from '@atlas/platform-core';
 import type { Cache } from '@atlas/ports';
 import type postgres from 'postgres';
 
+import { jsonParam } from './seeds/sql-json.ts';
+
 export class PostgresCache implements Cache {
   constructor(private readonly sql: postgres.Sql) {}
 
@@ -53,7 +55,7 @@ export class PostgresCache implements Cache {
       INSERT INTO cache_entries (cache_key, value, tags, expires_at, set_at)
       VALUES (
         ${key},
-        ${this.sql.json(value as never)},
+        ${jsonParam(this.sql, value)},
         ${tags},
         ${expires},
         now()

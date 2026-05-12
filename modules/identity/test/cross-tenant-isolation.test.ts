@@ -22,6 +22,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   AUTH_SESSION_ENTITY_TYPE,
   INVITE_TOKEN_ENTITY_TYPE,
@@ -131,10 +132,10 @@ describe('cross-tenant isolation: User queries', () => {
     const aResult = await getUser(depsFor(TENANT_A), 'usr-shared');
     const bResult = await getUser(depsFor(TENANT_B), 'usr-shared');
 
-    expect(aResult).not.toBeNull();
-    expect(aResult!.email).toBe(`usr-shared@${TENANT_A}.example`);
-    expect(bResult).not.toBeNull();
-    expect(bResult!.email).toBe(`usr-shared@${TENANT_B}.example`);
+    const aUser = assertDefined(aResult, 'tenant A seeded usr-shared above');
+    expect(aUser.email).toBe(`usr-shared@${TENANT_A}.example`);
+    const bUser = assertDefined(bResult, 'tenant B seeded usr-shared above');
+    expect(bUser.email).toBe(`usr-shared@${TENANT_B}.example`);
   });
 
   it('getUser returns null when target user only exists in another tenant (I7)', async () => {
@@ -211,18 +212,20 @@ describe('cross-tenant isolation: Membership queries', () => {
 
 describe('cross-tenant isolation: InviteToken query', () => {
   function invite(tenantId: string, tokenId: string): InviteTokenDocument {
+    // Build through a `satisfies` pin so any future field add to
+    // InviteTokenDocument shows up here as a compile error instead of
+    // silently leaving a partial test record behind a double-cast.
     return {
       tokenId,
       tenantId,
       email: `invitee@${tenantId}.example`,
       tokenHash: 'h',
       tokenLookup: 'l',
-      issuedAt: '2026-05-01T00:00:00Z',
+      rolesOnAccept: ['Member'],
       expiresAt: '2026-06-01T00:00:00Z',
       status: 'pending',
-      issuedBy: 'usr-issuer',
-      roles: ['Member'],
-    } as unknown as InviteTokenDocument;
+      createdAt: '2026-05-01T00:00:00Z',
+    } satisfies InviteTokenDocument;
   }
 
   it('getInviteToken scoped to tenant A never returns tenant B token (I7)', async () => {
@@ -243,6 +246,8 @@ describe('cross-tenant isolation: Session queries', () => {
     userId: string,
     accessTokenLookup = 'lookup-shared',
   ): AuthSessionDocument {
+    // `satisfies` keeps the test record honest with the real shape — if
+    // AuthSessionDocument gains a required field, this stops compiling.
     return {
       sessionId,
       tenantId,
@@ -250,14 +255,14 @@ describe('cross-tenant isolation: Session queries', () => {
       status: 'active',
       issuedAt: '2026-05-01T00:00:00Z',
       lastSeenAt: '2026-05-01T00:00:00Z',
-      expiresAt: '2026-05-02T00:00:00Z',
+      lastRefreshedAt: '2026-05-01T00:00:00Z',
+      accessExpiresAt: '2026-05-02T00:00:00Z',
+      hardExpiresAt: '2026-05-02T00:00:00Z',
       accessTokenHash: 'ah',
       accessTokenLookup,
       refreshTokenHash: 'rh',
       refreshTokenLookup: 'rl',
-      idleTimeoutMin: 30,
-      hardTimeoutMin: 720,
-    } as unknown as AuthSessionDocument;
+    } satisfies AuthSessionDocument;
   }
 
   it('getSession scoped to tenant A never returns tenant B session', async () => {

@@ -98,12 +98,18 @@ describe('handleSessionRevoke — happy path', () => {
       fx.events,
       fx.entities,
     );
-    const payload = result.envelope.payload as {
-      document: { status: string; endReason: string };
-      reason: string;
-    };
-    expect(payload.document.status).toBe('revoked');
-    expect(payload.document.endReason).toBe('admin_revoke');
+    const payload = result.envelope.payload;
+    if (!payload || typeof payload !== 'object'
+      || !('document' in payload) || !('reason' in payload)) {
+      throw new Error('expected revoke event payload with document + reason');
+    }
+    const doc = payload.document;
+    if (!doc || typeof doc !== 'object'
+      || !('status' in doc) || !('endReason' in doc)) {
+      throw new Error('expected payload.document with status + endReason');
+    }
+    expect(doc.status).toBe('revoked');
+    expect(doc.endReason).toBe('admin_revoke');
     expect(payload.reason).toBe('admin_revoke');
   });
 

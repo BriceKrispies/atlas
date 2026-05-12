@@ -38,7 +38,6 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
   PostgresEntityStore,
   PostgresEventStore,
@@ -58,7 +57,11 @@ import {
 } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
-import { errorEnvelope, errorResponse } from '../middleware/errors.ts';
+import {
+  errorEnvelope,
+  errorResponse,
+  jsonErrorEnvelope,
+} from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import {
   assertPlatformOperator,
@@ -67,6 +70,29 @@ import {
 import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
+
+/**
+ * Type-guard: narrows `unknown` to a plain JSON object (not array, not
+ * null). Mirrors `routes/mfa.ts` — duplicated because the body-parse
+ * boundary is the same shape, but each route module owns its own
+ * field-level narrowing and we'd rather not couple identity-a7.ts to
+ * mfa.ts. Indexing returns `unknown` because JSON values are unknown
+ * by nature — each leaf field still needs its own narrow before use.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Parse the request body as a JSON object. Returns `{}` on parse failure
+ * or when the body is non-object (array, primitive, null). Routes then
+ * pull individual fields with `readTenantId(body['key'])` etc. and
+ * validate per-field.
+ */
+async function readBodyObject(c: AppCtx): Promise<Record<string, unknown>> {
+  const raw: unknown = await c.req.json().catch(() => ({}));
+  return isJsonObject(raw) ? raw : {};
+}
 
 // ----------------------------------------------------------------------
 // Validation helpers (deliberately stricter than identity-idp.ts to
@@ -174,7 +200,7 @@ function handleIdentityError(
       },
       properties: { supportId: envelope.error.supportId, status: e.status },
     });
-    return c.json(envelope, e.status as ContentfulStatusCode);
+    return jsonErrorEnvelope(c, envelope, e.status);
   }
   // Generic 500 — never leak raw error message (could contain DB row
   // ids, stack frames, etc).
@@ -225,7 +251,7 @@ export function identityA7Routes(
     const denial = await assertPlatformOperator(c, state, principal);
     if (denial) return denial;
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const targetUserId = readNonEmptyString(body['targetUserId'], 200);
     const reason = readNonEmptyString(body['reason'], REASON_MAX_LEN);
@@ -310,7 +336,7 @@ export function identityA7Routes(
     const denial = await assertPlatformOperator(c, state, principal);
     if (denial) return denial;
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const impersonationId = readNonEmptyString(body['impersonationId'], 200);
     if (!tenantId || !impersonationId) {
@@ -357,7 +383,7 @@ export function identityA7Routes(
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, correlationId);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const impersonationId = readNonEmptyString(body['impersonationId'], 200);
     if (!tenantId || !impersonationId) {
@@ -466,7 +492,7 @@ export function identityA7Routes(
     const denial = await assertPlatformOperator(c, state, principal);
     if (denial) return denial;
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const grantedTo = readNonEmptyString(body['grantedTo'], 200) ?? principal.principalId;
     const grantedRoles = readRoleArray(body['grantedRoles']);
@@ -559,7 +585,7 @@ export function identityA7Routes(
     const denial = await assertPlatformOperator(c, state, principal);
     if (denial) return denial;
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const grantId = readNonEmptyString(body['grantId'], 200);
     if (!tenantId || !grantId) {
@@ -605,7 +631,7 @@ export function identityA7Routes(
     const denial = await assertPlatformOperator(c, state, principal);
     if (denial) return denial;
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const grantId = readNonEmptyString(body['grantId'], 200);
     const reason = readNonEmptyString(body['reason'], REASON_MAX_LEN);
@@ -650,7 +676,7 @@ export function identityA7Routes(
     if (!principal) {
       return errorResponse(c, 'PRINCIPAL_INVALID', 'auth required', 401, correlationId);
     }
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = await readBodyObject(c);
     const tenantId = readTenantId(body['tenantId']);
     const grantId = readNonEmptyString(body['grantId'], 200);
     if (!tenantId || !grantId) {

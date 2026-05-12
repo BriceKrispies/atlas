@@ -71,8 +71,8 @@ describe('WorkerWasmHost preemption + isolation (Chunk 12)', () => {
         err = e;
       }
       const elapsed = Date.now() - start;
-      expect(err).toBeInstanceOf(WasmHostError);
-      expect((err as WasmHostError).kind).toBe('Timeout');
+      if (!(err instanceof WasmHostError)) throw new Error('expected WasmHostError');
+      expect(err.kind).toBe('Timeout');
       // Canonical assertion: we DON'T sit on the wedged plugin for
       // the pre-Chunk-12 default of 5 s. Generous headroom for worker
       // spawn + tsx tax + slow CI; the meaningful regression guard is
@@ -99,14 +99,13 @@ describe('WorkerWasmHost preemption + isolation (Chunk 12)', () => {
       } catch (e) {
         err = e;
       }
-      expect(err).toBeInstanceOf(WasmHostError);
+      if (!(err instanceof WasmHostError)) throw new Error('expected WasmHostError');
       // The check inside `runModule` (post-render) fires first: it
       // sees `buffer.byteLength > 16 MB` and throws ExecutionFailed
       // with a `memory exceeds` detail. The Worker's V8 cap is the
       // OS-level safety net behind it.
-      const e = err as WasmHostError;
-      expect(e.kind).toBe('ExecutionFailed');
-      expect(e.detail.toLowerCase()).toContain('memory');
+      expect(err.kind).toBe('ExecutionFailed');
+      expect(err.detail.toLowerCase()).toContain('memory');
     },
     10_000,
   );

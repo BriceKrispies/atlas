@@ -124,6 +124,22 @@ const sheet = createSheet(`
 
 export type AtlasAppBarScrollBehavior = 'pin' | 'elevate' | 'collapse';
 
+/**
+ * Narrow an arbitrary `scroll-behavior` attribute read to the typed
+ * literal union. Unknown / missing values default to `'pin'` (the
+ * sticky-CSS no-op behaviour).
+ */
+function parseScrollBehavior(raw: string | null): AtlasAppBarScrollBehavior {
+  switch (raw) {
+    case 'elevate':
+    case 'collapse':
+    case 'pin':
+      return raw;
+    default:
+      return 'pin';
+  }
+}
+
 export class AtlasAppBar extends AtlasElement {
   declare variant: string;
   declare scrollBehavior: string;
@@ -223,15 +239,14 @@ export class AtlasAppBar extends AtlasElement {
   }
 
   private _readScrollTop(host: (Window & typeof globalThis) | HTMLElement): number {
-    if (host === window) {
-      return window.scrollY || document.documentElement.scrollTop || 0;
+    if (host instanceof HTMLElement) {
+      return host.scrollTop;
     }
-    return (host as HTMLElement).scrollTop;
+    return window.scrollY || document.documentElement.scrollTop || 0;
   }
 
   private _installScrollListener(): void {
-    const behavior = (this.getAttribute('scroll-behavior') ??
-      'pin') as AtlasAppBarScrollBehavior;
+    const behavior = parseScrollBehavior(this.getAttribute('scroll-behavior'));
     if (behavior === 'pin') {
       // Nothing to listen for — sticky CSS does the work.
       this.removeAttribute('data-elevated');

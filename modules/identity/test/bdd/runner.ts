@@ -69,7 +69,9 @@ export class StepRegistry {
         `[bdd] ambiguous step "${text}" matched ${matches.length} patterns`,
       );
     }
-    return matches[0]!;
+    const sole = matches[0];
+    if (!sole) throw new Error('[bdd] internal: matches.length===1 but matches[0] missing');
+    return sole;
   }
 }
 

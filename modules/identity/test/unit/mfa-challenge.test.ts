@@ -22,7 +22,6 @@ import {
   IdentityError,
   identityErrorCodes,
   type AuthSessionDocument,
-  type TotpFactorAttrs,
   type AuthFactorDocument,
 } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
@@ -80,7 +79,13 @@ function totpCode(
   factor: AuthFactorDocument,
   fx: ReturnType<typeof newFixture>,
 ): string {
-  const attrs = factor.attrs as TotpFactorAttrs;
+  if (factor.kind !== 'totp') {
+    throw new Error(`totpCode called on non-totp factor: ${factor.kind}`);
+  }
+  const attrs = factor.attrs;
+  if (!('encryptedSecret' in attrs)) {
+    throw new Error('totp factor missing encryptedSecret');
+  }
   const secret = decryptSecret(attrs.encryptedSecret, fx.tenantId, fx.secrets);
   return hotp(secret, Math.floor(Date.now() / 1000 / 30));
 }

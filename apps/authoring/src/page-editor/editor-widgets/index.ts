@@ -12,37 +12,47 @@
  * production registry. Promotion to a shared bundle can happen later.
  */
 
-import { moduleDefaultRegistry } from '@atlas/widget-host';
+import { moduleDefaultRegistry, WidgetRegistry } from '@atlas/widget-host';
+import type { WidgetManifest } from '@atlas/widget-host';
 
+import { asWidgetConfigSchema } from '../widget-config.ts';
+import type { EditorWidgetId, WidgetConfigSchema } from '../widget-config.ts';
 import * as heading from './heading.ts';
 import * as text from './text.ts';
 import * as kpiTile from './kpi-tile.ts';
 import * as sparkline from './sparkline.ts';
 import * as dataTable from './data-table.ts';
 
-import headingSchema from './heading.config.schema.json' with { type: 'json' };
-import textSchema from './text.config.schema.json' with { type: 'json' };
-import kpiTileSchema from './kpi-tile.config.schema.json' with { type: 'json' };
-import sparklineSchema from './sparkline.config.schema.json' with { type: 'json' };
-import dataTableSchema from './data-table.config.schema.json' with { type: 'json' };
+import headingSchemaJson from './heading.config.schema.json' with { type: 'json' };
+import textSchemaJson from './text.config.schema.json' with { type: 'json' };
+import kpiTileSchemaJson from './kpi-tile.config.schema.json' with { type: 'json' };
+import sparklineSchemaJson from './sparkline.config.schema.json' with { type: 'json' };
+import dataTableSchemaJson from './data-table.config.schema.json' with { type: 'json' };
+
+// The JSON schemas are static documents whose shape we control under
+// `editor-widgets/`. They follow the typed `WidgetConfigSchema` contract
+// declared in `widget-config.ts` (JSON Schema draft-07 + `x-atlas-*`
+// extensions). `asWidgetConfigSchema` is the typed-factory boundary —
+// validates the minimum-viable shape and concentrates the structural
+// cast to one site (see widget-config.ts).
+const headingSchema = asWidgetConfigSchema(headingSchemaJson);
+const textSchema = asWidgetConfigSchema(textSchemaJson);
+const kpiTileSchema = asWidgetConfigSchema(kpiTileSchemaJson);
+const sparklineSchema = asWidgetConfigSchema(sparklineSchemaJson);
+const dataTableSchema = asWidgetConfigSchema(dataTableSchemaJson);
 
 interface EditorWidgetEntry {
-  manifest: { widgetId: string; [k: string]: unknown };
+  manifest: { readonly widgetId: EditorWidgetId; readonly [k: string]: unknown };
   element: CustomElementConstructor;
-  schema: Record<string, unknown>;
-}
-
-interface EditorWidgetRegistry {
-  register: (entry: { manifest: unknown; element: CustomElementConstructor; schema: unknown }) => void;
-  has?: (widgetId: string) => boolean;
+  schema: WidgetConfigSchema;
 }
 
 const EDITOR_WIDGETS: EditorWidgetEntry[] = [
-  { manifest: heading.manifest, element: heading.element, schema: headingSchema as Record<string, unknown> },
-  { manifest: text.manifest, element: text.element, schema: textSchema as Record<string, unknown> },
-  { manifest: kpiTile.manifest, element: kpiTile.element, schema: kpiTileSchema as Record<string, unknown> },
-  { manifest: sparkline.manifest, element: sparkline.element, schema: sparklineSchema as Record<string, unknown> },
-  { manifest: dataTable.manifest, element: dataTable.element, schema: dataTableSchema as Record<string, unknown> },
+  { manifest: heading.manifest, element: heading.element, schema: headingSchema },
+  { manifest: text.manifest, element: text.element, schema: textSchema },
+  { manifest: kpiTile.manifest, element: kpiTile.element, schema: kpiTileSchema },
+  { manifest: sparkline.manifest, element: sparkline.element, schema: sparklineSchema },
+  { manifest: dataTable.manifest, element: dataTable.element, schema: dataTableSchema },
 ];
 
 /**
@@ -51,21 +61,55 @@ const EDITOR_WIDGETS: EditorWidgetEntry[] = [
  * uses Map.set, which silently overwrites — but the manifest validation
  * fires on every call).
  */
+/**
+ * Convert a sandbox-side manifest literal (declared `as const`) into the
+ * `WidgetManifest` shape `WidgetRegistry.register` expects. Field-by-field
+ * copy widens the `readonly` literal types and produces a structural
+ * value — no boundary cast required. `validateManifest` is the runtime
+ * authority on shape; this just satisfies the compile-time check.
+ */
+function toWidgetManifest(m: EditorWidgetEntry['manifest']): WidgetManifest {
+  const out: WidgetManifest = {
+    widgetId: m.widgetId,
+    version: String(m['version'] ?? ''),
+    displayName: String(m['displayName'] ?? ''),
+    configSchema: String(m['configSchema'] ?? ''),
+    isolation: String(m['isolation'] ?? 'inline') as WidgetManifest['isolation'], // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: as-const manifest literal narrowed to one of the IsolationMode values; validateManifest re-checks at runtime
+  };
+  if (typeof m['description'] === 'string') out.description = m['description'];
+  for (const [k, v] of Object.entries(m)) {
+    if (!(k in out)) out[k] = v;
+  }
+  return out;
+}
+
 export function registerEditorWidgets(
-  registry: EditorWidgetRegistry = moduleDefaultRegistry as unknown as EditorWidgetRegistry,
-): EditorWidgetRegistry {
+  registry: WidgetRegistry = moduleDefaultRegistry,
+): WidgetRegistry {
   for (const w of EDITOR_WIDGETS) {
-    if (registry.has?.(w.manifest.widgetId)) continue;
-    registry.register({ manifest: w.manifest, element: w.element, schema: w.schema });
+    if (registry.has(w.manifest.widgetId)) continue;
+    // `WidgetRegisterEntry.schema` is typed as `Record<string, unknown>`
+    // (the registry only stores it for callers; it doesn't read the
+    // typed surface). Spread the typed schema into a plain record so
+    // the assignment is by-construction rather than via a cast.
+    const schemaRecord: Record<string, unknown> = { ...w.schema };
+    registry.register({
+      manifest: toWidgetManifest(w.manifest),
+      element: w.element,
+      schema: schemaRecord,
+    });
   }
   return registry;
 }
 
 /**
  * Schema lookup keyed by widgetId. Used by the Page Editor property
- * panel (Phase C) to resolve a widget's config schema.
+ * panel (Phase C) to resolve a widget's config schema. Returns a typed
+ * `WidgetConfigSchema` (not a bare `Record<string, unknown>`) so callers
+ * get first-class types for the JSON-Schema vocabulary plus `x-atlas-*`
+ * extensions — see `widget-config.ts`.
  */
-export const editorWidgetSchemas: Record<string, Record<string, unknown>> = Object.fromEntries(
+export const editorWidgetSchemas: Record<string, WidgetConfigSchema> = Object.fromEntries(
   EDITOR_WIDGETS.map((w) => [w.manifest.widgetId, w.schema]),
 );
 

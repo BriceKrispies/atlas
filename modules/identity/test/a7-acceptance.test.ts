@@ -9,16 +9,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  EventStore,
-  StoredEvent,
-  Entity,
-  EntityListOptions,
-  EntityQueryOptions,
-  EntityStore as PortEntityStore,
-  EntityWriteInput,
-} from '@atlas/ports';
-import type { EventEnvelope } from '@atlas/platform-core';
 import {
   BREAK_GLASS_RETENTION_TAG,
   IMPERSONATION_RETENTION_TAG,
@@ -40,90 +30,10 @@ import {
   resolveImpersonationToken,
   DEFAULT_RISK_POLICY,
 } from '../src/index.ts';
-import { assertEventTags } from './lib/fixtures.ts';
+import { assertEventTags, newFixture } from './lib/fixtures.ts';
 
-class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
-  private nextSeq = 0n;
-  async append(envelope: EventEnvelope): Promise<StoredEvent> {
-    this.nextSeq += 1n;
-    const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
-    this.events.push(stored);
-    return stored;
-  }
-  async getEvent(eventId: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.eventId === eventId) ?? null;
-  }
-  async findByIdempotencyKey(t: string, k: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.tenantId === t && e.idempotencyKey === k) ?? null;
-  }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return this.events.map((e) => ({ ...e }));
-  }
-}
-
-class InMemoryEntityStore implements PortEntityStore {
-  rows = new Map<string, Entity<unknown>>();
-  private k(t: string, ty: string, id: string): string {
-    return `${t}::${ty}::${id}`;
-  }
-  async get<T = unknown>(t: string, ty: string, id: string): Promise<Entity<T> | null> {
-    const r = this.rows.get(this.k(t, ty, id));
-    if (!r || r.status === 'deleted') return null;
-    return r as Entity<T>;
-  }
-  async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
-    const key = this.k(input.tenantId, input.entityType, input.entityId);
-    const existing = this.rows.get(key);
-    const now = new Date().toISOString();
-    const row: Entity<T> = {
-      tenantId: input.tenantId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      schemaVersion: input.schemaVersion ?? 1,
-      attrs: input.attrs,
-      status: input.status ?? 'active',
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    this.rows.set(key, row as Entity<unknown>);
-    return row;
-  }
-  async delete(t: string, ty: string, id: string): Promise<void> {
-    const key = this.k(t, ty, id);
-    const e = this.rows.get(key);
-    if (e) this.rows.set(key, { ...e, status: 'deleted' });
-  }
-  async list<T = unknown>(t: string, ty: string, opts?: EntityListOptions): Promise<Entity<T>[]> {
-    const desired = opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
-      .filter((r) => r.tenantId === t && r.entityType === ty)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
-  }
-  async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
-    const all = Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === t && r.entityType === ty,
-    );
-    if (!opts.attrsEqual) return all as Entity<T>[];
-    const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
-  }
-}
-
-interface Fx {
-  events: InMemoryEventStore;
-  entities: InMemoryEntityStore;
-  tenantId: string;
-}
-function fx(): Fx {
-  return {
-    events: new InMemoryEventStore(),
-    entities: new InMemoryEntityStore(),
-    tenantId: 'customer',
-  };
+function fx(): ReturnType<typeof newFixture> {
+  return newFixture('customer');
 }
 
 // =====================================================================

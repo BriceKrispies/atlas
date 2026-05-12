@@ -40,6 +40,11 @@ let cedarPromise: Promise<CedarWasmWeb> | null = null;
  * Lazy import. Keeps the WASM artefact out of the rest of the admin
  * bundle — Vite splits the dynamic import into its own chunk. The
  * promise is cached so repeated simulator runs don't re-init the WASM.
+ *
+ * The WASM module exports `unknown` from `import(...)`'s perspective.
+ * We narrow each named export through `typeof === 'function'` checks
+ * and wrap them in `unknown`-in/out adapter functions — that keeps the
+ * `CedarWasmWeb` surface honest without per-export `as` casts.
  */
 async function loadCedar(): Promise<CedarWasmWeb> {
   if (!cedarPromise) {
@@ -47,25 +52,35 @@ async function loadCedar(): Promise<CedarWasmWeb> {
       // The web subpackage exports a default init() function for browsers;
       // calling the named exports directly works once the module's been
       // imported because the module-eval initialises the wasm via fetch.
-      const mod = (await import('@cedar-policy/cedar-wasm/web')) as Record<
-        string,
-        unknown
-      >;
+      const mod: Record<string, unknown> = await import('@cedar-policy/cedar-wasm/web');
       const init = mod['default'];
       if (typeof init === 'function') {
         // Some builds require `await init()` to fetch the .wasm file.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM module exports `unknown`-typed callables
         await (init as () => Promise<unknown>)();
       }
-      const isAuthorized = mod['isAuthorized'];
-      const policySetTextToParts = mod['policySetTextToParts'];
-      if (typeof isAuthorized !== 'function' || typeof policySetTextToParts !== 'function') {
+      const isAuthorizedFn = mod['isAuthorized'];
+      const policySetTextToPartsFn = mod['policySetTextToParts'];
+      if (
+        typeof isAuthorizedFn !== 'function'
+        || typeof policySetTextToPartsFn !== 'function'
+      ) {
         throw new Error(
           'cedar-wasm/web: failed to resolve isAuthorized or policySetTextToParts',
         );
       }
+      // Boundary: the cedar-wasm/web exports are `unknown`; we wrap each
+      // function so the rest of the simulator consumes the typed
+      // `CedarWasmWeb` surface. The justified casts are concentrated here.
       return {
-        isAuthorized: isAuthorized as CedarWasmWeb['isAuthorized'],
-        policySetTextToParts: policySetTextToParts as CedarWasmWeb['policySetTextToParts'],
+        isAuthorized(call: unknown): unknown {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM callable narrowed via typeof check
+          return (isAuthorizedFn as CedarWasmWeb['isAuthorized'])(call);
+        },
+        policySetTextToParts(text: string): unknown {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM callable narrowed via typeof check
+          return (policySetTextToPartsFn as CedarWasmWeb['policySetTextToParts'])(text);
+        },
       };
     })();
   }
@@ -101,13 +116,79 @@ interface IsAuthorizedFailure {
 
 type IsAuthorizedAnswer = IsAuthorizedSuccess | IsAuthorizedFailure;
 
+/**
+ * Boundary validator: narrow an `unknown` value (the return of a
+ * cedar-wasm/web call) into the `PolicySetTextToPartsAnswer` shape we
+ * consume. Anything off-shape throws — the WASM contract is fixed and
+ * we'd rather fail loudly than mis-render.
+ */
+function asPolicySetTextToPartsAnswer(raw: unknown): PolicySetTextToPartsAnswer {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('cedar policySetTextToParts: expected object answer');
+  }
+  const obj = raw as {
+    type?: unknown;
+    policies?: unknown;
+    policy_templates?: unknown;
+    errors?: unknown;
+  };
+  if (obj.type !== 'success' && obj.type !== 'failure') {
+    throw new Error('cedar policySetTextToParts: missing/invalid `type`');
+  }
+  const out: PolicySetTextToPartsAnswer = { type: obj.type };
+  if (Array.isArray(obj.policies)) {
+    const strs: string[] = [];
+    for (const p of obj.policies) {
+      if (typeof p === 'string') strs.push(p);
+    }
+    out.policies = strs;
+  }
+  if (Array.isArray(obj.policy_templates)) {
+    const strs: string[] = [];
+    for (const p of obj.policy_templates) {
+      if (typeof p === 'string') strs.push(p);
+    }
+    out.policy_templates = strs;
+  }
+  if (Array.isArray(obj.errors)) {
+    const errs: Array<{ message: string }> = [];
+    for (const eAny of obj.errors) {
+      const e: unknown = eAny;
+      if (e === null || typeof e !== 'object') continue;
+      const msg = (e as { message?: unknown }).message;
+      if (typeof msg === 'string') errs.push({ message: msg });
+    }
+    out.errors = errs;
+  }
+  return out;
+}
+
+/**
+ * Boundary validator: narrow an `unknown` value (the return of a
+ * cedar-wasm/web `isAuthorized` call) into the `IsAuthorizedAnswer`
+ * shape. Validates only the discriminating fields here; downstream
+ * field access trusts the schema documented in the cedar-wasm/web
+ * surface — anything mis-shaped fails fast with a thrown error.
+ */
+function asIsAuthorizedAnswer(raw: unknown): IsAuthorizedAnswer {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('cedar isAuthorized: expected object answer');
+  }
+  const t = (raw as { type?: unknown }).type;
+  if (t !== 'success' && t !== 'failure') {
+    throw new Error('cedar isAuthorized: missing/invalid `type`');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: discriminator verified above; rest of the shape is cedar-wasm/web's documented contract
+  return raw as IsAuthorizedAnswer;
+}
+
 const ID_ANNOTATION = /@id(?!\w)\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
 
 function buildStaticPolicies(
   cedarText: string,
   cedar: CedarWasmWeb,
 ): string | Record<string, string> {
-  const parts = cedar.policySetTextToParts(cedarText) as PolicySetTextToPartsAnswer;
+  const parts = asPolicySetTextToPartsAnswer(cedar.policySetTextToParts(cedarText));
   if (parts.type !== 'success' || !parts.policies || parts.policies.length === 0) {
     return cedarText;
   }
@@ -151,7 +232,7 @@ export async function evaluateRequest(
       },
     ],
   };
-  const answer = cedar.isAuthorized(call) as IsAuthorizedAnswer;
+  const answer = asIsAuthorizedAnswer(cedar.isAuthorized(call));
 
   if (answer.type === 'failure') {
     return {
@@ -179,7 +260,7 @@ export async function evaluateRequest(
  */
 export async function validateCedarText(cedarText: string): Promise<readonly string[]> {
   const cedar = await loadCedar();
-  const parts = cedar.policySetTextToParts(cedarText) as PolicySetTextToPartsAnswer;
+  const parts = asPolicySetTextToPartsAnswer(cedar.policySetTextToParts(cedarText));
   if (parts.type === 'success') return [];
   return (parts.errors ?? []).map((e) => e.message);
 }

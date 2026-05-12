@@ -7,6 +7,7 @@
  */
 
 import { test, expect } from '@atlas/test-fixtures';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { Page } from '@playwright/test';
 
 const ROUTE = '#/layout-editor';
@@ -15,17 +16,18 @@ const PICKER = `${ROUTE_SURFACE} >> [data-testid="authoring.layout-editor.layout
 
 async function pickerOptions(page: Page): Promise<Array<{ value: string; label: string }>> {
   return page.evaluate(() => {
+    interface SelectEl extends HTMLElement {
+      options?: Array<{ value: string; label: string }>;
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('atlas-select[name="layout-select"]') as
-        (HTMLElement & { options?: Array<{ value: string; label: string }> }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector<SelectEl>('atlas-select[name="layout-select"]');
       if (el && Array.isArray(el.options)) return el.options;
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return [];
@@ -34,12 +36,14 @@ async function pickerOptions(page: Page): Promise<Array<{ value: string; label: 
 
 async function setPickerValue(page: Page, value: string): Promise<void> {
   await page.evaluate((next: string) => {
+    interface SelectEl extends HTMLElement {
+      value: string;
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('atlas-select[name="layout-select"]') as
-        (HTMLElement & { value: string }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector<SelectEl>('atlas-select[name="layout-select"]');
       if (el) {
         el.value = next;
         el.dispatchEvent(new CustomEvent('change', {
@@ -49,8 +53,7 @@ async function setPickerValue(page: Page, value: string): Promise<void> {
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
   }, value);
@@ -60,13 +63,12 @@ async function waitForLayoutEditor(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
       if (root.querySelector('atlas-layout-editor')) return true;
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return false;
@@ -89,7 +91,8 @@ test.describe('authoring.layout-editor — states', () => {
     await page.locator(PICKER).waitFor();
     const opts = await pickerOptions(page);
     expect(opts.length).toBeGreaterThan(1);
-    expect(opts[0]!.label).toBe('Blank canvas');
+    const first = assertDefined(opts[0], 'first picker option after length>1 check');
+    expect(first.label).toBe('Blank canvas');
     // Presets follow the blank entry; at least one must be a real layoutId.
     expect(opts.some((o) => o.value !== '__blank__')).toBe(true);
   });
@@ -105,10 +108,12 @@ test.describe('authoring.layout-editor — flows', () => {
     await page.goto(`/${ROUTE}`);
     await waitForLayoutEditor(page);
     const opts = await pickerOptions(page);
-    const preset = opts.find((o) => o.value !== '__blank__');
-    expect(preset).toBeDefined();
+    const preset = assertDefined(
+      opts.find((o) => o.value !== '__blank__'),
+      'at least one preset option besides __blank__',
+    );
 
-    await setPickerValue(page, preset!.value);
+    await setPickerValue(page, preset.value);
 
     // Editor should still be present after remount.
     await waitForLayoutEditor(page);
@@ -118,8 +123,11 @@ test.describe('authoring.layout-editor — flows', () => {
     await page.goto(`/${ROUTE}`);
     await waitForLayoutEditor(page);
     const opts = await pickerOptions(page);
-    const preset = opts.find((o) => o.value !== '__blank__');
-    await setPickerValue(page, preset!.value);
+    const preset = assertDefined(
+      opts.find((o) => o.value !== '__blank__'),
+      'at least one preset option besides __blank__',
+    );
+    await setPickerValue(page, preset.value);
     await waitForLayoutEditor(page);
 
     await setPickerValue(page, '__blank__');

@@ -23,6 +23,7 @@ export type {
 } from './specimen-types.ts';
 import './sidebar.ts';
 import type { AtlasSandboxSidebar } from './sidebar.ts';
+import { must, customDetail, isValueDetail, isIdDetail } from './internal/assert.ts';
 // AtlasTabBar's class is registered side-effect via '@atlas/design'; the
 // `HTMLElementTagNameMap` augmentation in atlas-tab-bar.ts makes
 // `document.createElement('atlas-tab-bar')` return an AtlasTabBar with no
@@ -326,7 +327,11 @@ export class AtlasSandbox extends AtlasSurface {
     queueMicrotask(() => {
       const params = new URLSearchParams(location.search);
       const requestedId = params.get('specimen');
-      const requestedCat = params.get('category') as Category | null;
+      const rawCat = params.get('category');
+      // Narrow the raw query-string value to Category by looking it up in
+      // the typed CATEGORIES registry — no `as Category` cast required.
+      const matchedCat = rawCat === null ? undefined : CATEGORIES.find((c) => c.id === rawCat);
+      const requestedCat: Category | null = matchedCat ? matchedCat.id : null;
       const resolvedSpec =
         (requestedId && AtlasSandbox.specimens.find((s) => s.id === requestedId)) || null;
 
@@ -334,7 +339,7 @@ export class AtlasSandbox extends AtlasSurface {
       // and category switcher mount already showing the right bucket.
       if (resolvedSpec) {
         this._activeCategory = resolvedSpec.category;
-      } else if (requestedCat && CATEGORIES.some((c) => c.id === requestedCat)) {
+      } else if (requestedCat) {
         this._activeCategory = requestedCat;
       } else {
         this._activeCategory = AtlasSandbox.specimens[0]?.category ?? 'foundations';
@@ -355,13 +360,21 @@ export class AtlasSandbox extends AtlasSurface {
       try {
         fn();
       } catch (err) {
-        // Structured failure event (replaces console.error).
+        // Structured failure event (replaces console.error). `err` is
+        // `unknown`; pull code/message via runtime guards so there's no
+        // `as` cast.
+        let errCode = 'unknown';
+        if (typeof err === 'object' && err !== null && 'code' in err) {
+          const code: unknown = err.code;
+          if (typeof code === 'string') errCode = code;
+        }
+        const errMessage = err instanceof Error ? err.message : String(err);
         emitTelemetry({
           eventName: 'Atlas.Listener.Threw',
           surfaceId: 'sandbox',
           source: 'sandbox.specimen-cleanup',
-          'error.code': (err as { code?: string })?.code ?? 'unknown',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.code': errCode,
+          'error.message': errMessage,
         });
       }
     }
@@ -408,16 +421,27 @@ export class AtlasSandbox extends AtlasSurface {
       </atlas-box>
     `;
 
-    // Sidebar — driven by properties, events out.
-    const sidebar = root.querySelector(
-      'atlas-sandbox-sidebar',
-    ) as AtlasSandboxSidebar;
+    // Sidebar — driven by properties, events out. The
+    // HTMLElementTagNameMap augmentation in `sidebar.ts` makes
+    // querySelector return AtlasSandboxSidebar directly; no cast needed.
+    const sidebar = must(
+      root.querySelector('atlas-sandbox-sidebar'),
+      'sandbox: <atlas-sandbox-sidebar> just rendered into shadow root',
+    );
     sidebar.specimens = AtlasSandbox.specimens;
     sidebar.activeCategory = this._activeCategory;
     sidebar.searchValue = this._activeSearch;
     sidebar.activeSpecimenId = this._activeSpec?.id ?? null;
     sidebar.addEventListener('category-change', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ category: Category }>).detail;
+      const detail = customDetail(
+        ev,
+        (d): d is { category: Category } => {
+          if (typeof d !== 'object' || d === null || !('category' in d)) return false;
+          const cat: unknown = d.category;
+          return typeof cat === 'string' && CATEGORIES.some((c) => c.id === cat);
+        },
+        'sandbox.category-change',
+      );
       if (detail.category === this._activeCategory) return;
       this._activeCategory = detail.category;
       const first = AtlasSandbox.specimens.find(
@@ -431,11 +455,11 @@ export class AtlasSandbox extends AtlasSurface {
       }
     });
     sidebar.addEventListener('search-change', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
+      const detail = customDetail(ev, isValueDetail, 'sandbox.search-change');
       this._activeSearch = detail.value;
     });
     sidebar.addEventListener('specimen-select', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ id: string }>).detail;
+      const detail = customDetail(ev, isIdDetail, 'sandbox.specimen-select');
       this._select(detail.id);
       this._closeNav();
     });
@@ -450,7 +474,7 @@ export class AtlasSandbox extends AtlasSurface {
       prevBar.tabs = PREVIEW_TABS.map((t) => ({ value: t.value, label: t.label }));
       prevBar.value = this._activeTab;
       prevBar.addEventListener('change', (ev: Event) => {
-        const detail = (ev as CustomEvent<{ value: string }>).detail;
+        const detail = customDetail(ev, isValueDetail, 'sandbox.preview-tab-change');
         const next = PREVIEW_TABS.find((t) => t.value === detail.value)?.value;
         if (!next || next === this._activeTab) return;
         this._activeTab = next;
@@ -458,7 +482,7 @@ export class AtlasSandbox extends AtlasSurface {
       });
     }
 
-    const toggle = root.querySelector('.nav-toggle') as HTMLElement | null;
+    const toggle = root.querySelector<HTMLButtonElement>('button.nav-toggle');
     toggle?.addEventListener('click', () => {
       if (this.hasAttribute('data-nav-open')) this._closeNav();
       else this._openNav();
@@ -475,9 +499,9 @@ export class AtlasSandbox extends AtlasSurface {
   }
 
   private get _sidebar(): AtlasSandboxSidebar | null {
-    return (this.shadowRoot?.querySelector('atlas-sandbox-sidebar') ?? null) as
-      | AtlasSandboxSidebar
-      | null;
+    // HTMLElementTagNameMap in sidebar.ts augments the tag → class
+    // mapping, so this query is typed without a cast.
+    return this.shadowRoot?.querySelector('atlas-sandbox-sidebar') ?? null;
   }
 
   private _writeUrlState(id: string | null): void {
@@ -495,7 +519,7 @@ export class AtlasSandbox extends AtlasSurface {
 
   private _openNav(): void {
     this.setAttribute('data-nav-open', '');
-    const toggle = this.shadowRoot?.querySelector('.nav-toggle') as HTMLElement | null;
+    const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
     toggle?.setAttribute('aria-expanded', 'true');
     toggle?.setAttribute('aria-label', 'Close specimen list');
   }
@@ -503,7 +527,7 @@ export class AtlasSandbox extends AtlasSurface {
   private _closeNav(): void {
     if (!this.hasAttribute('data-nav-open')) return;
     this.removeAttribute('data-nav-open');
-    const toggle = this.shadowRoot?.querySelector('.nav-toggle') as HTMLElement | null;
+    const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
     toggle?.setAttribute('aria-expanded', 'false');
     toggle?.setAttribute('aria-label', 'Open specimen list');
   }
@@ -593,7 +617,7 @@ export class AtlasSandbox extends AtlasSurface {
       const variants =
         Array.isArray(spec.configVariants) && spec.configVariants.length > 0
           ? spec.configVariants
-          : [{ name: 'default', config: {} } as SpecimenConfigVariant];
+          : [{ name: 'default', config: {} } satisfies SpecimenConfigVariant];
       const first = variants[0];
       if (!first) return;
       this._renderMountStateful(body, spec, variants, first.name);
@@ -668,7 +692,7 @@ export class AtlasSandbox extends AtlasSurface {
       bar.tabs = variants.map((v) => ({ value: variantSlug(v.name), label: v.name }));
       bar.value = variantSlug(activeName);
       bar.addEventListener('change', (ev: Event) => {
-        const detail = (ev as CustomEvent<{ value: string }>).detail;
+        const detail = customDetail(ev, isValueDetail, 'sandbox.variant-switch');
         const picked = variants.find((v) => variantSlug(v.name) === detail.value);
         if (picked) this._renderMountStateful(container, spec, variants, picked.name);
       });
@@ -737,7 +761,7 @@ export class AtlasSandbox extends AtlasSurface {
     bar.tabs = stateKeys.map((k) => ({ value: variantSlug(k), label: k }));
     bar.value = variantSlug(activeState);
     bar.addEventListener('change', (ev: Event) => {
-      const detail = (ev as CustomEvent<{ value: string }>).detail;
+      const detail = customDetail(ev, isValueDetail, 'sandbox.state-switch');
       const key = stateKeys.find((k) => variantSlug(k) === detail.value);
       if (key) this._renderStateful(container, spec, key);
     });

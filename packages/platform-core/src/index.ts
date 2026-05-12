@@ -15,6 +15,8 @@ export type { ErrorBody, IngressErrorCode } from './errors.ts';
 
 export { SingleFlight } from './singleflight.ts';
 export { CachedRead } from './cached-read.ts';
+export { PrincipalCache } from './principal-cache.ts';
+export type { PrincipalCacheOptions } from './principal-cache.ts';
 
 export { canonicalJsonStringify } from './canonical-json.ts';
 export { sha256Hex } from './sha256-hex.ts';

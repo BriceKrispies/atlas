@@ -225,17 +225,21 @@ export class WidgetHarnessElement extends AtlasElement {
       : null;
     const manifest: WidgetManifest | null = registration?.manifest ?? null;
 
-    const variants: HarnessConfigVariant[] =
-      Array.isArray(spec.configVariants) && spec.configVariants.length > 0
-        ? spec.configVariants
-        : [{ name: 'default', config: {} }];
-    const active: HarnessConfigVariant =
-      (this._activeVariant
-        ? (variants.find((v) => v.name === this._activeVariant) ?? variants[0])
-        : variants[0])!;
+    const DEFAULT_VARIANT: HarnessConfigVariant = { name: 'default', config: {} };
+    const configured: HarnessConfigVariant[] = Array.isArray(spec.configVariants)
+      ? spec.configVariants
+      : [];
+    const variants: [HarnessConfigVariant, ...HarnessConfigVariant[]] =
+      configured.length > 0
+        ? [configured[0] ?? DEFAULT_VARIANT, ...configured.slice(1)]
+        : [DEFAULT_VARIANT];
+    const active: HarnessConfigVariant = this._activeVariant
+      ? (variants.find((v) => v.name === this._activeVariant) ?? variants[0])
+      : variants[0];
     this._activeVariant = active.name;
 
-    const root = this.shadowRoot as ShadowRoot;
+    const root = this.shadowRoot;
+    if (!root) return;
     root.innerHTML = `
       <style>${styles}</style>
       <div class="meta">
@@ -438,3 +442,9 @@ function replaceErrors(_key: string, value: unknown): unknown {
 }
 
 AtlasElement.define('widget-harness', WidgetHarnessElement);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'widget-harness': WidgetHarnessElement;
+  }
+}

@@ -11,11 +11,54 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type {
   Backend,
   SerializedServerEvent,
   SerializedServerEventCallback,
 } from '../src/backend.ts';
+
+// ── Typed boundary readers ─────────────────────────────────────────
+//
+// `Backend.query()` and `Backend.mutate()` both return `Promise<unknown>`
+// because the wire shape varies by path. The tests below know what
+// shape they asked for; these helpers narrow `unknown` to the
+// asserted shape at the boundary with one runtime check, instead of
+// scattering `as { ... }` casts at every call site.
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function asObject(v: unknown, what: string): Record<string, unknown> {
+  if (!isRecord(v)) {
+    throw new Error(`${what}: expected object, got ${typeof v}`);
+  }
+  return v;
+}
+
+function asArray(v: unknown, what: string): unknown[] {
+  if (!Array.isArray(v)) {
+    throw new Error(`${what}: expected array, got ${typeof v}`);
+  }
+  return v;
+}
+
+function asPageRowOrNull(v: unknown): { pageId: string; title?: string } | null {
+  if (v === null) return null;
+  const obj = asObject(v, 'page row');
+  if (typeof obj['pageId'] !== 'string') {
+    throw new Error('page row: pageId must be string');
+  }
+  return { pageId: obj['pageId'], title: typeof obj['title'] === 'string' ? obj['title'] : undefined };
+}
+
+function asPageRow(v: unknown): { pageId: string; title: string } {
+  const obj = asObject(v, 'page row');
+  if (typeof obj['pageId'] !== 'string') throw new Error('page row: pageId must be string');
+  if (typeof obj['title'] !== 'string') throw new Error('page row: title must be string');
+  return { pageId: obj['pageId'], title: obj['title'] };
+}
 
 // ── 1) In-memory backend used as the "mock" arm of the contract ─────
 //
@@ -57,18 +100,18 @@ function makeMemoryBackend(): Backend {
           };
           pages.push(row);
           // Fire-and-forget tag dispatch.
+          const tags = [`Tenant:t-1`, `page:${row.pageId}`];
           const ev: SerializedServerEvent = {
             eventType: 'projection.updated',
             resourceType: 'page',
             resourceId: row.pageId,
             correlationId: 'c1',
             occurredAt: new Date().toISOString(),
-            tags: [`Tenant:t-1`, `page:${row.pageId}`],
+            tags,
           };
           for (const sub of tagSubs) {
             const overlap =
-              sub.tags.length === 0 ||
-              sub.tags.some((t) => ev.tags!.includes(t));
+              sub.tags.length === 0 || sub.tags.some((t) => tags.includes(t));
             if (overlap) sub.cb(ev);
           }
           for (const cb of eventSubs.get(ev.eventType) ?? []) cb(ev);
@@ -78,8 +121,12 @@ function makeMemoryBackend(): Backend {
       throw new Error(`unknown mutation ${path}`);
     },
     subscribe(eventType, callback) {
-      if (!eventSubs.has(eventType)) eventSubs.set(eventType, new Set());
-      eventSubs.get(eventType)!.add(callback);
+      let bucket = eventSubs.get(eventType);
+      if (!bucket) {
+        bucket = new Set();
+        eventSubs.set(eventType, bucket);
+      }
+      bucket.add(callback);
       return () => {
         eventSubs.get(eventType)?.delete(callback);
       };
@@ -107,12 +154,12 @@ export function runBackendContract(
     });
 
     it('query() resolves a list for a known path', async () => {
-      const res = (await backend.query('/pages')) as unknown[];
+      const res = asArray(await backend.query('/pages'), '/pages');
       expect(Array.isArray(res)).toBe(true);
     });
 
     it('query() resolves a parameterised resource path', async () => {
-      const res = (await backend.query('/pages/pg_1')) as { pageId: string };
+      const res = asPageRowOrNull(await backend.query('/pages/pg_1'));
       expect(res?.pageId).toBe('pg_1');
     });
 
@@ -121,22 +168,24 @@ export function runBackendContract(
     });
 
     it('mutate() returns the persisted record', async () => {
-      const created = (await backend.mutate('/intents', {
-        actionId: 'ContentPages.Page.Create',
-        title: 'New page',
-      })) as { pageId: string; title: string };
+      const created = asPageRow(
+        await backend.mutate('/intents', {
+          actionId: 'ContentPages.Page.Create',
+          title: 'New page',
+        }),
+      );
       expect(created.title).toBe('New page');
       expect(typeof created.pageId).toBe('string');
     });
 
     it('mutate() persists across query()', async () => {
-      const created = (await backend.mutate('/intents', {
-        actionId: 'ContentPages.Page.Create',
-        title: 'Second page',
-      })) as { pageId: string };
-      const fetched = (await backend.query(
-        `/pages/${created.pageId}`,
-      )) as { pageId: string } | null;
+      const created = asPageRow(
+        await backend.mutate('/intents', {
+          actionId: 'ContentPages.Page.Create',
+          title: 'Second page',
+        }),
+      );
+      const fetched = asPageRowOrNull(await backend.query(`/pages/${created.pageId}`));
       expect(fetched?.pageId).toBe(created.pageId);
     });
 
@@ -231,8 +280,12 @@ class FakeEventSource {
     FakeEventSource.instances.push(this);
   }
   addEventListener(type: string, cb: (ev: { data: string }) => void): void {
-    if (!this.listeners.has(type)) this.listeners.set(type, []);
-    this.listeners.get(type)!.push(cb);
+    let bucket = this.listeners.get(type);
+    if (!bucket) {
+      bucket = [];
+      this.listeners.set(type, bucket);
+    }
+    bucket.push(cb);
   }
   removeEventListener(): void {}
   close(): void {
@@ -251,17 +304,55 @@ interface HttpBackendModule {
   _resetSubscriptionPool: () => void;
 }
 
+function isHttpBackendModule(v: unknown): v is HttpBackendModule {
+  if (!isRecord(v)) return false;
+  return (
+    typeof v['httpBackend'] === 'object' &&
+    v['httpBackend'] !== null &&
+    typeof v['_resetSubscriptionPool'] === 'function'
+  );
+}
+
+// Test-only globals — read/write `globalThis.fetch`, `globalThis.EventSource`,
+// and `import.meta.env` via narrow widening casts. These widening casts
+// (subset-of-original → original) are NOT flagged by the unsafe-type-assertion
+// rule; they're shown here as the canonical way to access optional globals
+// in a test harness without a runtime type-system escape.
+
+function stampViteEnv(extras: Record<string, unknown>): void {
+  const meta = import.meta as { env?: Record<string, unknown> };
+  meta.env = { ...(meta.env ?? {}), ...extras };
+}
+
+function getGlobalFetch(): typeof fetch | undefined {
+  return (globalThis as { fetch?: typeof fetch }).fetch;
+}
+function setGlobalFetch(v: unknown): void {
+  (globalThis as { fetch?: unknown }).fetch = v;
+}
+function clearGlobalFetch(): void {
+  delete (globalThis as { fetch?: unknown }).fetch;
+}
+function getGlobalEventSource(): typeof EventSource | undefined {
+  return (globalThis as { EventSource?: typeof EventSource }).EventSource;
+}
+function setGlobalEventSource(v: unknown): void {
+  (globalThis as { EventSource?: unknown }).EventSource = v;
+}
+function clearGlobalEventSource(): void {
+  delete (globalThis as { EventSource?: unknown }).EventSource;
+}
+
 async function loadHttpBackend(): Promise<HttpBackendModule> {
   // import.meta.env access in the http module — provide minimal env so
   // import succeeds.
-  const meta = import.meta as unknown as { env: Record<string, unknown> };
-  meta.env = {
-    ...(meta.env ?? {}),
-    VITE_API_URL: 'http://test.local',
-    VITE_TENANT_ID: 't-1',
-  };
+  stampViteEnv({ VITE_API_URL: 'http://test.local', VITE_TENANT_ID: 't-1' });
   vi.resetModules();
-  return (await import('../src/http/index.ts')) as unknown as HttpBackendModule;
+  const mod: unknown = await import('../src/http/index.ts');
+  if (!isHttpBackendModule(mod)) {
+    throw new Error('http backend module did not export the expected shape');
+  }
+  return mod;
 }
 
 describe('httpBackend — fetch / EventSource integration', () => {
@@ -272,25 +363,28 @@ describe('httpBackend — fetch / EventSource integration', () => {
 
   beforeEach(async () => {
     pages = [{ pageId: 'pg_1', title: 'Welcome' }];
-    prevFetch = (globalThis as { fetch?: typeof fetch }).fetch;
-    prevES = (globalThis as { EventSource?: typeof EventSource })
-      .EventSource;
-    (globalThis as { EventSource?: unknown }).EventSource =
-      FakeEventSource as unknown as typeof EventSource;
+    prevFetch = getGlobalFetch();
+    prevES = getGlobalEventSource();
+    setGlobalEventSource(FakeEventSource);
     FakeEventSource.instances = [];
 
-    (globalThis as { fetch?: unknown }).fetch = vi.fn(
-      async (input: unknown, init?: { method?: string; body?: unknown }) => {
+    setGlobalFetch(
+      vi.fn(async (input: unknown, init?: { method?: string; body?: unknown }) => {
         const url = String(input);
         if (init?.method === 'POST' && url.endsWith('/api/v1/intents')) {
-          const body = JSON.parse(String(init.body)) as {
-            payload?: { actionId?: string; title?: string };
-          };
-          const action = body.payload?.actionId;
+          const rawBody = JSON.parse(String(init.body)) as unknown;
+          const bodyObj = asObject(rawBody, 'POST body');
+          const payloadRaw = bodyObj['payload'];
+          const payload =
+            payloadRaw !== undefined && payloadRaw !== null
+              ? asObject(payloadRaw, 'POST body.payload')
+              : {};
+          const action = payload['actionId'];
           if (action === 'ContentPages.Page.Create') {
+            const title = typeof payload['title'] === 'string' ? payload['title'] : 'untitled';
             const row = {
               pageId: `pg_${pages.length + 1}`,
-              title: body.payload?.title ?? 'untitled',
+              title,
             };
             pages.push(row);
             return new Response(JSON.stringify(row), {
@@ -306,7 +400,7 @@ describe('httpBackend — fetch / EventSource integration', () => {
           });
         }
         if (url.includes('/api/v1/pages/')) {
-          const id = url.split('/api/v1/pages/')[1]!;
+          const id = assertDefined(url.split('/api/v1/pages/')[1], 'pages id segment');
           const found = pages.find((p) => p.pageId === id) ?? null;
           return new Response(JSON.stringify(found), {
             status: 200,
@@ -314,7 +408,7 @@ describe('httpBackend — fetch / EventSource integration', () => {
           });
         }
         return new Response('not found', { status: 404 });
-      },
+      }),
     );
 
     mod = await loadHttpBackend();
@@ -322,24 +416,25 @@ describe('httpBackend — fetch / EventSource integration', () => {
 
   afterEach(() => {
     mod?._resetSubscriptionPool?.();
-    if (prevFetch) (globalThis as { fetch?: unknown }).fetch = prevFetch;
-    else delete (globalThis as { fetch?: unknown }).fetch;
-    if (prevES)
-      (globalThis as { EventSource?: unknown }).EventSource = prevES;
-    else delete (globalThis as { EventSource?: unknown }).EventSource;
+    if (prevFetch) setGlobalFetch(prevFetch);
+    else clearGlobalFetch();
+    if (prevES) setGlobalEventSource(prevES);
+    else clearGlobalEventSource();
   });
 
   it('query() forwards the path under /api/v1', async () => {
-    const list = (await mod.httpBackend.query('/pages')) as unknown[];
+    const list = asArray(await mod.httpBackend.query('/pages'), '/pages list');
     expect(Array.isArray(list)).toBe(true);
   });
 
   it('mutate() POSTs an envelope-wrapped intent', async () => {
-    const created = (await mod.httpBackend.mutate('/intents', {
-      actionId: 'ContentPages.Page.Create',
-      resourceType: 'Page',
-      title: 'http-fixture',
-    })) as { pageId: string };
+    const created = asPageRow(
+      await mod.httpBackend.mutate('/intents', {
+        actionId: 'ContentPages.Page.Create',
+        resourceType: 'Page',
+        title: 'http-fixture',
+      }),
+    );
     expect(typeof created.pageId).toBe('string');
   });
 
@@ -347,8 +442,9 @@ describe('httpBackend — fetch / EventSource integration', () => {
     const cb = vi.fn();
     const off = mod.httpBackend.subscribeTags(['Tenant:t-1'], cb);
     expect(FakeEventSource.instances.length).toBe(1);
-    expect(FakeEventSource.instances[0]!.url).toContain('tags=Tenant%3At-1');
-    FakeEventSource.instances[0]!.dispatch('projection.updated', {
+    const first = assertDefined(FakeEventSource.instances[0], 'first ES instance');
+    expect(first.url).toContain('tags=Tenant%3At-1');
+    first.dispatch('projection.updated', {
       eventType: 'projection.updated',
       resourceType: 'page',
       resourceId: 'pg_2',
@@ -371,7 +467,7 @@ describe('httpBackend — fetch / EventSource integration', () => {
 
   it('closing the last subscriber for a signature closes the EventSource', () => {
     const off = mod.httpBackend.subscribeTags(['Z'], () => {});
-    const es = FakeEventSource.instances[0]!;
+    const es = assertDefined(FakeEventSource.instances[0], 'first ES instance');
     expect(es.readyState).toBe(1);
     off();
     expect(es.readyState).toBe(2);

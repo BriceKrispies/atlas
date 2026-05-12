@@ -1,6 +1,7 @@
 import { readFileSync, readSync } from 'node:fs';
 import { request, type ClientOptions } from '../../client.ts';
 import { emitResult, type OutputFlags } from '../../output.ts';
+import { asRecord, errorMessage, readString } from '../../json.ts';
 
 export interface SubmitOptions {
   file: string;
@@ -20,7 +21,7 @@ export async function runSubmit(
     emitResult(flags, {
       correlationId: client.correlationId,
       status: 'error',
-      message: `failed to read intent: ${(e as Error).message}`,
+      message: `failed to read intent: ${errorMessage(e)}`,
       errorCode: 'BAD_INPUT',
     });
     return 2;
@@ -29,11 +30,9 @@ export async function runSubmit(
   // Stamp correlationId into the envelope if missing — the server will
   // also default it, but stamping client-side gives the caller the same
   // ID we display in output.
-  if (typeof envelope === 'object' && envelope !== null) {
-    const e = envelope as Record<string, unknown>;
-    if (e['correlationId'] === undefined) {
-      e['correlationId'] = client.correlationId;
-    }
+  const envelopeRec = asRecord(envelope);
+  if (envelopeRec !== null && envelopeRec['correlationId'] === undefined) {
+    envelopeRec['correlationId'] = client.correlationId;
   }
 
   let res;
@@ -47,7 +46,7 @@ export async function runSubmit(
     emitResult(flags, {
       correlationId: client.correlationId,
       status: 'error',
-      message: `request failed: ${(e as Error).message}`,
+      message: `request failed: ${errorMessage(e)}`,
       errorCode: 'TRANSPORT',
     });
     return 1;
@@ -67,10 +66,10 @@ export async function runSubmit(
   // Error response. Try to surface the error envelope's code.
   let errorCode: string | undefined;
   let message: string | undefined;
-  if (typeof res.body === 'object' && res.body !== null) {
-    const b = res.body as Record<string, unknown>;
-    if (typeof b['code'] === 'string') errorCode = b['code'];
-    if (typeof b['message'] === 'string') message = b['message'];
+  const bodyRec = asRecord(res.body);
+  if (bodyRec !== null) {
+    errorCode = readString(bodyRec, 'code') ?? undefined;
+    message = readString(bodyRec, 'message') ?? undefined;
   }
 
   emitResult(flags, {

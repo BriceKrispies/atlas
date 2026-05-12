@@ -22,8 +22,15 @@ async function openEditor(page: Page): Promise<void> {
   await waitForEditor(page, PAGE);
   // Give the test-state registry a moment to pick up the editor.
   await expect
-    .poll(async () => ((await readEditorState(page, PAGE)) as { surfaceId?: string } | null)?.surfaceId)
+    .poll(async () => readEditorSurfaceId(await readEditorState(page, PAGE)))
     .toBe(SURFACE);
+}
+
+/** Read `surfaceId` off the editor state without a structural cast. */
+function readEditorSurfaceId(state: unknown): string | undefined {
+  if (state === null || typeof state !== 'object') return undefined;
+  const v: unknown = Reflect.get(state, 'surfaceId');
+  return typeof v === 'string' ? v : undefined;
 }
 
 test.describe('content-page editor — committed-state contract', () => {
@@ -33,6 +40,7 @@ test.describe('content-page editor — committed-state contract', () => {
     await dropSlot(page, 'sidebar').click();
 
     await assertCommitted(page, SURFACE, { intent: 'add' });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the editor-surface state shape is contract-pinned by the content-page editor controller.
     const state = (await readEditorState(page, PAGE)) as {
       lastCommit: { patch: { widgetId: string; to: { region: string } } };
       entries: Array<{ region: string }>;
@@ -79,6 +87,7 @@ test.describe('content-page editor — committed-state contract', () => {
     await page.mouse.up();
 
     await assertCommitted(page, SURFACE, { intent: 'drop' });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the editor-surface state shape is contract-pinned by the content-page editor controller.
     const state = (await readEditorState(page, PAGE)) as {
       lastCommit: { patch: { toRegion: string; underlying: string } };
     };

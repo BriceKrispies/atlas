@@ -63,7 +63,9 @@ import {
   handleFactorRevoke,
   type RecoveryCodeDocument,
 } from '../src/index.ts';
+import { isIdentityEvent } from '../src/events.ts';
 import { newFixture, dispatchAll, type Fixture } from './lib/fixtures.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 /**
  * Strip volatile per-write timestamps. The dispatcher stamps `createdAt`/
@@ -130,12 +132,14 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
     await dispatchAll(fx);
     // The session id was minted inside invite-accept; pull it from the
     // emitted event stream so we can revoke it.
-    const sessionEvent = fx.events.events.find(
-      (e) => e.eventType === 'Identity.SessionIssued',
+    const sessionEvent = assertDefined(
+      fx.events.events.find((e) => e.eventType === 'Identity.SessionIssued'),
+      'Identity.SessionIssued event must have been emitted',
     );
-    expect(sessionEvent).toBeDefined();
-    const sessionDoc = (sessionEvent!.payload as { document: { sessionId: string } })
-      .document;
+    if (!isIdentityEvent(sessionEvent) || sessionEvent.eventType !== 'Identity.SessionIssued') {
+      throw new Error('expected Identity.SessionIssued envelope');
+    }
+    const sessionDoc = sessionEvent.payload.document;
     await handleSessionRevoke(
       {
         tenantId: fx.tenantId,
@@ -499,15 +503,17 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
     );
     await dispatchAll(fx);
     // Redeem the first code.
-    const firstCode = generated.plaintextCodes[0];
-    expect(firstCode).toBeDefined();
+    const firstCode = assertDefined(
+      generated.plaintextCodes[0],
+      'recovery code generation must yield at least one plaintext code',
+    );
     await handleRedeemRecoveryCode(
       {
         tenantId: fx.tenantId,
         correlationId: 'c',
         principalId: userResult.document.userId,
         userId: userResult.document.userId,
-        presentedCode: firstCode!,
+        presentedCode: firstCode,
       },
       fx.events,
       fx.entities,
@@ -534,13 +540,14 @@ describe('I12 — dispatcher rebuilds every entity type from event history alone
     expect(eventTypesEmitted).toContain('Identity.RecoveryCodeConsumed');
 
     // Sanity: the consumed code has a document the dispatcher persists.
-    const consumed = fx.events.events.find(
-      (e) => e.eventType === 'Identity.RecoveryCodeConsumed',
+    const consumed = assertDefined(
+      fx.events.events.find((e) => e.eventType === 'Identity.RecoveryCodeConsumed'),
+      'Identity.RecoveryCodeConsumed event must have been emitted',
     );
-    expect(consumed).toBeDefined();
-    const consumedDoc = (
-      consumed!.payload as { document: RecoveryCodeDocument }
-    ).document;
+    if (!isIdentityEvent(consumed) || consumed.eventType !== 'Identity.RecoveryCodeConsumed') {
+      throw new Error('expected Identity.RecoveryCodeConsumed envelope');
+    }
+    const consumedDoc: RecoveryCodeDocument = consumed.payload.document;
     expect(consumedDoc).toBeDefined();
   });
 

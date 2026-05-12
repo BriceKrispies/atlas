@@ -11,8 +11,9 @@
  * positive rate near zero.
  */
 
-import type { Rule } from 'eslint';
-import type { CallExpression, NewExpression, Node as EstreeNode } from 'estree';
+import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from '@typescript-eslint/utils';
+
+const createRule = ESLintUtils.RuleCreator.withoutDocs;
 
 // Freestanding functions/constructors that either block the main thread
 // or let a widget do IO without declaring a capability.
@@ -35,21 +36,20 @@ const FORBIDDEN_NEW = new Set<string>([
 ]);
 
 // navigator.sendBeacon slips IO past the capability bridge.
-function isNavigatorSendBeacon(callee: EstreeNode | null | undefined): boolean {
-  if (!callee || callee.type !== 'MemberExpression' || callee.computed) return false;
+function isNavigatorSendBeacon(callee: TSESTree.Expression | TSESTree.Super): boolean {
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed) return false;
   const obj = callee.object;
   const prop = callee.property;
   return (
-    obj != null &&
-    obj.type === 'Identifier' &&
+    obj.type === AST_NODE_TYPES.Identifier &&
     obj.name === 'navigator' &&
-    prop != null &&
-    prop.type === 'Identifier' &&
+    prop.type === AST_NODE_TYPES.Identifier &&
     prop.name === 'sendBeacon'
   );
 }
 
-const rule: Rule.RuleModule = {
+export default createRule({
+  name: 'no-ui-blocking',
   meta: {
     type: 'problem',
     docs: {
@@ -72,30 +72,29 @@ const rule: Rule.RuleModule = {
         "'navigator.sendBeacon' bypasses the capability bridge. Use context.request().",
     },
   },
-
-  create(context: Rule.RuleContext): Rule.RuleListener {
+  defaultOptions: [],
+  create(context) {
     return {
-      CallExpression(node: CallExpression): void {
+      CallExpression(node: TSESTree.CallExpression): void {
         const callee = node.callee;
-        if (!callee) return;
 
-        if (callee.type === 'Identifier' && FORBIDDEN_IDENTIFIERS_CALL.has(callee.name)) {
+        if (callee.type === AST_NODE_TYPES.Identifier && FORBIDDEN_IDENTIFIERS_CALL.has(callee.name)) {
           const name = callee.name;
           if (name === 'alert' || name === 'confirm' || name === 'prompt') {
             context.report({
-              node: callee as unknown as Rule.Node,
+              node: callee,
               messageId: 'syncPrompt',
               data: { name },
             });
           } else if (name === 'eval') {
             context.report({
-              node: callee as unknown as Rule.Node,
+              node: callee,
               messageId: 'eval',
               data: { name },
             });
           } else {
             context.report({
-              node: callee as unknown as Rule.Node,
+              node: callee,
               messageId: 'directIo',
               data: { name },
             });
@@ -105,25 +104,25 @@ const rule: Rule.RuleModule = {
 
         if (isNavigatorSendBeacon(callee)) {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'beacon',
           });
           return;
         }
       },
 
-      NewExpression(node: NewExpression): void {
+      NewExpression(node: TSESTree.NewExpression): void {
         const callee = node.callee;
-        if (!callee || callee.type !== 'Identifier') return;
+        if (callee.type !== AST_NODE_TYPES.Identifier) return;
         if (!FORBIDDEN_NEW.has(callee.name)) return;
         if (callee.name === 'Function') {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'newFn',
           });
         } else {
           context.report({
-            node: callee as unknown as Rule.Node,
+            node: callee,
             messageId: 'newIo',
             data: { name: callee.name },
           });
@@ -131,6 +130,4 @@ const rule: Rule.RuleModule = {
       },
     };
   },
-};
-
-export default rule;
+});

@@ -92,11 +92,13 @@ export const LIFECYCLE = Object.freeze({
   ERROR: 'error' as const,
 });
 
-const NO_DELTA = Object.freeze({
+const FROZEN_EMPTY: string[] = [];
+Object.freeze(FROZEN_EMPTY);
+const NO_DELTA: Delta = Object.freeze({
   changed: false,
-  added: Object.freeze([]),
-  removed: Object.freeze([]),
-}) as unknown as Delta;
+  added: FROZEN_EMPTY,
+  removed: FROZEN_EMPTY,
+});
 
 export class MultiSelectCore {
   private _options: Option[];
@@ -421,6 +423,10 @@ interface RawOptionObject {
   disabled?: unknown;
 }
 
+function isRawOptionObject(v: unknown): v is RawOptionObject {
+  return typeof v === 'object' && v !== null;
+}
+
 function normalizeOptions(raw: readonly unknown[] | undefined): Option[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
@@ -430,13 +436,12 @@ function normalizeOptions(raw: readonly unknown[] | undefined): Option[] {
     let value: string;
     let label: string;
     let disabled: boolean;
-    if (typeof item === 'object') {
-      const obj = item as RawOptionObject;
-      const rawVal = obj.value ?? obj.id ?? obj.label ?? obj.text;
+    if (isRawOptionObject(item)) {
+      const rawVal = item.value ?? item.id ?? item.label ?? item.text;
       value = String(rawVal);
-      const rawLabel = obj.label ?? obj.text ?? obj.value ?? value;
+      const rawLabel = item.label ?? item.text ?? item.value ?? value;
       label = String(rawLabel);
-      disabled = !!obj.disabled;
+      disabled = !!item.disabled;
     } else {
       value = String(item);
       label = String(item);

@@ -255,8 +255,9 @@ export class AtlasToggleGroup extends AtlasElement {
   }
 
   private _onKey = (ev: KeyboardEvent): void => {
-    const target = ev.target as HTMLElement | null;
-    if (!target || target.tagName.toLowerCase() !== 'atlas-toggle-group-item') return;
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.tagName.toLowerCase() !== 'atlas-toggle-group-item') return;
     const enabled = this._enabledItems();
     const idx = enabled.indexOf(target);
     if (idx < 0) return;

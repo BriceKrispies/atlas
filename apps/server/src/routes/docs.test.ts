@@ -28,6 +28,12 @@ function makeApp(opts: { principal?: 'anonymous' | 'admin' | 'plain' } = {}): Ho
   const levelController = new InMemoryLevelController('info');
   const inspectionSink = new MemoryRingBufferSink({ capacity: 100 });
   const logPipeline = new LogPipeline([new CollectorSink(), inspectionSink], levelController);
+  // Test-only AppState stub. Docs routes only read `config`,
+  // `logPipeline`, `levelController`, and `inspectionSink`; the full
+  // bootstrap surface (pools, adapters, jwks) is not exercised by these
+  // smoke tests. The double cast is the canonical pattern for shaping a
+  // partial fixture into the production interface at the test boundary.
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: test fixture stubs the long-lived AppState; the routes under test only touch the four fields above and the production bootstrap is exercised elsewhere.
   const state = {
     config: { tenantId: 'dev-tenant', environment: 'test' },
     logPipeline,
@@ -57,8 +63,12 @@ describe('tenant docs routes', () => {
     const r = await app.request('/openapi.tenant.json');
     expect(r.status).toBe(200);
     expect(r.headers.get('content-type')).toMatch(/application\/json/);
-    const body = (await r.json()) as Record<string, unknown>;
-    expect(body['openapi']).toBe('3.1.0');
+    const body: unknown = await r.json();
+    if (body === null || typeof body !== 'object') throw new Error('expected JSON object');
+    // `Reflect.get` returns `unknown` so the field read doesn't need a
+    // structural narrowing cast of `body` itself.
+    const openapi: unknown = Reflect.get(body, 'openapi');
+    expect(openapi).toBe('3.1.0');
   });
 
   it('GET /docs returns HTML with Scalar harness', async () => {

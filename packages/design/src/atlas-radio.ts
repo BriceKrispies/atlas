@@ -1,5 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
+import { isElement } from './internal/assert.ts';
 
 const radioSheet = createSheet(`
   :host {
@@ -379,7 +380,7 @@ export class AtlasRadioGroup extends AtlasElement {
 
   private _onClick = (ev: Event): void => {
     if (this.disabled) return;
-    const target = (ev.target as Element | null)?.closest('atlas-radio') as AtlasRadio | null;
+    const target = closestRadio(ev.target);
     if (!target || target.disabled) return;
     this._select(target);
   };
@@ -388,7 +389,7 @@ export class AtlasRadioGroup extends AtlasElement {
     if (this.disabled) return;
     const items = this._items().filter((i) => !i.disabled);
     if (items.length === 0) return;
-    const active = (ev.target as Element | null)?.closest('atlas-radio') as AtlasRadio | null;
+    const active = closestRadio(ev.target);
     const idx = active ? items.indexOf(active) : -1;
     let nextIdx = -1;
     switch (ev.key) {
@@ -447,6 +448,17 @@ export class AtlasRadioGroup extends AtlasElement {
 }
 
 AtlasElement.define('atlas-radio-group', AtlasRadioGroup);
+
+/**
+ * Walk up from an `EventTarget` to the enclosing `<atlas-radio>`. Returns
+ * `null` if the target isn't an Element or no radio ancestor exists.
+ * Replaces a pair of `as Element | null` / `as AtlasRadio | null` casts.
+ */
+function closestRadio(target: EventTarget | null): AtlasRadio | null {
+  if (!isElement(target)) return null;
+  const node = target.closest('atlas-radio');
+  return node instanceof AtlasRadio ? node : null;
+}
 
 declare global {
   interface HTMLElementTagNameMap {

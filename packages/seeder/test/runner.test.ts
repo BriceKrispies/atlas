@@ -12,6 +12,7 @@
  *   - `expect` clause flips ok=true into reported ok=false on mismatch.
  */
 
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -30,84 +31,35 @@ import type {
 } from '../src/index.ts';
 import type { Crypto } from '@atlas/ports';
 import type { IntentEnvelope } from '@atlas/platform-core';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 // --- Test doubles -----------------------------------------------------------
 
-/**
- * Pure-TS sha256, used only by the test stub crypto. The runtime
- * runner gets a real `Crypto` impl from the host (e.g. node-backed).
- * Implementation: FIPS 180-4 §6.2 — the standard 64-round form.
- */
-function sha256(input: Uint8Array | string): Uint8Array {
-  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
-  const K = new Uint32Array([
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ]);
-  const H = new Uint32Array([
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-  ]);
-  const bitLen = bytes.length * 8;
-  const padLen = (bytes.length + 9 + 63) & ~63;
-  const padded = new Uint8Array(padLen);
-  padded.set(bytes);
-  padded[bytes.length] = 0x80;
-  // Big-endian bit-length in last 8 bytes.
-  const view = new DataView(padded.buffer);
-  view.setUint32(padLen - 4, bitLen >>> 0, false);
-  view.setUint32(padLen - 8, Math.floor(bitLen / 0x100000000), false);
-
-  const w = new Uint32Array(64);
-  for (let off = 0; off < padLen; off += 64) {
-    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + i * 4, false);
-    for (let i = 16; i < 64; i++) {
-      const s0 = rotr(w[i - 15]!, 7) ^ rotr(w[i - 15]!, 18) ^ (w[i - 15]! >>> 3);
-      const s1 = rotr(w[i - 2]!, 17) ^ rotr(w[i - 2]!, 19) ^ (w[i - 2]! >>> 10);
-      w[i] = (w[i - 16]! + s0 + w[i - 7]! + s1) >>> 0;
-    }
-    let [a, b, c, d, e, f, g, h] = [H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!];
-    for (let i = 0; i < 64; i++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const ch = (e & f) ^ (~e & g);
-      const t1 = (h + S1 + ch + K[i]! + w[i]!) >>> 0;
-      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const mj = (a & b) ^ (a & c) ^ (b & c);
-      const t2 = (S0 + mj) >>> 0;
-      h = g;
-      g = f;
-      f = e;
-      e = (d + t1) >>> 0;
-      d = c;
-      c = b;
-      b = a;
-      a = (t1 + t2) >>> 0;
-    }
-    H[0] = (H[0]! + a) >>> 0;
-    H[1] = (H[1]! + b) >>> 0;
-    H[2] = (H[2]! + c) >>> 0;
-    H[3] = (H[3]! + d) >>> 0;
-    H[4] = (H[4]! + e) >>> 0;
-    H[5] = (H[5]! + f) >>> 0;
-    H[6] = (H[6]! + g) >>> 0;
-    H[7] = (H[7]! + h) >>> 0;
-  }
-  const out = new Uint8Array(32);
-  const dv = new DataView(out.buffer);
-  for (let i = 0; i < 8; i++) dv.setUint32(i * 4, H[i]!, false);
-  return out;
-}
-
-function rotr(x: number, n: number): number {
-  return ((x >>> n) | (x << (32 - n))) >>> 0;
-}
-
-const stubCrypto: Pick<Crypto, 'sha256'> = { sha256 };
+const stubCrypto: Crypto = {
+  randomBytes() {
+    throw new Error('not used in seeder runner tests');
+  },
+  sha256(input) {
+    const data =
+      typeof input === 'string' ? Buffer.from(input, 'utf8') : Buffer.from(input);
+    return new Uint8Array(createHash('sha256').update(data).digest());
+  },
+  hmacSha1() {
+    throw new Error('not used in seeder runner tests');
+  },
+  aesGcmEncrypt() {
+    throw new Error('not used in seeder runner tests');
+  },
+  aesGcmDecrypt() {
+    throw new Error('not used in seeder runner tests');
+  },
+  scrypt() {
+    throw new Error('not used in seeder runner tests');
+  },
+  timingSafeEqual() {
+    throw new Error('not used in seeder runner tests');
+  },
+};
 
 function makeIntent(actionId: string, resourceId: string): IntentEnvelope {
   return {
@@ -161,7 +113,7 @@ function recordingDriver(responses: IntentResult[]): Recorder {
   let i = 0;
   const driver: IntentDriver = {
     async submit(env) {
-      envelopes.push(env as IntentEnvelope);
+      envelopes.push(env);
       const r = responses[i++] ?? { ok: true };
       return r;
     },
@@ -178,7 +130,7 @@ function deps(scenario: Scenario, responses: IntentResult[]): {
     d: {
       corpus: corpusReturning(scenario),
       driver: rec.driver,
-      crypto: stubCrypto as Crypto,
+      crypto: stubCrypto,
     },
     rec,
   };
@@ -198,8 +150,14 @@ describe('runScenario (Phase 1 skeleton)', () => {
     const result = await runScenario(d, ref);
 
     expect(rec.envelopes).toHaveLength(2);
-    expect((rec.envelopes[0]!.payload as { actionId: string }).actionId).toBe('Test.Do.First');
-    expect((rec.envelopes[1]!.payload as { actionId: string }).actionId).toBe('Test.Do.Second');
+    expect(
+      assertDefined(rec.envelopes[0], 'envelope[0] recorded after length check').payload
+        .actionId,
+    ).toBe('Test.Do.First');
+    expect(
+      assertDefined(rec.envelopes[1], 'envelope[1] recorded after length check').payload
+        .actionId,
+    ).toBe('Test.Do.Second');
 
     expect(result.scenarioId).toBe('unit/two-step');
     expect(result.contentHash).toBe('hash-abc');
@@ -223,13 +181,21 @@ describe('runScenario (Phase 1 skeleton)', () => {
 
     await runScenario(d, ref);
 
-    const key0 = deriveIdempotencyKey(stubCrypto as Crypto, scenario.scenarioId, 0);
-    const key1 = deriveIdempotencyKey(stubCrypto as Crypto, scenario.scenarioId, 1);
+    const key0 = deriveIdempotencyKey(stubCrypto, scenario.scenarioId, 0);
+    const key1 = deriveIdempotencyKey(stubCrypto, scenario.scenarioId, 1);
 
-    expect(rec.envelopes[0]!.idempotencyKey).toBe(key0);
-    expect(rec.envelopes[1]!.idempotencyKey).toBe(key1);
-    expect(rec.envelopes[0]!.correlationId).toBe(deriveCorrelationId(scenario.scenarioId, 0));
-    expect(rec.envelopes[1]!.correlationId).toBe(deriveCorrelationId(scenario.scenarioId, 1));
+    expect(
+      assertDefined(rec.envelopes[0], 'envelope[0] stamped on a 2-step scenario').idempotencyKey,
+    ).toBe(key0);
+    expect(
+      assertDefined(rec.envelopes[1], 'envelope[1] stamped on a 2-step scenario').idempotencyKey,
+    ).toBe(key1);
+    expect(
+      assertDefined(rec.envelopes[0], 'envelope[0] stamped on a 2-step scenario').correlationId,
+    ).toBe(deriveCorrelationId(scenario.scenarioId, 0));
+    expect(
+      assertDefined(rec.envelopes[1], 'envelope[1] stamped on a 2-step scenario').correlationId,
+    ).toBe(deriveCorrelationId(scenario.scenarioId, 1));
 
     // Spec: idempotencyKey is sha256-hex truncated to 32 chars.
     expect(key0).toHaveLength(32);
@@ -270,7 +236,9 @@ describe('runScenario (Phase 1 skeleton)', () => {
 
     const result = await runScenario(d, ref);
 
-    expect(result.steps[0]!.ok).toBe(false);
+    expect(
+      assertDefined(result.steps[0], 'single-step scenario reports one step').ok,
+    ).toBe(false);
   });
 });
 
@@ -345,21 +313,21 @@ describe('canonicalJsonStringify', () => {
 
 describe('deriveIdempotencyKey', () => {
   it('is deterministic across calls', () => {
-    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
-    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
+    const a = deriveIdempotencyKey(stubCrypto, 'sid', 0);
+    const b = deriveIdempotencyKey(stubCrypto, 'sid', 0);
     expect(a).toBe(b);
     expect(a).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it('produces distinct keys for distinct stepIndex with the same content', () => {
-    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 0);
-    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid', 1);
+    const a = deriveIdempotencyKey(stubCrypto, 'sid', 0);
+    const b = deriveIdempotencyKey(stubCrypto, 'sid', 1);
     expect(a).not.toBe(b);
   });
 
   it('produces distinct keys for distinct scenarioIds at the same stepIndex', () => {
-    const a = deriveIdempotencyKey(stubCrypto as Crypto, 'sid-a', 0);
-    const b = deriveIdempotencyKey(stubCrypto as Crypto, 'sid-b', 0);
+    const a = deriveIdempotencyKey(stubCrypto, 'sid-a', 0);
+    const b = deriveIdempotencyKey(stubCrypto, 'sid-b', 0);
     expect(a).not.toBe(b);
   });
 
@@ -373,10 +341,10 @@ describe('deriveIdempotencyKey', () => {
     // Source of truth: openssl-equivalent
     //   sha256("seed/scenario-1::0") = 7cb2e2ea83e721c5e4c1b50d96fa28fe<...>
     //   sha256("seed/scenario-1::1") = 91dc561f37e2f948436bca11f4f7956a<...>
-    expect(deriveIdempotencyKey(stubCrypto as Crypto, 'seed/scenario-1', 0)).toBe(
+    expect(deriveIdempotencyKey(stubCrypto, 'seed/scenario-1', 0)).toBe(
       '7cb2e2ea83e721c5e4c1b50d96fa28fe',
     );
-    expect(deriveIdempotencyKey(stubCrypto as Crypto, 'seed/scenario-1', 1)).toBe(
+    expect(deriveIdempotencyKey(stubCrypto, 'seed/scenario-1', 1)).toBe(
       '91dc561f37e2f948436bca11f4f7956a',
     );
   });
@@ -392,8 +360,8 @@ describe('deriveIdempotencyKey', () => {
     // 'a::1::2'. These don't collide. So with stepIndex-as-number the
     // grammar is in fact injective today. Document the assumption so a
     // future change (e.g. compound stepIds) doesn't break it silently.
-    const k1 = deriveIdempotencyKey(stubCrypto as Crypto, 'a', 12);
-    const k2 = deriveIdempotencyKey(stubCrypto as Crypto, 'a::1', 2);
+    const k1 = deriveIdempotencyKey(stubCrypto, 'a', 12);
+    const k2 = deriveIdempotencyKey(stubCrypto, 'a::1', 2);
     expect(k1).not.toBe(k2);
   });
 });
@@ -426,7 +394,7 @@ describe('runScenario — additional coverage', () => {
     const d: RunnerDeps = {
       corpus: corpusReturning(scenario),
       driver,
-      crypto: stubCrypto as Crypto,
+      crypto: stubCrypto,
     };
     await expect(runScenario(d, makeRef(scenario.scenarioId, 'h'))).rejects.toThrow(
       /transport-down/,
@@ -447,7 +415,7 @@ describe('runScenario — additional coverage', () => {
     };
     const { driver } = recordingDriver([]);
     await expect(
-      runScenario({ corpus, driver, crypto: stubCrypto as Crypto }, makeRef('ghost', 'h')),
+      runScenario({ corpus, driver, crypto: stubCrypto }, makeRef('ghost', 'h')),
     ).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
   });
 
@@ -465,7 +433,9 @@ describe('runScenario — additional coverage', () => {
     };
     const { d } = deps(scenario, [{ ok: true }]);
     const result = await runScenario(d, makeRef(scenario.scenarioId, 'h'));
-    expect(result.steps[0]!.ok).toBe(true);
+    expect(
+      assertDefined(result.steps[0], 'single-step scenario reports one step').ok,
+    ).toBe(true);
   });
 
   it('expect.errorCode mismatch flips ok=false even when driver ok flag matches', async () => {
@@ -482,18 +452,24 @@ describe('runScenario — additional coverage', () => {
     };
     const { d } = deps(scenario, [{ ok: false, errorCode: 'GOT_OTHER' }]);
     const result = await runScenario(d, makeRef(scenario.scenarioId, 'h'));
-    expect(result.steps[0]!.ok).toBe(false);
-    expect(result.steps[0]!.errorCode).toBe('GOT_OTHER');
+    expect(
+      assertDefined(result.steps[0], 'single-step scenario reports one step').ok,
+    ).toBe(false);
+    expect(
+      assertDefined(result.steps[0], 'single-step scenario reports one step').errorCode,
+    ).toBe('GOT_OTHER');
   });
 
   it('does not mutate the caller-supplied intent envelope', async () => {
     const scenario = makeScenario();
-    const originalIdempotencyKey = scenario.steps[0]!.intent.idempotencyKey;
-    const originalCorrelationId = scenario.steps[0]!.intent.correlationId;
+    const step0 = assertDefined(scenario.steps[0], '2-step scenario has steps[0]');
+    const originalIdempotencyKey = step0.intent.idempotencyKey;
+    const originalCorrelationId = step0.intent.correlationId;
     const { d } = deps(scenario, [{ ok: true }, { ok: true }]);
     await runScenario(d, makeRef(scenario.scenarioId, 'h'));
     // The runner builds a NEW envelope per step; original must be intact.
-    expect(scenario.steps[0]!.intent.idempotencyKey).toBe(originalIdempotencyKey);
-    expect(scenario.steps[0]!.intent.correlationId).toBe(originalCorrelationId);
+    const step0After = assertDefined(scenario.steps[0], '2-step scenario still has steps[0]');
+    expect(step0After.intent.idempotencyKey).toBe(originalIdempotencyKey);
+    expect(step0After.intent.correlationId).toBe(originalCorrelationId);
   });
 });

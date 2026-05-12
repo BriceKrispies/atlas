@@ -853,7 +853,7 @@ export class AtlasColorPicker extends AtlasElement {
     const row = this._swatchRow;
     if (!row) return;
     row.addEventListener('click', (ev) => {
-      const target = ev.target as Element | null;
+      const target = ev.target instanceof Element ? ev.target : null;
       const btn = target?.closest<HTMLButtonElement>('button[data-hex]');
       if (!btn) return;
       const hex = btn.dataset['hex'];
@@ -861,7 +861,7 @@ export class AtlasColorPicker extends AtlasElement {
       this._setFromHex(hex, /*emit*/ true);
     });
     row.addEventListener('keydown', (ev) => {
-      const target = ev.target as Element | null;
+      const target = ev.target instanceof Element ? ev.target : null;
       const btn = target?.closest<HTMLButtonElement>('button[data-hex]');
       if (!btn) return;
       const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('button[data-hex]'));

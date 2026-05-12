@@ -16,6 +16,16 @@
 
 import { describe, expect, test, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
+
+/**
+ * Boundary reader for the route's JSON responses. The wire shape is the
+ * route's contract; we narrow `any` to `T` once in this helper instead
+ * of at every call site.
+ */
+async function readJsonAs<T>(res: Response): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: route test reader — T is the route's contracted response shape (RepositoryRecord[] etc.).
+  return (await res.json()) as T;
+}
 import type {
   RepositoryRecord,
   RepositoryRevisionStore,
@@ -169,9 +179,17 @@ const revisions = new InMemoryRevisionStore();
 
 vi.mock('../bootstrap.ts', async () => {
   const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
+  // Same shim shape as `identity-a7.test.ts`: the route never dereferences
+  // the returned postgres.Sql handle (the @atlas/adapter-node mock below
+  // replaces the stores wholesale), so a no-op implementation is fine.
+  // The double-cast through `unknown` is the documented boundary: there's
+  // no postgres.Sql fixture lean enough to instantiate from a test.
+  const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async () =>
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced; identity-a7.test.ts uses the same shim shape with the same justification.
+    undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
   return {
     ...actual,
-    ensureTenantMigrated: vi.fn().mockResolvedValue({} as never),
+    ensureTenantMigrated: vi.fn(ensureTenantMigrated),
   };
 });
 
@@ -201,7 +219,15 @@ vi.mock('@atlas/adapter-node', async () => {
 // ----------------------------------------------------------------------
 
 function makeState(): AppState {
-  return {
+  // Route under test only reads `state.config` (and even then only the
+  // `testAuth` + `policyEngine` fields). Building a full AppState would
+  // require instantiating Postgres pools, JWKS caches, log pipelines,
+  // adapter constructors, etc. — every one of which the @atlas/adapter-node
+  // and ../bootstrap.ts mocks above already short-circuit. We declare the
+  // partial as `AppState` at the boundary; if the route grows a new
+  // read against AppState, the failure is a clean undefined-deref rather
+  // than a silent bad-value.
+  const partial = {
     config: {
       port: 3000,
       controlPlaneDbUrl: 'postgres://unused',
@@ -211,7 +237,9 @@ function makeState(): AppState {
       rustLog: '',
       policyEngine: 'stub' as const,
     },
-  } as unknown as AppState;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — see makeState() JSDoc; full AppState requires Postgres + JWKS + adapter wiring that this suite intentionally short-circuits via vi.mock above.
+  return partial as unknown as AppState;
 }
 
 interface PrincipalSpec {
@@ -275,7 +303,7 @@ describe('GET /api/v1/repositories', () => {
     const app = buildApp({ principalId: 'usr-a', tenantId: tenantA });
     const res = await app.request('/api/v1/repositories');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as RepositoryRecord[];
+    const body = await readJsonAs<RepositoryRecord[]>(res);
     const ids = body.map((r) => r.repoId).sort();
     expect(ids).toEqual(['repo-a-1', 'repo-a-2']);
     expect(ids).not.toContain('repo-b-1');

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { linearScale, bandScale, timeScale, toMs } from '../src/charts/scales.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 describe('scales', () => {
   it('linearScale maps domain to range', () => {
@@ -24,8 +25,8 @@ describe('scales', () => {
     const s = linearScale({ domain: [-10, 10], range: [0, 100] });
     const ticks = s.ticks(4);
     expect(ticks.length).toBeGreaterThanOrEqual(4);
-    expect(ticks[0]!).toBeLessThanOrEqual(-10 + 5);
-    expect(ticks.at(-1)!).toBeGreaterThanOrEqual(10 - 5);
+    expect(assertDefined(ticks[0], 'ticks length >= 4')).toBeLessThanOrEqual(-10 + 5);
+    expect(assertDefined(ticks.at(-1), 'ticks length >= 4')).toBeGreaterThanOrEqual(10 - 5);
   });
 
   it('bandScale produces evenly spaced bands with padding', () => {

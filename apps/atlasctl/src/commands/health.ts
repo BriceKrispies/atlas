@@ -1,4 +1,5 @@
 import { request, type ClientOptions } from '../client.ts';
+import { errorMessage } from '../json.ts';
 import { emitResult, type OutputFlags } from '../output.ts';
 
 export async function runHealth(
@@ -37,7 +38,7 @@ async function safeRequest(client: ClientOptions, path: string): Promise<ProbeRe
       ok: false,
       status: 0,
       body: null,
-      error: (e as Error).message,
+      error: errorMessage(e),
     };
   }
 }

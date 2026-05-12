@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import type { CatalogStateRecord, CatalogStateStore } from '@atlas/ports';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 function rec(overrides: Partial<CatalogStateRecord> = {}): CatalogStateRecord {
   return {
@@ -35,8 +36,8 @@ export function catalogStateStoreContract(
     test('put overwrites an existing tenant record', async () => {
       await store.put(rec({ tenantId: 'tenant-ow', seedPackageVersion: '1.0.0' }));
       await store.put(rec({ tenantId: 'tenant-ow', seedPackageVersion: '1.0.1' }));
-      const got = await store.get('tenant-ow');
-      expect(got!.seedPackageVersion).toBe('1.0.1');
+      const got = assertDefined(await store.get('tenant-ow'), 'expected stored record for tenant-ow');
+      expect(got.seedPackageVersion).toBe('1.0.1');
     });
 
     test('tenant isolation: storing under one tenant does not leak to another', async () => {
@@ -44,15 +45,15 @@ export function catalogStateStoreContract(
       const a = await store.get('tenant-iso-a');
       const b = await store.get('tenant-iso-b');
       expect(a).not.toBeNull();
-      expect(a!.seedPackageVersion).toBe('9.9.9');
+      expect(assertDefined(a, 'expected record for tenant-iso-a').seedPackageVersion).toBe('9.9.9');
       expect(b).toBeNull();
     });
 
     test('publishedRevisions map round-trips intact', async () => {
       const revisions = { 'fam-1': 3, 'fam-2': 7 };
       await store.put(rec({ tenantId: 'tenant-rev', publishedRevisions: revisions }));
-      const got = await store.get('tenant-rev');
-      expect(got!.publishedRevisions).toEqual(revisions);
+      const got = assertDefined(await store.get('tenant-rev'), 'expected stored record for tenant-rev');
+      expect(got.publishedRevisions).toEqual(revisions);
     });
 
     test('payload preserves nested object shape', async () => {
@@ -64,8 +65,8 @@ export function catalogStateStoreContract(
         ],
       };
       await store.put(rec({ tenantId: 'tenant-payload', payload }));
-      const got = await store.get('tenant-payload');
-      expect(got!.payload).toEqual(payload);
+      const got = assertDefined(await store.get('tenant-payload'), 'expected stored record for tenant-payload');
+      expect(got.payload).toEqual(payload);
     });
 
     test('[error-shape] put with an empty tenantId is accepted at the port layer (callers must enforce non-empty)', async () => {
@@ -79,7 +80,7 @@ export function catalogStateStoreContract(
       await expect(store.put(r)).resolves.toBeUndefined();
       const got = await store.get('');
       expect(got).not.toBeNull();
-      expect(got!.seedPackageVersion).toBe('v-empty');
+      expect(assertDefined(got, 'expected stored record for empty tenantId').seedPackageVersion).toBe('v-empty');
     });
 
     test('[concurrency] concurrent puts under different tenants do not interfere', async () => {
@@ -93,7 +94,7 @@ export function catalogStateStoreContract(
       for (let i = 0; i < 10; i++) {
         const got = await store.get(`tenant-cc-${i}`);
         expect(got).not.toBeNull();
-        expect(got!.seedPackageVersion).toBe(`v${i}`);
+        expect(assertDefined(got, `expected record for tenant-cc-${i}`).seedPackageVersion).toBe(`v${i}`);
       }
     });
 
@@ -113,17 +114,19 @@ export function catalogStateStoreContract(
       );
       await Promise.all(candidates.map((c) => store.put(c)));
 
-      const got = await store.get(tenantId);
-      expect(got).not.toBeNull();
+      const got = assertDefined(
+        await store.get(tenantId),
+        'expected stored record for overwrite-race tenant',
+      );
 
       // The final record must match exactly one of the candidates — version,
       // payload, and publishedRevisions all from the same source.
-      const winner = candidates.find(
-        (c) => c.seedPackageVersion === got!.seedPackageVersion,
+      const winner = assertDefined(
+        candidates.find((c) => c.seedPackageVersion === got.seedPackageVersion),
+        'expected stored record to match one of the racing candidates',
       );
-      expect(winner).toBeDefined();
-      expect(got!.payload).toEqual(winner!.payload);
-      expect(got!.publishedRevisions).toEqual(winner!.publishedRevisions);
+      expect(got.payload).toEqual(winner.payload);
+      expect(got.publishedRevisions).toEqual(winner.publishedRevisions);
     });
   });
 }

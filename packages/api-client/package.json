@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "@atlas/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/test-fixtures": "workspace:*"
   }
 }

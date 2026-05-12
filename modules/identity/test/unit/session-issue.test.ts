@@ -42,6 +42,20 @@ import {
 } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 
+function sessionDocFromPayload(payload: unknown): AuthSessionDocument {
+  if (!payload || typeof payload !== 'object' || !('document' in payload)) {
+    throw new Error('expected event payload with `document` field');
+  }
+  const doc = payload.document;
+  if (!doc || typeof doc !== 'object') {
+    throw new Error('expected event payload.document to be an object');
+  }
+  // Tests already pinned the producing handler — the document field on
+  // session events is always an `AuthSessionDocument` by construction.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test boundary: handler under test emits AuthSessionDocument here
+  return doc as AuthSessionDocument;
+}
+
 describe('handleSessionIssue — happy path', () => {
   it('emits Identity.SessionIssued with full envelope shape', async () => {
     const fx = newFixture();
@@ -473,14 +487,13 @@ describe('handleSessionIssue — concurrent-session cap', () => {
     ]);
     // The eviction event's payload carries the evicted session document
     // with status='evicted', endReason='evicted'.
-    const payload = evictEvent?.payload as {
-      document: AuthSessionDocument;
-      reason: string;
-    };
-    expect(payload.document.sessionId).toBe(first.document.sessionId);
-    expect(payload.document.status).toBe('evicted');
-    expect(payload.document.endReason).toBe('evicted');
-    expect(payload.reason).toBe('evicted');
+    const payload = evictEvent?.payload;
+    const doc = sessionDocFromPayload(payload);
+    expect(doc.sessionId).toBe(first.document.sessionId);
+    expect(doc.status).toBe('evicted');
+    expect(doc.endReason).toBe('evicted');
+    expect(payload && typeof payload === 'object' && 'reason' in payload && payload.reason)
+      .toBe('evicted');
   });
 });
 

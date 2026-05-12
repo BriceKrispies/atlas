@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type {
   EventStore,
   StoredEvent,
@@ -62,6 +63,12 @@ class InMemoryEventStore implements EventStore {
   }
 }
 
+// Mirror of `a4-acceptance.test.ts`'s shim — same type-erasure boundary
+// the port `EntityStore` exposes through its `<T = unknown>` generic.
+// The disables are intentional: this is a test fixture, the rows are
+// stored as `Entity<unknown>` at the substrate, and the read path
+// narrows back to the caller-supplied `T`. The shared `lib/fixtures.ts`
+// uses the same pattern.
 class InMemoryEntityStore implements PortEntityStore {
   rows = new Map<string, Entity<unknown>>();
   private k(t: string, ty: string, id: string): string {
@@ -70,6 +77,7 @@ class InMemoryEntityStore implements PortEntityStore {
   async get<T = unknown>(t: string, ty: string, id: string): Promise<Entity<T> | null> {
     const r = this.rows.get(this.k(t, ty, id));
     if (!r || r.status === 'deleted') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
     return r as Entity<T>;
   }
   async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -86,7 +94,7 @@ class InMemoryEntityStore implements PortEntityStore {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    this.rows.set(key, row as Entity<unknown>);
+    this.rows.set(key, row);
     return row;
   }
   async delete(t: string, ty: string, id: string): Promise<void> {
@@ -96,23 +104,33 @@ class InMemoryEntityStore implements PortEntityStore {
   }
   async list<T = unknown>(t: string, ty: string, opts?: EntityListOptions): Promise<Entity<T>[]> {
     const desired = opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
+    const filtered = Array.from(this.rows.values())
       .filter((r) => r.tenantId === t && r.entityType === ty)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<T>[];
+      .filter((r) => (desired === null ? true : r.status === desired));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return filtered as Entity<T>[];
   }
   async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
     const all = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.entityType === ty,
     );
-    if (!opts.attrsEqual) return all as Entity<T>[];
+    if (!opts.attrsEqual) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+      return all as Entity<T>[];
+    }
     const preds = Object.entries(opts.attrsEqual);
-    return all.filter((row) => {
+    const matched = all.filter((row) => {
+      if (row.attrs == null || typeof row.attrs !== 'object') return false;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
       const attrs = row.attrs as Record<string, unknown>;
-      return preds.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<T>[];
+      return preds.every(([k, v]) => attrs[k] === v);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
+    return matched as Entity<T>[];
   }
 }
 
+// Same type-erasure boundary as `InMemoryEntityStore` — see comment above.
 class InMemoryRelationStore implements RelationStore {
   rows = new Map<string, Relation<unknown>>();
   private k(t: string, e: string, f: string, to: string): string {
@@ -128,21 +146,25 @@ class InMemoryRelationStore implements RelationStore {
       attrs: input.attrs ?? null,
       createdAt: new Date().toISOString(),
     };
-    this.rows.set(key, row as Relation<unknown>);
+    this.rows.set(key, row);
     return row;
   }
   async remove(t: string, e: string, f: string, to: string): Promise<void> {
     this.rows.delete(this.k(t, e, f, to));
   }
   async outgoing<T = unknown>(t: string, e: string, f: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const filtered = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.fromId === f,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
+    return filtered as Relation<T>[];
   }
   async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
-    return Array.from(this.rows.values()).filter(
+    const filtered = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === t && r.edgeType === e && r.toId === to,
-    ) as Relation<T>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
+    return filtered as Relation<T>[];
   }
 }
 
@@ -168,6 +190,21 @@ async function dispatchAll(f: Fx): Promise<void> {
   for (const e of f.events.events) {
     await dispatchIdentityEvent(e, { entities: f.entities, relations: f.relations });
   }
+}
+
+/**
+ * Narrow a `AuthFactorDocument`'s discriminated `attrs` union to its
+ * TOTP arm by `kind`. The substrate types `attrs` as the wide union
+ * (`TotpFactorAttrs | WebAuthnFactorAttrs`) so a runtime `kind` check is
+ * required to recover the per-arm shape — using a typed guard funnels
+ * every test-side TOTP read through one checked boundary.
+ */
+function totpAttrs(doc: { kind: string; attrs: unknown }): TotpFactorAttrs {
+  if (doc.kind !== 'totp') {
+    throw new Error(`test invariant: expected totp factor, got ${doc.kind}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- runtime-checked: kind === 'totp' implies attrs is TotpFactorAttrs per AuthFactorDocument discriminator
+  return doc.attrs as TotpFactorAttrs;
 }
 
 // =====================================================================
@@ -261,7 +298,7 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
     );
     await dispatchAll(f);
     // Reach into the encrypted secret to compute the current code.
-    const attrs = enroll.document.attrs as TotpFactorAttrs;
+    const attrs = totpAttrs(enroll.document);
     const secret = decryptSecret(attrs.encryptedSecret, f.tenantId, f.secrets);
     const code = hotp(secret, Math.floor(Date.now() / 1000 / 30));
     const result = await handleTotpChallenge(
@@ -283,8 +320,11 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
       `Tenant:${f.tenantId}`,
       `User:${enroll.document.userId}`,
     ]);
-    const stored = await getAuthFactorEntity(f.entities, f.tenantId, enroll.document.factorId);
-    const sa = stored?.attrs as TotpFactorAttrs;
+    const stored = assertDefined(
+      await getAuthFactorEntity(f.entities, f.tenantId, enroll.document.factorId),
+      'TOTP enrollment dispatched the factor onto the entity store',
+    );
+    const sa = totpAttrs(stored);
     expect(sa.lastUsedCounter).toBeGreaterThan(0);
     expect(sa.failedAttempts).toBe(0);
   });
@@ -357,7 +397,10 @@ describe('mfa-totp.feature: enrollment + challenge', () => {
       }
       await dispatchAll(f);
     }
-    expect((lastErr as IdentityError).code).toBe(identityErrorCodes.MFA_FACTOR_LOCKED);
+    if (!(lastErr instanceof IdentityError)) {
+      throw new Error(`expected IdentityError from challenge loop, got ${String(lastErr)}`);
+    }
+    expect(lastErr.code).toBe(identityErrorCodes.MFA_FACTOR_LOCKED);
     const stored = await getAuthFactorEntity(f.entities, f.tenantId, enroll.document.factorId);
     expect(stored?.status).toBe('locked');
     expect(stored?.lockedUntil).toBeTruthy();
@@ -432,7 +475,7 @@ describe('mfa-recovery.feature: generate + redeem', () => {
       f.entities,
     );
     await dispatchAll(f);
-    const code = gen.plaintextCodes[0]!;
+    const code = assertDefined(gen.plaintextCodes[0], 'generate mints 10 codes');
     const result = await handleRedeemRecoveryCode(
       {
         tenantId: f.tenantId,
@@ -491,11 +534,13 @@ describe('mfa-recovery.feature: generate + redeem', () => {
     );
     await dispatchAll(f);
     const all = await listRecoveryCodesForUser(f.entities, f.tenantId, 'usr-alice');
-    const oldBatch = all.filter((c) => c.batchId === gen.documents[0]!.batchId);
+    const firstDoc = assertDefined(gen.documents[0], 'generate mints 10 docs');
+    const oldBatch = all.filter((c) => c.batchId === firstDoc.batchId);
     expect(oldBatch.every((c) => c.status === 'invalidated')).toBe(true);
     const newBatch = all.filter((c) => c.status === 'active');
     expect(newBatch.length).toBe(10);
     // Old plaintext no longer redeems.
+    const oldCode = assertDefined(gen.plaintextCodes[0], 'generate mints 10 codes');
     await expect(
       handleRedeemRecoveryCode(
         {
@@ -503,7 +548,7 @@ describe('mfa-recovery.feature: generate + redeem', () => {
           correlationId: 'c3',
           principalId: 'usr-alice',
           userId: 'usr-alice',
-          presentedCode: gen.plaintextCodes[0]!,
+          presentedCode: oldCode,
         },
         f.events,
         f.entities,

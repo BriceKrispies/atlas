@@ -178,12 +178,14 @@ export class AtlasTabBar extends AtlasElement {
     return this._tabs;
   }
   set tabs(next: readonly RawTabInput[] | null | undefined) {
-    this._tabs = Array.isArray(next)
-      ? next.map((t) => ({
-          value: String(t.value),
-          label: String(t.label ?? t.value),
-        }))
-      : [];
+    // `Array.isArray` widens its callee to `any[]` in the no-`unknown[]`
+    // mode this project uses; assign through the typed local first so the
+    // map callback sees `RawTabInput` properties without unsafe-any reads.
+    const rawList: readonly RawTabInput[] = Array.isArray(next) ? next : [];
+    this._tabs = rawList.map((t) => ({
+      value: String(t.value),
+      label: String(t.label ?? t.value),
+    }));
     if (this._value && !this._tabs.some((t) => t.value === this._value)) {
       this._value = null;
     }
@@ -286,7 +288,7 @@ export class AtlasTabBar extends AtlasElement {
   }
 
   private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
-    const current = ev.currentTarget as HTMLButtonElement | null;
+    const current = ev.currentTarget instanceof HTMLButtonElement ? ev.currentTarget : null;
     if (!current) return;
     const idx = buttons.indexOf(current);
     if (idx < 0) return;

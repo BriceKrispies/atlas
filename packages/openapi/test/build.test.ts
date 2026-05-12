@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { buildOpenApi } from '../src/build.ts';
 import type { BuildOpenApiInput, ModuleManifest } from '../src/types.ts';
+
+/**
+ * Type guard: narrows `unknown` to a plain JSON object. Indexing returns
+ * `unknown` because JSON values are unknown by nature.
+ */
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 
 const minimalEnvelope = {
   type: 'object',
@@ -32,12 +41,15 @@ const minimalErrorEnvelope = {
 } as const;
 
 function fixtureInput(overrides: Partial<BuildOpenApiInput> = {}): BuildOpenApiInput {
-  const manifest = {
-    manifestVersion: 2,
+  // Build a manifest using only the fields ModuleManifest actually declares —
+  // earlier versions of this fixture stamped `manifestVersion`/`moduleType`
+  // on the literal and laundered it through `as unknown as ModuleManifest`.
+  // Those fields aren't part of the contract; dropping them lets the literal
+  // satisfy the interface directly (mirrors intent-expander.test.ts).
+  const manifest: ModuleManifest = {
     moduleId: 'content-pages',
     displayName: 'Content Pages',
     version: '0.1.0',
-    moduleType: ['api'],
     capabilities: [],
     actions: [
       {
@@ -54,7 +66,7 @@ function fixtureInput(overrides: Partial<BuildOpenApiInput> = {}): BuildOpenApiI
     uiRoutes: [],
     jobs: [],
     cacheArtifacts: [],
-  } as unknown as ModuleManifest;
+  };
 
   return {
     audience: 'tenant',
@@ -125,8 +137,11 @@ describe('buildOpenApi', () => {
   it('document is JSON-serializable (no cycles, no symbols)', () => {
     const doc = buildOpenApi(fixtureInput());
     expect(() => JSON.stringify(doc)).not.toThrow();
-    const round = JSON.parse(JSON.stringify(doc));
-    expect(round.openapi).toBe('3.1.0');
+    // JSON.parse returns `any`; narrow through `unknown` + the isJsonObject
+    // guard so we read `.openapi` against a typed bag rather than `any`.
+    const round: unknown = JSON.parse(JSON.stringify(doc));
+    if (!isJsonObject(round)) throw new Error('round-tripped document not an object');
+    expect(round['openapi']).toBe('3.1.0');
   });
 
   it('route annotations land at their declared path/method', () => {
@@ -150,9 +165,12 @@ describe('buildOpenApi', () => {
         ],
       }),
     );
-    const path = doc.paths['/healthz'] as Record<string, Record<string, unknown>> | undefined;
-    expect(path).toBeDefined();
-    expect(path!['get']).toMatchObject({
+    // `OpenApiDocument.paths` is typed as `Record<string, Record<string, unknown>>`,
+    // so the lookup is already a `Record<string, unknown>` — no cast needed.
+    // assertDefined fails the test with a meaningful message if the generator
+    // stops emitting the route, rather than `Cannot read property 'get' of undefined`.
+    const path = assertDefined(doc.paths['/healthz'], 'paths[/healthz]');
+    expect(path['get']).toMatchObject({
       operationId: 'healthz',
       summary: 'Liveness probe',
     });

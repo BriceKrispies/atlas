@@ -1,5 +1,5 @@
 import { S } from '../_register.ts';
-import { mountContentPage, type SeedPageDoc } from '../_shared.ts';
+import { isSeedPageDoc, mountContentPage } from '../_shared.ts';
 import { seedPages } from '@atlas/bundle-standard/seed-pages';
 
 // ── Pages ───────────────────────────────────────────────────────
@@ -14,7 +14,8 @@ import { seedPages } from '@atlas/bundle-standard/seed-pages';
 // <content-page>, which re-reads from the store, so edits flush through
 // immediately on a re-render.
 
-for (const doc of seedPages as SeedPageDoc[]) {
+for (const doc of seedPages) {
+  if (!isSeedPageDoc(doc)) continue;
   S({
     id: `page.${doc.pageId}`,
     name: doc.meta?.title ?? doc.pageId,

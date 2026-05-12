@@ -1,5 +1,6 @@
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { registerTestState } from '@atlas/test-state';
+import { must } from '../internal/assert.ts';
 import {
   BlockEditorController,
   type Block,
@@ -59,7 +60,9 @@ class AtlasBlockEditor extends AtlasSurface {
   }
 
   override connectedCallback(): void {
-    (this as unknown as { _applyTestId: () => void })._applyTestId();
+    // `_applyTestId` is a protected member of `AtlasElement` (the
+    // ancestor of `AtlasSurface`), so the subclass calls it directly.
+    this._applyTestId();
     if (!this.controller) {
       this.controller = new BlockEditorController({
         surfaceId: this.surfaceId,
@@ -71,7 +74,7 @@ class AtlasBlockEditor extends AtlasSurface {
 
     this._disposeSub = this.controller.subscribe(() => this._renderBlocks());
     this._disposeTest = registerTestState(this.surfaceId, () =>
-      this.controller!.getSnapshot(),
+      must(this.controller, 'block-editor: controller exists once connected').getSnapshot(),
     );
   }
 
@@ -105,9 +108,13 @@ class AtlasBlockEditor extends AtlasSurface {
     const list = this.querySelector('[data-block-list]');
     if (!list || !this.controller) return;
     list.textContent = '';
-    const snap = this.controller.getSnapshot();
+    const controller = this.controller;
+    const snap = controller.getSnapshot();
     for (const block of snap.document.blocks) {
-      const el = document.createElement('atlas-block') as AtlasBlock;
+      // `document.createElement` is typed by the global tag map; the
+      // custom-element type is registered via the `HTMLElementTagNameMap`
+      // augmentation below, removing the need for a cast.
+      const el = document.createElement('atlas-block');
       el.setAttribute('name', 'block');
       el.setAttribute('key', block.blockId);
       el.setAttribute('data-block-id', block.blockId);
@@ -115,7 +122,7 @@ class AtlasBlockEditor extends AtlasSurface {
       if (snap.selection === block.blockId) el.setAttribute('data-selected', 'true');
       el.block = block;
       el.addEventListener('click', () => {
-        this.controller!.commit('setSelection', { blockId: block.blockId });
+        controller.commit('setSelection', { blockId: block.blockId });
       });
       list.appendChild(el);
     }
@@ -148,8 +155,11 @@ class AtlasBlock extends AtlasElement {
     if (!this._block) return;
     this.textContent = '';
     const b = this._block;
+    // `b.config` is `Record<string, unknown>`; `formats` is by
+    // convention a `string[]`. Narrow defensively without an `as` cast.
+    const rawFormats: unknown = b.config['formats'];
     const formats = new Set<string>(
-      (b.config?.['formats'] as string[] | undefined) ?? [],
+      Array.isArray(rawFormats) ? rawFormats.filter((s): s is string => typeof s === 'string') : [],
     );
 
     const wrap = document.createElement('atlas-box');
@@ -174,8 +184,12 @@ class AtlasBlock extends AtlasElement {
     } else if (b.type === 'image-placeholder') {
       const p = document.createElement('atlas-text');
       p.setAttribute('variant', 'muted');
-      const img = b.content as { alt?: string } | undefined;
-      p.textContent = `[image placeholder: ${img?.alt || 'unnamed'}]`;
+      // `b.content` is `string | string[] | BlockContentImage`; for the
+      // image-placeholder branch it's the object form by convention.
+      // Narrow structurally rather than asserting.
+      const c = b.content;
+      const alt = typeof c === 'object' && c !== null && !Array.isArray(c) ? c.alt : undefined;
+      p.textContent = `[image placeholder: ${alt || 'unnamed'}]`;
       wrap.appendChild(p);
     } else {
       const p = document.createElement('atlas-text');
@@ -190,5 +204,12 @@ class AtlasBlock extends AtlasElement {
 }
 
 AtlasElement.define('atlas-block', AtlasBlock);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'atlas-block-editor': AtlasBlockEditor;
+    'atlas-block': AtlasBlock;
+  }
+}
 
 export { AtlasBlockEditor, AtlasBlock };

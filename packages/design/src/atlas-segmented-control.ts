@@ -1,4 +1,5 @@
 import { AtlasElement } from '@atlas/core';
+import { must } from './internal/assert.ts';
 import { adoptSheet, createSheet, escapeAttr, escapeText } from './util.ts';
 
 /**
@@ -126,13 +127,20 @@ export class AtlasSegmentedControl extends AtlasElement {
     return this._options;
   }
   set options(next: readonly RawSegmentInput[] | null | undefined) {
-    this._options = Array.isArray(next)
-      ? next.map((o) => ({
+    // `Array.isArray` widens to `any[]`; iterate over the typed input
+    // directly so each `o` retains the `RawSegmentInput` type and its
+    // `unknown` field types survive into the body.
+    const out: SegmentOption[] = [];
+    if (next != null) {
+      for (const o of next) {
+        out.push({
           value: String(o.value),
           label: String(o.label ?? o.value),
           disabled: o.disabled === true,
-        }))
-      : [];
+        });
+      }
+    }
+    this._options = out;
     if (this._value && !this._options.some((o) => o.value === this._value)) {
       this._value = null;
     }
@@ -153,7 +161,10 @@ export class AtlasSegmentedControl extends AtlasElement {
     super.connectedCallback();
     this.setAttribute('role', 'radiogroup');
     if (!this._built) {
-      adoptSheet(this.shadowRoot as ShadowRoot, sheet);
+      // Constructor attached the shadow root unconditionally, so it
+      // exists by the time `connectedCallback` runs. `must` carries the
+      // invariant instead of a cast.
+      adoptSheet(must(this.shadowRoot, 'segmented-control: shadowRoot attached in constructor'), sheet);
       this._built = true;
     }
     this._renderOptions();
@@ -223,8 +234,11 @@ export class AtlasSegmentedControl extends AtlasElement {
   }
 
   private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
-    const current = ev.currentTarget as HTMLButtonElement | null;
-    if (!current) return;
+    // The listener is attached to each `HTMLButtonElement` in `_wire`,
+    // so `currentTarget` is one of those buttons — narrow without a
+    // bare cast.
+    const current = ev.currentTarget;
+    if (!(current instanceof HTMLButtonElement)) return;
     const enabled = buttons.filter((b) => !b.hasAttribute('disabled'));
     const idx = enabled.indexOf(current);
     if (idx < 0) return;

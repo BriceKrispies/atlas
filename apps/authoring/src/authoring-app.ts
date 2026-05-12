@@ -16,7 +16,10 @@ interface RouteDef {
   tag: string;
 }
 
-const ROUTES: RouteDef[] = [
+// Non-empty tuple — TS narrows `ROUTES[0]` to `RouteDef` (not `RouteDef |
+// undefined`), so the route-resolution helpers below don't need
+// non-null assertions to indicate the first element is always present.
+const ROUTES: readonly [RouteDef, ...RouteDef[]] = [
   { id: 'page-editor',    label: 'Page Editor',    tag: 'authoring-page-editor-route' },
   { id: 'layout-editor',  label: 'Layout Editor',  tag: 'authoring-layout-editor-route' },
   { id: 'block-editor',   label: 'Block Editor',   tag: 'authoring-block-editor-route' },
@@ -129,14 +132,14 @@ function readRouteFromHash(): string {
   const hash = location.hash.replace(/^#\/?/, '');
   const id = hash.split('?')[0];
   if (id && ROUTES.some((r) => r.id === id)) return id;
-  return ROUTES[0]!.id;
+  return ROUTES[0].id;
 }
 
 export class AtlasAuthoring extends AtlasSurface {
   static override surfaceId = 'authoring.shell';
 
   private readonly _root: ShadowRoot;
-  private _activeRouteId: string = ROUTES[0]!.id;
+  private _activeRouteId: string = ROUTES[0].id;
   private _onHashChange: () => void;
   private _onKey: ((e: KeyboardEvent) => void) | null = null;
 
@@ -265,7 +268,7 @@ export class AtlasAuthoring extends AtlasSurface {
     const host = this._root.querySelector('atlas-box[data-role="content"]') as HTMLElement | null;
     if (!host) return;
     host.textContent = '';
-    const route = ROUTES.find((r) => r.id === this._activeRouteId) ?? ROUTES[0]!;
+    const route = ROUTES.find((r) => r.id === this._activeRouteId) ?? ROUTES[0];
     const el = document.createElement(route.tag);
     el.style.display = 'block';
     el.style.height = '100%';

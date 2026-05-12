@@ -28,6 +28,7 @@ import type {
   RepositoryRecord,
   RevisionRecord,
 } from '@atlas/ports';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 export interface RepositoryStoreFactoryResult {
   store: RepositoryStore;
@@ -137,15 +138,19 @@ export function runRepositoryStoreContract(opts: RepositoryStoreFactoryOptions):
       const input = makeRepoInput({ repoSlug: 'hello-world', name: 'Hello' });
       await store.create(TENANT, input);
 
-      const bySlug = await store.getBySlug(TENANT, 'hello-world');
-      expect(bySlug).not.toBeNull();
-      expect(bySlug!.repoId).toBe(input.repoId);
-      expect(bySlug!.repoSlug).toBe('hello-world');
-      expect(bySlug!.name).toBe('Hello');
+      const bySlug = assertDefined(
+        await store.getBySlug(TENANT, 'hello-world'),
+        'getBySlug returns the row just created',
+      );
+      expect(bySlug.repoId).toBe(input.repoId);
+      expect(bySlug.repoSlug).toBe('hello-world');
+      expect(bySlug.name).toBe('Hello');
 
-      const byId = await store.get(TENANT, input.repoId);
-      expect(byId).not.toBeNull();
-      expect(byId!.repoId).toBe(input.repoId);
+      const byId = assertDefined(
+        await store.get(TENANT, input.repoId),
+        'get(repoId) returns the row just created',
+      );
+      expect(byId.repoId).toBe(input.repoId);
 
       const all = await store.list(TENANT);
       const ids = all.map((r: RepositoryRecord) => r.repoId);
@@ -205,22 +210,26 @@ export function runRepositoryStoreContract(opts: RepositoryStoreFactoryOptions):
       });
       await revisions.append(TENANT, rev);
 
-      const meta = await revisions.getMetadata(TENANT, rev.revisionId);
-      expect(meta).not.toBeNull();
-      expect(meta!.revisionId).toBe(rev.revisionId);
-      expect(meta!.repoId).toBe(repo.repoId);
-      expect(meta!.byteCount).toBe(originalBytes.byteLength);
-      expect(meta!.contentHash).toBe('sha256:abc');
-      expect(meta!.correlationId).toBe(rev.correlationId);
+      const meta = assertDefined(
+        await revisions.getMetadata(TENANT, rev.revisionId),
+        'getMetadata returns the revision just appended',
+      );
+      expect(meta.revisionId).toBe(rev.revisionId);
+      expect(meta.repoId).toBe(repo.repoId);
+      expect(meta.byteCount).toBe(originalBytes.byteLength);
+      expect(meta.contentHash).toBe('sha256:abc');
+      expect(meta.correlationId).toBe(rev.correlationId);
 
       const list = await revisions.listForRepo(TENANT, repo.repoId);
       expect(list.map((r: RevisionRecord) => r.revisionId)).toEqual([rev.revisionId]);
 
-      const got = await revisions.getBytes(TENANT, rev.revisionId);
-      expect(got).not.toBeNull();
+      const got = assertDefined(
+        await revisions.getBytes(TENANT, rev.revisionId),
+        'getBytes returns the revision just appended',
+      );
       // Compare element-wise — `Buffer` extends `Uint8Array` but
       // `toEqual` may differ on prototype; convert both to plain arrays.
-      const roundTripped = Array.from(got!);
+      const roundTripped = Array.from(got);
       expect(roundTripped).toEqual(Array.from(originalBytes));
     });
 
@@ -267,19 +276,21 @@ export function runRepositoryStoreContract(opts: RepositoryStoreFactoryOptions):
       });
       await revisions.append(TENANT, rev);
 
-      const got = await revisions.getBytes(TENANT, rev.revisionId);
-      expect(got).not.toBeNull();
+      const got = assertDefined(
+        await revisions.getBytes(TENANT, rev.revisionId),
+        'getBytes returns the binary revision just appended',
+      );
 
       // Raw byte-by-byte comparison.
-      const rawRound = Array.from(got!);
+      const rawRound = Array.from(got);
       expect(rawRound).toEqual(Array.from(original));
 
       // Base64 round-trip — encode both sides, compare strings.
       const toB64 = (u: Uint8Array): string => Buffer.from(u).toString('base64');
-      expect(toB64(got!)).toBe(toB64(original));
+      expect(toB64(got)).toBe(toB64(original));
 
       // Length sanity — caught any silent truncation.
-      expect(got!.byteLength).toBe(original.byteLength);
+      expect(got.byteLength).toBe(original.byteLength);
     });
   });
 }

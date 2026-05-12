@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { queryDataSource } from '../src/data-source/query-data-source.ts';
 import type { BackendLike } from '../src/data-source/query-data-source.ts';
-import type { RowPatch } from '../src/data-source/types.ts';
+import type { Row, RowPatch } from '../src/data-source/types.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 interface FakeBackendResult {
   backend: BackendLike;
@@ -9,13 +10,19 @@ interface FakeBackendResult {
   emit: (eventType: string, data: unknown) => void;
 }
 
+type ResponseFn = (p: string) => unknown;
+
 function fakeBackend(
-  { response, subscribe = true }: { response?: unknown; subscribe?: boolean } = {},
+  { response, subscribe = true }: { response?: unknown | ResponseFn; subscribe?: boolean } = {},
 ): FakeBackendResult {
   const subs: Array<{ eventType: string; cb: (e: unknown) => void }> = [];
   const backend: BackendLike = {
     async query(path: string): Promise<unknown> {
-      return typeof response === 'function' ? (response as (p: string) => unknown)(path) : response;
+      if (typeof response === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: union response is `unknown | ResponseFn`; typeof check narrows to fn but TS can't see through the union for `unknown`.
+        return (response as ResponseFn)(path);
+      }
+      return response;
     },
   };
   if (subscribe) {
@@ -35,6 +42,30 @@ function fakeBackend(
       for (const s of subs) if (s.eventType === eventType) s.cb(data);
     },
   };
+}
+
+/** Boundary: subscribe is declared optional on `DataSource`; every test in
+ *  this file constructs a backend with `subscribe: true`, so the runtime
+ *  guarantee is local. Centralise the narrowing here. */
+function subscribeOrThrow<R extends Row>(
+  ds: { subscribe?: (cb: (p: RowPatch<R>) => void) => () => void },
+  cb: (p: RowPatch<R>) => void,
+): () => void {
+  const fn = assertDefined(ds.subscribe, 'data source subscribe (constructed with subscribe:true)');
+  return fn(cb);
+}
+
+/** Boundary: incoming event payload is `unknown` from `BackendLike.subscribe`;
+ *  the test crafts the shape and reads it back with a runtime check. */
+interface ProjectionEvent {
+  payload?: { id: string; title: string };
+  resourceId?: string;
+}
+function asProjectionEvent(ev: unknown): ProjectionEvent {
+  if (ev === null || typeof ev !== 'object') {
+    throw new Error('Test invariant violation: projection event must be an object');
+  }
+  return ev as ProjectionEvent;
 }
 
 describe('queryDataSource', () => {
@@ -66,15 +97,15 @@ describe('queryDataSource', () => {
     const { backend, emit } = fakeBackend({ response: [] });
     const ds = queryDataSource(backend, '/pages', { resourceType: 'page' });
     const patches: RowPatch[] = [];
-    ds.subscribe!((p) => patches.push(p));
+    subscribeOrThrow(ds, (p) => patches.push(p));
 
     emit('projection.updated', { resourceType: 'page', resourceId: 'a' });
     emit('projection.updated', { resourceType: 'other', resourceId: 'b' });
     emit('projection.updated', { resourceType: 'page', resourceId: 'c' });
 
     expect(patches.length).toBe(2);
-    expect(patches[0]!.type).toBe('reload');
-    expect(patches[1]!.type).toBe('reload');
+    expect(assertDefined(patches[0], 'patches[0] after length==2 check').type).toBe('reload');
+    expect(assertDefined(patches[1], 'patches[1] after length==2 check').type).toBe('reload');
   });
 
   it('honours onEvent converter', () => {
@@ -82,30 +113,34 @@ describe('queryDataSource', () => {
     const ds = queryDataSource(backend, '/pages', {
       resourceType: 'page',
       onEvent: (ev) => {
-        const e = ev as { payload?: { id: string; title: string }; resourceId?: string };
+        const e = asProjectionEvent(ev);
         return e.payload
           ? { type: 'upsert', row: e.payload }
-          : { type: 'remove', rowKey: e.resourceId! };
+          : { type: 'remove', rowKey: assertDefined(e.resourceId, 'resourceId on remove-path event') };
       },
     });
     const patches: RowPatch[] = [];
-    ds.subscribe!((p) => patches.push(p));
+    subscribeOrThrow(ds, (p) => patches.push(p));
 
     emit('projection.updated', { resourceType: 'page', resourceId: 'a', payload: { id: 'a', title: 'Hi' } });
     emit('projection.updated', { resourceType: 'page', resourceId: 'a' });
 
     expect(patches.length).toBe(2);
-    expect(patches[0]!.type).toBe('upsert');
-    expect((patches[0] as { type: 'upsert'; row: unknown }).row).toEqual({ id: 'a', title: 'Hi' });
-    expect(patches[1]!.type).toBe('remove');
-    expect((patches[1] as { type: 'remove'; rowKey: unknown }).rowKey).toBe('a');
+    const upsert = assertDefined(patches[0], 'patches[0] after length==2 check');
+    expect(upsert.type).toBe('upsert');
+    if (upsert.type !== 'upsert') throw new Error('test invariant: expected upsert patch');
+    expect(upsert.row).toEqual({ id: 'a', title: 'Hi' });
+    const remove = assertDefined(patches[1], 'patches[1] after length==2 check');
+    expect(remove.type).toBe('remove');
+    if (remove.type !== 'remove') throw new Error('test invariant: expected remove patch');
+    expect(remove.rowKey).toBe('a');
   });
 
   it('subscribe unsubscribe detaches listener', () => {
     const { backend, subs, emit } = fakeBackend({ response: [] });
     const ds = queryDataSource(backend, '/pages');
     const patches: RowPatch[] = [];
-    const unsub = ds.subscribe!((p) => patches.push(p));
+    const unsub = subscribeOrThrow(ds, (p) => patches.push(p));
     expect(subs.length).toBe(1);
     unsub();
     expect(subs.length).toBe(0);

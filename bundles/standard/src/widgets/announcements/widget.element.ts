@@ -24,6 +24,14 @@ type TextData = { kind: 'text'; text: string };
 type FileData = { kind: 'file'; file: { url?: string; filename?: string } | null };
 type AnnouncementData = TextData | FileData | null;
 
+function readFileResult(raw: unknown): { url?: string; filename?: string } | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: { url?: string; filename?: string } = {};
+  if ('url' in raw && typeof raw.url === 'string') out.url = raw.url;
+  if ('filename' in raw && typeof raw.filename === 'string') out.filename = raw.filename;
+  return out;
+}
+
 interface AnnouncementsConfig {
   mode?: 'text' | 'file' | string;
   text?: string;
@@ -107,11 +115,12 @@ export class AnnouncementsWidget extends AtlasSurface {
     this.setState('loading');
 
     try {
-      const result = (await this.context?.request('backend.query', {
+      const raw: unknown = await this.context?.request('backend.query', {
         path: `/media/files/${fileId}`,
-      })) as { url?: string; filename?: string } | null;
+      });
       if (token !== this._fetchToken) return; // superseded / unmounted
-      this._dataSig.set({ kind: 'file', file: result ?? null });
+      const result = readFileResult(raw);
+      this._dataSig.set({ kind: 'file', file: result });
       this._loadingSig.set(false);
       this.setState('success');
     } catch (err: unknown) {

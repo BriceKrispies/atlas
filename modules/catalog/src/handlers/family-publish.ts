@@ -1,8 +1,8 @@
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventStore, CatalogStateStore } from '@atlas/ports';
-import type { SeedPayload } from '../seed-types.ts';
 import { deterministicUuid, newEventId } from '../ids.ts';
 import { CatalogError } from '../errors.ts';
+import { readSeed } from '../internal/seed-state.ts';
 
 export interface FamilyPublishCommand {
   tenantId: string;
@@ -26,7 +26,7 @@ export async function handleFamilyPublish(
   if (!state) {
     throw new CatalogError('FAMILY_NOT_FOUND', `family not found: ${cmd.familyKey}`);
   }
-  const seed = state.payload as SeedPayload;
+  const seed = readSeed(state);
   const family = seed.families.find((f) => f.key === cmd.familyKey);
   if (!family) {
     throw new CatalogError('FAMILY_NOT_FOUND', `family not found: ${cmd.familyKey}`);

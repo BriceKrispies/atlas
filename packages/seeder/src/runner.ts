@@ -33,7 +33,8 @@ export async function runScenario(
   const results: StepResult[] = [];
 
   for (let i = 0; i < scenario.steps.length; i++) {
-    const step = scenario.steps[i]!;
+    const step = scenario.steps[i];
+    if (!step) continue;
     const idempotencyKey = deriveIdempotencyKey(deps.crypto, ref.scenarioId, i);
     const correlationId = deriveCorrelationId(ref.scenarioId, i);
     const envelope = buildEnvelope(step.intent, { idempotencyKey, correlationId });

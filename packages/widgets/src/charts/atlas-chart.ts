@@ -1,15 +1,16 @@
 import { AtlasElement, effect, signal, type EffectCleanup, type Signal } from '@atlas/core';
-import { normalize, type NormalizedData, type NormalizedSeriesData, type NormalizedSlicesData, type PointX, type Series, type XKind } from './data-normalize.ts';
+import { normalize, type NormalizedSeriesData, type NormalizedSlicesData, type PointX, type Series, type XKind } from './data-normalize.ts';
 import { linearScale, bandScale, timeScale, type AnyScale } from './scales.ts';
-import { renderAxis, type AxisBounds } from './axis.ts';
+import { renderAxis, type AxisBounds, type AxisScaleShape } from './axis.ts';
 import { paletteColors, gridColor, axisColor } from './color-palette.ts';
 import { renderChartDataTable } from './a11y-table.ts';
 import { observeSize, type ElementSize } from '../responsive/observe-size.ts';
-import { renderLine } from './renderers/line.ts';
+import { renderLine, type LineRendererScale } from './renderers/line.ts';
 import { renderArea } from './renderers/area.ts';
 import { renderBar } from './renderers/bar.ts';
 import { renderStackedBar } from './renderers/stacked-bar.ts';
 import { renderPie } from './renderers/pie.ts';
+import { isElement } from '../internal/assert.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIAL_TYPES = new Set<string>(['pie', 'donut']);
@@ -94,45 +95,65 @@ class AtlasChart extends AtlasElement {
       return;
     }
 
-    const expected: 'series' | 'slices' = isRadial ? 'slices' : 'series';
-    const normalized = normalize(this._data, expected);
     const colors = paletteColors(this, 8);
 
+    // Branch on render shape: the `normalize` overloads give us a precisely
+    // typed `NormalizedSeriesData` or `NormalizedSlicesData` per branch — no
+    // post-hoc casts needed downstream.
+    if (isRadial) {
+      const normalized = normalize(this._data, 'slices');
+      if (width <= 0 || height <= 0) return;
+      const label = this.getAttribute('label') ?? this._defaultLabelSlices(type, normalized);
+      const svg = this._makeSvg(width, height, label);
+      this._renderRadial(svg, type, normalized, { width, height, colors });
+      this.appendChild(svg);
+      this.appendChild(renderChartDataTable(normalized, type));
+      if (showLegend) {
+        this.appendChild(this._makeLegend(
+          normalized.slices.map((s, i) => ({ label: s.label, color: colors[i % colors.length] ?? '#000' })),
+        ));
+      }
+      return;
+    }
+
+    const normalized = normalize(this._data, 'series');
     if (width <= 0 || height <= 0) {
       // We're offscreen or not yet laid out. ResizeObserver will trigger
       // another render as soon as real dimensions arrive.
       return;
     }
 
-    const label = this.getAttribute('label') ?? this._defaultLabel(type, normalized);
+    const label = this.getAttribute('label') ?? this._defaultLabelSeries(type, normalized);
+    const svg = this._makeSvg(width, height, label);
+    if (CARTESIAN_TYPES.has(type)) {
+      this._renderCartesian(svg, type, normalized, { width, height, colors, showAxes });
+    }
+    this.appendChild(svg);
+    this.appendChild(renderChartDataTable(normalized, type));
+    if (showLegend) {
+      this.appendChild(this._makeLegend(
+        normalized.series.map((s, i) => ({ label: s.name, color: colors[i % colors.length] ?? '#000' })),
+      ));
+    }
+  }
+
+  _makeSvg(width: number, height: number, label: string): SVGSVGElement {
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('xmlns', SVG_NS);
     svg.setAttribute('width', String(width));
     svg.setAttribute('height', String(height));
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('aria-label', label);
+    return svg;
+  }
 
-    if (isRadial) {
-      this._renderRadial(svg, type, normalized as NormalizedSlicesData, { width, height, colors });
-    } else if (CARTESIAN_TYPES.has(type)) {
-      this._renderCartesian(svg, type, normalized as NormalizedSeriesData, { width, height, colors, showAxes });
-    }
-
-    this.appendChild(svg);
-
-    // Hidden <table> data fallback for screen readers.
-    const fallback = renderChartDataTable(normalized, type);
-    this.appendChild(fallback);
-
-    if (showLegend) {
-      const legend = document.createElement('atlas-chart-legend') as HTMLElement & {
-        entries?: Array<{ label: string; color: string }>;
-      };
-      legend.entries = isRadial
-        ? (normalized as NormalizedSlicesData).slices.map((s, i) => ({ label: s.label, color: colors[i % colors.length] ?? '#000' }))
-        : (normalized as NormalizedSeriesData).series.map((s, i) => ({ label: s.name, color: colors[i % colors.length] ?? '#000' }));
-      this.appendChild(legend);
-    }
+  _makeLegend(entries: Array<{ label: string; color: string }>): HTMLElement {
+    // <atlas-chart-legend> is registered in HTMLElementTagNameMap (see
+    // atlas-chart-legend.ts), so `createElement('atlas-chart-legend')`
+    // returns the typed class with `entries` setter directly.
+    const legend = document.createElement('atlas-chart-legend');
+    legend.entries = entries;
+    return legend;
   }
 
   _renderCartesian(
@@ -157,17 +178,35 @@ class AtlasChart extends AtlasElement {
     // Y scale — linear over (0 or min, max) for grouped; (0, maxSum) for stacked.
     const yScale = makeYScale(type, series, [bounds.bottom, bounds.top]);
 
+    // Wrap the typed scales in the structural shapes the axis and renderer
+    // contracts expect. The scale objects already carry these methods —
+    // these adapters just relax the input type from the scale's literal
+    // (number | string | Date) down to `unknown`, which is sound because
+    // the scale implementations all coerce via Number(...) internally.
+    const xAxisScale = toAxisScale(xScale);
+    const yAxisScale = toAxisScale(yScale);
+    // For band scales, callers pass `PointX` (number | Date | string).
+    // Date values must be narrowed to numeric (`getTime()`) so they match
+    // the band domain keys built by `narrowBandKey` in `makeXScale`. For
+    // linear/time scales the scale's own coercion handles Date inputs.
+    const xRendererScale: LineRendererScale & { bandwidth: number } = {
+      scale: makeRendererScaleFn(xScale),
+      bandwidth: xScale.kind === 'band' ? xScale.bandwidth : 0,
+      kind: xScale.kind,
+    };
+    const yRendererScale = { scale: (v: number): number => yScale.scale(v) };
+
     if (showAxes) {
       const grid = renderGridLines(yScale, bounds, gridColor(this));
       svg.appendChild(grid);
-      svg.appendChild(renderAxis({ scale: yScale as unknown as Parameters<typeof renderAxis>[0]['scale'], orientation: 'left', bounds, axisColor: axisColor(this) }));
-      svg.appendChild(renderAxis({ scale: xScale as unknown as Parameters<typeof renderAxis>[0]['scale'], orientation: 'bottom', bounds, axisColor: axisColor(this) }));
+      svg.appendChild(renderAxis({ scale: yAxisScale, orientation: 'left', bounds, axisColor: axisColor(this) }));
+      svg.appendChild(renderAxis({ scale: xAxisScale, orientation: 'bottom', bounds, axisColor: axisColor(this) }));
     }
 
     const rendererOpts = {
       series,
-      xScale: xScale as unknown as { scale(v: unknown): number; bandwidth: number; kind?: string },
-      yScale: yScale as unknown as { scale(v: number): number },
+      xScale: xRendererScale,
+      yScale: yRendererScale,
       bounds,
       colors,
     };
@@ -200,17 +239,18 @@ class AtlasChart extends AtlasElement {
     svg.appendChild(renderPie({ slices: normalized.slices, cx, cy, radius, innerRadius: inner, colors }));
   }
 
-  _defaultLabel(type: ChartType, normalized: NormalizedData | null): string {
-    if ((normalized as NormalizedSlicesData | null)?.slices) {
-      return `${type} chart with ${(normalized as NormalizedSlicesData).slices.length} slices`;
-    }
-    return `${type} chart with ${(normalized as NormalizedSeriesData | null)?.series?.length ?? 0} series`;
+  _defaultLabelSlices(type: ChartType, normalized: NormalizedSlicesData): string {
+    return `${type} chart with ${normalized.slices.length} slices`;
+  }
+
+  _defaultLabelSeries(type: ChartType, normalized: NormalizedSeriesData): string {
+    return `${type} chart with ${normalized.series.length} series`;
   }
 
   _onFocus(e: Event): void {
-    const target = e.target as Element | null;
-    const seriesIdx = Number(target?.getAttribute?.('data-series'));
-    const index = Number(target?.getAttribute?.('data-index'));
+    const target = isElement(e.target) ? e.target : null;
+    const seriesIdx = Number(target?.getAttribute('data-series'));
+    const index = Number(target?.getAttribute('data-index'));
     if (!Number.isFinite(seriesIdx) && !Number.isFinite(index)) return;
     this.dispatchEvent(new CustomEvent('point-focus', {
       bubbles: true, detail: { seriesIdx, index },
@@ -222,11 +262,11 @@ class AtlasChart extends AtlasElement {
   }
 
   _onClick(e: Event): void {
-    const target = e.target as Element | null;
-    const seriesIdx = Number(target?.getAttribute?.('data-series'));
-    const index = Number(target?.getAttribute?.('data-index'));
-    const seriesId = target?.getAttribute?.('data-series-id') ?? null;
-    const pointValue = target?.getAttribute?.('data-x') ?? null;
+    const target = isElement(e.target) ? e.target : null;
+    const seriesIdx = Number(target?.getAttribute('data-series'));
+    const index = Number(target?.getAttribute('data-index'));
+    const seriesId = target?.getAttribute('data-series-id') ?? null;
+    const pointValue = target?.getAttribute('data-x') ?? null;
     if (!Number.isFinite(seriesIdx) && !Number.isFinite(index) && !seriesId) return;
     this.dispatchEvent(new CustomEvent('point-click', {
       bubbles: true,
@@ -235,12 +275,71 @@ class AtlasChart extends AtlasElement {
   }
 }
 
+// Adapt a typed scale (LinearScale/BandScale/TimeScale) to the structural
+// `AxisScaleShape` the axis renderer expects. Each branch retains the
+// scale's concrete input type — no `unknown → never` widening.
+function toAxisScale(scale: AnyScale): AxisScaleShape {
+  if (scale.kind === 'band') {
+    return {
+      scale: (v: unknown): number => scale.scale(coerceBandInput(v)),
+      ticks: (): unknown[] => scale.ticks(),
+      kind: scale.kind,
+      bandwidth: scale.bandwidth,
+    };
+  }
+  if (scale.kind === 'time') {
+    return {
+      scale: (v: unknown): number => scale.scale(coerceTimeInput(v)),
+      ticks: (n?: number): unknown[] => scale.ticks(n),
+      kind: scale.kind,
+    };
+  }
+  return {
+    scale: (v: unknown): number => scale.scale(coerceLinearInput(v)),
+    ticks: (n?: number): unknown[] => scale.ticks(n),
+    kind: scale.kind,
+  };
+}
+
+function makeRendererScaleFn(scale: AnyScale): (v: unknown) => number {
+  if (scale.kind === 'band') {
+    return (v: unknown): number => scale.scale(coerceBandInput(v));
+  }
+  if (scale.kind === 'time') {
+    return (v: unknown): number => scale.scale(coerceTimeInput(v));
+  }
+  return (v: unknown): number => scale.scale(coerceLinearInput(v));
+}
+
+function coerceBandInput(v: unknown): string | number {
+  if (typeof v === 'number' || typeof v === 'string') return v;
+  if (v instanceof Date) return v.getTime();
+  return String(v);
+}
+
+function coerceTimeInput(v: unknown): Date | number | string {
+  if (v instanceof Date) return v;
+  if (typeof v === 'number' || typeof v === 'string') return v;
+  return String(v);
+}
+
+function coerceLinearInput(v: unknown): number | string {
+  if (typeof v === 'number' || typeof v === 'string') return v;
+  if (v instanceof Date) return v.getTime();
+  return String(v);
+}
+
 // ── helpers ───────────────────────────────────────────────────────
 
 function makeXScale(type: ChartType, xKind: XKind, series: Series[], range: [number, number]): AnyScale {
   const xs = flattenXs(series);
   if (type === 'bar' || type === 'stacked-bar' || xKind === 'band') {
-    const domain = uniqueOrdered(xs) as Array<string | number>;
+    // `uniqueOrdered` preserves `PointX` (number | Date | string). For a
+    // band scale we narrow Dates to their numeric `getTime()` value so
+    // the domain is `string | number`; the renderer's `toAxisScale`
+    // adapter does the matching narrowing when looking up values, so
+    // string vs. Date stays consistent end-to-end.
+    const domain: Array<string | number> = uniqueOrdered(xs).map(narrowBandKey);
     return bandScale({ domain, range, padding: 0.2 });
   }
   if (xKind === 'time') {
@@ -282,6 +381,11 @@ function makeYScale(type: ChartType, series: Series[], range: [number, number]) 
   min = Math.min(0, min);
   if (max === min) max = min + 1;
   return linearScale({ domain: [min, max], range });
+}
+
+function narrowBandKey(v: PointX): string | number {
+  if (v instanceof Date) return v.getTime();
+  return v;
 }
 
 function flattenXs(series: Series[]): PointX[] {

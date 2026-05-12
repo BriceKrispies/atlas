@@ -270,7 +270,7 @@ export class AtlasSwipeActions extends AtlasElement {
     if (!slot) return;
     const elements = slot.assignedElements();
     elements.forEach((el, idx) => {
-      const tagged = el as HTMLElement & { _swipeBound?: boolean };
+      const tagged = el as Element & { _swipeBound?: boolean };
       if (tagged._swipeBound) return;
       tagged._swipeBound = true;
       el.addEventListener('focus', () => {
@@ -396,7 +396,14 @@ export class AtlasSwipeActions extends AtlasElement {
   // ───── State / transform ────────────────────────────────────────────
 
   private _syncOpen(): void {
-    const state = (this.getAttribute('open') ?? 'at-rest') as SwipeOpen;
+    const raw = this.getAttribute('open') ?? 'at-rest';
+    const state: SwipeOpen =
+      raw === 'partial-leading' ||
+      raw === 'full-leading' ||
+      raw === 'partial-trailing' ||
+      raw === 'full-trailing'
+        ? raw
+        : 'at-rest';
     const target = this._offsetForState(state);
     this._setOffset(target);
     if (state === 'at-rest') {

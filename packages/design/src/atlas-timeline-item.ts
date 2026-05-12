@@ -177,7 +177,10 @@ function formatRelative(iso: string): string {
 
   if (abs < 30) return 'just now';
 
-  const RTF = (globalThis as { Intl?: { RelativeTimeFormat?: new (...a: unknown[]) => Intl.RelativeTimeFormat } }).Intl?.RelativeTimeFormat;
+  // `Intl.RelativeTimeFormat` may be undefined in legacy runtimes — guard
+  // before constructing rather than letting `new Intl.RelativeTimeFormat`
+  // throw a ReferenceError.
+  const RTF = typeof Intl !== 'undefined' ? Intl.RelativeTimeFormat : undefined;
   if (typeof RTF === 'function') {
     const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
     if (abs < 60) return rtf.format(deltaSec, 'second');

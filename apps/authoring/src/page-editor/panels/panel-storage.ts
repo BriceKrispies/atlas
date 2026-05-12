@@ -12,6 +12,10 @@ import { PANEL_SIZE_BOUNDS, type PanelId } from '../state.ts';
 
 const STORAGE_KEY = 'atlas:authoring.page-editor.shell.panels';
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 export interface PersistedPanelSizes {
   left?: number;
   right?: number;
@@ -23,7 +27,8 @@ export function loadPanelSizes(): PersistedPanelSizes {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Record<PanelId, unknown>>;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return {};
     const out: PersistedPanelSizes = {};
     for (const panel of ['left', 'right', 'bottom'] as const) {
       const candidate = parsed[panel];

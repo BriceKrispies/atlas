@@ -1,6 +1,6 @@
 import type { CatalogStateStore, ProjectionStore } from '@atlas/ports';
-import type { SeedPayload } from '../seed-types.ts';
 import { deterministicUuid } from '../ids.ts';
+import { readSeed } from '../internal/seed-state.ts';
 
 export function projectionKey(treeKey: string, tenantId: string): string {
   return `catalog:taxonomy-navigation:${treeKey}:${tenantId}`;
@@ -13,7 +13,7 @@ export async function rebuildTaxonomyNavigation(
 ): Promise<Array<{ treeKey: string; payload: unknown }>> {
   const state = await catalogState.get(tenantId);
   if (!state) return [];
-  const seed = state.payload as SeedPayload;
+  const seed = readSeed(state);
 
   const familiesByNodeKey = new Map<string, Array<{ key: string; name: string; canonicalSlug: string }>>();
   for (const fam of seed.families) {

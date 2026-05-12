@@ -38,6 +38,31 @@ interface PluginExports {
   render: (ptr: number, len: number) => bigint;
 }
 
+/**
+ * Extract a string message from an unknown caught throwable without an
+ * unsafe `as Error` assertion. Falls back to `String(err)` for non-Error
+ * values (rejected primitives, etc.).
+ */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/**
+ * Coerce a render-export return value to bigint. Engines that store the
+ * value in a JS number when it fits are permitted to return number; we
+ * normalise both via `BigInt(...)`. Any other shape is a host/engine
+ * contract violation and surfaces as `ExecutionFailed`.
+ */
+function coerceToBigInt(value: unknown): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') return BigInt(value);
+  if (typeof value === 'string' || typeof value === 'boolean') return BigInt(value);
+  throw new TypeError(
+    `render export returned non-numeric value of type ${typeof value}`,
+  );
+}
+
 export interface ExecuteOptions {
   memoryLimitMb?: number;
 }
@@ -61,7 +86,7 @@ export async function compileAndValidate(
   } catch (e) {
     throw new WasmHostError(
       'LoadFailed',
-      `compilation failed: ${(e as Error).message}`,
+      `compilation failed: ${errorMessage(e)}`,
     );
   }
   const imports = WebAssembly.Module.imports(module);
@@ -93,7 +118,7 @@ export async function runModule(
   } catch (e) {
     throw new WasmHostError(
       'ExecutionFailed',
-      `failed to serialize input: ${(e as Error).message}`,
+      `failed to serialize input: ${errorMessage(e)}`,
     );
   }
 
@@ -104,7 +129,7 @@ export async function runModule(
   } catch (e) {
     throw new WasmHostError(
       'ExecutionFailed',
-      `instantiation failed: ${(e as Error).message}`,
+      `instantiation failed: ${errorMessage(e)}`,
     );
   }
 
@@ -123,10 +148,17 @@ export async function runModule(
     throw new WasmHostError('MissingExport', 'render');
   }
 
+  // `memory`, `alloc`, `render` have all been narrowed above via runtime
+  // guards (`instanceof WebAssembly.Memory` / `typeof === 'function'`).
+  // The function-shape narrowing TypeScript can express is just
+  // `Function`, so we re-express the signatures at this single boundary
+  // point — the WASM ABI is the source of truth for these types.
   const exports: PluginExports = {
     memory,
-    alloc: alloc as (len: number) => number,
-    render: render as (ptr: number, len: number) => bigint,
+    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: wasm-export-signature
+    alloc: alloc as unknown as (len: number) => number,
+    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: wasm-export-signature
+    render: render as unknown as (ptr: number, len: number) => bigint,
   };
 
   // Memory cap. A module declares its own memory's `maximum` (or doesn't);
@@ -151,7 +183,7 @@ export async function runModule(
   } catch (e) {
     throw new WasmHostError(
       'ExecutionFailed',
-      `alloc call failed: ${(e as Error).message}`,
+      `alloc call failed: ${errorMessage(e)}`,
     );
   }
   if (!Number.isFinite(inputPtr) || inputPtr <= 0) {
@@ -162,20 +194,20 @@ export async function runModule(
   } catch (e) {
     throw new WasmHostError(
       'ExecutionFailed',
-      `failed to write input to WASM memory: ${(e as Error).message}`,
+      `failed to write input to WASM memory: ${errorMessage(e)}`,
     );
   }
 
   // Invoke render.
   let packed: bigint;
   try {
-    const r = exports.render(inputPtr, inputLen);
-    // Some engines may return a Number when the value fits — coerce.
-    packed = typeof r === 'bigint' ? r : BigInt(r as unknown as number);
+    const r: unknown = exports.render(inputPtr, inputLen);
+    // Some engines may return a Number when the value fits — coerce both shapes.
+    packed = coerceToBigInt(r);
   } catch (e) {
     throw new WasmHostError(
       'ExecutionFailed',
-      `render call failed: ${(e as Error).message}`,
+      `render call failed: ${errorMessage(e)}`,
     );
   }
 
@@ -222,7 +254,7 @@ export async function runModule(
     );
     throw new WasmHostError(
       'InvalidOutput',
-      `not valid JSON: ${(e as Error).message} (output: ${preview})`,
+      `not valid JSON: ${errorMessage(e)} (output: ${preview})`,
     );
   }
   if (

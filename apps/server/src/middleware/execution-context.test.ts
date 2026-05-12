@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import {
   CollectorSink,
   InMemoryLevelController,
@@ -44,13 +45,25 @@ function boundaryEvents(collector: CollectorSink): LogEvent[] {
   );
 }
 
+/** First test event — invariant-asserted, so callers can read fields. */
+function firstTestEvent(collector: CollectorSink): LogEvent {
+  return assertDefined(
+    testEvents(collector)[0],
+    'expected at least one Test.* event in collector',
+  );
+}
+
 function makeRig(): TestRig {
   const collector = new CollectorSink();
   const pipeline = new LogPipeline(
     [collector],
     new InMemoryLevelController('debug'),
   );
-  // Cast to AppState — the middleware reads only logPipeline + config.
+  // The middleware reads only logPipeline + config from AppState. Building
+  // a full AppState here would pull in Postgres pools / JWKS / adapters
+  // that aren't relevant to this wiring test. Suppress the boundary cast
+  // once at the construction site.
+  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: middleware reads only logPipeline + config; full AppState wiring is out-of-scope for this unit test
   const state = {
     logPipeline: pipeline,
     config: { tenantId: 'dev-tenant', environment: 'test' },
@@ -73,7 +86,7 @@ describe('executionContextMiddleware', () => {
     const res = await app.request('/probe');
     expect(res.status).toBe(200);
     expect(testEvents(collector)).toHaveLength(1);
-    const e = testEvents(collector)[0]!;
+    const e = firstTestEvent(collector);
     expect(e.correlationId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
@@ -91,7 +104,7 @@ describe('executionContextMiddleware', () => {
       headers: { 'X-Correlation-Id': 'corr-fixed-1' },
     });
     expect(res.status).toBe(200);
-    expect(testEvents(collector)[0]!.correlationId).toBe('corr-fixed-1');
+    expect(firstTestEvent(collector).correlationId).toBe('corr-fixed-1');
     expect(res.headers.get('x-correlation-id')).toBe('corr-fixed-1');
   });
 
@@ -111,7 +124,7 @@ describe('executionContextMiddleware', () => {
     });
     expect(res.status).toBe(200);
     // Bad chars → sanitizer rejects → fresh UUID minted.
-    const id = testEvents(collector)[0]!.correlationId;
+    const id = firstTestEvent(collector).correlationId;
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
   });
 
@@ -122,7 +135,7 @@ describe('executionContextMiddleware', () => {
       return c.text('ok');
     });
     await app.request('/probe');
-    const e = testEvents(collector)[0]!;
+    const e = firstTestEvent(collector);
     expect(e.principalId).toBe('anonymous');
     expect(e.tenantId).toBe('dev-tenant');
   });
@@ -132,7 +145,12 @@ describe('executionContextMiddleware', () => {
     app.get('/probe', (c) => {
       const ctx = c.get('ctx');
       ctx.logger.info('one', { event: 'Test.One' });
-      ctx.logger.warn('two', { event: 'Test.Two', cause: 'just a warn' } as never);
+      // `cause` is caller-supplied data — it belongs under `properties`,
+      // not at top level (only the LogFields reserved keys are valid there).
+      ctx.logger.warn('two', {
+        event: 'Test.Two',
+        properties: { cause: 'just a warn' },
+      });
       ctx.logger.error('three', {
         event: 'Test.Three',
         error: { code: 'X', message: 'y' },
@@ -187,7 +205,10 @@ describe('executionContextMiddleware', () => {
     for (const e of boundary) {
       expect(e.correlationId).toBe('corr-boundary');
     }
-    const completed = boundary[1]!;
+    const completed = assertDefined(
+      boundary[1],
+      'expected Request.Completed boundary event at index 1',
+    );
     expect(completed.properties).toMatchObject({
       method: 'GET',
       path: '/probe',

@@ -54,6 +54,20 @@ interface ErrorEnvelope {
   };
 }
 
+/**
+ * Boundary JSON reader for this HTTP test client. The wire shape comes
+ * from `apps/server`'s route returns — each call site passes the contract
+ * type the route is known to produce (`IntentResponse`,
+ * `TaxonomyNavigationResponse`, `HealthResponse`, `ErrorEnvelope`, …).
+ * The unsafe-narrow lives here once rather than at every call site; the
+ * alternative (a runtime validator per response type) would duplicate
+ * the route's own schema definitions for no test value.
+ */
+async function readResponseAs<T>(res: Response): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTTP test client — see file-level JSDoc above. T is the route's contracted response shape.
+  return (await res.json()) as T;
+}
+
 function debugPrincipalHeader(opts: ServerFactoryOptions): string {
   // Server parser accepts at most three colon-separated segments
   // (type:id[:tenantId]). The principalId provided by tests already includes
@@ -64,10 +78,15 @@ function debugPrincipalHeader(opts: ServerFactoryOptions): string {
 }
 
 async function parseErrorBody(res: Response): Promise<IngressFailure> {
+  // We need the raw text both for the fallback HTTP-N message and for
+  // the JSON parse attempt — `res.json()` would consume the body in a
+  // way that prevents us from falling back gracefully on non-JSON
+  // responses. Use a fresh `Response(text)` so the typed `readResponseAs`
+  // helper handles the unsafe narrow centrally.
   const text = await res.text();
   let parsed: ErrorEnvelope = {};
   try {
-    parsed = JSON.parse(text) as ErrorEnvelope;
+    parsed = await readResponseAs<ErrorEnvelope>(new Response(text));
   } catch {
     // Fall through to a generic envelope.
   }
@@ -99,7 +118,7 @@ export async function createServerIngress(
     if (!res.ok) {
       throw new IngressFailureError(await parseErrorBody(res));
     }
-    return (await res.json()) as T;
+    return readResponseAs<T>(res);
   };
 
   const get = async <T>(path: string): Promise<{ ok: true; value: T } | { ok: false; failure: IngressFailure }> => {
@@ -110,7 +129,7 @@ export async function createServerIngress(
     if (!res.ok) {
       return { ok: false, failure: await parseErrorBody(res) };
     }
-    return { ok: true, value: (await res.json()) as T };
+    return { ok: true, value: await readResponseAs<T>(res) };
   };
 
   const ingress: BrowserIngress = {
@@ -278,13 +297,13 @@ export async function createServerIngress(
 
     async health(): Promise<{ status: number; body: HealthResponse }> {
       const res = await fetch(`${opts.baseUrl}/healthz`, { method: 'GET' });
-      const body = (await res.json()) as HealthResponse;
+      const body = await readResponseAs<HealthResponse>(res);
       return { status: res.status, body };
     },
 
     async ready(): Promise<{ status: number; body: HealthResponse }> {
       const res = await fetch(`${opts.baseUrl}/readyz`, { method: 'GET' });
-      const body = (await res.json()) as HealthResponse;
+      const body = await readResponseAs<HealthResponse>(res);
       return { status: res.status, body };
     },
 

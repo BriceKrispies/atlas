@@ -12,6 +12,8 @@
 import type { CatalogStateRecord, CatalogStateStore } from '@atlas/ports';
 import type postgres from 'postgres';
 
+import { jsonParam } from './seeds/sql-json.ts';
+
 interface CatalogStateRow {
   tenant_id: string;
   seed_package_key: string;
@@ -51,7 +53,7 @@ export class PostgresCatalogStateStore implements CatalogStateStore {
         ${record.tenantId},
         ${record.seedPackageKey},
         ${record.seedPackageVersion},
-        ${this.sql.json(record.payload as never)},
+        ${jsonParam(this.sql, record.payload)},
         ${this.sql.json(record.publishedRevisions)},
         now()
       )

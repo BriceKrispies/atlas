@@ -107,6 +107,7 @@ class InMemoryEntityStore implements EntityStore {
   ): Promise<Entity<TAttrs> | null> {
     const row = this.rows.get(this.k(tenantId, entityType, entityId));
     if (!row || row.status === 'deleted') return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; row was stored as Entity<unknown> and the caller's TAttrs is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore and modules/identity/test/lib/fixtures.ts.
     return row as Entity<TAttrs>;
   }
   async put<TAttrs = unknown>(
@@ -140,9 +141,11 @@ class InMemoryEntityStore implements EntityStore {
   ): Promise<Entity<TAttrs>[]> {
     const desired: EntityStatus | null =
       opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
+    const filtered = Array.from(this.rows.values())
       .filter((r) => r.tenantId === tenantId && r.entityType === entityType)
-      .filter((r) => (desired === null ? true : r.status === desired)) as Entity<TAttrs>[];
+      .filter((r) => (desired === null ? true : r.status === desired));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; rows are Entity<unknown>, caller's TAttrs is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore.list.
+    return filtered as Entity<TAttrs>[];
   }
   async query<TAttrs = unknown>(
     tenantId: string,
@@ -153,6 +156,7 @@ class InMemoryEntityStore implements EntityStore {
     if (!opts.attrsEqual) return base;
     const preds = Object.entries(opts.attrsEqual);
     return base.filter((r) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: entity.attrs is typed as the caller's TAttrs; accessed here as a Record for predicate-equality filtering. Mirrors PostgresEntityStore.query.
       const a = r.attrs as Record<string, unknown>;
       return preds.every(([k, v]) => a?.[k] === v);
     });
@@ -187,18 +191,22 @@ class InMemoryRelationStore implements RelationStore {
     edgeType: string,
     fromId: string,
   ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
+    const out = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.fromId === fromId,
-    ) as Relation<TAttrs>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; rows are Relation<unknown>, caller's TAttrs is contract-pinned by the edge type used at add-time. Mirrors PostgresRelationStore.outgoing.
+    return out as Relation<TAttrs>[];
   }
   async incoming<TAttrs = unknown>(
     tenantId: string,
     edgeType: string,
     toId: string,
   ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
+    const out = Array.from(this.rows.values()).filter(
       (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.toId === toId,
-    ) as Relation<TAttrs>[];
+    );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; see RelationStore.outgoing.
+    return out as Relation<TAttrs>[];
   }
 }
 
@@ -221,7 +229,11 @@ class RecordingCedarCache implements CedarBundleCache {
 // identity dispatcher accidentally reaches into its context for an
 // identity event, the test fails loudly instead of silently.
 function throwingProxy<T extends object>(name: string): T {
-  return new Proxy({} as T, {
+  // Proxy<T> only constrains T to `object`, and `Object.create(null)` returns
+  // `any`. Going through a typed empty-object literal keeps the cast off the
+  // hot path and routes the unsafety through a single, named boundary.
+  const target: object = {};
+  const proxy = new Proxy(target, {
     get(_t, prop) {
       throw new Error(
         `${name}.${String(prop)} accessed during identity-event dispatch — ` +
@@ -229,6 +241,8 @@ function throwingProxy<T extends object>(name: string): T {
       );
     },
   });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: throw-on-access proxy stands in for a structural port type; every member access throws, so the type is descriptive only (used by composeDispatchers to type-check its inputs).
+  return proxy as T;
 }
 
 const stubCatalogState = throwingProxy<CatalogStateStore>('CatalogStateStore');

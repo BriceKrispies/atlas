@@ -15,6 +15,12 @@ import {
 } from '../layout/layout-document.ts';
 import { AtlasLayoutElement } from '../layout/layout-element.ts';
 import { ensureLayoutStyles } from '../layout/layout-styles.ts';
+import {
+  must,
+  expect,
+  isHtmlElement,
+  isHtmlInputElement,
+} from '../internal/assert.ts';
 import { ensureLayoutEditorStyles } from './layout-editor-styles.ts';
 
 /** Pointer must travel this many px before a drag activates. */
@@ -26,6 +32,57 @@ const DROP_ANIM_MS = 160;
 type DragMode = 'move' | 'resize';
 type DragEdge = 'e' | 's' | 'se' | null;
 type DragPhase = 'pending' | 'active';
+
+/**
+ * Structural type-guard for PointerEvent. We can't use `instanceof
+ * PointerEvent` because linkedom doesn't expose PointerEvent as a class
+ * in its DOM shim — the event still carries the shape we need, so a
+ * duck-type check on the load-bearing fields is sufficient.
+ */
+function isPointerEvent(ev: Event): ev is PointerEvent {
+  return (
+    'pointerId' in ev &&
+    typeof (ev as Event & { pointerId: unknown }).pointerId === 'number' &&
+    'clientX' in ev &&
+    typeof (ev as Event & { clientX: unknown }).clientX === 'number' &&
+    'clientY' in ev &&
+    typeof (ev as Event & { clientY: unknown }).clientY === 'number'
+  );
+}
+
+/**
+ * Narrow an arbitrary string|null|undefined to a `DragEdge`. Returns
+ * `null` for anything outside the closed set — safer than a bare cast
+ * because typos and bad attributes can't sneak through.
+ */
+function toDragEdge(value: string | null | undefined): DragEdge {
+  if (value === 'e' || value === 's' || value === 'se') return value;
+  return null;
+}
+
+/**
+ * Pull a string `.message` off an unknown error without an `as Error`
+ * cast. Falls back to `String(err)` for non-Error throwables.
+ */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/**
+ * Duck-type guard for "has a string `.value` property". Both native
+ * `<input>` elements and our `<atlas-input>` custom element satisfy
+ * this — `<atlas-input>` is NOT an `HTMLInputElement` instance, so the
+ * structural check is the right shape here.
+ */
+function hasStringValue(v: unknown): v is { value: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'value' in v &&
+    typeof (v as { value: unknown }).value === 'string'
+  );
+}
 
 interface DragState {
   phase: DragPhase;
@@ -73,11 +130,23 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   override connectedCallback(): void {
-    (this as unknown as { _applyTestId?: () => void })._applyTestId?.();
+    this._applyTestId();
     ensureLayoutStyles(this);
     ensureLayoutEditorStyles(this);
     this._render();
     window.addEventListener('keydown', this._onKeyDown);
+  }
+
+  /**
+   * Returns the editor's current document, asserting the invariant that
+   * `_render()` (called from `connectedCallback`) populates `_doc` on
+   * first mount. Every code path that reaches a `_requireDoc()` site
+   * runs after `_render()` has executed once, so the throw is a
+   * tripwire for future refactors that break the invariant — never
+   * fires in steady state.
+   */
+  private _requireDoc(): LayoutDocument {
+    return must(this._doc, '_render initialises _doc');
   }
 
   override disconnectedCallback(): void {
@@ -140,10 +209,10 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _wireToolbar(): void {
-    const nameInput = this.querySelector('[data-layout-name]') as HTMLInputElement | null;
+    const nameInput = this.querySelector('[data-layout-name]');
     if (nameInput) {
       nameInput.addEventListener('input', (ev: Event) => {
-        const v = (ev.target as HTMLInputElement | null)?.value ?? '';
+        const v = isHtmlInputElement(ev.target) ? ev.target.value : '';
         this._mutate((doc) => {
           doc.displayName = v;
         });
@@ -156,11 +225,11 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _wireCanvas(): void {
-    const canvas = this.querySelector('[data-editor-canvas]') as HTMLElement | null;
-    if (!canvas) return;
+    const canvas = this.querySelector('[data-editor-canvas]');
+    if (!(canvas instanceof HTMLElement)) return;
     // Click empty canvas area → deselect.
     canvas.addEventListener('click', (ev: Event) => {
-      const target = ev.target as HTMLElement | null;
+      const target = isHtmlElement(ev.target) ? ev.target : null;
       if (target === canvas || target?.tagName === 'ATLAS-LAYOUT') {
         this._select(null);
       }
@@ -168,13 +237,14 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _syncToolbarInputs(): void {
-    const nameInput = this.querySelector('[data-layout-name]') as HTMLInputElement | null;
-    if (nameInput && nameInput.value !== (this._doc!.displayName ?? '')) {
-      nameInput.value = this._doc!.displayName ?? '';
+    const doc = this._requireDoc();
+    const nameInput = this.querySelector('[data-layout-name]');
+    if (hasStringValue(nameInput) && nameInput.value !== (doc.displayName ?? '')) {
+      nameInput.value = doc.displayName ?? '';
     }
-    const canvas = this.querySelector('[data-editor-canvas]') as HTMLElement | null;
-    if (canvas) {
-      const { gap, columns, rowHeight } = this._doc!.grid;
+    const canvas = this.querySelector('[data-editor-canvas]');
+    if (canvas instanceof HTMLElement) {
+      const { gap, columns, rowHeight } = doc.grid;
       canvas.style.setProperty('--editor-gap', `${gap}px`);
       canvas.style.setProperty('--editor-cols', String(columns));
       canvas.style.setProperty('--editor-row-step', `${rowHeight + gap}px`);
@@ -182,20 +252,16 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _applyLayoutToCanvas(): void {
-    const layoutEl = this.querySelector(
-      '[data-editor-canvas] > atlas-layout',
-    ) as AtlasLayoutElement | null;
-    if (!layoutEl) return;
+    const layoutEl = this.querySelector('[data-editor-canvas] > atlas-layout');
+    if (!(layoutEl instanceof AtlasLayoutElement)) return;
     layoutEl.layout = this._doc;
   }
 
   // ---- section chrome + drag wiring -----------------------------------
 
   private _decorateSections(): void {
-    const layoutEl = this.querySelector(
-      '[data-editor-canvas] > atlas-layout',
-    ) as HTMLElement | null;
-    if (!layoutEl) return;
+    const layoutEl = this.querySelector('[data-editor-canvas] > atlas-layout');
+    if (!(layoutEl instanceof HTMLElement)) return;
     const sections = layoutEl.querySelectorAll(':scope > section[data-slot]');
     for (const sec of sections) {
       const name = sec.getAttribute('data-slot') ?? '';
@@ -217,9 +283,10 @@ export class AtlasLayoutEditorElement extends AtlasElement {
           handle.setAttribute('name', `resize-${name}-${edge}`);
           sec.appendChild(handle);
         }
-        sec.addEventListener('pointerdown', (ev: Event) =>
-          this._onSectionPointerDown(ev as PointerEvent, name),
-        );
+        sec.addEventListener('pointerdown', (ev: Event) => {
+          if (!isPointerEvent(ev)) return;
+          this._onSectionPointerDown(ev, name);
+        });
         sec.addEventListener('click', (ev: Event) => {
           ev.stopPropagation();
           this._select(name);
@@ -235,19 +302,21 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   private _onSectionPointerDown(ev: PointerEvent, slotName: string): void {
     if (ev.button !== 0 && ev.pointerType === 'mouse') return;
     if (this._drag) return; // already dragging something
-    const handleEl = (ev.target as Element | null)?.closest?.('[data-resize-handle]') as HTMLElement | null;
-    const canvas = this.querySelector('[data-editor-canvas]') as HTMLElement | null;
-    const layoutEl = this.querySelector(
-      '[data-editor-canvas] > atlas-layout',
-    ) as HTMLElement | null;
-    if (!canvas || !layoutEl) return;
+    const rawHandle = isHtmlElement(ev.target)
+      ? ev.target.closest('[data-resize-handle]')
+      : null;
+    const handleEl = rawHandle instanceof HTMLElement ? rawHandle : null;
+    const canvas = this.querySelector('[data-editor-canvas]');
+    const layoutEl = this.querySelector('[data-editor-canvas] > atlas-layout');
+    if (!(canvas instanceof HTMLElement)) return;
+    if (!(layoutEl instanceof HTMLElement)) return;
     const slot = this._findSlot(slotName);
     if (!slot) return;
 
     const section = layoutEl.querySelector(
       `:scope > section[data-slot="${CSS.escape(slotName)}"]`,
-    ) as HTMLElement | null;
-    if (!section) return;
+    );
+    if (!(section instanceof HTMLElement)) return;
 
     try {
       section.setPointerCapture(ev.pointerId);
@@ -259,7 +328,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     this._drag = {
       phase: 'pending',
       mode: handleEl ? 'resize' : 'move',
-      edge: (handleEl?.getAttribute('data-resize-handle') as DragEdge) ?? null,
+      edge: toDragEdge(handleEl?.getAttribute('data-resize-handle')),
       slotName,
       section,
       canvas,
@@ -354,7 +423,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     const drag = this._drag;
     if (!drag || drag.phase !== 'active') return;
     drag.gridRect = drag.layoutEl.getBoundingClientRect();
-    const columns = this._doc!.grid.columns;
+    const columns = this._requireDoc().grid.columns;
     const pCol = this._pointerCol(drag.lastX, drag.gridRect);
     const pRow = this._pointerRow(drag.lastY, drag.gridRect);
 
@@ -462,8 +531,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   // ---- grid math -------------------------------------------------------
 
   private _pointerCol(clientX: number, gridRect: DOMRect): number {
-    const gap = this._doc!.grid.gap;
-    const columns = this._doc!.grid.columns;
+    const { gap, columns } = this._requireDoc().grid;
     const cellW = (gridRect.width - (columns - 1) * gap) / columns;
     const relX = clientX - gridRect.left;
     const col = Math.round(relX / (cellW + gap)) + 1;
@@ -471,17 +539,16 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _pointerRow(clientY: number, gridRect: DOMRect): number {
-    const gap = this._doc!.grid.gap;
-    const rowH = this._doc!.grid.rowHeight;
+    const { gap, rowHeight } = this._requireDoc().grid;
     const relY = clientY - gridRect.top;
-    const row = Math.round(relY / (rowH + gap)) + 1;
+    const row = Math.round(relY / (rowHeight + gap)) + 1;
     return Math.max(1, row);
   }
 
   // ---- mutations -------------------------------------------------------
 
   private _mutate(fn: (doc: LayoutDocument) => void): void {
-    const next = cloneLayoutDocument(this._doc!);
+    const next = cloneLayoutDocument(this._requireDoc());
     fn(next);
     const result = validateLayoutDocument(next);
     if (!result.ok) return;
@@ -498,7 +565,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
           eventName: 'Atlas.Listener.Threw',
           level: 'error',
           source: 'page-templates.layout-editor.onChange',
-          'error.message': (err as Error)?.message ?? String(err),
+          'error.message': errorMessage(err),
         });
       }
     }
@@ -508,13 +575,14 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     this._mutate((doc) => {
       const i = doc.slots.findIndex((s) => s.name === slotName);
       if (i < 0) return;
-      doc.slots[i] = { ...nextSlot, name: doc.slots[i]!.name };
+      const existing = must(doc.slots[i], 'findIndex returned a valid index');
+      doc.slots[i] = { ...nextSlot, name: existing.name };
     });
   }
 
   private _renameSlot(fromName: string, toName: string): void {
     if (fromName === toName) return;
-    if (this._doc!.slots.some((s) => s.name === toName)) return;
+    if (this._requireDoc().slots.some((s) => s.name === toName)) return;
     this._mutate((doc) => {
       const slot = doc.slots.find((s) => s.name === fromName);
       if (!slot) return;
@@ -531,13 +599,14 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _addSlot(): void {
+    const doc = this._requireDoc();
     const nameBase = 'slot';
     let i = 1;
-    while (this._doc!.slots.some((s) => s.name === `${nameBase}-${i}`)) i++;
+    while (doc.slots.some((s) => s.name === `${nameBase}-${i}`)) i++;
     const newName = `${nameBase}-${i}`;
-    const rect = nextFreeRect(this._doc!, { colSpan: 4, rowSpan: 2 });
-    this._mutate((doc) => {
-      doc.slots.push({ name: newName, ...rect });
+    const rect = nextFreeRect(doc, { colSpan: 4, rowSpan: 2 });
+    this._mutate((d) => {
+      d.slots.push({ name: newName, ...rect });
     });
     this._select(newName);
   }
@@ -545,13 +614,13 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   private async _save(): Promise<void> {
     if (typeof this.onSave !== 'function') return;
     try {
-      await this.onSave(cloneLayoutDocument(this._doc!));
+      await this.onSave(cloneLayoutDocument(this._requireDoc()));
     } catch (err) {
       emitTelemetry({
         eventName: 'Atlas.Listener.Threw',
         level: 'error',
         source: 'page-templates.layout-editor.onSave',
-        'error.message': (err as Error)?.message ?? String(err),
+        'error.message': errorMessage(err),
       });
     }
   }
@@ -565,7 +634,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
   }
 
   private _findSlot(slotName: string): LayoutSlot | null {
-    return this._doc!.slots.find((s) => s.name === slotName) ?? null;
+    return this._requireDoc().slots.find((s) => s.name === slotName) ?? null;
   }
 
   private _renderPanel(): void {
@@ -575,6 +644,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
       ? this._findSlot(this._selectedSlotName)
       : null;
     if (!slot) {
+      const doc = this._requireDoc();
       panel.textContent = '';
       panel.appendChild(
         html`
@@ -584,7 +654,7 @@ export class AtlasLayoutEditorElement extends AtlasElement {
               Click a slot to edit it, or use <strong>Add slot</strong>.
             </atlas-text>
             <div style="margin-top:12px;font-size:0.75rem;color:var(--atlas-color-text-muted, #6b7280)">
-              Grid: ${this._doc!.grid.columns} cols · ${this._doc!.grid.rowHeight}px rows · ${this._doc!.slots.length} slot${this._doc!.slots.length === 1 ? '' : 's'}
+              Grid: ${doc.grid.columns} cols · ${doc.grid.rowHeight}px rows · ${doc.slots.length} slot${doc.slots.length === 1 ? '' : 's'}
             </div>
           </div>
         `,
@@ -640,25 +710,32 @@ export class AtlasLayoutEditorElement extends AtlasElement {
     const delBtn = panel.querySelector('[data-action="delete-slot"]');
     if (delBtn && this._selectedSlotName) {
       delBtn.addEventListener('click', () =>
-        this._deleteSlot(this._selectedSlotName!),
+        this._deleteSlot(
+          expect(this._selectedSlotName, 'selected slot name (truthy-checked above)'),
+        ),
       );
     }
   }
 
   private _onPanelFieldCommit(ev: Event): void {
-    const input = ev.target as HTMLInputElement | null;
-    const field = input?.getAttribute?.('data-field');
+    const input = ev.target;
+    if (!(input instanceof HTMLElement)) return;
+    const field = input.getAttribute('data-field');
     const slotName = this._selectedSlotName;
     if (!field || !slotName) return;
     const slot = this._findSlot(slotName);
     if (!slot) return;
+    // `<atlas-input>` is NOT an `HTMLInputElement` instance but exposes
+    // `.value` as a string property — `hasStringValue` duck-types both
+    // the native `<input>` and the custom element uniformly.
+    const value = hasStringValue(input) ? input.value : '';
     if (field === 'name') {
-      const next = String(input?.value ?? '').trim();
+      const next = value.trim();
       if (!next || next === slot.name) return;
       this._renameSlot(slot.name, next);
       return;
     }
-    const n = parseInt(input?.value ?? '', 10);
+    const n = parseInt(value, 10);
     if (!Number.isFinite(n) || n < 1) return;
     this._applySlotChange(slotName, { ...slot, [field]: n });
   }
@@ -673,8 +750,8 @@ export class AtlasLayoutEditorElement extends AtlasElement {
       (ev.key === 'Delete' || ev.key === 'Backspace') &&
       this._selectedSlotName
     ) {
-      const ae = document.activeElement as HTMLElement | null;
-      const tag = ae?.tagName;
+      const ae = document.activeElement;
+      const tag = ae instanceof HTMLElement ? ae.tagName : null;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       ev.preventDefault();
       this._deleteSlot(this._selectedSlotName);

@@ -52,14 +52,14 @@ export function defaultRiskScorer(opts: DefaultScorerOptions = {}): RiskScorer {
     const contributions: Record<string, number> = {};
 
     // Geo: only contributes when we have an expected set to compare against.
+    const signalGeo = signals.geo;
     if (
       opts.expectedGeo !== undefined &&
-      signals.geo !== undefined &&
-      signals.geo !== 'unknown'
+      signalGeo !== undefined &&
+      signalGeo !== 'unknown'
     ) {
-      const matched = opts.expectedGeo.some(
-        (g) => g.toLowerCase() === signals.geo!.toLowerCase(),
-      );
+      const geoLc = signalGeo.toLowerCase();
+      const matched = opts.expectedGeo.some((g) => g.toLowerCase() === geoLc);
       contributions['geo'] = matched ? 0 : 0.4;
     } else {
       contributions['geo'] = 0;

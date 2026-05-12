@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type {
   EventStore,
   StoredEvent,
@@ -21,6 +22,21 @@ import type {
   RelationWriteInput,
 } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
+
+/* Boundary suppression for the in-memory test stores below.
+ *
+ * The Map-backed stores hold `Entity<unknown>` / `Relation<unknown>` rows
+ * (storage is type-erased), but the port APIs are generic in `TAttrs` and
+ * promise typed returns. The casts at the get/list/query/outgoing/incoming
+ * boundaries carry the caller-supplied `TAttrs` parameter forward — same
+ * pattern the production Postgres + IndexedDB adapters use at the same
+ * boundary. This is a test fixture; the runtime never sees a mismatch
+ * because every put/get pair in the test routes through one handler that
+ * agrees on the attrs shape.
+ */
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion --
+ * boundary: in-memory test fixture; type-erased Map storage, callers
+ * supply TAttrs at the typed boundary. */
 import {
   handlePageCreate,
   handlePageUpdate,
@@ -37,7 +53,6 @@ import {
   getRenderTreeEntity,
   findRenderTreeIdFor,
   renderTreeEntityIdFor,
-  type PageDocument,
   type ContentPagesQueryDeps,
 } from '../src/index.ts';
 
@@ -232,12 +247,12 @@ class InMemoryRelationStore implements RelationStore {
     ) as Relation<TAttrs>[];
   }
 }
+/* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
 interface Fixture {
   events: InMemoryEventStore;
   entities: InMemoryEntityStore;
   relations: InMemoryRelationStore;
-  cache: { invalidateByTags(): Promise<number> };
   queryDeps: ContentPagesQueryDeps;
   tenantId: string;
   dispatch(envelope: EventEnvelope): Promise<void>;
@@ -247,7 +262,6 @@ function newFixture(tenantId = 't1', principalId = 'u1'): Fixture {
   const events = new InMemoryEventStore();
   const entities = new InMemoryEntityStore();
   const relations = new InMemoryRelationStore();
-  const cache = { invalidateByTags: async () => 0 };
   const queryDeps: ContentPagesQueryDeps = {
     tenantId,
     principalId,
@@ -259,15 +273,15 @@ function newFixture(tenantId = 't1', principalId = 'u1'): Fixture {
     events,
     entities,
     relations,
-    cache,
     queryDeps,
     tenantId,
+    // `cache` on ContentPagesDispatchContext is reserved/unused — the
+    // cross-cutting `cacheTagDispatcher` lives in the wiring layer
+    // (apps/server) and is not exercised by this unit test. Pre-refactor
+    // we passed a stub cast to `never`; omitting the optional field is
+    // the root-cause fix.
     dispatch: (envelope) =>
-      dispatchContentPagesEvent(envelope, {
-        entities,
-        relations,
-        cache: cache as never,
-      }),
+      dispatchContentPagesEvent(envelope, { entities, relations }),
   };
 }
 
@@ -421,7 +435,10 @@ describe('handlePageUpdate', () => {
   });
 
   it('preserves createdAt while bumping updatedAt', async () => {
-    const before = (await getPage(fx.queryDeps, 'home')) as PageDocument;
+    const before = assertDefined(
+      await getPage(fx.queryDeps, 'home'),
+      'page "home" was created in beforeEach — must be readable here',
+    );
     await new Promise((r) => setTimeout(r, 5));
     const { envelope } = await handlePageUpdate(
       {
@@ -435,7 +452,10 @@ describe('handlePageUpdate', () => {
       fx.entities,
     );
     await fx.dispatch(envelope);
-    const after = (await getPage(fx.queryDeps, 'home')) as PageDocument;
+    const after = assertDefined(
+      await getPage(fx.queryDeps, 'home'),
+      'page "home" must still be readable after update dispatch',
+    );
     expect(after.createdAt).toBe(before.createdAt);
     expect(after.updatedAt).not.toBe(before.updatedAt);
     expect(after.slug).toBe('home-2');

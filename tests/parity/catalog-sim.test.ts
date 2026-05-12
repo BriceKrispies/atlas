@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { createSimIngress, makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { newEventId, type VariantRow } from '@atlas/catalog';
 import type { SearchDocument } from '@atlas/platform-core';
 
@@ -25,11 +26,12 @@ describe('[sim] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getTaxonomyNodes('recognition');
-    expect(body).not.toBeNull();
-    const nodes = body!.nodes;
-    const svc = nodes.find((n) => n.key === 'service-anniversary');
-    expect(svc).toBeDefined();
-    expect(svc!.families.some((f) => f.familyKey === 'service_anniversary_badge')).toBe(true);
+    const nodes = assertDefined(body, 'taxonomy fetched after seed apply').nodes;
+    const svc = assertDefined(
+      nodes.find((n) => n.key === 'service-anniversary'),
+      'service-anniversary node present in recognition taxonomy',
+    );
+    expect(svc.families.some((f) => f.familyKey === 'service_anniversary_badge')).toBe(true);
     await ingress.close();
   });
 
@@ -41,17 +43,17 @@ describe('[sim] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getFamilyDetail('service_anniversary_badge');
-    expect(body).not.toBeNull();
-    const attrs = body!.attributes;
+    const detail = assertDefined(body, 'family detail fetched after seed apply');
+    const attrs = detail.attributes;
     expect(
       attrs.some((a) => (a as { attributeKey?: string }).attributeKey === 'years_of_service'),
     ).toBe(true);
     expect(
       attrs.some((a) => (a as { attributeKey?: string }).attributeKey === 'badge_tier'),
     ).toBe(true);
-    const dps = body!.displayPolicies;
+    const dps = detail.displayPolicies;
     expect(dps.some((d) => (d as { surface?: string }).surface === 'variant_table')).toBe(true);
-    expect(Array.isArray(body!.assets)).toBe(true);
+    expect(Array.isArray(detail.assets)).toBe(true);
     await ingress.close();
   });
 
@@ -63,13 +65,14 @@ describe('[sim] catalog_badge_family parity', () => {
     );
 
     const body = await ingress.getVariantTable('service_anniversary_badge');
-    expect(body).not.toBeNull();
-    const rows = body!.rows;
+    const rows = assertDefined(body, 'variant table fetched after seed apply').rows;
     expect(rows.length).toBe(3);
 
-    const fiveYear = rows.find((r) => r.variantKey === '5-year');
-    expect(fiveYear).toBeDefined();
-    const yos = fiveYear!.values['years_of_service']?.normalized;
+    const fiveYear = assertDefined(
+      rows.find((r) => r.variantKey === '5-year'),
+      '5-year row present in seeded variant table',
+    );
+    const yos = fiveYear.values['years_of_service']?.normalized;
     expect(yos).toBe(5);
     await ingress.close();
   });
@@ -84,9 +87,9 @@ describe('[sim] catalog_badge_family parity', () => {
     const body = await ingress.getVariantTable('service_anniversary_badge', {
       filters: { badge_tier: { kind: 'equals', value: 'gold' } },
     });
-    expect(body).not.toBeNull();
-    expect(body!.rows.length).toBe(1);
-    expect(body!.rows[0]!.variantKey).toBe('10-year');
+    const table = assertDefined(body, 'variant table fetched with gold filter');
+    expect(table.rows.length).toBe(1);
+    expect(assertDefined(table.rows[0], 'length checked above').variantKey).toBe('10-year');
     await ingress.close();
   });
 
@@ -113,8 +116,9 @@ describe('[sim] catalog_badge_family parity', () => {
     );
 
     const before = await ingress.getVariantTable('service_anniversary_badge');
-    expect(before).not.toBeNull();
-    const beforeRows = canonicalizeVariantRows(before!.rows);
+    const beforeRows = canonicalizeVariantRows(
+      assertDefined(before, 'variant table fetched before rebuild').rows,
+    );
 
     const bumped = { ...seed, version: `rebuild-${tenantId}` };
     await ingress.submitIntent(
@@ -122,8 +126,9 @@ describe('[sim] catalog_badge_family parity', () => {
     );
 
     const after = await ingress.getVariantTable('service_anniversary_badge');
-    expect(after).not.toBeNull();
-    const afterRows = canonicalizeVariantRows(after!.rows);
+    const afterRows = canonicalizeVariantRows(
+      assertDefined(after, 'variant table fetched after rebuild').rows,
+    );
     expect(afterRows).toEqual(beforeRows);
     await ingress.close();
   });
@@ -138,11 +143,13 @@ describe('[sim] catalog_badge_family parity', () => {
     const tax = await ingress.getTaxonomyNodes('recognition');
     expect(tax).not.toBeNull();
 
-    const stored = await ingress.readEventTags(r1.eventId);
-    expect(stored).not.toBeNull();
-    expect(stored!).toContain(`Tenant:${tenantId}`);
-    expect(stored!).toContain('TaxonomyTree:recognition');
-    expect(stored!).toContain('SearchIndex:catalog');
+    const stored = assertDefined(
+      await ingress.readEventTags(r1.eventId),
+      'event tags persisted for seed apply',
+    );
+    expect(stored).toContain(`Tenant:${tenantId}`);
+    expect(stored).toContain('TaxonomyTree:recognition');
+    expect(stored).toContain('SearchIndex:catalog');
     await ingress.close();
   });
 });
@@ -220,7 +227,9 @@ describe('[sim] catalog_search parity', () => {
       const b = scores[i + 1] ?? 0;
       expect(a).toBeGreaterThanOrEqual(b);
     }
-    expect(body.results[0]!.documentType).toBe('family');
+    expect(assertDefined(body.results[0], 'length checked above').documentType).toBe(
+      'family',
+    );
     await ingress.close();
   });
 
@@ -293,9 +302,11 @@ describe('[sim] catalog_search parity', () => {
       buildSeedIntent(tenantId, principalId, `itest-cs-cache-${tenantId}`, seed),
     );
 
-    const tags = await ingress.readEventTags(r.eventId);
-    expect(tags).not.toBeNull();
-    expect(tags!).toContain('SearchIndex:catalog');
+    const tags = assertDefined(
+      await ingress.readEventTags(r.eventId),
+      'event tags persisted for cache-invalidation check',
+    );
+    expect(tags).toContain('SearchIndex:catalog');
 
     const body = await ingress.searchCatalog({ q: 'anniversary' });
     expect(body.results.length).toBeGreaterThan(0);

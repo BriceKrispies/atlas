@@ -27,8 +27,8 @@ export function observeSize(element: Element): SizeObservation {
 
   if (typeof ResizeObserver !== 'undefined') {
     observer = new ResizeObserver((entries) => {
-      if (!entries.length) return;
-      const entry = entries[0]!;
+      const entry = entries[0];
+      if (!entry) return;
       const rect = entry.contentRect || readSize(element);
       size.set({ width: Math.max(0, rect.width), height: Math.max(0, rect.height) });
     });

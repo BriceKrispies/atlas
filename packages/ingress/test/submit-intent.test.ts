@@ -21,6 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { submitIntent, type IngressState } from '../src/submit-intent.ts';
 
 // Local minimal ValidateFunction surface — `ControlPlaneRegistry`
@@ -40,85 +41,24 @@ import type {
 import { IngressError } from '@atlas/platform-core';
 import type {
   ActionEntry,
-  Cache,
-  CatalogStateStore,
   ControlPlaneRegistry,
   EventDispatcher,
-  EventStore,
   HandlerRegistry,
   IntentHandler,
   PolicyDecision,
   PolicyEngine,
   PolicyEvaluationRequest,
-  ProjectionStore,
-  SearchEngine,
-  StoredEvent,
 } from '@atlas/ports';
+import {
+  makeFakeCache,
+  makeFakeCatalogState,
+  makeFakeEventStore,
+  makeFakeProjections,
+  makeFakeSearch,
+  type StatefulEventStore,
+} from './lib/factories.ts';
 
 // ── fakes ───────────────────────────────────────────────────────────
-
-class FakeEventStore implements EventStore {
-  appended: EventEnvelope[] = [];
-  byIdemKey: Map<string, EventEnvelope> = new Map();
-  private nextSeq = 1n;
-  async append(env: EventEnvelope): Promise<StoredEvent> {
-    const stored: StoredEvent = {
-      ...env,
-      eventId: env.eventId || `evt-${this.appended.length + 1}`,
-      seq: this.nextSeq++,
-    } as StoredEvent;
-    this.appended.push(stored);
-    if (env.idempotencyKey) {
-      this.byIdemKey.set(`${env.tenantId}::${env.idempotencyKey}`, stored);
-    }
-    return stored;
-  }
-  async getEvent(): Promise<EventEnvelope | null> {
-    return null;
-  }
-  async findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null> {
-    return this.byIdemKey.get(`${tenantId}::${idempotencyKey}`) ?? null;
-  }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return [...this.appended];
-  }
-}
-
-function fakeCache(): Cache {
-  return {
-    get: vi.fn(async () => null),
-    set: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
-    invalidateTags: vi.fn(async () => {}),
-  } as unknown as Cache;
-}
-
-function fakeProjections(): ProjectionStore {
-  return {
-    get: vi.fn(async () => null),
-    put: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
-    list: vi.fn(async () => []),
-  } as unknown as ProjectionStore;
-}
-
-function fakeSearch(): SearchEngine {
-  return {
-    index: vi.fn(async () => {}),
-    search: vi.fn(async () => ({ hits: [], total: 0 })),
-    delete: vi.fn(async () => {}),
-  } as unknown as SearchEngine;
-}
-
-function fakeCatalogState(): CatalogStateStore {
-  return {
-    get: vi.fn(async () => null),
-    put: vi.fn(async () => {}),
-  } as unknown as CatalogStateStore;
-}
 
 function makeRegistry(opts: {
   validators?: Record<string, ValidateFunction>;
@@ -133,9 +73,13 @@ function makeRegistry(opts: {
     },
     getSchemaValidator(schemaId, version) {
       const v = opts.validators?.[`${schemaId}:${version}`] ?? null;
-      // Cast: the contract expects Ajv's ValidateFunction; the test's
-      // local minimal surface is structurally compatible (callable +
-      // .errors).
+      // The contract expects Ajv's `ValidateFunction`; the test's local
+      // minimal surface (callable + `.errors`) is structurally compatible.
+      // Production call sites only invoke the call signature and read
+      // `.errors`, so the substitution is safe. Pulling ajv into
+      // ingress's devDependencies just for the type would create a
+      // needless dep — keep the boundary cast, suppress both lints.
+      // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Ajv's ValidateFunction vs structural test validator (callable + .errors); avoids pulling ajv into ingress devDeps
       return v as unknown as ReturnType<
         ControlPlaneRegistry['getSchemaValidator']
       >;
@@ -144,9 +88,12 @@ function makeRegistry(opts: {
 }
 
 /** Build a validator that passes (or fails) and exposes synthetic errors. */
-function makeValidator(ok: boolean, errors: unknown[] = []): ValidateFunction {
-  const fn = ((_data: unknown) => ok) as unknown as ValidateFunction;
-  (fn as { errors: unknown[] | null }).errors = ok ? null : errors;
+function makeValidator(
+  ok: boolean,
+  errors: ReadonlyArray<{ instancePath?: string; message?: string }> = [],
+): ValidateFunction {
+  const fn = ((_data: unknown) => ok) as ValidateFunction;
+  fn.errors = ok ? null : errors;
   return fn;
 }
 
@@ -216,6 +163,12 @@ interface BuildOpts {
   actionKnown?: boolean;
   policyEngine?: PolicyEngine;
   handler?: IntentHandler | null;
+  /**
+   * Custom dispatcher — typed as `EventDispatcher` so tests can pass either
+   * a `vi.fn(async (env) => ...)` or a plain async function. `buildState`
+   * wraps it in its own `vi.fn` so the returned `dispatch` always carries
+   * `.mock` for `expect(...).toHaveBeenCalled()` style assertions.
+   */
   dispatch?: EventDispatcher;
   auditPolicyEvaluated?: IngressState['auditPolicyEvaluated'];
   logger?: Logger;
@@ -223,7 +176,7 @@ interface BuildOpts {
 
 function buildState(opts: BuildOpts = {}): {
   state: IngressState;
-  store: FakeEventStore;
+  store: StatefulEventStore;
   dispatch: ReturnType<typeof vi.fn>;
 } {
   const validators: Record<string, ValidateFunction> = {};
@@ -244,21 +197,26 @@ function buildState(opts: BuildOpts = {}): {
   const handlers: HandlerRegistry = {
     get: () => opts.handler ?? undefined,
   };
-  const store = new FakeEventStore();
-  const dispatchFn =
-    (opts.dispatch as unknown as ReturnType<typeof vi.fn>) ??
-    vi.fn(async () => {});
+  const store = makeFakeEventStore();
+  // Always wrap with vi.fn so the returned `dispatch` carries a `.mock`
+  // facade — callers may assert call counts even when they supplied a
+  // plain async dispatcher via `opts.dispatch`.
+  const userDispatch = opts.dispatch;
+  const dispatchFn = vi.fn(async (envelope: EventEnvelope) => {
+    if (userDispatch) await userDispatch(envelope);
+  });
+  const dispatch: EventDispatcher = dispatchFn;
   const state: IngressState = {
     tenantId: TENANT,
     principalId: PRINCIPAL,
     eventStore: store,
-    cache: fakeCache(),
-    projections: fakeProjections(),
-    search: fakeSearch(),
+    cache: makeFakeCache(),
+    projections: makeFakeProjections(),
+    search: makeFakeSearch(),
     registry: makeRegistry({ validators, actions }),
-    catalogState: fakeCatalogState(),
+    catalogState: makeFakeCatalogState(),
     handlers,
-    dispatch: dispatchFn as unknown as EventDispatcher,
+    dispatch,
     policyEngine: opts.policyEngine ?? new StubAllowEngine(),
     ...(opts.auditPolicyEvaluated
       ? { auditPolicyEvaluated: opts.auditPolicyEvaluated }
@@ -311,10 +269,16 @@ describe('submitIntent — schema', () => {
       await submitIntent(state, baseEnvelope());
       throw new Error('expected throw');
     } catch (e) {
-      expect(e).toBeInstanceOf(IngressError);
-      expect((e as IngressError).code).toBe('SCHEMA_VALIDATION_FAILED');
-      expect((e as IngressError).status).toBe(400);
-      expect((e as IngressError).message).toContain('bad');
+      // Narrow via `instanceof` rather than a cast — the assertion both
+      // documents the contract and lets TS see `IngressError` properties.
+      if (!(e instanceof IngressError)) {
+        throw new Error(
+          `expected IngressError, got ${e instanceof Error ? e.constructor.name : typeof e}`,
+        );
+      }
+      expect(e.code).toBe('SCHEMA_VALIDATION_FAILED');
+      expect(e.status).toBe(400);
+      expect(e.message).toContain('bad');
     }
   });
 });
@@ -344,7 +308,7 @@ describe('submitIntent — idempotency', () => {
       idempotencyKey: 'idem-1',
       payload: baseEnvelope().payload,
     };
-    store.byIdemKey.set(`${TENANT}::idem-1`, prior);
+    store.seedIdempotent(prior);
 
     const result: IntentResponse = await submitIntent(state, baseEnvelope());
     expect(result.eventId).toBe('evt-prior');
@@ -383,7 +347,9 @@ describe('submitIntent — authz (Invariant I2)', () => {
     const result = await submitIntent(state, baseEnvelope());
     expect(store.appended.length).toBe(1);
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(result.eventId).toBe(store.appended[0]!.eventId);
+    expect(result.eventId).toBe(
+      assertDefined(store.appended[0], 'appended[0] guaranteed by length===1 check above').eventId,
+    );
   });
 
   it('permit path with handler: handler runs, primary + follow events dispatched in order', async () => {
@@ -414,7 +380,7 @@ describe('submitIntent — authz (Invariant I2)', () => {
     };
     const { state } = buildState({
       handler,
-      dispatch: dispatch as unknown as EventDispatcher,
+      dispatch,
     });
     const result = await submitIntent(state, baseEnvelope());
     expect(result.eventId).toBe('evt-primary');
@@ -422,7 +388,11 @@ describe('submitIntent — authz (Invariant I2)', () => {
   });
 
   it('audit hook is called once for the deny path with correlationId + idempotencyKey', async () => {
-    const auditPolicyEvaluated = vi.fn();
+    // Type the spy as the actual `auditPolicyEvaluated` shape from
+    // `IngressState`, so `mock.calls[N]` is the typed parameter tuple —
+    // no narrowing cast needed at the assertion site.
+    type AuditFn = NonNullable<IngressState['auditPolicyEvaluated']>;
+    const auditPolicyEvaluated = vi.fn<AuditFn>();
     const { state } = buildState({
       policyEngine: new StubDenyEngine(),
       auditPolicyEvaluated,
@@ -431,10 +401,11 @@ describe('submitIntent — authz (Invariant I2)', () => {
       code: 'UNAUTHORIZED',
     });
     expect(auditPolicyEvaluated).toHaveBeenCalledTimes(1);
-    const ctxArg = auditPolicyEvaluated.mock.calls[0]![2] as {
-      correlationId: string;
-      idempotencyKey: string;
-    };
+    const firstCall = assertDefined(
+      auditPolicyEvaluated.mock.calls[0],
+      'audit hook called exactly once (asserted above)',
+    );
+    const ctxArg = firstCall[2];
     expect(ctxArg.correlationId).toBe('corr-1');
     expect(ctxArg.idempotencyKey).toBe('idem-1');
   });
@@ -452,9 +423,11 @@ describe('submitIntent — authz (Invariant I2)', () => {
     await expect(submitIntent(state, baseEnvelope())).rejects.toMatchObject({
       code: 'UNAUTHORIZED',
     });
-    const errLog = entries.find((e) => e.level === 'error');
-    expect(errLog).toBeDefined();
-    expect(errLog!.message).toContain('audit emit failed');
+    const errLog = assertDefined(
+      entries.find((e) => e.level === 'error'),
+      'expected an error log entry from the audit-emit failure path',
+    );
+    expect(errLog.message).toContain('audit emit failed');
   });
 });
 
@@ -504,7 +477,11 @@ describe('submitIntent — generic-fallthrough envelope (cache tags / I10)', () 
     // codifies that contract: the generic path is a passthrough.
     const { state, store } = buildState();
     await submitIntent(state, baseEnvelope());
-    expect(store.appended[0]!.cacheInvalidationTags).toBeNull();
+    const appended = assertDefined(
+      store.appended[0],
+      'generic-fallthrough path appends exactly one event',
+    );
+    expect(appended.cacheInvalidationTags).toBeNull();
   });
 
   it('handler-driven path: tags including Tenant:<id> survive the dispatch (I10 contract)', async () => {
@@ -530,11 +507,17 @@ describe('submitIntent — generic-fallthrough envelope (cache tags / I10)', () 
     };
     const { state } = buildState({
       handler,
-      dispatch: dispatch as unknown as EventDispatcher,
+      dispatch,
     });
     await submitIntent(state, baseEnvelope());
-    const dispatched = (dispatch.mock.calls[0]![0] as EventEnvelope)
-      .cacheInvalidationTags as string[];
-    expect(dispatched).toContain(`Tenant:${TENANT}`);
+    // `dispatch` is `vi.fn(async (_ev: EventEnvelope) => {})`, so
+    // `mock.calls[0]` is the typed parameter tuple `[EventEnvelope]` —
+    // no narrowing cast needed at the read site.
+    const firstCall = assertDefined(
+      dispatch.mock.calls[0],
+      'dispatcher must be invoked at least once on the handler-driven path',
+    );
+    const envelope = firstCall[0];
+    expect(envelope.cacheInvalidationTags).toContain(`Tenant:${TENANT}`);
   });
 });

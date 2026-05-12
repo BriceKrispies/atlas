@@ -41,13 +41,17 @@ import type {
   PageEditorController,
   PageEditorStateSnapshot,
 } from '../state.ts';
+import type {
+  WidgetConfigSchema,
+  WidgetConfigSchemaPreset,
+} from '../widget-config.ts';
 
-interface PresetDescriptor {
-  id: string;
-  label: string;
-  description?: string;
-  config: Record<string, unknown>;
-}
+/**
+ * Local alias so the inspector's preset-handling methods read naturally.
+ * Shape matches the schema-level `x-atlas-presets` entries declared in
+ * `widget-config.ts`.
+ */
+type PresetDescriptor = WidgetConfigSchemaPreset;
 
 interface ClipboardEntry {
   widgetId: string;
@@ -142,7 +146,11 @@ export class PageEditorInspector extends AtlasSurface {
       return;
     }
     if (ids.length === 1) {
-      const id = ids[0]!;
+      const id = ids[0];
+      if (id === undefined) {
+        this._renderEmpty();
+        return;
+      }
       const inst = snap.widgetInstances.find((w) => w.instanceId === id);
       if (!inst) {
         this._renderEmpty();
@@ -260,10 +268,19 @@ export class PageEditorInspector extends AtlasSurface {
     }
 
     // Use the first widget's schema as the rendering scaffold; the property
-    // panel only renders fields whose key is in `sharedKeys`.
-    const firstWidgetId = widgetIds[0]!;
+    // panel only renders fields whose key is in `sharedKeys`. The two
+    // explicit guards below are defensive — both arrays were proven
+    // non-empty above (`widgetIds.length === 0` short-circuits, and
+    // `instanceIds` is the multi-select source so length is ≥2 here) —
+    // but the type system needs the explicit narrowing to drop
+    // `undefined` from each index access.
+    const firstWidgetId = widgetIds[0];
+    const firstInstanceId = instanceIds[0];
+    if (firstWidgetId === undefined || firstInstanceId === undefined) {
+      this.appendChild(wrap);
+      return;
+    }
     const schema = editorWidgetSchemas[firstWidgetId];
-    const firstInstanceId = instanceIds[0]!;
     const baseConfig = this._readInstanceConfig(firstInstanceId) ?? {};
 
     const panel = document.createElement('page-editor-property-panel') as
@@ -323,9 +340,7 @@ export class PageEditorInspector extends AtlasSurface {
     const heading = document.createElement('atlas-heading');
     heading.setAttribute('level', '4');
     heading.setAttribute('name', 'inspector-title');
-    const schema = editorWidgetSchemas[widgetId] as
-      | { title?: string }
-      | undefined;
+    const schema = editorWidgetSchemas[widgetId];
     heading.textContent = schema?.title ?? widgetId;
     titleStack.appendChild(heading);
     const sub = document.createElement('atlas-text');
@@ -448,7 +463,7 @@ export class PageEditorInspector extends AtlasSurface {
     const cfg = this._readInstanceConfig(instanceId) ?? {};
     PageEditorInspector._clipboard = {
       widgetId,
-      config: cloneDeep(cfg) as Record<string, unknown>,
+      config: cloneConfig(cfg),
     };
     this._recordCommit('copyConfig', { widgetId, instanceId });
     this._menuOpen = false;
@@ -458,7 +473,7 @@ export class PageEditorInspector extends AtlasSurface {
   private _pasteConfig(widgetId: string, instanceId: string): void {
     const clip = PageEditorInspector._clipboard;
     if (!clip || clip.widgetId !== widgetId) return;
-    const merged: Record<string, unknown> = cloneDeep(clip.config) as Record<string, unknown>;
+    const merged = cloneConfig(clip.config);
     this._recordCommit('pasteConfig', { widgetId, instanceId });
     void this._controller?.updateWidgetConfig(instanceId, merged);
     this._menuOpen = false;
@@ -466,14 +481,12 @@ export class PageEditorInspector extends AtlasSurface {
   }
 
   private _resetDefaults(widgetId: string, instanceId: string): void {
-    const schema = editorWidgetSchemas[widgetId] as
-      | { properties?: Record<string, { default?: unknown }> }
-      | undefined;
+    const schema = editorWidgetSchemas[widgetId];
     const next: Record<string, unknown> = {};
     const props = schema?.properties ?? {};
     for (const [key, propSchema] of Object.entries(props)) {
-      if (propSchema && 'default' in propSchema && propSchema.default !== undefined) {
-        next[key] = cloneDeep(propSchema.default);
+      if (propSchema.default !== undefined) {
+        next[key] = cloneConfig(propSchema.default);
       }
     }
     this._recordCommit('resetDefaults', { widgetId, instanceId });
@@ -496,8 +509,7 @@ export class PageEditorInspector extends AtlasSurface {
     if (!snap) return null;
     const inst = snap.widgetInstances.find((w) => w.instanceId === instanceId);
     if (!inst) return null;
-    const cfg = (inst as { config?: unknown }).config;
-    return cfg && typeof cfg === 'object' ? (cfg as Record<string, unknown>) : {};
+    return inst.config ?? {};
   }
 
   private get _surfaceKey(): string {
@@ -549,9 +561,11 @@ export class PageEditorInspector extends AtlasSurface {
  */
 function computeSharedKeys(widgetIds: string[]): string[] {
   if (widgetIds.length === 0) return [];
-  const schemas = widgetIds
-    .map((id) => editorWidgetSchemas[id] as { properties?: Record<string, unknown> } | undefined)
-    .filter((s): s is { properties?: Record<string, unknown> } => !!s);
+  const schemas: WidgetConfigSchema[] = [];
+  for (const id of widgetIds) {
+    const s = editorWidgetSchemas[id];
+    if (s) schemas.push(s);
+  }
   if (schemas.length === 0) return [];
   const firstKeys = Object.keys(schemas[0]?.properties ?? {});
   if (schemas.length === 1) return firstKeys;
@@ -559,34 +573,47 @@ function computeSharedKeys(widgetIds: string[]): string[] {
   return firstKeys.filter((k) => others.every((set) => set.has(k)));
 }
 
-function readPresets(schema: unknown): PresetDescriptor[] {
-  if (!schema || typeof schema !== 'object') return [];
-  const raw = (schema as Record<string, unknown>)['x-atlas-presets'];
-  if (!Array.isArray(raw)) return [];
-  const out: PresetDescriptor[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
-    const e = entry as {
-      id?: unknown;
-      label?: unknown;
-      description?: unknown;
-      config?: unknown;
-    };
-    if (typeof e.id !== 'string' || typeof e.label !== 'string') continue;
-    const cfg = e.config && typeof e.config === 'object' ? (e.config as Record<string, unknown>) : {};
-    const desc: PresetDescriptor = { id: e.id, label: e.label, config: cfg };
-    if (typeof e.description === 'string') desc.description = e.description;
-    out.push(desc);
-  }
-  return out;
+/**
+ * Pluck the `x-atlas-presets` list off a widget schema. Returns `[]` for
+ * schemas that don't define presets. Since `WidgetConfigSchema` types the
+ * field, no per-entry shape-checking is needed beyond a tolerant pass-through
+ * over the typed entries.
+ */
+function readPresets(schema: WidgetConfigSchema | undefined): PresetDescriptor[] {
+  if (!schema) return [];
+  const raw = schema['x-atlas-presets'];
+  if (!raw) return [];
+  // Materialise to a fresh array so the inspector can mutate it freely.
+  return raw.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    config: entry.config,
+    ...(entry.description !== undefined ? { description: entry.description } : {}),
+  }));
 }
 
-function cloneDeep(value: unknown): unknown {
+/**
+ * Defensive deep-clone. Two overloads keep call sites typed:
+ *
+ *   - `cloneConfig(Record<string, unknown>)` returns a `Record<string, unknown>`
+ *     — used for clipboard / paste / preset-merge flows.
+ *   - `cloneConfig(unknown)` returns `unknown` — used when cloning a single
+ *     schema `default` value (could be any JSON-serialisable type).
+ */
+function cloneConfig(value: Record<string, unknown>): Record<string, unknown>;
+function cloneConfig(value: unknown): unknown;
+function cloneConfig(value: unknown): unknown {
   try {
     return structuredClone(value);
   } catch {
-    return JSON.parse(JSON.stringify(value ?? null));
+    return JSON.parse(JSON.stringify(value ?? null)) as unknown;
   }
 }
 
 AtlasElement.define('page-editor-inspector', PageEditorInspector);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'page-editor-inspector': PageEditorInspector;
+  }
+}

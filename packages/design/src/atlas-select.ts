@@ -149,16 +149,15 @@ export class AtlasSelect extends AtlasElement {
     return this._options.slice();
   }
   set options(next: readonly RawOption[] | null | undefined) {
-    this._options = Array.isArray(next)
-      ? next.map((o) => {
-          const opt: AtlasSelectOption = {
-            value: String(o.value),
-            label: String(o.label ?? o.value),
-          };
-          if (o.disabled === true) opt.disabled = true;
-          return opt;
-        })
-      : [];
+    const arr: readonly RawOption[] = Array.isArray(next) ? next : [];
+    this._options = arr.map((o) => {
+      const opt: AtlasSelectOption = {
+        value: String(o.value),
+        label: String(o.label ?? o.value),
+      };
+      if (o.disabled === true) opt.disabled = true;
+      return opt;
+    });
     if (this._built) {
       this._rebuildOptions();
       this._applyPendingValue();
@@ -270,7 +269,8 @@ export class AtlasSelect extends AtlasElement {
   private _syncPlaceholder(): void {
     const sel = this._select;
     if (!sel) return;
-    const first = sel.firstElementChild as HTMLOptionElement | null;
+    const firstEl = sel.firstElementChild;
+    const first = firstEl instanceof HTMLOptionElement ? firstEl : null;
     const existingIsPlaceholder = !!first && first.disabled && first.value === '';
     const placeholder = this.getAttribute('placeholder');
     if (placeholder == null) {

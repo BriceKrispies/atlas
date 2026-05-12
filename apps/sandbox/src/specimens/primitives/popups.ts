@@ -1,4 +1,5 @@
 import { S } from '../_register.ts';
+import { customDetail, isElement, isValueDetail } from '../../internal/assert.ts';
 
 S({
   id: 'menu',
@@ -63,7 +64,10 @@ S({
     for (const menu of stack.querySelectorAll('atlas-menu')) {
       const which = menu.getAttribute('data-menu') ?? 'menu';
       menu.addEventListener('select', (ev) => {
-        const detail = (ev as CustomEvent<{ value: string }>).detail;
+        // Menu items dispatch `select` with `{ value }`. Validate
+        // through a typed reader; a drift in shape surfaces here rather
+        // than as a silent `undefined` in the log.
+        const detail = customDetail(ev, isValueDetail, `${which} select event`);
         onLog(`${which}.select`, detail);
       });
       menu.addEventListener('open', () => onLog(`${which}.open`, {}));
@@ -157,15 +161,18 @@ S({
     // Wire the cancel/apply buttons inside the rich-content popover so
     // the demo logs intent without leaving the popover open.
     wrap.addEventListener('click', (ev) => {
-      const target = ev.target as Element | null;
-      const apply = target?.closest('[data-pop-apply]');
-      const cancel = target?.closest('[data-pop-cancel]');
+      const target = ev.target;
+      if (!isElement(target)) return;
+      const apply = target.closest('[data-pop-apply]');
+      const cancel = target.closest('[data-pop-cancel]');
       if (!apply && !cancel) return;
-      const pop = (target as Element).closest('atlas-popover[data-pop="form"]') as
-        | (HTMLElement & { close: () => void })
-        | null;
+      const pop = target.closest('atlas-popover[data-pop="form"]');
       onLog(apply ? 'form.apply' : 'form.cancel', {});
-      pop?.close();
+      // `<atlas-popover>` exposes `close()` on the custom-element class;
+      // `closest()` returns Element, so call through `invokeCloseIfAny`
+      // which probes for a callable `close` without leaking a
+      // structural narrowing into the call site.
+      invokeCloseIfAny(pop);
     });
 
     return () => {
@@ -174,3 +181,18 @@ S({
   },
   configVariants: [{ name: 'default', config: {} }],
 });
+
+/**
+ * Probe `el?.close` for a parameterless callable and invoke it. Lets
+ * us drive custom-element imperative APIs (`<atlas-popover>.close()`,
+ * `<atlas-menu>.close()`, …) from `closest()`-returned `Element` values
+ * without leaking a structural cast into the call site.
+ */
+function invokeCloseIfAny(el: Element | null): void {
+  if (!el) return;
+  // `Element` doesn't declare `close` — the method lives on the custom
+  // element class. Use Reflect to read/invoke through `unknown` rather
+  // than a structural narrowing cast.
+  const close: unknown = Reflect.get(el, 'close');
+  if (typeof close === 'function') Reflect.apply(close, el, []);
+}

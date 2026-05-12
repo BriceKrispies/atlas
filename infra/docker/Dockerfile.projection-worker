@@ -1,0 +1,24 @@
+# Atlas projection worker — minimal TypeScript runtime image.
+#
+# Build context is the repo root:
+#   podman build -f infra/docker/Dockerfile.projection-worker -t atlas/projection-worker:dev .
+#
+# Runs `apps/projection-worker` via tsx (no bundling). Same minimal shape
+# as Dockerfile.server. The worker is a background poll loop — it doesn't
+# expose HTTP, so no port and no HTTP healthcheck. When the worker grows
+# a readiness endpoint, add the HEALTHCHECK back.
+
+FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# .dockerignore filters node_modules, .git, dist/, specs/, tests/, etc.
+COPY . .
+
+# Install only the @atlas/projection-worker dependency closure.
+RUN pnpm install --filter "@atlas/projection-worker..." --frozen-lockfile && \
+    chown -R node:node /app
+
+USER node
+
+CMD ["pnpm", "--filter", "@atlas/projection-worker", "start"]

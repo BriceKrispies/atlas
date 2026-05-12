@@ -25,9 +25,11 @@ async function runStream(
   input: Uint8Array,
   transform: CompressionStream | DecompressionStream,
 ): Promise<Uint8Array> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: lib.dom's BlobPart union depends on TS version (Uint8Array<ArrayBufferLike> vs Uint8Array<ArrayBuffer>); runtime accepts any typed array.
   const blob = new Blob([input as BlobPart]);
   const piped = blob
     .stream()
+    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: CompressionStream/DecompressionStream are structurally TransformStream<Uint8Array, Uint8Array> but the lib.dom types model them as a derived class; pipeThrough requires the parent type.
     .pipeThrough(transform as unknown as TransformStream<Uint8Array, Uint8Array>);
   const out = await new Response(piped).arrayBuffer();
   return new Uint8Array(out);

@@ -129,13 +129,17 @@ export async function widgetInstanceIdsInRegion(
 export async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction(
     (pid: string) => {
-      const deepFind = (id: string): Element | null => {
+      interface ContentPageEl extends Element {
+        editor?: unknown;
+      }
+      const deepFind = (id: string): ContentPageEl | null => {
         const stack: Array<Document | ShadowRoot | Element> = [document];
         while (stack.length) {
-          const root = stack.shift()!;
+          const root = stack.shift();
+          if (!root) continue;
           const found =
             'querySelector' in root && root.querySelector
-              ? root.querySelector(`content-page[data-page-id="${id}"]`)
+              ? root.querySelector<ContentPageEl>(`content-page[data-page-id="${id}"]`)
               : null;
           if (found) return found;
           const descendants =
@@ -143,14 +147,14 @@ export async function waitForEditor(page: Page, pageId: string): Promise<void> {
               ? Array.from(root.querySelectorAll('*'))
               : [];
           for (const el of descendants) {
-            if ((el as Element & { shadowRoot?: ShadowRoot }).shadowRoot) {
-              stack.push((el as Element & { shadowRoot: ShadowRoot }).shadowRoot);
+            if (el.shadowRoot) {
+              stack.push(el.shadowRoot);
             }
           }
         }
         return null;
       };
-      const cp = deepFind(pid) as (Element & { editor?: unknown }) | null;
+      const cp = deepFind(pid);
       return !!(cp && cp.editor);
     },
     pageId,
@@ -176,15 +180,19 @@ export async function runEditorOp(
   op: EditorOp,
   args?: unknown,
 ): Promise<EditorOpResult> {
-  return page.evaluate(
+  const raw = await page.evaluate(
     ({ pageId, op, args }: { pageId: string; op: string; args: unknown }) => {
-      const deepFind = (id: string): Element | null => {
+      interface ContentPageEl extends Element {
+        editor?: Record<string, unknown>;
+      }
+      const deepFind = (id: string): ContentPageEl | null => {
         const stack: Array<Document | ShadowRoot | Element> = [document];
         while (stack.length) {
-          const root = stack.shift()!;
+          const root = stack.shift();
+          if (!root) continue;
           const found =
             'querySelector' in root && root.querySelector
-              ? root.querySelector(`content-page[data-page-id="${id}"]`)
+              ? root.querySelector<ContentPageEl>(`content-page[data-page-id="${id}"]`)
               : null;
           if (found) return found;
           const descendants =
@@ -192,20 +200,28 @@ export async function runEditorOp(
               ? Array.from(root.querySelectorAll('*'))
               : [];
           for (const el of descendants) {
-            const e = el as Element & { shadowRoot?: ShadowRoot };
-            if (e.shadowRoot) stack.push(e.shadowRoot);
+            if (el.shadowRoot) stack.push(el.shadowRoot);
           }
         }
         return null;
       };
-      const cp = deepFind(pageId) as (Element & { editor?: Record<string, unknown> }) | null;
+      const cp = deepFind(pageId);
       if (!cp || !cp.editor) return { ok: false, reason: 'editor-not-attached' };
-      const fn = cp.editor[op];
-      if (typeof fn !== 'function') return { ok: false, reason: 'op-not-found' };
-      return (fn as (a: unknown) => unknown).call(cp.editor, args);
+      // The editor API is an imperative bag of method handles, typed
+      // structurally as `Record<string, unknown>` on the element. We
+      // re-view it as a record of `(a) => unknown | undefined` so the
+      // `typeof handler !== 'function'` narrow yields a callable, and
+      // run a single boundary-cast here rather than per call-site.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: content-page.editor is the EditorAPI bag; values are operation handles. The runtime guard `typeof handler !== 'function'` keeps each call safe; the cast only narrows the index value type for the type system.
+      const editor = cp.editor as Record<string, ((a: unknown) => unknown) | undefined>;
+      const handler = editor[op];
+      if (typeof handler !== 'function') return { ok: false, reason: 'op-not-found' };
+      return handler.call(cp.editor, args);
     },
     { pageId, op, args },
-  ) as Promise<EditorOpResult>;
+  );
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: page.evaluate returns unknown; EditorOpResult is contract-pinned by the EditorAPI on the content-page element (open index signature so per-op return shapes pass through).
+  return raw as EditorOpResult;
 }
 
 /**

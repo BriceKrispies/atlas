@@ -12,6 +12,28 @@ interface LayoutOption {
   label: string;
 }
 
+interface AtlasSelectLike extends HTMLElement {
+  options: unknown;
+  value: string;
+}
+
+interface AtlasLayoutEditorLike extends HTMLElement {
+  layout: unknown;
+  onChange: (doc: LayoutDocument) => void;
+  onSave: (doc: LayoutDocument) => Promise<void>;
+}
+
+function isAtlasSelect(el: Element | null): el is AtlasSelectLike {
+  return el instanceof HTMLElement && 'value' in el;
+}
+
+function readDetailValue(detail: unknown): string | null {
+  if (detail === null || typeof detail !== 'object') return null;
+  const record: Record<string, unknown> = Object.fromEntries(Object.entries(detail));
+  const v = record['value'];
+  return typeof v === 'string' ? v : null;
+}
+
 const BLANK_VALUE = '__blank__';
 
 const styles = `
@@ -84,14 +106,14 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
       <atlas-box data-role="canvas"></atlas-box>
     `;
 
-    const select = this._root.querySelector('atlas-select[name="layout-select"]') as
-      | (HTMLElement & { options: unknown; value: string })
-      | null;
+    const selectEl = this._root.querySelector('atlas-select[name="layout-select"]');
+    const select = isAtlasSelect(selectEl) ? selectEl : null;
     if (select) {
       select.options = options;
       select.value = initial;
       select.addEventListener('change', (ev) => {
-        const next = (ev as CustomEvent<{ value: string }>).detail?.value ?? select.value;
+        const detailValue = ev instanceof CustomEvent ? readDetailValue(ev.detail) : null;
+        const next = detailValue ?? select.value;
         this._activeLayoutId = next === BLANK_VALUE ? null : next;
         void this._mountEditor();
       });
@@ -113,11 +135,8 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
           displayName: 'Untitled layout',
         });
 
-    const editor = document.createElement('atlas-layout-editor') as HTMLElement & {
-      layout: unknown;
-      onChange: (doc: LayoutDocument) => void;
-      onSave: (doc: LayoutDocument) => Promise<void>;
-    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed API surface is asserted at the construction boundary.
+    const editor = document.createElement('atlas-layout-editor') as AtlasLayoutEditorLike;
     editor.onChange = () => {};
     editor.onSave = async (doc: LayoutDocument) => {
       await authoringLayoutStore.save(doc.layoutId, doc);

@@ -11,26 +11,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  EventStore,
-  StoredEvent,
-  Entity,
-  EntityListOptions,
-  EntityQueryOptions,
-  EntityStatus,
-  EntityStore as PortEntityStore,
-  EntityWriteInput,
-  Relation,
-  RelationStore,
-  RelationWriteInput,
-} from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import {
   handleSessionIssue,
   handleSessionRefresh,
   handleSessionRevoke,
   handleSessionRevokeAllForUser,
-  dispatchIdentityEvent,
   getSessionEntity,
   listActiveSessionsForUser,
   IdentityError,
@@ -39,177 +25,21 @@ import {
   hashSecret,
   type AuthSessionDocument,
 } from '../src/index.ts';
+import { newFixture, dispatchAll } from './lib/fixtures.ts';
 
-class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
-  private nextSeq = 0n;
-  async append(envelope: EventEnvelope): Promise<StoredEvent> {
-    this.nextSeq += 1n;
-    const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
-    this.events.push(stored);
-    return stored;
-  }
-  async getEvent(eventId: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.eventId === eventId) ?? null;
-  }
-  async findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null> {
-    return (
-      this.events.find(
-        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
-      ) ?? null
+/** Type-guard form of the record check — flips `unknown` to a record. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Reads a record-shaped payload, throwing if the shape is wrong. */
+function payloadRecord(env: EventEnvelope): Record<string, unknown> {
+  if (!isRecord(env.payload)) {
+    throw new Error(
+      `expected object-shaped payload on ${env.eventType} (${env.eventId})`,
     );
   }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return this.events.map((e) => ({ ...e }));
-  }
-}
-
-class InMemoryEntityStore implements PortEntityStore {
-  rows = new Map<string, Entity<unknown>>();
-  private k(t: string, ty: string, id: string): string {
-    return `${t}::${ty}::${id}`;
-  }
-  async get<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    entityId: string,
-  ): Promise<Entity<TAttrs> | null> {
-    const row = this.rows.get(this.k(tenantId, entityType, entityId));
-    if (!row || row.status === 'deleted') return null;
-    return row as Entity<TAttrs>;
-  }
-  async put<TAttrs = unknown>(
-    input: EntityWriteInput<TAttrs>,
-  ): Promise<Entity<TAttrs>> {
-    const key = this.k(input.tenantId, input.entityType, input.entityId);
-    const existing = this.rows.get(key);
-    const now = new Date().toISOString();
-    const row: Entity<TAttrs> = {
-      tenantId: input.tenantId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      schemaVersion: input.schemaVersion ?? 1,
-      attrs: input.attrs,
-      status: input.status ?? 'active',
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    this.rows.set(key, row as Entity<unknown>);
-    return row;
-  }
-  async delete(t: string, ty: string, id: string): Promise<void> {
-    const key = this.k(t, ty, id);
-    const existing = this.rows.get(key);
-    if (existing) {
-      this.rows.set(key, { ...existing, status: 'deleted' });
-    }
-  }
-  async list<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts?: EntityListOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    const desiredStatus: EntityStatus | null =
-      opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
-      .filter((r) => r.tenantId === tenantId && r.entityType === entityType)
-      .filter((r) => (desiredStatus === null ? true : r.status === desiredStatus))
-      .sort((a, b) => a.entityId.localeCompare(b.entityId)) as Entity<TAttrs>[];
-  }
-  async query<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts: EntityQueryOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    // For queries we DELIBERATELY ignore the default status filter
-    // and only honor `attrsEqual`. The session handlers query by
-    // (userId, status='active'); the in-memory store should only
-    // match those rows whose document attrs match — not whose entity
-    // row status matches. A revoked session has document.status =
-    // 'revoked' AND row.status = 'active' (substrate soft-delete is
-    // separate from the domain status); list-active-sessions-for-user
-    // must not return revoked sessions.
-    const allRows = Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.entityType === entityType,
-    );
-    if (!opts.attrsEqual) return allRows as Entity<TAttrs>[];
-    const predicates = Object.entries(opts.attrsEqual);
-    return allRows.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return predicates.every(([k, v]) => attrs?.[k] === v);
-    }) as Entity<TAttrs>[];
-  }
-}
-
-class InMemoryRelationStore implements RelationStore {
-  rows = new Map<string, Relation<unknown>>();
-  private k(t: string, e: string, f: string, to: string): string {
-    return `${t}::${e}::${f}::${to}`;
-  }
-  async add<TAttrs = unknown>(
-    input: RelationWriteInput<TAttrs>,
-  ): Promise<Relation<TAttrs>> {
-    const key = this.k(input.tenantId, input.edgeType, input.fromId, input.toId);
-    const row: Relation<TAttrs> = {
-      tenantId: input.tenantId,
-      edgeType: input.edgeType,
-      fromId: input.fromId,
-      toId: input.toId,
-      attrs: input.attrs ?? null,
-      createdAt: new Date().toISOString(),
-    };
-    this.rows.set(key, row as Relation<unknown>);
-    return row;
-  }
-  async remove(t: string, e: string, f: string, to: string): Promise<void> {
-    this.rows.delete(this.k(t, e, f, to));
-  }
-  async outgoing<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    fromId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.fromId === fromId,
-    ) as Relation<TAttrs>[];
-  }
-  async incoming<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    toId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.toId === toId,
-    ) as Relation<TAttrs>[];
-  }
-}
-
-interface Fixture {
-  events: InMemoryEventStore;
-  entities: InMemoryEntityStore;
-  relations: InMemoryRelationStore;
-  tenantId: string;
-}
-
-function newFixture(): Fixture {
-  return {
-    events: new InMemoryEventStore(),
-    entities: new InMemoryEntityStore(),
-    relations: new InMemoryRelationStore(),
-    tenantId: 't1',
-  };
-}
-
-async function dispatchAll(fx: Fixture): Promise<void> {
-  for (const e of fx.events.events) {
-    await dispatchIdentityEvent(e, {
-      entities: fx.entities,
-      relations: fx.relations,
-    });
-  }
+  return env.payload;
 }
 
 describe('Identity.AuthSession.Issue', () => {
@@ -266,8 +96,9 @@ describe('Identity.AuthSession.Issue', () => {
       fx.entities,
     );
     expect(third.follow.map((e) => e.eventType)).toEqual(['Identity.SessionEnded']);
-    const evictedPayload = third.follow[0]?.payload as Record<string, unknown>;
-    expect(evictedPayload['reason']).toBe('evicted');
+    const evictedFollow = third.follow[0];
+    if (!evictedFollow) throw new Error('expected SessionEnded follow event');
+    expect(payloadRecord(evictedFollow)['reason']).toBe('evicted');
     await dispatchAll(fx);
 
     // After eviction: only 2 active sessions for the user — the one
@@ -399,9 +230,10 @@ describe('Identity.AuthSession.Refresh', () => {
     } catch (e) {
       caught = e;
     }
-    expect((caught as IdentityError | undefined)?.code).toBe(
-      identityErrorCodes.SESSION_REUSE_DETECTED,
-    );
+    if (!(caught instanceof IdentityError)) {
+      throw new Error(`expected IdentityError, got ${String(caught)}`);
+    }
+    expect(caught.code).toBe(identityErrorCodes.SESSION_REUSE_DETECTED);
     await dispatchAll(fx);
     // Both sessions revoked, plus an anomaly event in the log.
     const original = await getSessionEntity(
@@ -481,7 +313,7 @@ describe('Identity.AuthSession.Refresh', () => {
       tenantId: fx.tenantId,
       entityType: 'AuthSession',
       entityId: issued.document.sessionId,
-      attrs: { ...issued.document, hardExpiresAt: past } as AuthSessionDocument,
+      attrs: { ...issued.document, hardExpiresAt: past } satisfies AuthSessionDocument,
       schemaVersion: 1,
     });
     await expect(
@@ -512,7 +344,7 @@ describe('Identity.AuthSession.Refresh', () => {
       tenantId: fx.tenantId,
       entityType: 'AuthSession',
       entityId: issued.document.sessionId,
-      attrs: { ...issued.document, lastSeenAt: stale } as AuthSessionDocument,
+      attrs: { ...issued.document, lastSeenAt: stale } satisfies AuthSessionDocument,
       schemaVersion: 1,
     });
     await expect(

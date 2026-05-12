@@ -1,5 +1,5 @@
 import { AtlasElement } from '@atlas/core';
-import type { AtlasTreeItem } from './atlas-tree-item.ts';
+import { AtlasTreeItem } from './atlas-tree-item.ts';
 
 /**
  * <atlas-tree> — hierarchical tree view (WAI-ARIA tree pattern).
@@ -121,25 +121,24 @@ export class AtlasTree extends AtlasElement {
 
   private _parentItem(item: AtlasTreeItem): AtlasTreeItem | null {
     const p = item.parentElement;
-    if (p && p.tagName.toLowerCase() === 'atlas-tree-item') return p as AtlasTreeItem;
-    return null;
+    return p instanceof AtlasTreeItem ? p : null;
   }
 
   // ── Internal: events ────────────────────────────────────────
 
-  private readonly _onClick = (ev: Event): void => {
+  private readonly _onClick = (ev: MouseEvent): void => {
     const target = ev.target;
     if (!(target instanceof Element)) return;
-    const item = target.closest('atlas-tree-item') as AtlasTreeItem | null;
-    if (!item || !this.contains(item)) return;
-    if (item.hasAttribute('disabled')) return;
+    const closest = target.closest('atlas-tree-item');
+    if (!(closest instanceof AtlasTreeItem) || !this.contains(closest)) return;
+    if (closest.hasAttribute('disabled')) return;
     // Click toggles expansion if it has children; click also focuses
     // and (in single/multiple modes) selects.
-    this._setActive(item);
-    if (item.hasChildren()) {
-      this._toggle(item);
+    this._setActive(closest);
+    if (closest.hasChildren()) {
+      this._toggle(closest);
     }
-    this._activate(item, ev as MouseEvent);
+    this._activate(closest, ev);
   };
 
   private readonly _onFocusIn = (ev: FocusEvent): void => {

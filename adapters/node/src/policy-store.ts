@@ -125,7 +125,7 @@ export class PostgresPolicyStore implements PolicyStore {
         `;
         return version;
       } catch (e) {
-        const msg = (e as { message?: string }).message ?? '';
+        const msg = e instanceof Error ? e.message : '';
         if (!/23505|duplicate key/i.test(msg)) throw e;
       }
     }

@@ -9,6 +9,7 @@
  */
 
 import { test, expect, assertCommitted, readEditorState } from '@atlas/test-fixtures';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { Page, JSHandle } from '@playwright/test';
 
 /** Test-state key the shell registers for its commit envelope. */
@@ -31,15 +32,13 @@ async function waitForEditor(page: Page, pageId: string): Promise<void> {
   await page.waitForFunction((pid: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`) as
-        (Element & { editor?: unknown }) | null;
-      if (cp && cp.editor) return true;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`);
+      if (cp && 'editor' in cp && cp.editor) return true;
       const all = root.querySelectorAll('*');
       for (const el of all) {
-        const e = el as Element & { shadowRoot?: ShadowRoot };
-        if (e.shadowRoot) stack.push(e.shadowRoot);
+        if (el.shadowRoot) stack.push(el.shadowRoot);
       }
     }
     return false;
@@ -63,39 +62,84 @@ async function openEditor(page: Page, pageId: string): Promise<void> {
   await waitForEditor(page, pageId);
 }
 
+/**
+ * Boundary: `page.evaluate` returns whatever the browser-side closure
+ * returns, typed by Playwright as the closure's inferred return type. The
+ * inner editor API is a free-form `Record<string, unknown>` (intentional —
+ * it's the imperative escape hatch for tests), so the `op` dispatch is
+ * untyped by design. One justified narrowing concentrates the boundary.
+ */
 async function runEditorOp(
   page: Page,
   pageId: string,
   op: string,
   args?: unknown,
 ): Promise<EditorOpResult> {
-  return page.evaluate(({ pid, op, args }: { pid: string; op: string; args: unknown }) => {
+  const result = await page.evaluate(
+    ({ pid, op, args }: { pid: string; op: string; args: unknown }) => {
+      // Browser-side closure: the inner content-page custom element exposes
+      // an imperative `editor` API typed only on the element class (not
+      // serialisable across the Playwright boundary). Narrowing inside the
+      // closure via in-checks then invoking is the simplest faithful shape.
+      interface ContentPageEl extends Element {
+        editor?: Record<string, (a: unknown) => unknown>;
+      }
+      const stack: Array<Document | ShadowRoot | Element> = [document];
+      while (stack.length) {
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const cp = root.querySelector(
+          `content-page[data-page-id="${pid}"]`,
+        ) as ContentPageEl | null;
+        if (cp?.editor) {
+          const fn = cp.editor[op];
+          if (typeof fn === 'function') {
+            return fn(args);
+          }
+        }
+        const all = root.querySelectorAll('*');
+        for (const el of all) {
+          if (el.shadowRoot) stack.push(el.shadowRoot);
+        }
+      }
+      return { ok: false, reason: 'editor-not-found' };
+    },
+    { pid: pageId, op, args },
+  );
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the page-editor's imperative `cp.editor[op]` API is intentionally schema-free for test escape-hatch use; the EditorOpResult shape is contract-pinned by callers and asserted in-test.
+  return result as EditorOpResult;
+}
+
+interface WidgetEntry {
+  widgetId: string;
+  instanceId: string;
+  region: string;
+}
+
+async function listEditor(page: Page, pageId: string): Promise<WidgetEntry[]> {
+  const result = await page.evaluate((pid: string) => {
+    interface ContentPageEl extends Element {
+      editor?: { list?: () => unknown };
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector(`content-page[data-page-id="${pid}"]`) as
-        (Element & { editor?: Record<string, unknown> }) | null;
-      if (cp && cp.editor) {
-        return (cp.editor[op] as (a: unknown) => unknown)(args);
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const cp = root.querySelector(
+        `content-page[data-page-id="${pid}"]`,
+      ) as ContentPageEl | null;
+      if (cp?.editor?.list) {
+        return cp.editor.list();
       }
       const all = root.querySelectorAll('*');
       for (const el of all) {
-        const e = el as Element & { shadowRoot?: ShadowRoot };
-        if (e.shadowRoot) stack.push(e.shadowRoot);
+        if (el.shadowRoot) stack.push(el.shadowRoot);
       }
     }
-    return { ok: false, reason: 'editor-not-found' };
-  }, { pid: pageId, op, args }) as Promise<EditorOpResult>;
-}
-
-async function listEditor(
-  page: Page,
-  pageId: string,
-): Promise<Array<{ widgetId: string; instanceId: string; region: string }>> {
-  return runEditorOp(page, pageId, 'list') as unknown as Promise<
-    Array<{ widgetId: string; instanceId: string; region: string }>
-  >;
+    return [];
+  }, pageId);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the editor's `list` op returns WidgetEntry[] per the editor's spec; the page.evaluate return is unknown by design.
+  return result as WidgetEntry[];
 }
 
 interface PanelStateShape {
@@ -116,38 +160,28 @@ interface ShellSnapshot {
 }
 
 async function readShellSnapshot(page: Page): Promise<ShellSnapshot | null> {
-  return page.evaluate(() => {
+  const raw = await page.evaluate(() => {
+    interface ShellEl extends Element {
+      getEditorSnapshot?: () => unknown;
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { getEditorSnapshot?: () => unknown }) | null;
-      if (el && typeof el.getEditorSnapshot === 'function') {
-        const snap = el.getEditorSnapshot() as Record<string, unknown> | null;
-        if (!snap) return null;
-        return {
-          pageId: snap['pageId'],
-          mode: snap['mode'],
-          panels: snap['panels'],
-          inspectedWidgetInstanceId: snap['inspectedWidgetInstanceId'],
-          selectedWidgetInstanceIds: snap['selectedWidgetInstanceIds'],
-          status: snap['status'],
-          history: snap['history'],
-          regions: snap['regions'],
-          widgetInstances: (snap['widgetInstances'] as Array<{ instanceId: string; widgetId: string }>).map(
-            (w) => ({ instanceId: w.instanceId, widgetId: w.widgetId }),
-          ),
-        } as unknown as ShellSnapshot;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell') as ShellEl | null;
+      if (typeof el?.getEditorSnapshot === 'function') {
+        return el.getEditorSnapshot();
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
   });
+  if (!raw || typeof raw !== 'object') return null;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: shell exposes getEditorSnapshot() returning unknown; the snapshot shape is contract-pinned by the shell controller.
+  return raw as ShellSnapshot;
 }
 
 async function shellShadowQuery(
@@ -157,18 +191,16 @@ async function shellShadowQuery(
   return page.evaluate((sel: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { shadowRoot?: ShadowRoot }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell');
       if (el?.shadowRoot) {
-        const hit = el.shadowRoot.querySelector(sel) as HTMLElement | null;
-        if (hit) return { ok: true, text: hit.textContent };
+        const hit = el.shadowRoot.querySelector(sel);
+        if (hit instanceof HTMLElement) return { ok: true, text: hit.textContent };
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return { ok: false };
@@ -183,18 +215,16 @@ async function shellShadowAttr(
   return page.evaluate(({ sel, attr }: { sel: string; attr: string }) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { shadowRoot?: ShadowRoot }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell');
       if (el?.shadowRoot) {
         const hit = el.shadowRoot.querySelector(sel);
         if (hit) return hit.getAttribute(attr);
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
@@ -205,14 +235,13 @@ async function shellHostAttr(page: Page, attr: string): Promise<string | null> {
   return page.evaluate((attr: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
       const el = root.querySelector('authoring-page-editor-shell');
       if (el) return el.getAttribute(attr);
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
@@ -223,18 +252,16 @@ async function clickInShell(page: Page, selector: string): Promise<void> {
   const handle: JSHandle<Element | null> = await page.evaluateHandle((sel: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { shadowRoot?: ShadowRoot }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell');
       if (el?.shadowRoot) {
         const hit = el.shadowRoot.querySelector(sel);
         if (hit) return hit;
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
@@ -252,10 +279,9 @@ async function clickCell(
   const handle: JSHandle<Element | null> = await page.evaluateHandle((id: string) => {
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const shell = root.querySelector('authoring-page-editor-shell') as
-        (Element & { shadowRoot?: ShadowRoot }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const shell = root.querySelector('authoring-page-editor-shell');
       if (shell?.shadowRoot) {
         const hit = shell.shadowRoot.querySelector(
           `[data-widget-cell][data-instance-id="${id}"]`,
@@ -264,8 +290,7 @@ async function clickCell(
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
     return null;
@@ -277,20 +302,21 @@ async function clickCell(
 
 async function setMode(page: Page, mode: 'structure' | 'content' | 'preview'): Promise<void> {
   await page.evaluate((m: string) => {
+    interface ShellWithSetMode extends Element {
+      editorState?: { setMode: (m: string) => void };
+    }
     const stack: Array<Document | ShadowRoot | Element> = [document];
     while (stack.length) {
-      const root = stack.shift()!;
-      if (!('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector('authoring-page-editor-shell') as
-        (Element & { editorState?: { setMode: (m: string) => void } }) | null;
+      const root = stack.shift();
+      if (!root || !('querySelector' in root) || !root.querySelector) continue;
+      const el = root.querySelector('authoring-page-editor-shell') as ShellWithSetMode | null;
       if (el?.editorState) {
         el.editorState.setMode(m);
         return;
       }
       const all = root.querySelectorAll('*');
       for (const e of all) {
-        const node = e as Element & { shadowRoot?: ShadowRoot };
-        if (node.shadowRoot) stack.push(node.shadowRoot);
+        if (e.shadowRoot) stack.push(e.shadowRoot);
       }
     }
   }, mode);
@@ -411,8 +437,9 @@ test.describe('authoring.page-editor — adding widgets', () => {
     expect(res.ok).toBe(true);
     const list = await listEditor(page, 'editor-blank');
     expect(list.length).toBe(1);
-    expect(list[0]!.widgetId).toBe('sandbox.heading');
-    expect(list[0]!.region).toBe('main');
+    const first = assertDefined(list[0], 'first widget after add');
+    expect(first.widgetId).toBe('sandbox.heading');
+    expect(first.region).toBe('main');
   });
 
   test('unknown widget id returns reason=unknown-widget', async ({ page }) => {
@@ -460,6 +487,18 @@ interface ShellSnapshotShape {
   lastCommit: { intent: string; patch: Record<string, unknown> } | null;
 }
 
+/**
+ * Boundary: `readEditorState` returns `unknown` by design (the
+ * test-state registry is shape-erased). The shell snapshot shape is
+ * contract-pinned by the shell controller; one justified narrowing
+ * keeps all call sites clean.
+ */
+async function readShellState(page: Page, key: string): Promise<ShellSnapshotShape> {
+  const raw = await readEditorState(page, key);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the shell-surface snapshot shape is contract-pinned by the shell controller.
+  return assertDefined(raw as ShellSnapshotShape | null, `shell snapshot for ${key}`);
+}
+
 test.describe('authoring.page-editor — acceptance', () => {
   test('1) switching modes commits setMode and updates the shell', async ({ page }) => {
     await openEditor(page, 'editor-starter');
@@ -490,16 +529,16 @@ test.describe('authoring.page-editor — acceptance', () => {
     // fires (the inner editor.add path commits at the document layer; the
     // shell layer is what we're asserting here).
     const ok = await page.evaluate(async () => {
+      interface ShellWithAdd extends Element {
+        editorState?: {
+          addWidget: (a: unknown) => Promise<{ ok: boolean; instanceId?: string }>;
+        };
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & {
-            editorState?: {
-              addWidget: (a: unknown) => Promise<{ ok: boolean; instanceId?: string }>;
-            };
-          }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellWithAdd | null;
         if (el?.editorState) {
           const r = await el.editorState.addWidget({
             widgetId: 'sandbox.heading',
@@ -510,24 +549,25 @@ test.describe('authoring.page-editor — acceptance', () => {
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
       return false;
     });
     expect(ok).toBe(true);
 
-    const commit = (await assertCommitted(page, key, {
+    const commitRaw = await assertCommitted(page, key, {
       intent: 'addWidget',
       patch: { widgetId: 'sandbox.heading', region: 'main' },
-    })) as { patch: Record<string, unknown> };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: assertCommitted returns unknown; the commit envelope's patch shape is contract-pinned by the addWidget intent spec.
+    const commit = commitRaw as { patch: Record<string, unknown> };
 
     // The patch must carry the resolved instanceId so test authors can
     // chain follow-up assertions without re-querying the doc.
     expect(typeof commit.patch['instanceId']).toBe('string');
 
-    const snap = (await readEditorState(page, 'editor-blank:shell')) as ShellSnapshotShape;
+    const snap = await readShellState(page, 'editor-blank:shell');
     expect(snap.widgetInstances.length).toBe(1);
   });
 
@@ -542,7 +582,7 @@ test.describe('authoring.page-editor — acceptance', () => {
       patch: { instanceId: 'w-editor-starter-main-heading', additive: false },
     });
 
-    const snap = (await readEditorState(page, 'editor-starter:shell')) as ShellSnapshotShape;
+    const snap = await readShellState(page, 'editor-starter:shell');
     expect(snap.panels.right.open).toBe(true);
     expect(snap.panels.right.tab).toBe('settings');
     expect(snap.inspectedWidgetInstanceId).toBe('w-editor-starter-main-heading');
@@ -559,7 +599,7 @@ test.describe('authoring.page-editor — acceptance', () => {
     await setMode(page, 'preview');
     await assertCommitted(page, key, { intent: 'setMode', patch: { mode: 'preview' } });
 
-    const snap = (await readEditorState(page, 'editor-starter:shell')) as ShellSnapshotShape;
+    const snap = await readShellState(page, 'editor-starter:shell');
     expect(snap.mode).toBe('preview');
     expect(snap.panels.left.open).toBe(false);
     expect(snap.panels.right.open).toBe(false);
@@ -569,20 +609,16 @@ test.describe('authoring.page-editor — acceptance', () => {
     const exitVisible = await page.evaluate(() => {
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & { shadowRoot?: ShadowRoot }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell');
         if (el?.shadowRoot) {
-          const btn = el.shadowRoot.querySelector(
-            'atlas-button[name="exit-preview"]',
-          ) as HTMLElement | null;
-          if (btn) return getComputedStyle(btn).display !== 'none';
+          const btn = el.shadowRoot.querySelector('atlas-button[name="exit-preview"]');
+          if (btn instanceof HTMLElement) return getComputedStyle(btn).display !== 'none';
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
       return null;
@@ -596,14 +632,14 @@ test.describe('authoring.page-editor — acceptance', () => {
 
     // Add via the shell controller so undo/redo can roll the doc.
     await page.evaluate(async () => {
+      interface ShellWithAdd extends Element {
+        editorState?: { addWidget: (a: unknown) => Promise<{ ok: boolean }> };
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & {
-            editorState?: { addWidget: (a: unknown) => Promise<{ ok: boolean }> };
-          }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellWithAdd | null;
         if (el?.editorState) {
           await el.editorState.addWidget({
             widgetId: 'sandbox.heading',
@@ -614,8 +650,7 @@ test.describe('authoring.page-editor — acceptance', () => {
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
     });
@@ -647,20 +682,28 @@ test.describe('authoring.page-editor — panels', () => {
   /** Drive a controller intent by name from inside the page. */
   async function runShellIntent(page: Page, method: string, ...args: unknown[]): Promise<void> {
     await page.evaluate(({ method, args }: { method: string; args: unknown[] }) => {
+      // Browser-side: the shell exposes an editorState controller whose
+      // method surface is contract-pinned by the controller class but not
+      // serialisable to the Playwright runner. Local typed shape mirrors
+      // the methods this helper drives.
+      interface ShellEl extends Element {
+        editorState?: Record<string, (...a: unknown[]) => unknown>;
+      }
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const el = root.querySelector('authoring-page-editor-shell') as
-          (Element & { editorState?: Record<string, (...a: unknown[]) => unknown> }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const el = root.querySelector('authoring-page-editor-shell') as ShellEl | null;
         if (el?.editorState) {
-          (el.editorState[method] as (...a: unknown[]) => unknown)(...args);
-          return;
+          const fn = el.editorState[method];
+          if (typeof fn === 'function') {
+            fn(...args);
+            return;
+          }
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
     }, { method, args });
@@ -728,20 +771,18 @@ test.describe('authoring.page-editor — panels', () => {
     const openLeftVisible = await page.evaluate(() => {
       const stack: Array<Document | ShadowRoot | Element> = [document];
       while (stack.length) {
-        const root = stack.shift()!;
-        if (!('querySelector' in root) || !root.querySelector) continue;
-        const shell = root.querySelector('authoring-page-editor-shell') as
-          (Element & { shadowRoot?: ShadowRoot }) | null;
+        const root = stack.shift();
+        if (!root || !('querySelector' in root) || !root.querySelector) continue;
+        const shell = root.querySelector('authoring-page-editor-shell');
         if (shell?.shadowRoot) {
           const box = shell.shadowRoot.querySelector(
             'atlas-box[data-role="canvas-edge"][data-edge="left"]',
-          ) as HTMLElement | null;
-          if (box) return getComputedStyle(box).display !== 'none';
+          );
+          if (box instanceof HTMLElement) return getComputedStyle(box).display !== 'none';
         }
         const all = root.querySelectorAll('*');
         for (const e of all) {
-          const node = e as Element & { shadowRoot?: ShadowRoot };
-          if (node.shadowRoot) stack.push(node.shadowRoot);
+          if (e.shadowRoot) stack.push(e.shadowRoot);
         }
       }
       return null;
@@ -771,7 +812,7 @@ test.describe('authoring.page-editor — panels', () => {
     // the persisted right-panel width.
     await page.reload();
     await openEditor(page, 'editor-starter');
-    const snap = (await readEditorState(page, 'editor-starter:shell')) as ShellSnapshotShape;
+    const snap = await readShellState(page, 'editor-starter:shell');
     expect(snap.panels.right.size).toBe(400);
   });
 });

@@ -14,7 +14,7 @@
  */
 
 import { sortRows, nextSortDir, type SortDirection } from './sort-core.ts';
-import { filterRows, type FilterableColumn } from './filter-core.ts';
+import { filterRows, type FilterConfig, type FilterableColumn } from './filter-core.ts';
 import {
   selectRow,
   unselectRow,
@@ -37,17 +37,75 @@ export const STATUS = Object.freeze({
 
 export type Status = typeof STATUS[keyof typeof STATUS];
 
-export interface ColumnConfig<R extends Row = Row> extends FilterableColumn<R> {
-  key: string | ((row: R) => unknown);
+/** Built-in cell-format keys. Functions are also accepted (see `CellFormatterFn`). */
+export type BuiltinFormat = 'text' | 'date' | 'number' | 'currency' | 'status';
+
+/** Cell formatter callback. Receives the strongly-typed column value `V`. */
+export type CellFormatterFn<R extends Row, V> = (value: V, row: R) => string | Node;
+
+/**
+ * Format spec on a column — either a built-in key, a typed callback, or
+ * undefined (defaults to plain text).
+ */
+export type ColumnFormat<R extends Row, V> = BuiltinFormat | CellFormatterFn<R, V> | undefined;
+
+/**
+ * One column of `<atlas-data-table>` data. The value type `V` is what the
+ * column's `key` produces — usually `R[K]` for a row-property column, or
+ * an explicit `V` for a function-accessor column (see `DerivedColumn`).
+ *
+ * Callbacks (`format`, `filter.matches`, `sort`) see `V`, no casts required.
+ */
+export interface Column<R extends Row, V> extends FilterableColumn<R, V> {
+  key: keyof R | ((row: R) => V);
   label?: string;
   sortable?: boolean;
   align?: string;
-  format?: unknown;
+  format?: ColumnFormat<R, V>;
   currency?: string;
+  /** Optional typed comparator. Defaults to `defaultCompare` from sort-core. */
+  sort?: (a: V, b: V) => number;
+  filter?: FilterConfig<R, V>;
 }
 
+/**
+ * Column whose value is computed from the row (no `keyof R`). The caller
+ * MUST supply `V` explicitly — there is no implicit `unknown` fallback.
+ *
+ *   { key: (row) => row.firstName + ' ' + row.lastName, ... } satisfies DerivedColumn<User, string>
+ */
+export interface DerivedColumn<R extends Row, V> extends Column<R, V> {
+  key: (row: R) => V;
+}
+
+/**
+ * Distributive column union: each entry's `key` is one of R's keys (K),
+ * and that entry's value type is R[K]. The result is the union of every
+ * per-key Column, plus an opt-in `DerivedColumn<R, V>` for accessor-style
+ * columns whose V the caller declares explicitly.
+ *
+ *   const columns: Columns<MyRow> = [
+ *     { key: 'id', ... },                       // V inferred as MyRow['id']
+ *     { key: 'name', format: (v, row) => ... }, // v: string
+ *     { key: (r) => r.first + r.last, ... } as DerivedColumn<MyRow, string>,
+ *   ];
+ */
+export type Columns<R extends Row> = ReadonlyArray<
+  { [K in keyof R]-?: Column<R, R[K]> }[keyof R] | DerivedColumn<R, unknown>
+>;
+
+/**
+ * Type-erased column shape used inside the core (where R is preserved but
+ * per-column V is collapsed to `unknown`). Consumer call sites should use
+ * `Column<R, V>` / `Columns<R>` directly.
+ */
+export type AnyColumn<R extends Row = Row> = Column<R, unknown>;
+
+/** @deprecated Prefer `AnyColumn<R>` for internals, `Columns<R>` for consumers. */
+export type ColumnConfig<R extends Row = Row> = AnyColumn<R>;
+
 export interface DataTableCoreConfig<R extends Row = Row> {
-  columns?: Array<ColumnConfig<R>>;
+  columns?: ReadonlyArray<AnyColumn<R>>;
   rowKey?: RowKey<R>;
   pageSize?: number;
   selectionMode?: SelectionMode;
@@ -57,7 +115,7 @@ export interface DataTableState<R extends Row = Row> {
   status: Status;
   error: string | null;
   rows: R[];
-  columns: Array<ColumnConfig<R>>;
+  columns: Array<AnyColumn<R>>;
   sortBy: string | null;
   sortDir: SortDirection;
   filters: Record<string, unknown>;
@@ -76,7 +134,7 @@ export interface TableDelta {
 const NO_DELTA: TableDelta = Object.freeze({ changed: false, added: [], removed: [] }) as TableDelta;
 
 export class DataTableCore<R extends Row = Row> {
-  _columns: Array<ColumnConfig<R>>;
+  _columns: Array<AnyColumn<R>>;
   _rowKey: RowKey<R>;
   _pageSize: number;
   _selectionMode: SelectionMode;
@@ -93,7 +151,11 @@ export class DataTableCore<R extends Row = Row> {
   _listeners: Set<(state: DataTableState<R>) => void> = new Set();
 
   constructor(config: DataTableCoreConfig<R> = {}) {
-    this._columns = Array.isArray(config.columns) ? config.columns.slice() : [];
+    const cols = config.columns;
+    // `Array.isArray` narrows a `ReadonlyArray<T>` parameter to `any[]` —
+    // the safer check is "do we actually have an array-like value?". The
+    // declared type already guarantees the element shape.
+    this._columns = cols ? [...cols] : [];
     this._rowKey = config.rowKey ?? 'id';
     this._pageSize = normalizePageSize(config.pageSize);
     this._selectionMode = config.selectionMode ?? 'none';
@@ -133,14 +195,25 @@ export class DataTableCore<R extends Row = Row> {
 
   /** Rows after filters applied. */
   filteredRows(): R[] {
-    return filterRows(this._allRows, this._filters, this._columns);
+    return filterRows(
+      this._allRows,
+      this._filters,
+      this._columns as ReadonlyArray<FilterableColumn<R, unknown>>,
+    );
   }
 
   /** Rows after filter + sort. */
   sortedRows(): R[] {
+    const column = this._sortBy
+      ? this._columns.find((c) => typeof c.key === 'string' && c.key === this._sortBy)
+      : undefined;
+    // AnyColumn<R> = Column<R, unknown>, so column.sort is already
+    // (a: unknown, b: unknown) => number — no cast needed.
+    const comparator = column?.sort;
     return sortRows(this.filteredRows(), {
       sortBy: this._sortBy,
       sortDir: this._sortDir,
+      ...(comparator ? { comparator } : {}),
       ...(typeof this._rowKey === 'string' ? { tiebreak: this._rowKey } : {}),
     });
   }
@@ -175,8 +248,10 @@ export class DataTableCore<R extends Row = Row> {
 
   // ── Actions ─────────────────────────────────────────────────────
 
-  setColumns(columns: Array<ColumnConfig<R>> | null | undefined): TableDelta {
-    this._columns = Array.isArray(columns) ? columns.slice() : [];
+  setColumns(columns: ReadonlyArray<AnyColumn<R>> | null | undefined): TableDelta {
+    // `Array.isArray` narrows a `ReadonlyArray<T>` parameter to `any[]`;
+    // a truthy check preserves the declared element type instead.
+    this._columns = columns ? [...columns] : [];
     this._notify();
     return NO_DELTA;
   }

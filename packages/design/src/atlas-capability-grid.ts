@@ -115,8 +115,8 @@ export class AtlasCapabilityGrid extends AtlasElement {
   }
 
   private _onTileToggle = (ev: Event): void => {
-    const detail = (ev as CustomEvent<AtlasCapabilityTileToggleDetail>).detail;
-    if (!detail) return;
+    if (!(ev instanceof CustomEvent)) return;
+    if (!ev.detail) return;
     this._emitChange();
   };
 

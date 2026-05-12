@@ -63,7 +63,7 @@ export class WidgetPaletteElement extends AtlasSurface {
   }
 
   override connectedCallback(): void {
-    (this as unknown as { _applyTestId: () => void })._applyTestId();
+    this._applyTestId();
     this._rerender();
     this.onMount();
   }
@@ -81,7 +81,10 @@ export class WidgetPaletteElement extends AtlasSurface {
     const reg = this._widgetRegistry;
     const tpl = this._templateManifest;
     if (!reg || typeof reg.list !== 'function' || !tpl) return [];
-    const doc = this._pageDoc ?? ({ regions: {} } as PageDocument);
+    // No real doc yet — synthesize an empty one so computeValidTargets
+    // can still reason about template constraints.
+    const fallbackDoc: PageDocument = { pageId: '', regions: {} };
+    const doc = this._pageDoc ?? fallbackDoc;
     const out: WidgetSummary[] = [];
     for (const summary of reg.list()) {
       const result = computeValidTargets(summary.widgetId, doc, tpl, reg, null);

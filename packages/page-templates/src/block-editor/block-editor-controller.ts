@@ -16,6 +16,8 @@
 
 import { makeCommit, type CommitRecord } from '@atlas/test-state';
 
+import { must } from '../internal/assert.ts';
+
 export type BlockType = 'text' | 'heading' | 'list' | 'image-placeholder';
 
 export interface BlockContentImage {
@@ -99,7 +101,10 @@ export class BlockEditorController {
 
   constructor({ surfaceId, document: doc }: BlockEditorOptions = {}) {
     this._surfaceId = surfaceId ?? 'editor:block';
-    this._blocks = Array.isArray(doc?.blocks) ? structuredClone(doc!.blocks) : [];
+    // `Array.isArray(doc?.blocks)` already proved both `doc` and
+    // `doc.blocks` are present — read the array directly instead of
+    // bouncing through `doc!`.
+    this._blocks = doc && Array.isArray(doc.blocks) ? structuredClone(doc.blocks) : [];
   }
 
   // ── accessors ───────────────────────────────────────────────────
@@ -187,8 +192,11 @@ export class BlockEditorController {
     if (this._blocks.some((b) => b.blockId === blockId)) {
       return { ok: false, reason: 'duplicate-blockId' };
     }
-    const index = Number.isFinite(at)
-      ? clamp(at as number, 0, this._blocks.length)
+    // `at` is typed `number | undefined`; `Number.isFinite` already
+    // rejects `undefined` and NaN, but doesn't narrow the type in TS.
+    // Read once into a local so the call site stays type-clean.
+    const index = typeof at === 'number' && Number.isFinite(at)
+      ? clamp(at, 0, this._blocks.length)
       : this._blocks.length;
     this._blocks.splice(index, 0, {
       blockId,
@@ -210,7 +218,7 @@ export class BlockEditorController {
   private _moveBlock({ blockId, to }: MoveBlockPatch = {}): CommitResult {
     const from = this._indexOf(blockId);
     if (from < 0) return { ok: false, reason: 'block-not-found' };
-    const targetRaw = Number.isFinite(to) ? (to as number) : this._blocks.length - 1;
+    const targetRaw = typeof to === 'number' && Number.isFinite(to) ? to : this._blocks.length - 1;
     const target = clamp(targetRaw, 0, this._blocks.length - 1);
     if (from === target) return { ok: true };
     const [picked] = this._blocks.splice(from, 1);
@@ -223,7 +231,10 @@ export class BlockEditorController {
     const idx = this._indexOf(blockId);
     if (idx < 0) return { ok: false, reason: 'block-not-found' };
     if (!patch || typeof patch !== 'object') return { ok: false, reason: 'invalid-patch' };
-    const current = this._blocks[idx]!;
+    const current = must(
+      this._blocks[idx],
+      'block-editor: _indexOf returned a valid index, block must exist',
+    );
     this._blocks[idx] = {
       ...current,
       content: patch.content ?? current.content,
@@ -246,10 +257,21 @@ export class BlockEditorController {
     const idx = this._indexOf(blockId);
     if (idx < 0) return { ok: false, reason: 'block-not-found' };
     if (!format) return { ok: false, reason: 'invalid-patch' };
-    const current = this._blocks[idx]!;
-    const formats = new Set<string>(
-      (current.config?.['formats'] as string[] | undefined) ?? [],
+    const current = must(
+      this._blocks[idx],
+      'block-editor: _indexOf returned a valid index, block must exist',
     );
+    // `config['formats']` is `unknown` (config is `Record<string, unknown>`).
+    // Pull strings out into a fresh array — drops malformed entries
+    // silently instead of assert-casting the whole shape.
+    const rawFormats: unknown = current.config['formats'];
+    const seed: string[] = [];
+    if (Array.isArray(rawFormats)) {
+      for (const f of rawFormats) {
+        if (typeof f === 'string') seed.push(f);
+      }
+    }
+    const formats = new Set<string>(seed);
     if (formats.has(format)) formats.delete(format);
     else formats.add(format);
     this._blocks[idx] = {

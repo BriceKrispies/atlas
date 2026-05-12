@@ -1,74 +1,33 @@
 /**
  * Register-templates test for @atlas/bundle-standard.
  *
- * Mirrors register.test.ts:
- *   1. Sets up a linkedom DOM so `AtlasElement.define(...)` works headlessly.
- *   2. Imports each template module (side-effect registers the custom element).
- *   3. Constructs a fresh TemplateRegistry, runs registerAllTemplates, and
+ * Linkedom DOM globals (window/document/HTMLElement/customElements/Node/
+ * NodeFilter/createTreeWalker shim) are installed by the project-wide
+ * vitest setup at `test-setup/linkedom-shims.ts` — see vitest.config.ts.
+ * No inline shim needed here.
+ *
+ *   1. Imports each template module (side-effect registers the custom element).
+ *   2. Constructs a fresh TemplateRegistry, runs registerAllTemplates, and
  *      asserts both templates are present with valid manifests.
- *   4. Validates every seed page document against page_document.schema.json.
- *   5. Confirms every seed doc's templateId resolves in the template registry.
- *   6. Checks bundle.manifest.json's provides.templates list matches the
- *      two shipped template ids exactly.
+ *   3. Validates every seed page document against page_document.schema.json.
+ *   4. Confirms every seed doc's templateId resolves in the template registry.
+ *   5. Checks bundle.manifest.json's provides.templates list matches the
+ *      shipped template ids exactly.
  */
 
 import { test, expect } from 'vitest';
-import { parseHTML } from 'linkedom';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-
-// --- browser-ish globals BEFORE loading @atlas/core or template modules
-const dom = parseHTML(
-  '<!doctype html><html><head></head><body></body></html>',
-);
-const g = globalThis as unknown as Record<string, unknown>;
-g['window'] = dom.window;
-g['document'] = dom.document;
-g['HTMLElement'] = dom.HTMLElement;
-g['DocumentFragment'] = dom.DocumentFragment;
-g['customElements'] = dom.customElements;
-g['Node'] = dom.Node;
-g['NodeFilter'] = (dom as unknown as { NodeFilter?: unknown }).NodeFilter ?? { SHOW_ELEMENT: 1 };
-if (!g['structuredClone']) {
-  g['structuredClone'] = (v: unknown): unknown => JSON.parse(JSON.stringify(v));
-}
-
-// linkedom lacks createTreeWalker; @atlas/core's html helper needs it
-// to attach event bindings. Mirror the shim used in widget-host's
-// dry-run and register.test.ts.
-interface TreeWalkable {
-  children?: Iterable<TreeWalkable>;
-}
-const doc = dom.document as unknown as { createTreeWalker?: unknown };
-if (typeof doc.createTreeWalker !== 'function') {
-  doc.createTreeWalker = (root: TreeWalkable) => {
-    const elements: TreeWalkable[] = [];
-    const walk = (el: TreeWalkable): void => {
-      elements.push(el);
-      for (const child of el.children ?? []) walk(child);
-    };
-    for (const child of root.children ?? []) walk(child);
-    let i = -1;
-    return {
-      nextNode(): TreeWalkable | null {
-        i += 1;
-        return i < elements.length ? (elements[i] ?? null) : null;
-      },
-    };
-  };
-}
-
-const { TemplateRegistry, validateTemplateManifest, validatePageDocument } =
-  await import('@atlas/page-templates');
-const oneColumn = await import('../src/templates/one-column/index.ts');
-const twoColumn = await import('../src/templates/two-column/index.ts');
-const threeColumn = await import('../src/templates/three-column/index.ts');
-const headerMainFooter = await import('../src/templates/header-main-footer/index.ts');
-const heroAndGrid = await import('../src/templates/hero-and-grid/index.ts');
-const dashboardTiles = await import('../src/templates/dashboard-tiles/index.ts');
-const { registerAllTemplates } = await import('../src/register.ts');
-const { seedPages, gallerySeedPages } = await import('../src/seed-pages/index.ts');
+import { TemplateRegistry, validateTemplateManifest, validatePageDocument } from '@atlas/page-templates';
+import * as oneColumn from '../src/templates/one-column/index.ts';
+import * as twoColumn from '../src/templates/two-column/index.ts';
+import * as threeColumn from '../src/templates/three-column/index.ts';
+import * as headerMainFooter from '../src/templates/header-main-footer/index.ts';
+import * as heroAndGrid from '../src/templates/hero-and-grid/index.ts';
+import * as dashboardTiles from '../src/templates/dashboard-tiles/index.ts';
+import { registerAllTemplates } from '../src/register.ts';
+import { seedPages, gallerySeedPages } from '../src/seed-pages/index.ts';
 
 interface BundleManifestDoc {
   provides?: { templates?: string[] };
@@ -77,6 +36,49 @@ interface BundleManifestDoc {
 interface SeedDoc {
   pageId: string;
   templateId: string;
+}
+
+/** Boundary: seed-pages export is `ReadonlyArray<unknown>` because the
+ *  JSON-imported documents have no compile-time shape. Runtime-check the
+ *  two fields this test actually reads, then narrow once. */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Narrow an `unknown` seed-page entry to a typed view that retains the
+ * full original document (for downstream schema validation) while
+ * exposing pageId/templateId as typed fields.
+ */
+type SeedView = SeedDoc & { raw: unknown };
+
+function asSeedDoc(v: unknown, source: string): SeedView {
+  if (!isRecord(v)) {
+    throw new Error(`Test invariant violation: ${source} is not an object`);
+  }
+  const pageId = v['pageId'];
+  const templateId = v['templateId'];
+  if (typeof pageId !== 'string' || typeof templateId !== 'string') {
+    throw new Error(`Test invariant violation: ${source} missing pageId/templateId`);
+  }
+  return { pageId, templateId, raw: v };
+}
+
+function asBundleManifest(v: unknown): BundleManifestDoc {
+  if (!isRecord(v)) {
+    throw new Error('Test invariant violation: bundle.manifest.json did not parse to an object');
+  }
+  const provides = v['provides'];
+  if (provides == null) return {};
+  if (!isRecord(provides)) {
+    throw new Error('Test invariant violation: bundle manifest `provides` is not an object');
+  }
+  const templates = provides['templates'];
+  if (templates === undefined) return { provides: {} };
+  if (!Array.isArray(templates) || !templates.every((t): t is string => typeof t === 'string')) {
+    throw new Error('Test invariant violation: bundle manifest `provides.templates` is not a string[]');
+  }
+  return { provides: { templates } };
 }
 
 test('registerAllTemplates populates registry, seeds validate, and bundle manifest matches', async () => {
@@ -118,8 +120,12 @@ test('registerAllTemplates populates registry, seeds validate, and bundle manife
     Array.isArray(gallerySeedPages) && gallerySeedPages.length === 4,
     'gallerySeedPages must contain four docs',
   ).toBe(true);
-  for (const doc of [...seedPages, ...gallerySeedPages] as SeedDoc[]) {
-    const result = validatePageDocument(doc);
+  const allSeeds: SeedView[] = [
+    ...seedPages.map((v, i) => asSeedDoc(v, `seedPages[${i}]`)),
+    ...gallerySeedPages.map((v, i) => asSeedDoc(v, `gallerySeedPages[${i}]`)),
+  ];
+  for (const doc of allSeeds) {
+    const result = validatePageDocument(doc.raw);
     expect(
       result.ok,
       `seed page ${doc.pageId} should validate: ${JSON.stringify(result.errors)}`,
@@ -127,7 +133,6 @@ test('registerAllTemplates populates registry, seeds validate, and bundle manife
   }
 
   // 4. Each seed doc's templateId is present in the populated registry.
-  const allSeeds = [...seedPages, ...gallerySeedPages] as SeedDoc[];
   expect(
     allSeeds.every((p) => registry.has(p.templateId)),
     `every seed doc's templateId must be registered, got ${allSeeds.map((p) => p.templateId).join(', ')}`,
@@ -136,7 +141,8 @@ test('registerAllTemplates populates registry, seeds validate, and bundle manife
   // 5. bundle.manifest.json's provides.templates matches exactly.
   const here = dirname(fileURLToPath(import.meta.url));
   const manifestPath = resolve(here, '..', 'src', 'bundle.manifest.json');
-  const bundleManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as BundleManifestDoc;
+  const parsed: unknown = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const bundleManifest = asBundleManifest(parsed);
   const declared = bundleManifest.provides?.templates ?? [];
   const expectedDeclared = expectedTemplateIds;
   expect(

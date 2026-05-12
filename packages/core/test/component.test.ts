@@ -1,7 +1,8 @@
 /**
  * Unit tests for AtlasElement / AtlasSurface (`packages/core/src/component.ts`).
  *
- * Linkedom-backed (test-setup/linkedom-shims.ts installs the DOM shims).
+ * Linkedom-backed (test-setup/linkedom-shims.ts installs the DOM shims,
+ * including NodeFilter, ShadowRoot, etc).
  *
  * Coverage:
  *   - AtlasElement.define idempotency
@@ -11,7 +12,8 @@
  *   - _safeRender swallows render throws and emits Atlas.Render.Failed
  */
 
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 import { AtlasElement, AtlasSurface, html } from '../src/index.ts';
 import {
   setTelemetrySink,
@@ -37,12 +39,42 @@ function uniqueTag(prefix: string): string {
   return `${prefix}-${_tagCounter}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-beforeAll(() => {
-  // linkedom doesn't expose NodeFilter globally; @atlas/core's html
-  // template tag uses NodeFilter.SHOW_ELEMENT (=1) for createTreeWalker.
-  const g = globalThis as unknown as { NodeFilter?: { SHOW_ELEMENT: number } };
-  if (!g.NodeFilter) g.NodeFilter = { SHOW_ELEMENT: 1 };
-});
+/**
+ * Register a custom-element class under a fresh tag, create an instance,
+ * and narrow it with `instanceof` so the test can call subclass methods
+ * without a cast. Replaces the ad-hoc `document.createElement(tag) as Foo`
+ * pattern that triggers `no-unsafe-type-assertion` since `tag` isn't in
+ * `HTMLElementTagNameMap`.
+ */
+function defineAndCreate<T extends AtlasElement>(
+  tag: string,
+  ctor: new () => T,
+): T {
+  AtlasElement.define(tag, ctor);
+  const el = document.createElement(tag);
+  if (!(el instanceof ctor)) {
+    throw new Error(
+      `Test invariant violation: createElement('${tag}') did not yield an instance of ${ctor.name}`,
+    );
+  }
+  return el;
+}
+
+/** Narrow a captured telemetry event's `error` field. */
+function errorMessage(ev: TelemetryEvent): string {
+  const err: unknown = ev['error'];
+  if (
+    typeof err !== 'object' ||
+    err === null ||
+    !('message' in err) ||
+    typeof err.message !== 'string'
+  ) {
+    throw new Error(
+      `Test invariant violation: expected error.message string on event, got ${JSON.stringify(err)}`,
+    );
+  }
+  return err.message;
+}
 
 beforeEach(() => {
   setTelemetrySink(null);
@@ -91,9 +123,7 @@ describe('AtlasElement.boolAttr / strAttr reflection', () => {
         );
       }
     }
-    const tag = uniqueTag('atlas-bool');
-    AtlasElement.define(tag, WithFlag);
-    const el = document.createElement(tag) as WithFlag;
+    const el = defineAndCreate(uniqueTag('atlas-bool'), WithFlag);
     expect(el.disabled).toBe(false);
     el.disabled = true;
     expect(el.hasAttribute('disabled')).toBe(true);
@@ -114,9 +144,7 @@ describe('AtlasElement.boolAttr / strAttr reflection', () => {
         );
       }
     }
-    const tag = uniqueTag('atlas-str');
-    AtlasElement.define(tag, WithType);
-    const el = document.createElement(tag) as WithType;
+    const el = defineAndCreate(uniqueTag('atlas-str'), WithType);
     expect(el.kind).toBe('primary');
     el.kind = 'danger';
     expect(el.getAttribute('kind')).toBe('danger');
@@ -134,9 +162,7 @@ describe('AtlasElement.boolAttr / strAttr reflection', () => {
         );
       }
     }
-    const tag = uniqueTag('atlas-str-null');
-    AtlasElement.define(tag, WithName);
-    const el = document.createElement(tag) as WithName;
+    const el = defineAndCreate(uniqueTag('atlas-str-null'), WithName);
     el.label = 'hello';
     expect(el.getAttribute('label')).toBe('hello');
     (el as { label: unknown }).label = null;
@@ -149,9 +175,7 @@ describe('AtlasElement.boolAttr / strAttr reflection', () => {
 describe('AtlasElement.surface / surfaceId', () => {
   it('returns "" when there is no AtlasSurface ancestor', () => {
     class Plain extends AtlasElement {}
-    const tag = uniqueTag('atlas-plain');
-    AtlasElement.define(tag, Plain);
-    const el = document.createElement(tag) as Plain;
+    const el = defineAndCreate(uniqueTag('atlas-plain'), Plain);
     document.body.appendChild(el);
     expect(el.surface).toBeNull();
     expect(el.surfaceId).toBe('');
@@ -162,13 +186,8 @@ describe('AtlasElement.surface / surfaceId', () => {
       static override surfaceId = 'surf-123';
     }
     class Child extends AtlasElement {}
-    const surfTag = uniqueTag('atlas-surf');
-    const childTag = uniqueTag('atlas-child');
-    AtlasElement.define(surfTag, Surf);
-    AtlasElement.define(childTag, Child);
-
-    const surface = document.createElement(surfTag) as Surf;
-    const child = document.createElement(childTag) as Child;
+    const surface = defineAndCreate(uniqueTag('atlas-surf'), Surf);
+    const child = defineAndCreate(uniqueTag('atlas-child'), Child);
     surface.appendChild(child);
     document.body.appendChild(surface);
 
@@ -184,9 +203,7 @@ describe('AtlasElement.surface / surfaceId', () => {
     class Surf extends AtlasSurface {
       static override surfaceId = 'shadow-surf';
     }
-    const surfTag = uniqueTag('atlas-shadow-surf');
-    AtlasElement.define(surfTag, Surf);
-    const surface = document.createElement(surfTag) as Surf;
+    const surface = defineAndCreate(uniqueTag('atlas-shadow-surf'), Surf);
     document.body.appendChild(surface);
 
     // Host the child inside a shadow root attached to a host element that
@@ -197,9 +214,7 @@ describe('AtlasElement.surface / surfaceId', () => {
     const root = host.attachShadow({ mode: 'open' });
 
     class Inner extends AtlasElement {}
-    const innerTag = uniqueTag('atlas-shadow-inner');
-    AtlasElement.define(innerTag, Inner);
-    const inner = document.createElement(innerTag) as Inner;
+    const inner = defineAndCreate(uniqueTag('atlas-shadow-inner'), Inner);
     root.appendChild(inner);
 
     expect(inner.surfaceId).toBe('shadow-surf');
@@ -214,13 +229,8 @@ describe('AtlasElement._applyTestId', () => {
       static override surfaceId = 'page';
     }
     class Btn extends AtlasElement {}
-    const stag = uniqueTag('atlas-page');
-    const btag = uniqueTag('atlas-btn');
-    AtlasElement.define(stag, Surf);
-    AtlasElement.define(btag, Btn);
-
-    const surf = document.createElement(stag);
-    const btn = document.createElement(btag);
+    const surf = defineAndCreate(uniqueTag('atlas-page'), Surf);
+    const btn = defineAndCreate(uniqueTag('atlas-btn'), Btn);
     btn.setAttribute('name', 'save');
     surf.appendChild(btn);
     document.body.appendChild(surf);
@@ -234,13 +244,8 @@ describe('AtlasElement._applyTestId', () => {
       static override surfaceId = 'list';
     }
     class Row extends AtlasElement {}
-    const stag = uniqueTag('atlas-list-surf');
-    const rtag = uniqueTag('atlas-row');
-    AtlasElement.define(stag, Surf);
-    AtlasElement.define(rtag, Row);
-
-    const surf = document.createElement(stag);
-    const row = document.createElement(rtag);
+    const surf = defineAndCreate(uniqueTag('atlas-list-surf'), Surf);
+    const row = defineAndCreate(uniqueTag('atlas-row'), Row);
     row.setAttribute('name', 'row');
     row.setAttribute('key', 'pg_001');
     surf.appendChild(row);
@@ -260,9 +265,7 @@ describe('AtlasSurface state transitions', () => {
     class Surf extends AtlasSurface {
       static override surfaceId = 'state-surf';
     }
-    const tag = uniqueTag('atlas-state-surf');
-    AtlasElement.define(tag, Surf);
-    const surf = document.createElement(tag) as Surf;
+    const surf = defineAndCreate(uniqueTag('atlas-state-surf'), Surf);
     document.body.appendChild(surf);
 
     surf.setState('loading');
@@ -289,9 +292,7 @@ describe('AtlasSurface state transitions', () => {
     class Surf extends AtlasSurface {
       static override surfaceId = 'attr-surf';
     }
-    const tag = uniqueTag('atlas-attr-surf');
-    AtlasElement.define(tag, Surf);
-    const surf = document.createElement(tag) as Surf;
+    const surf = defineAndCreate(uniqueTag('atlas-attr-surf'), Surf);
     document.body.appendChild(surf);
 
     surf.setState('loading');
@@ -310,9 +311,7 @@ describe('AtlasSurface state transitions', () => {
         return [{ id: 1 }];
       }
     }
-    const tag = uniqueTag('atlas-managed');
-    AtlasElement.define(tag, Surf);
-    const surf = document.createElement(tag) as Surf;
+    const surf = defineAndCreate(uniqueTag('atlas-managed'), Surf);
     document.body.appendChild(surf);
 
     // Allow the managed load microtask to complete.
@@ -335,9 +334,7 @@ describe('AtlasSurface state transitions', () => {
         throw new Error('boom');
       }
     }
-    const tag = uniqueTag('atlas-fail');
-    AtlasElement.define(tag, Surf);
-    const surf = document.createElement(tag) as Surf;
+    const surf = defineAndCreate(uniqueTag('atlas-fail'), Surf);
     document.body.appendChild(surf);
 
     await new Promise((r) => setTimeout(r, 0));
@@ -363,8 +360,7 @@ describe('AtlasElement._safeRender', () => {
       }
     }
     const tag = uniqueTag('atlas-boom');
-    AtlasElement.define(tag, Boom);
-    const el = document.createElement(tag) as Boom;
+    const el = defineAndCreate(tag, Boom);
     try {
       document.body.appendChild(el);
     } catch {
@@ -373,10 +369,8 @@ describe('AtlasElement._safeRender', () => {
 
     const failures = events.filter((e) => e.eventName === 'Atlas.Render.Failed');
     expect(failures.length).toBeGreaterThanOrEqual(1);
-    const failure = failures[0]!;
-    expect((failure['error'] as { message: string }).message).toBe(
-      'render-explode',
-    );
+    const failure = assertDefined(failures[0], 'at least one Atlas.Render.Failed event');
+    expect(errorMessage(failure)).toBe('render-explode');
     expect(failure['tagName']).toBe(tag);
   });
 
@@ -386,9 +380,7 @@ describe('AtlasElement._safeRender', () => {
         return html`<span class="x">hi</span>`;
       }
     }
-    const tag = uniqueTag('atlas-greet');
-    AtlasElement.define(tag, Greet);
-    const el = document.createElement(tag) as Greet;
+    const el = defineAndCreate(uniqueTag('atlas-greet'), Greet);
     document.body.appendChild(el);
     expect(el.querySelector('span.x')?.textContent).toBe('hi');
   });
@@ -405,21 +397,18 @@ describe('AtlasElement.emit', () => {
       static override surfaceId = 'emit-surf';
     }
     class Btn extends AtlasElement {}
-    const stag = uniqueTag('atlas-emit-surf');
-    const btag = uniqueTag('atlas-emit-btn');
-    AtlasElement.define(stag, Surf);
-    AtlasElement.define(btag, Btn);
-
-    const surf = document.createElement(stag);
-    const btn = document.createElement(btag) as Btn;
+    const surf = defineAndCreate(uniqueTag('atlas-emit-surf'), Surf);
+    const btn = defineAndCreate(uniqueTag('atlas-emit-btn'), Btn);
     surf.appendChild(btn);
     document.body.appendChild(surf);
 
     btn.emit('Custom.Click', { foo: 'bar' });
-    const ev = events.find((e) => e.eventName === 'Custom.Click');
-    expect(ev).toBeDefined();
-    expect(ev!.surfaceId).toBe('emit-surf');
-    expect(ev!['foo']).toBe('bar');
-    expect(typeof ev!.timestamp).toBe('string');
+    const ev = assertDefined(
+      events.find((e) => e.eventName === 'Custom.Click'),
+      'emit recorded a Custom.Click event',
+    );
+    expect(ev.surfaceId).toBe('emit-surf');
+    expect(ev['foo']).toBe('bar');
+    expect(typeof ev.timestamp).toBe('string');
   });
 });

@@ -145,7 +145,10 @@ export async function handleRepositoryUpload(
     pushedBy: cmd.principalId,
   };
 
-  const envelope: EventEnvelope = {
+  const envelope: EventEnvelope<
+    'Repository.Uploaded',
+    RepositoryUploadedPayload
+  > = {
     eventId: newEventId(),
     eventType: REPOSITORY_UPLOADED_EVENT_TYPE,
     schemaId: REPOSITORY_UPLOADED_SCHEMA_ID,

@@ -20,197 +20,53 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  EventStore,
-  StoredEvent,
-  Entity,
-  EntityListOptions,
-  EntityQueryOptions,
-  EntityStatus,
-  EntityStore as PortEntityStore,
-  EntityWriteInput,
-  Relation,
-  RelationStore,
-  RelationWriteInput,
-} from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import {
   handleInviteIssue,
   handleInviteAccept,
   handlePasswordSet,
   handlePasswordLogin,
-  identityDispatcher,
   getUserEntity,
   getMembershipEntity,
   getInviteTokenEntity,
   buildRolePackBundle,
   identityErrorCodes,
 } from '../src/index.ts';
+import { newFixture, dispatchAll } from './lib/fixtures.ts';
 
-class InMemoryEventStore implements EventStore {
-  events: EventEnvelope[] = [];
-  private nextSeq = 0n;
-  async append(envelope: EventEnvelope): Promise<StoredEvent> {
-    this.nextSeq += 1n;
-    const stored: StoredEvent = { ...envelope, seq: this.nextSeq };
-    this.events.push(stored);
-    return stored;
-  }
-  async getEvent(eventId: string): Promise<EventEnvelope | null> {
-    return this.events.find((e) => e.eventId === eventId) ?? null;
-  }
-  async findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null> {
-    return (
-      this.events.find(
-        (e) => e.tenantId === tenantId && e.idempotencyKey === idempotencyKey,
-      ) ?? null
+/** Type-guard form of the record check — flips `unknown` to a record. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Reads a record-shaped payload, throwing if the shape is wrong. */
+function payloadRecord(env: EventEnvelope): Record<string, unknown> {
+  if (!isRecord(env.payload)) {
+    throw new Error(
+      `expected object-shaped payload on ${env.eventType} (${env.eventId})`,
     );
   }
-  async readEvents(): Promise<EventEnvelope[]> {
-    return this.events.map((e) => ({ ...e }));
-  }
+  return env.payload;
 }
 
-class InMemoryEntityStore implements PortEntityStore {
-  rows = new Map<string, Entity<unknown>>();
-  private k(t: string, ty: string, id: string): string {
-    return `${t}::${ty}::${id}`;
+/** Narrows an `unknown` field that the test expects to be a record. */
+function recordOf(value: unknown, what: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`${what}: expected record, got ${typeof value}`);
   }
-  async get<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    entityId: string,
-  ): Promise<Entity<TAttrs> | null> {
-    const row = this.rows.get(this.k(tenantId, entityType, entityId));
-    if (!row || row.status === 'deleted') return null;
-    return row as Entity<TAttrs>;
-  }
-  async put<TAttrs = unknown>(
-    input: EntityWriteInput<TAttrs>,
-  ): Promise<Entity<TAttrs>> {
-    const key = this.k(input.tenantId, input.entityType, input.entityId);
-    const existing = this.rows.get(key);
-    const now = new Date().toISOString();
-    const row: Entity<TAttrs> = {
-      tenantId: input.tenantId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      schemaVersion: input.schemaVersion ?? 1,
-      attrs: input.attrs,
-      status: input.status ?? 'active',
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    this.rows.set(key, row as Entity<unknown>);
-    return row;
-  }
-  async delete(t: string, ty: string, id: string): Promise<void> {
-    const key = this.k(t, ty, id);
-    const existing = this.rows.get(key);
-    if (existing) {
-      this.rows.set(key, { ...existing, status: 'deleted' });
-    }
-  }
-  async list<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts?: EntityListOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    const desiredStatus: EntityStatus | null =
-      opts?.status === undefined ? 'active' : opts.status;
-    return Array.from(this.rows.values())
-      .filter((r) => r.tenantId === tenantId && r.entityType === entityType)
-      .filter((r) => (desiredStatus === null ? true : r.status === desiredStatus))
-      .sort((a, b) =>
-        a.entityId.localeCompare(b.entityId),
-      ) as Entity<TAttrs>[];
-  }
-  async query<TAttrs = unknown>(
-    tenantId: string,
-    entityType: string,
-    opts: EntityQueryOptions,
-  ): Promise<Entity<TAttrs>[]> {
-    const base = await this.list<TAttrs>(tenantId, entityType, opts);
-    if (!opts.attrsEqual) return base;
-    const predicates = Object.entries(opts.attrsEqual);
-    return base.filter((row) => {
-      const attrs = row.attrs as Record<string, unknown>;
-      return predicates.every(([k, v]) => attrs?.[k] === v);
-    });
-  }
+  return value;
 }
 
-class InMemoryRelationStore implements RelationStore {
-  rows = new Map<string, Relation<unknown>>();
-  private k(t: string, e: string, f: string, to: string): string {
-    return `${t}::${e}::${f}::${to}`;
-  }
-  async add<TAttrs = unknown>(
-    input: RelationWriteInput<TAttrs>,
-  ): Promise<Relation<TAttrs>> {
-    const key = this.k(input.tenantId, input.edgeType, input.fromId, input.toId);
-    const row: Relation<TAttrs> = {
-      tenantId: input.tenantId,
-      edgeType: input.edgeType,
-      fromId: input.fromId,
-      toId: input.toId,
-      attrs: input.attrs ?? null,
-      createdAt: new Date().toISOString(),
-    };
-    this.rows.set(key, row as Relation<unknown>);
-    return row;
-  }
-  async remove(t: string, e: string, f: string, to: string): Promise<void> {
-    this.rows.delete(this.k(t, e, f, to));
-  }
-  async outgoing<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    fromId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.fromId === fromId,
-    ) as Relation<TAttrs>[];
-  }
-  async incoming<TAttrs = unknown>(
-    tenantId: string,
-    edgeType: string,
-    toId: string,
-  ): Promise<Relation<TAttrs>[]> {
-    return Array.from(this.rows.values()).filter(
-      (r) => r.tenantId === tenantId && r.edgeType === edgeType && r.toId === toId,
-    ) as Relation<TAttrs>[];
-  }
-}
-
-interface AcceptanceFixture {
-  events: InMemoryEventStore;
-  entities: InMemoryEntityStore;
-  relations: InMemoryRelationStore;
-  tenantId: string;
-  /** Replay the entire event log through the dispatcher. */
-  drain(): Promise<void>;
-}
-
-function newFixture(tenantId = 'acme'): AcceptanceFixture {
-  const events = new InMemoryEventStore();
-  const entities = new InMemoryEntityStore();
-  const relations = new InMemoryRelationStore();
-  return {
-    events,
-    entities,
-    relations,
-    tenantId,
-    async drain() {
-      const dispatch = identityDispatcher({ entities, relations });
-      for (const e of events.events) {
-        await dispatch(e);
-      }
-    },
-  };
+/**
+ * Acceptance fixtures use the shared in-memory shim from `./lib/fixtures.ts`.
+ * The `fx.drain()` call in the original suite is just `dispatchAll(fx)` —
+ * identityDispatcher curries `dispatchIdentityEvent`, which dispatchAll
+ * already loops over. We keep a thin alias for readability at call sites.
+ */
+async function drain(
+  fx: ReturnType<typeof newFixture>,
+): Promise<void> {
+  return dispatchAll(fx);
 }
 
 // =====================================================================
@@ -230,7 +86,7 @@ describe('platform-oidc.feature: First-admin bootstrap mints an InviteToken', ()
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
 
     expect(issued.plaintextToken.length).toBeGreaterThan(20);
     const stored = await getInviteTokenEntity(
@@ -260,7 +116,7 @@ describe('platform-oidc.feature: Invitee completes first login', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
 
     const accept = await handleInviteAccept(
       {
@@ -274,7 +130,7 @@ describe('platform-oidc.feature: Invitee completes first login', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     // User entity has primaryIdpSubject from the JWT.
     const user = await getUserEntity(fx.entities, fx.tenantId, accept.user.userId);
@@ -325,7 +181,7 @@ describe('platform-oidc.feature: Returning user — Phase A1 portion', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
     await handleInviteAccept(
       {
         tenantId: fx.tenantId,
@@ -338,7 +194,7 @@ describe('platform-oidc.feature: Returning user — Phase A1 portion', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     // Simulate principal middleware lookup-by-IDP-subject.
     const { findUserByIdpSubject } = await import('../src/index.ts');
@@ -369,7 +225,7 @@ describe('password.feature: User sets initial password from invite', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
 
     // Accept (creates User + Membership).
     const accept = await handleInviteAccept(
@@ -383,7 +239,7 @@ describe('password.feature: User sets initial password from invite', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     // SetPassword (separate intent — Phase A1 ships /api/v1/intents
     // path; the magic-link-then-set-password UI flow lands as a route
@@ -399,7 +255,7 @@ describe('password.feature: User sets initial password from invite', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     // User.attrs.passwordHash is Argon2id-shaped.
     const user = await getUserEntity(fx.entities, fx.tenantId, accept.user.userId);
@@ -409,10 +265,10 @@ describe('password.feature: User sets initial password from invite', () => {
     // would trip on the bigint `seq` field; serialize with a replacer
     // that coerces bigints to strings.
     expect(setResult.envelope.eventType).toBe('Identity.PasswordChanged');
-    const payload = setResult.envelope.payload as Record<string, unknown>;
-    const doc = payload['document'] as Record<string, unknown>;
+    const payload = payloadRecord(setResult.envelope);
+    const doc = recordOf(payload['document'], 'PasswordChanged document');
     expect(doc['passwordHash']).toMatch(/^\$scrypt\$/);
-    const serialized = JSON.stringify(setResult.envelope, (_k, v) =>
+    const serialized = JSON.stringify(setResult.envelope, (_k: string, v: unknown) =>
       typeof v === 'bigint' ? v.toString() : v,
     );
     expect(serialized).not.toContain('P@ssw0rd-2026!');
@@ -440,7 +296,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
     const accept = await handleInviteAccept(
       {
         tenantId: fx.tenantId,
@@ -452,7 +308,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
     await handlePasswordSet(
       {
         tenantId: fx.tenantId,
@@ -464,7 +320,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     // Five wrong attempts.
     for (let i = 0; i < 5; i += 1) {
@@ -478,7 +334,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
         fx.events,
         fx.entities,
       );
-      await fx.drain();
+      await drain(fx);
     }
 
     // lockedUntil ~15 minutes in the future.
@@ -506,9 +362,7 @@ describe('password.feature: Account lockout after sustained failures', () => {
       fx.events,
       fx.entities,
     );
-    expect((blocked.envelope.payload as Record<string, unknown>)['reason']).toBe(
-      'account_locked',
-    );
+    expect(payloadRecord(blocked.envelope)['reason']).toBe('account_locked');
   });
 });
 
@@ -527,7 +381,7 @@ describe('password.feature: Password complexity rejected at set-time', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
     const accept = await handleInviteAccept(
       {
         tenantId: fx.tenantId,
@@ -539,7 +393,7 @@ describe('password.feature: Password complexity rejected at set-time', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     const userBefore = await getUserEntity(fx.entities, fx.tenantId, accept.user.userId);
     const eventCountBefore = fx.events.events.length;
@@ -587,7 +441,7 @@ describe('magic-link.feature: First-admin bootstrap (atlasctl)', () => {
       },
       fx.events,
     );
-    await fx.drain();
+    await drain(fx);
 
     // The plaintext token is what would be printed to operator stdout.
     expect(issued.plaintextToken).toBeTruthy();
@@ -606,7 +460,7 @@ describe('magic-link.feature: First-admin bootstrap (atlasctl)', () => {
       fx.events,
       fx.entities,
     );
-    await fx.drain();
+    await drain(fx);
 
     expect(accept.user.email).toBe('admin@scribe.com');
     expect(accept.membership.roles).toEqual(['TenantAdmin']);
@@ -621,12 +475,29 @@ describe('magic-link.feature: First-admin bootstrap (atlasctl)', () => {
 describe('role packs (cross-cutting)', () => {
   it('TenantAdmin permit covers every action emitted from the bundled manifests', () => {
     const bundle = buildRolePackBundle([
-      { actionId: 'ContentPages.Page.Create', resourceType: 'Page', verb: 'create' },
-      { actionId: 'ContentPages.Page.Search', resourceType: 'Page', verb: 'search' },
-      { actionId: 'Catalog.Family.Publish', resourceType: 'Family', verb: 'publish' },
-      // intentionally use the schema generator's expected shape; the
-      // platform default seed reads moduleManifests() at runtime.
-    ] as never);
+      // The platform default seed reads moduleManifests() at runtime;
+      // this fixture supplies the ActionDeclaration shape (incl.
+      // `auditLevel`) directly so role-pack synthesis can exercise the
+      // verb→permit mapping without a full manifest scan.
+      {
+        actionId: 'ContentPages.Page.Create',
+        resourceType: 'Page',
+        verb: 'create',
+        auditLevel: 'BASIC',
+      },
+      {
+        actionId: 'ContentPages.Page.Search',
+        resourceType: 'Page',
+        verb: 'search',
+        auditLevel: 'NONE',
+      },
+      {
+        actionId: 'Catalog.Family.Publish',
+        resourceType: 'Family',
+        verb: 'publish',
+        auditLevel: 'BASIC',
+      },
+    ]);
     expect(bundle.format).toBe('cedar-text');
     expect(bundle.policies).toContain('@id("role-tenant-admin")');
     expect(bundle.policies).toContain('Action::"ContentPages.Page.Create"');

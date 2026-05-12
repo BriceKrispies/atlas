@@ -2,6 +2,9 @@ import { signal, effect, batch, type Signal, type EffectCleanup } from '@atlas/c
 import { makeCommit, type CommitRecord } from '@atlas/test-state';
 
 import type { PointX, Series } from './data-normalize.ts';
+import type { ChartIntent } from './chart-intents.ts';
+
+export type { ChartIntent } from './chart-intents.ts';
 
 export interface ChartConfig {
   [field: string]: unknown;
@@ -151,91 +154,89 @@ export class ChartStateStore {
   }
 
   /**
-   * Single write path for every user intent. Applies the patch to signals,
-   * records `lastCommit`. Returns the commit record.
+   * Single write path for every user intent. Applies the typed intent to
+   * signals, records `lastCommit`. Returns the commit record.
+   *
+   * The intent is a `ChartIntent` discriminated union — each `kind`
+   * carries exactly the fields its handler reads, so `_apply` narrows
+   * without any `as` casts.
    */
-  commit(intent: string, patch: Record<string, unknown>): CommitRecord {
+  commit(intent: ChartIntent): CommitRecord {
     const surfaceId = `chart:${this.chartId}`;
-    const record = makeCommit(surfaceId, intent, patch);
+    // The commit record stores the patch payload (everything but `kind`)
+    // for test-state inspection — same shape callers used before.
+    const { kind, ...patch } = intent;
+    const record = makeCommit(surfaceId, kind, patch);
 
     batch(() => {
-      this._apply(intent, patch);
+      this._apply(intent);
       this._lastCommit.set(record);
     });
     return record;
   }
 
-  _apply(intent: string, patch: Record<string, unknown>): void {
-    switch (intent) {
+  _apply(intent: ChartIntent): void {
+    switch (intent.kind) {
       case 'setConfig': {
-        const field = patch['field'] as string;
-        const next: ChartConfig = { ...this._config.value, [field]: patch['value'] };
+        const next: ChartConfig = { ...this._config.value, [intent.field]: intent.value };
         this._config.set(next);
         return;
       }
       case 'selectSeries': {
         this._selection.set({
-          seriesId: patch['seriesId'] as string,
-          pointIndex: (patch['pointIndex'] as number | null | undefined) ?? null,
+          seriesId: intent.seriesId,
+          pointIndex: intent.pointIndex ?? null,
         });
         return;
       }
       case 'toggleSeries': {
         const next = new Set(this._hiddenSeries.value);
-        if (patch['hidden']) next.add(patch['seriesId'] as string);
-        else next.delete(patch['seriesId'] as string);
+        if (intent.hidden) next.add(intent.seriesId);
+        else next.delete(intent.seriesId);
         this._hiddenSeries.set(next);
         return;
       }
       case 'setFilter': {
-        const field = patch['field'] as string;
-        const existing = this._filters.value.filter((f) => f.field !== field);
+        const existing = this._filters.value.filter((f) => f.field !== intent.field);
         this._filters.set([
           ...existing,
-          { field, op: patch['op'] as string, value: patch['value'] },
+          { field: intent.field, op: intent.op, value: intent.value },
         ]);
         return;
       }
       case 'clearFilter': {
-        const field = patch['field'] as string;
-        this._filters.set(this._filters.value.filter((f) => f.field !== field));
+        this._filters.set(this._filters.value.filter((f) => f.field !== intent.field));
         return;
       }
       case 'setTimeRange': {
-        const preset = patch['preset'] as string | null | undefined;
         this._timeRange.set(
-          preset
-            ? { preset }
+          intent.preset
+            ? { preset: intent.preset }
             : {
-                from: patch['from'] as string | number | Date | null | undefined ?? null,
-                to: patch['to'] as string | number | Date | null | undefined ?? null,
+                from: intent.from ?? null,
+                to: intent.to ?? null,
               },
         );
         return;
       }
       case 'pushDrilldown': {
-        const label = patch['label'] as string | undefined;
         const frame: DrilldownFrame = {
-          level: patch['level'] as number,
-          value: patch['value'] as string,
-          ...(label !== undefined ? { label } : {}),
+          level: intent.level,
+          value: intent.value,
+          ...(intent.label !== undefined ? { label: intent.label } : {}),
         };
         this._drilldownStack.set([...this._drilldownStack.value, frame]);
         return;
       }
       case 'popDrilldown': {
-        const toDepth = patch['toDepth'] as number | undefined;
-        const depth = toDepth ?? Math.max(0, this._drilldownStack.value.length - 1);
+        const depth = intent.toDepth ?? Math.max(0, this._drilldownStack.value.length - 1);
         this._drilldownStack.set(this._drilldownStack.value.slice(0, depth));
         return;
       }
       case 'requestExport': {
-        this._exportStatus.set({ format: patch['format'] as string, at: Date.now() });
+        this._exportStatus.set({ format: intent.format, at: Date.now() });
         return;
       }
-      default:
-        // Unknown intent — still recorded in lastCommit for tests to inspect.
-        return;
     }
   }
 
@@ -257,7 +258,7 @@ export class ChartStateStore {
     if (tr || filters.length > 0) {
       series = series.map((s) => ({
         ...s,
-        values: s.values.filter((p) => inTimeRange(p.x, tr) && passesFilters(p as unknown as Record<string, unknown>, filters)),
+        values: s.values.filter((p) => inTimeRange(p.x, tr) && passesFilters(p, filters)),
       }));
     }
     return { ...current, series };
@@ -266,7 +267,8 @@ export class ChartStateStore {
   _currentDataSet(): ChartDataSet | null {
     const stack = this._drilldownStack.value;
     if (stack.length === 0) return this._rawData.value;
-    const last = stack[stack.length - 1]!;
+    const last = stack[stack.length - 1];
+    if (!last) return this._rawData.value;
     const child = this._drilldowns[last.value];
     return child ?? this._rawData.value;
   }
@@ -274,7 +276,7 @@ export class ChartStateStore {
 
 function inTimeRange(x: PointX, tr: ChartTimeRange | null): boolean {
   if (!tr) return true;
-  const t = x instanceof Date ? x.getTime() : new Date(x as string | number).getTime();
+  const t = x instanceof Date ? x.getTime() : new Date(x).getTime();
   if (!Number.isFinite(t)) return true;
   if (tr.from && t < new Date(tr.from).getTime()) return false;
   if (tr.to && t > new Date(tr.to).getTime()) return false;
@@ -296,7 +298,12 @@ function presetWindowMs(preset: string): number | null {
   }
 }
 
-function passesFilters(point: Record<string, unknown>, filters: ChartFilter[]): boolean {
+function isRecord(v: unknown): v is { [k: string]: unknown } {
+  return typeof v === 'object' && v !== null;
+}
+
+function passesFilters(point: unknown, filters: ChartFilter[]): boolean {
+  if (!isRecord(point)) return filters.length === 0;
   for (const f of filters) {
     const v = point[f.field];
     if (!compare(v, f.op, f.value)) return false;
@@ -308,11 +315,15 @@ function compare(a: unknown, op: string, b: unknown): boolean {
   switch (op) {
     case '=': return a === b;
     case '!=': return a !== b;
-    case '<': return (a as number) < (b as number);
-    case '<=': return (a as number) <= (b as number);
-    case '>': return (a as number) > (b as number);
-    case '>=': return (a as number) >= (b as number);
+    case '<': return toNum(a) < toNum(b);
+    case '<=': return toNum(a) <= toNum(b);
+    case '>': return toNum(a) > toNum(b);
+    case '>=': return toNum(a) >= toNum(b);
     case 'includes': return String(a ?? '').includes(String(b ?? ''));
     default: return true;
   }
+}
+
+function toNum(v: unknown): number {
+  return typeof v === 'number' ? v : Number(v);
 }

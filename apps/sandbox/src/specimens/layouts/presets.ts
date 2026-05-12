@@ -10,14 +10,22 @@ import { presetLayouts, type LayoutDocument } from '@atlas/page-templates';
 // no bespoke template class, no CSS file — just a JSON layout document
 // and an <atlas-layout> element that positions sections on a grid.
 
+interface AtlasLayoutElementLike extends HTMLElement {
+  layout: unknown;
+}
+
 function mountLayoutPreview(
   demoEl: HTMLElement,
   ctx: { config: Record<string, unknown> },
 ): () => void {
   const { config } = ctx;
-  const layoutId = (config as { layoutId?: string }).layoutId;
-  const layoutDoc = layoutId ? sandboxLayoutRegistry.get(layoutId) as LayoutDocument : null;
-  const el = document.createElement('atlas-layout') as HTMLElement & { layout: unknown };
+  const rawLayoutId = config['layoutId'];
+  const layoutId = typeof rawLayoutId === 'string' ? rawLayoutId : null;
+  const layoutDoc: LayoutDocument | null = layoutId
+    ? sandboxLayoutRegistry.get(layoutId)
+    : null;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed `layout` property is asserted at the construction boundary.
+  const el = document.createElement('atlas-layout') as AtlasLayoutElementLike;
   el.layout = layoutDoc;
   demoEl.appendChild(el);
   // Label each section so the slot grid is visible at a glance. These

@@ -1,8 +1,9 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { Given, When, Then } from '../../../../support/fixtures.ts';
 import { submitIntent } from '../../../../support/idb-probe.ts';
 import type { IntentEnvelope } from '@atlas/platform-core';
 import { newEventId } from '@atlas/catalog';
+import { assertDefined } from '@atlas/test-fixtures/assert';
 
 // ---------------- Domain shapes (mirrors of @atlas/content-pages types) --------
 //
@@ -39,6 +40,49 @@ interface RenderNodeLike {
 interface RenderTreeLike {
   version: 1;
   nodes: RenderNodeLike[];
+}
+
+// ---------------- Typed window readers ----------------
+//
+// The action surface (`window.__atlas.*`) returns `Promise<unknown>` to
+// keep the sim's harness types decoupled from module-internal shapes. We
+// pin the shape here once, at the boundary, with localized eslint-disable
+// comments — same pattern used in `apps/authoring/tests/page-editor.test.ts`.
+
+async function readContentPage(
+  page: Page,
+  pageId: string,
+): Promise<PageDocumentLike | null> {
+  const raw = await page.evaluate((id) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.getContentPage(id);
+  }, pageId);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.getContentPage returns Promise<unknown>; PageDocumentLike is contract-pinned by the content-pages module (see modules/content-pages/src/queries).
+  return raw as PageDocumentLike | null;
+}
+
+async function readContentPageRenderTree(
+  page: Page,
+  pageId: string,
+): Promise<RenderTreeLike | null> {
+  const raw = await page.evaluate((id) => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.getContentPageRenderTree(id);
+  }, pageId);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.getContentPageRenderTree returns Promise<unknown>; RenderTreeLike is contract-pinned by the content-pages render-tree projection.
+  return raw as RenderTreeLike | null;
+}
+
+async function readContentPageList(page: Page): Promise<PageSummaryLike[]> {
+  const raw = await page.evaluate(() => {
+    const action = window.__atlas;
+    if (!action) throw new Error('window.__atlas is not mounted — non-BDD build?');
+    return action.listContentPages();
+  });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.listContentPages returns Promise<unknown>; PageSummaryLike[] is contract-pinned by the content-pages listing query.
+  return raw as PageSummaryLike[];
 }
 
 // ---------------- Envelope builders ----------------
@@ -220,10 +264,7 @@ When(
     // Capture the prior createdAt so the "updatedAt is later than createdAt"
     // assertion can compare against it. Stash in lastQueryResponse so we
     // don't bloat the world shape.
-    const before = (await simPage.evaluate(
-      (id) => window.__atlas!.getContentPage(id),
-      pageId,
-    )) as PageDocumentLike | null;
+    const before = await readContentPage(simPage, pageId);
     world.lastQueryResponse = before;
 
     const correlationId = newEventId();
@@ -271,9 +312,7 @@ When(
 // ---------------- Listing ----------------
 
 When('the admin lists all pages', async ({ simPage, world }) => {
-  world.lastQueryResponse = (await simPage.evaluate(() =>
-    window.__atlas!.listContentPages(),
-  )) as PageSummaryLike[];
+  world.lastQueryResponse = await readContentPageList(simPage);
 });
 
 // ---------------- Assertions ----------------
@@ -286,48 +325,44 @@ Then(
     expectedTitle: string,
     expectedStatus: string,
   ) => {
-    const doc = (await simPage.evaluate(
-      (id) => window.__atlas!.getContentPage(id),
-      pageId,
-    )) as PageDocumentLike | null;
-    expect(doc).not.toBeNull();
-    expect(doc!.pageId).toBe(pageId);
-    expect(doc!.title).toBe(expectedTitle);
-    expect(doc!.status).toBe(expectedStatus);
+    const maybeDoc = await readContentPage(simPage, pageId);
+    expect(maybeDoc).not.toBeNull();
+    const doc = assertDefined(maybeDoc, `content page ${pageId} after assert non-null`);
+    expect(doc.pageId).toBe(pageId);
+    expect(doc.title).toBe(expectedTitle);
+    expect(doc.status).toBe(expectedStatus);
   },
 );
 
 Then(
   'the render tree for page {string} is the default tree',
   async ({ simPage }, pageId: string) => {
-    const tree = (await simPage.evaluate(
-      (id) => window.__atlas!.getContentPageRenderTree(id),
-      pageId,
-    )) as RenderTreeLike | null;
-    expect(tree).not.toBeNull();
-    expect(tree!.version).toBe(1);
-    expect(Array.isArray(tree!.nodes)).toBe(true);
-    expect(tree!.nodes.length).toBeGreaterThan(0);
+    const maybeTree = await readContentPageRenderTree(simPage, pageId);
+    expect(maybeTree).not.toBeNull();
+    const tree = assertDefined(maybeTree, `render tree for ${pageId} after assert non-null`);
+    expect(tree.version).toBe(1);
+    expect(Array.isArray(tree.nodes)).toBe(true);
+    expect(tree.nodes.length).toBeGreaterThan(0);
   },
 );
 
 Then(
   'the listing contains a page with id {string} titled {string}',
   async ({ world }, pageId: string, expectedTitle: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: world.lastQueryResponse is `unknown` by design; the preceding `When the admin lists all pages` step stashes PageSummaryLike[] here.
     const list = world.lastQueryResponse as PageSummaryLike[] | null;
     expect(Array.isArray(list)).toBe(true);
     const match = (list ?? []).find((p) => p.pageId === pageId);
     expect(match, `expected page ${pageId} in listing`).toBeDefined();
-    expect(match!.title).toBe(expectedTitle);
+    const found = assertDefined(match, `page ${pageId} in listing after expect-defined`);
+    expect(found.title).toBe(expectedTitle);
   },
 );
 
 Then(
   'the listing does not contain a page with id {string}',
   async ({ simPage }, pageId: string) => {
-    const list = (await simPage.evaluate(() =>
-      window.__atlas!.listContentPages(),
-    )) as PageSummaryLike[];
+    const list = await readContentPageList(simPage);
     expect(Array.isArray(list)).toBe(true);
     const match = list.find((p) => p.pageId === pageId);
     expect(match, `did not expect page ${pageId} in listing`).toBeUndefined();
@@ -337,33 +372,26 @@ Then(
 Then(
   'the page {string} has title {string}',
   async ({ simPage }, pageId: string, expectedTitle: string) => {
-    const doc = (await simPage.evaluate(
-      (id) => window.__atlas!.getContentPage(id),
-      pageId,
-    )) as PageDocumentLike | null;
-    expect(doc).not.toBeNull();
-    expect(doc!.title).toBe(expectedTitle);
+    const maybeDoc = await readContentPage(simPage, pageId);
+    expect(maybeDoc).not.toBeNull();
+    const doc = assertDefined(maybeDoc, `content page ${pageId} after assert non-null`);
+    expect(doc.title).toBe(expectedTitle);
   },
 );
 
 Then(
   'the page {string} updatedAt is later than its createdAt',
   async ({ simPage }, pageId: string) => {
-    const doc = (await simPage.evaluate(
-      (id) => window.__atlas!.getContentPage(id),
-      pageId,
-    )) as PageDocumentLike | null;
-    expect(doc).not.toBeNull();
+    const maybeDoc = await readContentPage(simPage, pageId);
+    expect(maybeDoc).not.toBeNull();
+    const doc = assertDefined(maybeDoc, `content page ${pageId} after assert non-null`);
     // The handler stamps both timestamps as ISO strings — lexicographic
     // compare matches chronological order.
-    expect(doc!.updatedAt > doc!.createdAt).toBe(true);
+    expect(doc.updatedAt > doc.createdAt).toBe(true);
   },
 );
 
 Then('the page {string} is null', async ({ simPage }, pageId: string) => {
-  const doc = (await simPage.evaluate(
-    (id) => window.__atlas!.getContentPage(id),
-    pageId,
-  )) as PageDocumentLike | null;
+  const doc = await readContentPage(simPage, pageId);
   expect(doc).toBeNull();
 });

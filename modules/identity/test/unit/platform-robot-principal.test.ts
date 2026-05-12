@@ -376,16 +376,16 @@ describe('audit-actor invariant — system-initiated handlers stamp the robot id
       kind: 'oidc',
       displayName: 'Test IDP',
       issuer: 'https://idp.example.com',
-      jwksUrl: 'https://idp.example.com/jwks',
+      jwksUri: 'https://idp.example.com/jwks',
       audience: 'atlas',
       requireInvite: false,
       defaultRolesOnFirstLogin: ['Author'],
       roleMappings: [],
-      groupClaimPath: null,
+      priority: 0,
       status: 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    } as unknown as IdentityProviderDocument;
+    };
     const result = await handleJitProvision(
       {
         tenantId: fx.tenantId,

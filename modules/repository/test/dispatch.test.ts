@@ -311,8 +311,10 @@ describe('repositoryDispatcher (I12)', () => {
     expect(replayRevs.snapshot()).toEqual(inlineRevs.snapshot());
 
     // And the rebuilt state is correct.
-    expect(inlineRepos.snapshot()).toHaveLength(1);
-    const repo = inlineRepos.snapshot()[0]!;
+    const repos = inlineRepos.snapshot();
+    expect(repos).toHaveLength(1);
+    const [repo] = repos;
+    if (!repo) throw new Error('expected one repo after dispatch');
     expect(repo).toMatchObject({
       repoId,
       repoSlug: 'hello-world',
@@ -324,9 +326,10 @@ describe('repositoryDispatcher (I12)', () => {
     expect(revs).toHaveLength(2);
     const revIds = revs.map((r) => r.revisionId).sort();
     expect(revIds).toEqual(['rev-1', 'rev-2']);
-    const rev1 = revs.find((r) => r.revisionId === 'rev-1')!;
+    const rev1 = revs.find((r) => r.revisionId === 'rev-1');
+    const rev2 = revs.find((r) => r.revisionId === 'rev-2');
+    if (!rev1 || !rev2) throw new Error('expected rev-1 and rev-2 after dispatch');
     expect(rev1.byteCount).toBe(100);
-    const rev2 = revs.find((r) => r.revisionId === 'rev-2')!;
     expect(rev2.byteCount).toBe(250);
   });
 

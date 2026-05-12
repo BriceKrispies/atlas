@@ -30,8 +30,13 @@
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchEngine } from '@atlas/ports';
 import type postgres from 'postgres';
+import { jsonParam } from './seeds/sql-json.ts';
 
 const DEFAULT_LIMIT = 100;
+
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 
 interface RawSearchRow {
   document_type: string;
@@ -89,7 +94,13 @@ export class PostgresSearchEngine implements SearchEngine {
       filterValues[k] = v;
     }
 
-    const sortValues = (doc.fields['_sort'] as Record<string, unknown> | undefined) ?? {};
+    // `_sort` is a free-form object the catalog populates per document.
+    // Narrow at the boundary (mirrors `parsePermissionAttrs`) so we hand
+    // a typed `Record<string, unknown>` to `jsonParam` rather than blind-
+    // casting via `as`.
+    const sortValues: Record<string, unknown> = isJsonObject(doc.fields['_sort'])
+      ? doc.fields['_sort']
+      : {};
 
     const permissionJson = doc.permissionAttributes
       ? { allowedPrincipals: doc.permissionAttributes.allowedPrincipals }
@@ -108,9 +119,9 @@ export class PostgresSearchEngine implements SearchEngine {
         ${summary},
         ${bodyText},
         ${taxonomyPath},
-        ${permissionJson === null ? null : this.sql.json(permissionJson as never)},
-        ${this.sql.json(filterValues as never)},
-        ${this.sql.json(sortValues as never)},
+        ${permissionJson === null ? null : jsonParam(this.sql, permissionJson)},
+        ${jsonParam(this.sql, filterValues)},
+        ${jsonParam(this.sql, sortValues)},
         now()
       )
       ON CONFLICT (tenant_id, document_type, document_id) DO UPDATE SET
