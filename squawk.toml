@@ -1,0 +1,28 @@
+# squawk configuration for Atlas's Postgres migrations under
+# adapters/node/src/migrations/{control-plane,tenant}/.
+#
+# squawk lints SQL for migration-safety issues: locks taken under load,
+# NOT NULL adds without DEFAULT, missing CONCURRENTLY on indexes, etc.
+# We turn on the safety-critical rules and silence the noisy stylistic
+# ones. New rules surface on the squawk releases page; revisit on bumps.
+#
+# Run: pnpm lint:sql  (also runs in .github/workflows/quality.yml on changed migrations)
+
+# Fail CI on these (the migration-safety bar). Each catches a class of
+# bug that's nearly always wrong in a tenant-loaded production migration.
+excluded_rules = [
+  # Atlas migrations declare per-tenant tables and per-tenant DDL is
+  # serialised by tenant — `prefer-text-field` (varchar vs text) is
+  # noisy and not Atlas-relevant.
+  "prefer-text-field",
+  # Per-tenant DDL doesn't need transaction wrappers; squawk's
+  # `transaction-nesting` rule does not apply cleanly here.
+  "transaction-nesting",
+  # `prefer-bigint-over-int` is a style choice we make per-table.
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  # Atlas migrations sometimes use `CREATE TABLE` without `IF NOT EXISTS`
+  # by design (each migration runs at most once per tenant); the rule
+  # over-flags.
+  "prefer-robust-stmts",
+]

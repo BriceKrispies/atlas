@@ -1,0 +1,14 @@
+# osv-scanner configuration for Atlas. Empty by default — every CVE
+# surfaces and gets triaged in CI. Add IgnoredVulns entries when there's
+# a deliberate decision (with rationale + an expiry date) to ignore.
+#
+# Run: pnpm vuln:scan  (CI runs on every PR + nightly via quality.yml)
+#
+# Schema: https://google.github.io/osv-scanner/configuration/
+
+# Example shape (commented out):
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = "2026-12-31"
+# reason = "Vulnerable code path is unreachable from Atlas; tracked in tickets/chore/<slug>.md"

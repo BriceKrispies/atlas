@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/syncpack@13/dist/schema.json",
+  "lintFormatting": false,
+  "dependencyTypes": ["prod", "dev", "peer"],
+  "versionGroups": [
+    {
+      "label": "Workspace packages stay on workspace:* protocol",
+      "dependencies": ["@atlas/**"],
+      "dependencyTypes": ["prod", "dev"],
+      "pinVersion": "workspace:*"
+    },
+    {
+      "label": "TypeScript native-preview tracks its own pre-release channel",
+      "dependencies": ["@typescript/native-preview"],
+      "policy": "sameRange"
+    }
+  ],
+  "semverGroups": [
+    {
+      "label": "Default to caret ranges across the workspace",
+      "range": "^",
+      "dependencyTypes": ["prod", "dev", "peer"]
+    }
+  ]
+}

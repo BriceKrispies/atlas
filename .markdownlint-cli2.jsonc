@@ -1,0 +1,40 @@
+{
+  // Tuned for Atlas's spec-first prose style. We disable a small set of
+  // rules that conflict with how the existing specs / ADRs / capability
+  // READMEs are written. Don't loosen further without a good reason —
+  // this exists to gate drift, not to nag.
+  "config": {
+    "default": true,
+
+    // Long prose lines are the norm in specs and ADRs. Wrapping breaks
+    // diff readability and forces awkward sentence shapes.
+    "MD013": false,
+
+    // Inline HTML is used sparingly in specs (e.g., <details>, <kbd>).
+    // Don't flag it.
+    "MD033": false,
+
+    // Allow the same heading text more than once (e.g., "Migration"
+    // appears in every ADR; "Acceptance" in every capability spec).
+    "MD024": { "siblings_only": true },
+
+    // ADRs and capability specs sometimes use bare URLs in cross-refs.
+    // Permit them; the link checker (lychee) is the right enforcement.
+    "MD034": false,
+
+    // Some files (license headers, generated docs) intentionally don't
+    // start with an H1.
+    "MD041": false
+  },
+  "globs": [
+    "**/*.md"
+  ],
+  "ignores": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    // Generated artifacts
+    "deps.html"
+  ]
+}

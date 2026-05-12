@@ -1,0 +1,71 @@
+# Spectral ruleset for Atlas's JSON Schema contracts under
+# specs/schemas/contracts/. These files are pure JSON Schema 2020-12
+# (intent payloads, event envelopes, etc.), not OpenAPI — so we don't
+# extend any spectral OAS rules. The custom rules below enforce the
+# Atlas-specific shape conventions.
+#
+# Run: pnpm lint:spectral
+
+functions: []
+
+rules:
+  # Every contract must declare its draft so consumers know how to validate.
+  atlas-schema-must-declare-draft:
+    description: Every contract schema must include `$schema` pointing at JSON Schema 2020-12 (or a compatible draft).
+    severity: error
+    given: $
+    then:
+      field: "$schema"
+      function: truthy
+
+  # Every contract must have a stable $id — we use it for cross-references
+  # in code and in other specs.
+  atlas-schema-must-have-id:
+    description: Every contract schema must declare a stable `$id` (used as the cross-reference key).
+    severity: error
+    given: $
+    then:
+      field: "$id"
+      function: truthy
+
+  # Object schemas must close their property set. Open property sets cause
+  # silent drift between intent payloads and handler expectations, and
+  # quietly accept fields the consumer doesn't validate.
+  atlas-schema-object-must-close-properties:
+    description: Object schemas must set `additionalProperties: false` (or `unevaluatedProperties: false`) so unknown fields are rejected.
+    message: "{{path}}: object schema is missing `additionalProperties: false` (or `unevaluatedProperties: false`)."
+    severity: error
+    given: "$..[?(@.type=='object' && @.properties)]"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          anyOf:
+            - required: ["additionalProperties"]
+              properties:
+                additionalProperties:
+                  const: false
+            - required: ["unevaluatedProperties"]
+              properties:
+                unevaluatedProperties:
+                  const: false
+
+  # Top-level object schemas should declare which fields are required.
+  # An object with properties but no required list is almost always a bug
+  # (handler then asserts at runtime, drift between schema and handler).
+  atlas-schema-object-must-declare-required:
+    description: Top-level object schemas must declare a `required` array (use `[]` if truly nothing is required).
+    severity: warn
+    given: "$"
+    then:
+      field: required
+      function: defined
+
+overrides:
+  # Top-level required is at root only; nested object subschemas are
+  # warned at error-level by the close-properties rule above.
+  - files:
+      - "**/specs/schemas/contracts/**/*.schema.json"
+    rules:
+      atlas-schema-object-must-declare-required: warn

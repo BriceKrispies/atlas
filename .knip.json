@@ -1,0 +1,68 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.ts",
+        "test-setup/*.ts"
+      ],
+      "ignore": [
+        "deps.html",
+        "**/dist/**"
+      ]
+    },
+    "apps/*": {
+      "entry": [
+        "src/main.ts",
+        "src/index.ts",
+        "src/index.{js,ts,tsx}",
+        "vite.config.{js,ts}",
+        "playwright.config.{js,ts}",
+        "test/**/*.test.ts",
+        "tests/**/*.test.ts"
+      ]
+    },
+    "modules/*": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "adapters/*": {
+      "entry": [
+        "src/index.ts",
+        "bin/*.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "ports": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "packages/*": {
+      "entry": [
+        "src/index.ts",
+        "scripts/*.ts",
+        "test/**/*.test.ts",
+        "tests/**/*.test.ts"
+      ]
+    },
+    "bundles/*": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    }
+  },
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/test-results/**",
+    "**/playwright-report/**"
+  ],
+  "ignoreDependencies": [
+    "@typescript/native-preview"
+  ]
+}

@@ -1,0 +1,27 @@
+# gitleaks configuration for Atlas. Extends the default ruleset and adds
+# allowlists for test fixtures with intentionally fake credentials.
+#
+# Run: pnpm secrets:scan  (also runs on every PR via .github/workflows/quality.yml)
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files and patterns where matches are intentional"
+paths = [
+  '''(?i)/node_modules/''',
+  '''(?i)/dist/''',
+  '''(?i)/test-results/''',
+  '''(?i)/playwright-report/''',
+  # Lockfile is high-noise low-signal for secret detection
+  '''^pnpm-lock\.yaml$''',
+]
+regexes = [
+  # Test fixtures explicitly use fake tokens with the prefix `atlas_test_`
+  # (see modules/identity/test/lib/fixtures.ts) and Argon2id digests.
+  '''atlas_test_[a-zA-Z0-9_]+''',
+  # Argon2 digests are fixed-shape and look like secrets to entropy scanners.
+  '''\$argon2id\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+''',
+  # Local dev DB password documented in CLAUDE.md
+  '''local_dev_password''',
+]

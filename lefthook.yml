@@ -1,0 +1,31 @@
+# Lefthook configuration — git hooks managed by a single binary, fast.
+#
+# Install: pnpm install (lefthook is a devDependency) then `pnpm lefthook install`
+# Skip a hook (rarely): LEFTHOOK=0 git commit ...
+#
+# Design intent:
+# - Pre-commit only runs *fast, always-available* checks against staged
+#   files (sub-second on typical edits). Anything requiring an external
+#   binary (gitleaks, lychee, squawk, osv-scanner) is CI-only — see
+#   .github/workflows/quality.yml.
+# - Pre-push runs typecheck once for the whole project; that catches
+#   cross-file breakage before it hits CI.
+
+pre-commit:
+  parallel: true
+  commands:
+    eslint:
+      glob: "*.{ts,tsx,js,mjs,cjs}"
+      run: pnpm exec eslint --max-warnings=0 {staged_files}
+      stage_fixed: false
+
+    markdownlint:
+      glob: "*.md"
+      run: pnpm exec markdownlint-cli2 {staged_files}
+      stage_fixed: false
+
+pre-push:
+  commands:
+    typecheck:
+      run: pnpm typecheck
+      tags: ["slow"]

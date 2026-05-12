@@ -1,0 +1,177 @@
+name: Quality
+
+# The standing static-analysis + supply-chain + spec-integrity gate.
+# Each job is independent so failures localise. The npm-tooling jobs reuse
+# pnpm/setup-node caches; the external-binary jobs use official actions.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly vulnerability re-scan against current main, so newly-disclosed
+    # CVEs surface within ~24h even with no PR activity.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Node-installed static analysis --------------------------------------
+  static-analysis:
+    name: Static analysis (knip / syncpack / markdownlint / spectral)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: knip (dead code / unused deps / unused exports)
+        if: always()
+        run: pnpm lint:knip
+
+      - name: syncpack (workspace version drift)
+        if: always()
+        run: pnpm lint:syncpack
+
+      - name: markdownlint
+        if: always()
+        run: pnpm lint:markdown
+
+      - name: spectral (specs/schemas/contracts/*.schema.json)
+        if: always()
+        run: pnpm lint:spectral
+
+  # --- Test coverage (report-only, no thresholds yet) ----------------------
+  coverage:
+    name: Vitest coverage (report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm coverage
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: |
+            coverage/lcov.info
+            coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # --- Secrets scanning ----------------------------------------------------
+  secrets:
+    name: gitleaks (committed-secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is only required for org-owned private repos.
+          # Personal + OSS repos can omit it.
+
+  # --- Dependency vulnerabilities ------------------------------------------
+  vulnerabilities:
+    name: osv-scanner (npm + GitHub advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google/osv-scanner-action/osv-scanner-action@v1.9.0
+        with:
+          scan-args: |-
+            --recursive
+            --lockfile=pnpm-lock.yaml
+            .
+
+  # --- Markdown link integrity --------------------------------------------
+  links:
+    name: lychee (broken markdown links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore lychee cache
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ github.sha }}
+          restore-keys: lychee-
+
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml "**/*.md"
+          fail: true
+
+  # --- Atlas invariant rules (Semgrep) ------------------------------------
+  semgrep:
+    name: Semgrep (atlas invariants — I1, UI bar)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run atlas invariant rules
+        run: semgrep --config .semgrep/atlas-invariants.yml --error
+
+  # --- Postgres migration safety ------------------------------------------
+  sql-migrations:
+    name: squawk (migration safety)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install squawk
+        run: |
+          set -euo pipefail
+          curl -fsSL -o squawk \
+            https://github.com/sbdchd/squawk/releases/latest/download/squawk-linux-x86_64
+          chmod +x squawk
+          sudo mv squawk /usr/local/bin/squawk
+          squawk --version
+
+      - name: Lint migrations
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          mapfile -t files < <(find adapters/node/src/migrations -type f -name '*.sql')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No migration files found."
+            exit 0
+          fi
+          squawk "${files[@]}"

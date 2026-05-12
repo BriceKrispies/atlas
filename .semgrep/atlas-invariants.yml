@@ -1,0 +1,112 @@
+# Atlas invariant rules for Semgrep.
+#
+# Each rule mirrors a check in scripts/overseer-check.ts. The two run in
+# parallel for now: overseer:check stays the source of truth until each
+# rule's parity is verified on a test corpus, then the migration retires
+# the corresponding overseer check. Don't delete an overseer check until
+# its semgrep rule has matched on the curated fixtures and produced
+# identical findings.
+#
+# Run locally: pnpm lint:semgrep
+# Run in CI:   .github/workflows/quality.yml (semgrep job)
+
+rules:
+  # --- I1: single ingress chokepoint --------------------------------------
+  #
+  # Mirrors overseer-check.ts ▸ i1SingleIngress (apps/* outside apps/server/
+  # may not import an HTTP server framework). The single ingress is one of
+  # Atlas's load-bearing invariants — every operation flows through
+  # apps/server, no side doors. See specs/architecture.md ▸ I1 and
+  # specs/lifecycle.md.
+
+  - id: atlas-i1-single-ingress
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: |
+      I1 violation — only apps/server/ may import an HTTP server framework.
+
+      Atlas has a single ingress chokepoint (apps/server). Every operation —
+      UI, CLI, agent — flows through it. No other app may expose HTTP.
+      If you genuinely need a new server surface, the answer is to add a
+      route under apps/server/src/routes/, not a new server.
+
+      See specs/architecture.md ▸ I1 and specs/lifecycle.md.
+    paths:
+      include:
+        - "apps/"
+      exclude:
+        - "apps/server/"
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+    pattern-regex: |
+      from\s+['"](hono|@hono/node-server|express|fastify|koa|@fastify)['"]|http\.createServer\(|https\.createServer\(
+
+  # --- I1 (modules half): no module mounts HTTP ---------------------------
+  #
+  # Mirrors overseer-check.ts ▸ i1ModulesNoHttp. Modules are pure domain
+  # logic over ports — they never bind a port or accept a request directly.
+  # If a module needs to expose behaviour, it does so via the intent
+  # registry that apps/server already wires.
+
+  - id: atlas-i1-modules-no-http
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: |
+      I1 violation — /modules files may not mount HTTP.
+
+      Modules under /modules are pure domain logic over ports. They never
+      bind a server, accept a request, or import an HTTP framework. The
+      single ingress (apps/server) is the only place this happens.
+
+      See modules/CLAUDE.md and specs/architecture.md ▸ I1.
+    paths:
+      include:
+        - "modules/"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+    pattern-regex: |
+      from\s+['"](hono|@hono/node-server|express|fastify|koa)['"]|http\.createServer\(|https\.createServer\(
+
+  # --- UI bar: AtlasElement is the only base class ------------------------
+  #
+  # Mirrors overseer-check.ts ▸ atlasElementOnly. Every UI class in Atlas
+  # extends AtlasElement (or AtlasSurface). Bare HTMLElement, Lit, React
+  # wrappers, etc., are not allowed. The one allowlisted file is
+  # packages/core/src/component.ts which defines AtlasElement itself.
+
+  - id: atlas-ui-bar-no-bare-element
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      UI bar violation — UI classes must extend AtlasElement, not
+      HTMLElement / LitElement directly.
+
+      Atlas's UI primitive is AtlasElement (packages/core/src/component.ts);
+      surfaces extend AtlasSurface (packages/core/src/surface.ts). New
+      components belong in packages/design/src/.
+
+      See packages/core/CLAUDE.md and packages/design/CLAUDE.md.
+    paths:
+      include:
+        - "packages/design/src/"
+        - "packages/widgets/src/"
+        - "apps/"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+        # The AtlasElement primitive itself is the only file allowed to
+        # extend HTMLElement directly. Allowlisted in overseer:check too.
+        - "packages/core/src/component.ts"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $X extends HTMLElement { ... }
+          - pattern: |
+              class $X extends LitElement { ... }

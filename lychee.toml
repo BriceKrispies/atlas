@@ -1,0 +1,53 @@
+# Lychee link checker configuration for Atlas.
+#
+# Atlas is a spec-first project with hundreds of cross-references between
+# specs, ADRs, capability READMEs, and CLAUDE.md files. Link rot here is
+# drift; this catches it.
+#
+# Run: pnpm lint:links  (also runs in .github/workflows/quality.yml)
+
+# --- request behaviour ----------------------------------------------------
+
+# Cache successful results between runs for 1 day so repeated CI runs don't
+# hammer external sites. Cache file lives in .lycheecache (gitignored).
+cache = true
+max_cache_age = "1d"
+
+# Be polite to external endpoints.
+max_concurrency = 16
+timeout = 20
+retry_wait_time = 2
+max_retries = 2
+
+# Accept these HTTP statuses as success in addition to 2xx.
+accept = [200, 204, 206, 301, 302, 303, 307, 308, 401, 403, 429]
+
+# --- what to scan ---------------------------------------------------------
+
+include_verbatim = false
+include_fragments = true
+require_https = false
+
+# Skip third-party / generated / vendored content. Atlas's own specs and
+# CLAUDE.md files are the focus.
+exclude_path = [
+  "node_modules",
+  "dist",
+  "test-results",
+  "playwright-report",
+  "deps.html",
+  ".lycheecache",
+]
+
+# Some external links are flaky, anti-bot-protected, or behind auth.
+# Pattern-based excludes go here (regex). Add sparingly — rotting links
+# inside Atlas should always be fixed, not excluded.
+exclude = [
+  # GitHub anchor checks fail spuriously due to JS-rendered TOCs
+  '^https://github\.com/.*#.+$',
+  # Localhost / dev URLs documented in specs
+  '^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)',
+  # Example domains used in vision/spec docs
+  '^https?://([a-z0-9-]+\.)*example\.(com|org|net)',
+  '^https?://([a-z0-9-]+\.)*atlas\.example\.com',
+]
