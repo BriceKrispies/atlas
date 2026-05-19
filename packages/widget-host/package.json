@@ -9,9 +9,9 @@
     "./hosts/shadow": "./src/hosts/shadow-host.ts"
   },
   "scripts": {
-    "dry-run": "tsx test/dry-run.ts",
-    "test:dry-run": "tsx test/dry-run.ts",
-    "test:iframe": "tsx test/iframe-dry-run.ts"
+    "dry-run": "node --experimental-transform-types test/dry-run.ts",
+    "test:dry-run": "node --experimental-transform-types test/dry-run.ts",
+    "test:iframe": "node --experimental-transform-types test/iframe-dry-run.ts"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

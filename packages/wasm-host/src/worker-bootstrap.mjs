@@ -1,15 +1,11 @@
 /**
- * Tiny ESM bootstrap that loads the real `worker-entry.ts` inside the
- * Worker thread via tsx's `tsImport` API. Required because Node's
- * `register()`-installed loaders are scoped to the thread that called
- * `register()` — they DO NOT propagate to Workers even when the parent
- * passes `execArgv: ['--import', 'tsx/esm']`. Older `--experimental-
- * loader` flags are deprecated.
+ * Tiny ESM bootstrap loaded by `new Worker(WORKER_BOOTSTRAP_URL)`.
  *
- * `tsImport` from `tsx/esm/api` registers a private namespaced loader
- * scoped to this caller, then resolves the requested specifier through
- * it. That keeps the shim free of side effects on the rest of the
- * isolate.
+ * Node 22.6+ ships built-in TypeScript stripping, and Worker threads
+ * inherit the parent's `execArgv` — so when the host process is started
+ * with `--experimental-transform-types` (every Atlas entry point is),
+ * the worker can `import './worker-entry.ts'` directly. No tsx, no
+ * `register()`, no namespaced loader.
  *
  * This file stays `.mjs` (no TypeScript) precisely so it can be loaded
  * by the Worker without a loader being active yet. When the package is
@@ -18,6 +14,4 @@
  * bootstrap.
  */
 
-import { tsImport } from 'tsx/esm/api';
-
-await tsImport('./worker-entry.ts', import.meta.url);
+import './worker-entry.ts';

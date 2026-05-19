@@ -16,7 +16,6 @@
     "atlas-test-bun": "./bin/atlas-test-bun.mjs"
   },
   "dependencies": {
-    "expect": "^29.7.0",
-    "tsx": "^4.21.0"
+    "expect": "^29.7.0"
   }
 }

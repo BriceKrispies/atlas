@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node --experimental-transform-types
 /**
  * Atlas overseer — mechanical chokepoint check runner.
  *
@@ -194,9 +194,6 @@ const i12DispatchTestsExist: Check = function () {
     'i12-dispatch-tests-exist',
     'I12',
     `${offenders.length}/${checked} module dispatcher(s) missing rebuild test`,
-    offenders,
-  );
-}rebuild test`,
     offenders,
   );
 };
@@ -437,9 +434,6 @@ const i10CacheInvalidationTags: Check = function () {
     `${offenders.length}/${checked} module(s) appear to emit events without cacheInvalidationTags`,
     offenders,
   );
-}ut cacheInvalidationTags`,
-    offenders,
-  );
 };
 
 // I18: the AtlasSurface base contract must write data-state. Subclasses inherit
@@ -552,8 +546,6 @@ const iLoggingDispatchSpeaks: Check = function () {
     'LOGGING',
     `${silent.length} dispatcher(s) emit no structured logs — flipping the module to debug shows nothing`,
     silent.map((f) => `${f}  (no ctx.logger.<level>(…) call found)`),
-  );
-}ound)`; }),
   );
 };
 

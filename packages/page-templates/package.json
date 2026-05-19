@@ -7,10 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dry-run": "tsx test/dry-run.ts",
-    "test:dry-run": "tsx test/dry-run.ts",
-    "test:editor-dry-run": "tsx test/editor-dry-run.ts",
-    "test:dnd-dry-run": "tsx test/dnd-dry-run.ts"
+    "dry-run": "node --experimental-transform-types test/dry-run.ts",
+    "test:dry-run": "node --experimental-transform-types test/dry-run.ts",
+    "test:editor-dry-run": "node --experimental-transform-types test/editor-dry-run.ts",
+    "test:dnd-dry-run": "node --experimental-transform-types test/dnd-dry-run.ts"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

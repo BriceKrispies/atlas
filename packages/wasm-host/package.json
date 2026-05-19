@@ -15,8 +15,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@atlas/ports": "workspace:*",
-    "tsx": "^4.21.0"
+    "@atlas/ports": "workspace:*"
   },
   "devDependencies": {
     "@atlas/contract-tests": "workspace:*",

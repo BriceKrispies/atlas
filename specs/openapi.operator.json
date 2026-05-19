@@ -6,8 +6,8 @@
     "description": "Operator-facing HTTP API. Used by atlasctl and admin tooling. **Generated** from Atlas manifests + schemas + route annotations — see specs/crosscut/openapi.md.\n\nIncludes admin-only routes (`/admin/*`), debug routes (gated by `TEST_AUTH_ENABLED`), and operator-tagged actions. NOT for tenant integration.\n\nAuthentication adds `X-Debug-Principal` (test-auth bypass) on top of the standard tenant schemes. `X-Debug-Principal` is honored only when the server has `TEST_AUTH_ENABLED=true`; production servers reject the header.",
     "x-atlas-build": {
       "atlasVersion": "0.1.0",
-      "generatedAt": "2026-05-08T23:36:09.428Z",
-      "gitCommit": "3974b8a"
+      "generatedAt": "2026-05-19T18:12:26.004Z",
+      "gitCommit": "ffe5f4c"
     }
   },
   "servers": [

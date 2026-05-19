@@ -1,29 +1,20 @@
 /**
- * Bootstrap loaded via `--import` from the `atlas-test` runner. Registers
- * tsx, then awaits any setup files the caller asked for. Plain `.mjs` so it
- * loads in fresh Worker threads (which inherit parent execArgv) without
- * needing tsx already registered.
+ * Bootstrap loaded via `--import` from the `atlas-test` runner.
  *
- * Setup file paths are passed via `ATLAS_TEST_SETUP_FILES` (file URLs,
- * `;`-delimited). Empty/unset = no setup. The runner builds the env var
- * before spawning node.
+ * Node 22+ (we require 24) strips TypeScript syntax natively, so this
+ * bootstrap only needs to chain-load the global setup files — no tsx
+ * loader required. `transform-types` is enabled via the runner's CLI
+ * flag because the codebase still uses parameter-property constructors,
+ * which `--experimental-strip-types` (the default) leaves intact.
+ *
+ * Setup file paths arrive in `ATLAS_TEST_SETUP_FILES` (file URLs,
+ * `;`-delimited). Empty/unset = no setup. Setup imports are skipped in
+ * Worker threads because code-under-test workers (e.g. @atlas/wasm-host)
+ * have tight memory caps and don't need DOM globals.
  */
 
-import { register } from 'tsx/esm/api';
 import { isMainThread } from 'node:worker_threads';
 
-// tsx's programmatic `register()` installs the ESM loader for the current
-// thread. Loader hooks aren't inherited by Workers automatically, but
-// because this bootstrap is `.mjs` it CAN be re-loaded inside Workers
-// via the parent's --import propagation — and re-running `register()` in
-// the Worker gives it the same `.ts` resolution as the main thread.
-register();
-
-// Setup files (linkedom-shims, identity-crypto) run ONLY in the main test
-// process — not in Worker threads spawned by code-under-test (e.g.
-// @atlas/wasm-host). Workers have tight resourceLimits and don't need
-// DOM globals; loading the setup there just bloats memory and trips
-// `maxOldGenerationSizeMb`.
 if (isMainThread) {
   const raw = process.env.ATLAS_TEST_SETUP_FILES ?? '';
   if (raw) {

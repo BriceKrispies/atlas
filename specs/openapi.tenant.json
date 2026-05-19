@@ -6,8 +6,8 @@
     "description": "The HTTP API tenant developers integrate against. **Generated** from Atlas manifests + schemas — see specs/crosscut/openapi.md.\n\n## Multi-tenant\n\nAtlas paths do not include `:tenantId`. Tenant identity is implicit in the auth credential (JWT `iss`, API key tenant binding, OAuth client tenant). When you authenticate as a tenant, every operation resolves to that tenant automatically.\n\n## Correlation + idempotency\n\n**`X-Correlation-Id`** — optional request header; the server mints one if absent. The same id is echoed in the response and stamped on every log line and event downstream (Invariant I5). When you retry a request, send the same id so the entire flow correlates.\n\n**`idempotencyKey`** in the envelope — required for every write intent. Per-logical-operation, not per-HTTP-retry. Replays return the same `eventId` without re-executing the handler (Invariant I3).\n\n## Errors\n\nAll errors return the same envelope: `{ error: { code, message, correlationId, supportId } }`. The `code` is from a closed taxonomy (see specs/crosscut/errors.md). When escalating to support, paste the `supportId` — it joins request → root cause server-side.",
     "x-atlas-build": {
       "atlasVersion": "0.1.0",
-      "generatedAt": "2026-05-08T23:36:09.428Z",
-      "gitCommit": "3974b8a"
+      "generatedAt": "2026-05-19T18:12:26.004Z",
+      "gitCommit": "ffe5f4c"
     }
   },
   "servers": [

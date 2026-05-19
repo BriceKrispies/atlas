@@ -20,7 +20,6 @@
     "@atlas/contract-tests": "workspace:*",
     "@atlas/test-fixtures": "workspace:*",
     "postgres": "^3.4.5",
-    "tsx": "^4.21.0",
     "@atlas/test": "workspace:*"
   }
 }

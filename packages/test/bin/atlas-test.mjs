@@ -2,17 +2,17 @@
 /**
  * `atlas-test` — node-runtime entry-point for `@atlas/test`.
  *
+ * Requires Node 22.6+ (we target 24): TypeScript syntax is handled by
+ * Node's built-in type-stripping plus `--experimental-transform-types`.
+ * No tsx, no esbuild — `node --test` is the whole runtime path.
+ *
  * Discovery rules (matching the legacy vitest.config.ts include set):
  *   - From cwd: `**\/*.test.ts` excluding node_modules, dist, .claude.
- *   - Honors `ATLAS_TEST_INCLUDE` (semicolon-separated globs) as override.
  *   - Honors positional CLI args as explicit file/dir paths.
  *
  * Setup files (`test-setup/linkedom-shims.ts`, `test-setup/identity-crypto.ts`)
- * are loaded via `--import` if found at the repo root and the env opts in
- * (`ATLAS_TEST_SETUP=auto`, default for repo-root invocations).
- *
- * Spawns a child `node --import tsx --test ...files`, forwarding any
- * additional flags (`--watch`, `--test-name-pattern=...`, etc.).
+ * are loaded via the `.mjs` bootstrap if found at the repo root and the
+ * env opts in (`ATLAS_TEST_SETUP=auto`, default for repo-root invocations).
  */
 
 import { spawn } from 'node:child_process';
@@ -169,13 +169,15 @@ for (const name of setupCandidates) {
   if (existsSync(p)) setupUrls.push(pathToFileURL(p).href);
 }
 
-// Use a single `.mjs` bootstrap that registers tsx and dynamically imports
-// the setup files. Plain .mjs is required so Worker threads (which inherit
-// the parent execArgv) can load it without tsx being registered yet —
-// otherwise `--import linkedom-shims.ts` fails inside worker_threads with
-// "Unknown file extension '.ts'".
+// Bootstrap chain-loads setup files; type-stripping is native to Node
+// 22.6+ (default in 24). `--experimental-transform-types` is needed to
+// handle parameter-property constructors that the default
+// `--experimental-strip-types` doesn't rewrite. Both flags emit an
+// experimental-feature warning we suppress via `--no-warnings`.
 const BOOTSTRAP = pathToFileURL(join(BIN_DIR, 'node-bootstrap.mjs')).href;
 const nodeArgs = [
+  '--no-warnings',
+  '--experimental-transform-types',
   '--import', BOOTSTRAP,
   '--test',
   ...passthrough,
