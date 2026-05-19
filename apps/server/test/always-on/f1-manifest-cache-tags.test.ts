@@ -18,106 +18,88 @@
  *
  * When this test passes, F1 is mechanizable at the reload boundary.
  */
-
 import { describe, test, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..');
-const MANIFEST_DIR = join(
-  REPO_ROOT,
-  'packages',
-  'schemas',
-  'src',
-  'generated',
-  'manifests',
-);
-const MANIFEST_SCHEMA = join(
-  REPO_ROOT,
-  'specs',
-  'schemas',
-  'contracts',
-  'module_manifest.schema.json',
-);
-
+const MANIFEST_DIR = join(REPO_ROOT, 'packages', 'schemas', 'src', 'generated', 'manifests');
+const MANIFEST_SCHEMA = join(REPO_ROOT, 'specs', 'schemas', 'contracts', 'module_manifest.schema.json');
 interface EventContract {
-  eventType: string;
-  category: string;
-  schemaId: string;
-  compatibility: string;
-  cacheInvalidationTags?: unknown; // The field this test claims should exist
+    eventType: string;
+    category: string;
+    schemaId: string;
+    compatibility: string;
+    cacheInvalidationTags?: unknown; // The field this test claims should exist
 }
-
 interface ModuleManifest {
-  moduleId: string;
-  events?: { publishes?: EventContract[]; consumes?: EventContract[] } | EventContract[];
-  cacheArtifacts?: unknown[];
+    moduleId: string;
+    events?: {
+        publishes?: EventContract[];
+        consumes?: EventContract[];
+    } | EventContract[];
+    cacheArtifacts?: unknown[];
 }
-
 function loadManifests(): ModuleManifest[] {
-  return readdirSync(MANIFEST_DIR)
-    .filter((f) => f.endsWith('.manifest.json'))
-    .map((f) => JSON.parse(readFileSync(join(MANIFEST_DIR, f), 'utf8')) as ModuleManifest);
+    return readdirSync(MANIFEST_DIR)
+        .filter(function (f) {
+        return f.endsWith('.manifest.json');
+    })
+        .map(function (f) {
+        return JSON.parse(readFileSync(join(MANIFEST_DIR, f), 'utf8')) as ModuleManifest;
+    });
 }
-
-describe('F1 — manifest cache-tag declaration (always-on §4.3 / I10)', () => {
-  test('module_manifest schema MUST require cacheInvalidationTags on every event contract', () => {
-    // The schema is the contract for what a manifest can declare. If the
-    // schema has no slot for per-event cache tags, the reload-admission
-    // mechanism (always-on §4.3) cannot enforce I10 by manifest check.
-    const schema = JSON.parse(readFileSync(MANIFEST_SCHEMA, 'utf8')) as {
-      $defs: { eventContract: { properties: Record<string, unknown>; required?: string[] } };
-    };
-    const eventContractProps = schema.$defs.eventContract.properties;
-    const eventContractRequired = schema.$defs.eventContract.required ?? [];
-
-    expect(
-      Object.keys(eventContractProps),
-      'eventContract schema must allow a cacheInvalidationTags property',
-    ).toContain('cacheInvalidationTags');
-
-    expect(
-      eventContractRequired,
-      'cacheInvalidationTags must be required so a module cannot omit it silently',
-    ).toContain('cacheInvalidationTags');
-  });
-
-  test('every bundled manifest event contract carries cacheInvalidationTags', () => {
-    const manifests = loadManifests();
-    expect(manifests.length, 'fixture sanity: manifests must load').toBeGreaterThan(0);
-
-    const violations: Array<{ module: string; eventType: string; reason: string }> = [];
-    for (const m of manifests) {
-      const eventsRaw = m.events;
-      // Manifests in the repo use BOTH shapes today: `events: []` (array)
-      // and `events: { publishes: [], consumes: [] }` (object). Accept either.
-      const publishes: EventContract[] = Array.isArray(eventsRaw)
-        ? eventsRaw
-        : (eventsRaw?.publishes ?? []);
-
-      for (const ev of publishes) {
-        if (!('cacheInvalidationTags' in ev)) {
-          violations.push({
-            module: m.moduleId,
-            eventType: ev.eventType,
-            reason: 'no cacheInvalidationTags field on event contract',
-          });
-          continue;
+describe('F1 — manifest cache-tag declaration (always-on §4.3 / I10)', function () {
+    test('module_manifest schema MUST require cacheInvalidationTags on every event contract', function () {
+        // The schema is the contract for what a manifest can declare. If the
+        // schema has no slot for per-event cache tags, the reload-admission
+        // mechanism (always-on §4.3) cannot enforce I10 by manifest check.
+        const schema = JSON.parse(readFileSync(MANIFEST_SCHEMA, 'utf8')) as {
+            $defs: {
+                eventContract: {
+                    properties: Record<string, unknown>;
+                    required?: string[];
+                };
+            };
+        };
+        const eventContractProps = schema.$defs.eventContract.properties;
+        const eventContractRequired = schema.$defs.eventContract.required ?? [];
+        expect(Object.keys(eventContractProps), 'eventContract schema must allow a cacheInvalidationTags property').toContain('cacheInvalidationTags');
+        expect(eventContractRequired, 'cacheInvalidationTags must be required so a module cannot omit it silently').toContain('cacheInvalidationTags');
+    });
+    test('every bundled manifest event contract carries cacheInvalidationTags', function () {
+        const manifests = loadManifests();
+        expect(manifests.length, 'fixture sanity: manifests must load').toBeGreaterThan(0);
+        const violations: Array<{
+            module: string;
+            eventType: string;
+            reason: string;
+        }> = [];
+        for (const m of manifests) {
+            const eventsRaw = m.events;
+            // Manifests in the repo use BOTH shapes today: `events: []` (array)
+            // and `events: { publishes: [], consumes: [] }` (object). Accept either.
+            const publishes: EventContract[] = Array.isArray(eventsRaw)
+                ? eventsRaw
+                : (eventsRaw?.publishes ?? []);
+            for (const ev of publishes) {
+                if (!('cacheInvalidationTags' in ev)) {
+                    violations.push({
+                        module: m.moduleId,
+                        eventType: ev.eventType,
+                        reason: 'no cacheInvalidationTags field on event contract',
+                    });
+                    continue;
+                }
+                if (!Array.isArray(ev.cacheInvalidationTags) || ev.cacheInvalidationTags.length === 0) {
+                    violations.push({
+                        module: m.moduleId,
+                        eventType: ev.eventType,
+                        reason: 'cacheInvalidationTags is not a non-empty array',
+                    });
+                }
+            }
         }
-        if (!Array.isArray(ev.cacheInvalidationTags) || ev.cacheInvalidationTags.length === 0) {
-          violations.push({
-            module: m.moduleId,
-            eventType: ev.eventType,
-            reason: 'cacheInvalidationTags is not a non-empty array',
-          });
-        }
-      }
-    }
-
-    expect(
-      violations,
-      `Manifests must declare cacheInvalidationTags for every emitted event. ` +
-        `Violations (always-on §4.3 / I10): ${JSON.stringify(violations, null, 2)}`,
-    ).toEqual([]);
-  });
+        expect(violations, `Manifests must declare cacheInvalidationTags for every emitted event. ` +
+            `Violations (always-on §4.3 / I10): ${JSON.stringify(violations, null, 2)}`).toEqual([]);
+    });
 });

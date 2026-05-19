@@ -11,427 +11,455 @@ import { renderBar } from './renderers/bar.ts';
 import { renderStackedBar } from './renderers/stacked-bar.ts';
 import { renderPie } from './renderers/pie.ts';
 import { isElement } from '../internal/assert.ts';
-
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIAL_TYPES = new Set<string>(['pie', 'donut']);
 const CARTESIAN_TYPES = new Set<string>(['line', 'area', 'bar', 'stacked-bar']);
-
 type ChartType = 'line' | 'area' | 'bar' | 'stacked-bar' | 'pie' | 'donut' | string;
-
 /**
  * <atlas-chart type="line|area|bar|stacked-bar|pie|donut">
  *
  * A single element encapsulates the six major chart types.
  */
 class AtlasChart extends AtlasElement {
-  static override get observedAttributes(): string[] {
-    return ['type', 'height', 'label', 'show-legend', 'show-axes', 'inner-radius'];
-  }
-
-  _data: unknown = null;
-  _sizeSignal: Signal<ElementSize> = signal<ElementSize>({ width: 0, height: 0 });
-  _sizeObserver: { size: Signal<ElementSize>; dispose: () => void } | null = null;
-  override _renderDispose: EffectCleanup | null = null;
-
-  get data(): unknown { return this._data; }
-  set data(next: unknown) {
-    this._data = next;
-    this._sizeSignal.set({ ...this._sizeSignal.value }); // nudge reactive render
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'img');
-    this._ensureHeight();
-
-    const observed = observeSize(this);
-    this._sizeSignal = observed.size;
-    this._sizeObserver = observed;
-
-    this._renderDispose = effect(() => this._render(this._sizeSignal.value));
-  }
-
-  override disconnectedCallback(): void {
-    this._renderDispose?.();
-    this._renderDispose = null;
-    this._sizeObserver?.dispose();
-    this._sizeObserver = null;
-    super.disconnectedCallback?.();
-  }
-
-  override attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null): void {
-    if (oldVal === newVal) return;
-    if (name === 'height') this._ensureHeight();
-    // Poke reactive render by re-setting the signal.
-    this._sizeSignal.set({ ...this._sizeSignal.value });
-  }
-
-  _ensureHeight(): void {
-    const h = this.getAttribute('height');
-    if (h) this.style.setProperty('height', h);
-    else if (!this.style.height) this.style.setProperty('height', '240px');
-  }
-
-  _type(): ChartType {
-    return this.getAttribute('type') ?? 'line';
-  }
-
-  _render(size: ElementSize): void {
-    const { width } = size;
-    const height = size.height || parseFloat(this.style.height) || 240;
-    const type = this._type();
-    const isRadial = RADIAL_TYPES.has(type);
-    const showLegendAttr = this.hasAttribute('show-legend');
-    const showLegend = showLegendAttr || isRadial;
-    const showAxesAttr = this.hasAttribute('show-axes');
-    const showAxes = isRadial ? false : (!showAxesAttr ? true : this.getAttribute('show-axes') !== 'false');
-
-    this.textContent = '';
-
-    if (!this._data) {
-      const placeholder = document.createElementNS(SVG_NS, 'svg');
-      placeholder.setAttribute('xmlns', SVG_NS);
-      this.appendChild(placeholder);
-      return;
+    static override get observedAttributes(): string[] {
+        return ['type', 'height', 'label', 'show-legend', 'show-axes', 'inner-radius'];
     }
-
-    const colors = paletteColors(this, 8);
-
-    // Branch on render shape: the `normalize` overloads give us a precisely
-    // typed `NormalizedSeriesData` or `NormalizedSlicesData` per branch — no
-    // post-hoc casts needed downstream.
-    if (isRadial) {
-      const normalized = normalize(this._data, 'slices');
-      if (width <= 0 || height <= 0) return;
-      const label = this.getAttribute('label') ?? this._defaultLabelSlices(type, normalized);
-      const svg = this._makeSvg(width, height, label);
-      this._renderRadial(svg, type, normalized, { width, height, colors });
-      this.appendChild(svg);
-      this.appendChild(renderChartDataTable(normalized, type));
-      if (showLegend) {
-        this.appendChild(this._makeLegend(
-          normalized.slices.map((s, i) => ({ label: s.label, color: colors[i % colors.length] ?? '#000' })),
-        ));
-      }
-      return;
+    _data: unknown = null;
+    _sizeSignal: Signal<ElementSize> = signal<ElementSize>({ width: 0, height: 0 });
+    _sizeObserver: {
+        size: Signal<ElementSize>;
+        dispose: () => void;
+    } | null = null;
+    override _renderDispose: EffectCleanup | null = null;
+    get data(): unknown { return this._data; }
+    set data(next: unknown) {
+        this._data = next;
+        this._sizeSignal.set({ ...this._sizeSignal.value }); // nudge reactive render
     }
-
-    const normalized = normalize(this._data, 'series');
-    if (width <= 0 || height <= 0) {
-      // We're offscreen or not yet laid out. ResizeObserver will trigger
-      // another render as soon as real dimensions arrive.
-      return;
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'img');
+        this._ensureHeight();
+        const observed = observeSize(this);
+        this._sizeSignal = observed.size;
+        this._sizeObserver = observed;
+        this._renderDispose = effect(() => this._render(this._sizeSignal.value));
     }
-
-    const label = this.getAttribute('label') ?? this._defaultLabelSeries(type, normalized);
-    const svg = this._makeSvg(width, height, label);
-    if (CARTESIAN_TYPES.has(type)) {
-      this._renderCartesian(svg, type, normalized, { width, height, colors, showAxes });
+    override disconnectedCallback(): void {
+        this._renderDispose?.();
+        this._renderDispose = null;
+        this._sizeObserver?.dispose();
+        this._sizeObserver = null;
+        super.disconnectedCallback?.();
     }
-    this.appendChild(svg);
-    this.appendChild(renderChartDataTable(normalized, type));
-    if (showLegend) {
-      this.appendChild(this._makeLegend(
-        normalized.series.map((s, i) => ({ label: s.name, color: colors[i % colors.length] ?? '#000' })),
-      ));
+    override attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null): void {
+        if (oldVal === newVal)
+            return;
+        if (name === 'height')
+            this._ensureHeight();
+        // Poke reactive render by re-setting the signal.
+        this._sizeSignal.set({ ...this._sizeSignal.value });
     }
-  }
-
-  _makeSvg(width: number, height: number, label: string): SVGSVGElement {
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('xmlns', SVG_NS);
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('aria-label', label);
-    return svg;
-  }
-
-  _makeLegend(entries: Array<{ label: string; color: string }>): HTMLElement {
-    // <atlas-chart-legend> is registered in HTMLElementTagNameMap (see
-    // atlas-chart-legend.ts), so `createElement('atlas-chart-legend')`
-    // returns the typed class with `entries` setter directly.
-    const legend = document.createElement('atlas-chart-legend');
-    legend.entries = entries;
-    return legend;
-  }
-
-  _renderCartesian(
-    svg: SVGSVGElement,
-    type: ChartType,
-    normalized: NormalizedSeriesData,
-    { width, height, colors, showAxes }: { width: number; height: number; colors: string[]; showAxes: boolean },
-  ): void {
-    const { series, xKind } = normalized;
-    if (series.length === 0) return;
-
-    const pad = { left: 44, top: 12, right: 16, bottom: 28 };
-    const bounds: AxisBounds = {
-      left: pad.left,
-      top: pad.top,
-      right: width - pad.right,
-      bottom: height - pad.bottom,
-    };
-
-    // X scale — linear if numeric, time if Dates, band if categorical.
-    const xScale = makeXScale(type, xKind, series, [bounds.left, bounds.right]);
-    // Y scale — linear over (0 or min, max) for grouped; (0, maxSum) for stacked.
-    const yScale = makeYScale(type, series, [bounds.bottom, bounds.top]);
-
-    // Wrap the typed scales in the structural shapes the axis and renderer
-    // contracts expect. The scale objects already carry these methods —
-    // these adapters just relax the input type from the scale's literal
-    // (number | string | Date) down to `unknown`, which is sound because
-    // the scale implementations all coerce via Number(...) internally.
-    const xAxisScale = toAxisScale(xScale);
-    const yAxisScale = toAxisScale(yScale);
-    // For band scales, callers pass `PointX` (number | Date | string).
-    // Date values must be narrowed to numeric (`getTime()`) so they match
-    // the band domain keys built by `narrowBandKey` in `makeXScale`. For
-    // linear/time scales the scale's own coercion handles Date inputs.
-    const xRendererScale: LineRendererScale & { bandwidth: number } = {
-      scale: makeRendererScaleFn(xScale),
-      bandwidth: xScale.kind === 'band' ? xScale.bandwidth : 0,
-      kind: xScale.kind,
-    };
-    const yRendererScale = { scale: (v: number): number => yScale.scale(v) };
-
-    if (showAxes) {
-      const grid = renderGridLines(yScale, bounds, gridColor(this));
-      svg.appendChild(grid);
-      svg.appendChild(renderAxis({ scale: yAxisScale, orientation: 'left', bounds, axisColor: axisColor(this) }));
-      svg.appendChild(renderAxis({ scale: xAxisScale, orientation: 'bottom', bounds, axisColor: axisColor(this) }));
+    _ensureHeight(): void {
+        const h = this.getAttribute('height');
+        if (h)
+            this.style.setProperty('height', h);
+        else if (!this.style.height)
+            this.style.setProperty('height', '240px');
     }
-
-    const rendererOpts = {
-      series,
-      xScale: xRendererScale,
-      yScale: yRendererScale,
-      bounds,
-      colors,
-    };
-    let plot: SVGGElement | undefined;
-    if (type === 'line') plot = renderLine(rendererOpts);
-    else if (type === 'area') plot = renderArea(rendererOpts);
-    else if (type === 'bar') plot = renderBar(rendererOpts);
-    else if (type === 'stacked-bar') plot = renderStackedBar(rendererOpts);
-    if (plot) svg.appendChild(plot);
-
-    // Keyboard navigation + focus telemetry: delegate on svg.
-    svg.addEventListener('focusin', (e) => this._onFocus(e));
-    svg.addEventListener('focusout', () => this._onBlur());
-    svg.addEventListener('click', (e) => this._onClick(e));
-  }
-
-  _renderRadial(
-    svg: SVGSVGElement,
-    type: ChartType,
-    normalized: NormalizedSlicesData,
-    { width, height, colors }: { width: number; height: number; colors: string[] },
-  ): void {
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = Math.min(width, height) / 2 - 8;
-    const innerFraction = type === 'donut'
-      ? clamp01(Number(this.getAttribute('inner-radius') ?? 0.6))
-      : 0;
-    const inner = radius * innerFraction;
-    svg.appendChild(renderPie({ slices: normalized.slices, cx, cy, radius, innerRadius: inner, colors }));
-  }
-
-  _defaultLabelSlices(type: ChartType, normalized: NormalizedSlicesData): string {
-    return `${type} chart with ${normalized.slices.length} slices`;
-  }
-
-  _defaultLabelSeries(type: ChartType, normalized: NormalizedSeriesData): string {
-    return `${type} chart with ${normalized.series.length} series`;
-  }
-
-  _onFocus(e: Event): void {
-    const target = isElement(e.target) ? e.target : null;
-    const seriesIdx = Number(target?.getAttribute('data-series'));
-    const index = Number(target?.getAttribute('data-index'));
-    if (!Number.isFinite(seriesIdx) && !Number.isFinite(index)) return;
-    this.dispatchEvent(new CustomEvent('point-focus', {
-      bubbles: true, detail: { seriesIdx, index },
-    }));
-  }
-
-  _onBlur(): void {
-    this.dispatchEvent(new CustomEvent('point-blur', { bubbles: true }));
-  }
-
-  _onClick(e: Event): void {
-    const target = isElement(e.target) ? e.target : null;
-    const seriesIdx = Number(target?.getAttribute('data-series'));
-    const index = Number(target?.getAttribute('data-index'));
-    const seriesId = target?.getAttribute('data-series-id') ?? null;
-    const pointValue = target?.getAttribute('data-x') ?? null;
-    if (!Number.isFinite(seriesIdx) && !Number.isFinite(index) && !seriesId) return;
-    this.dispatchEvent(new CustomEvent('point-click', {
-      bubbles: true,
-      detail: { seriesIdx, index, seriesId, pointValue },
-    }));
-  }
+    _type(): ChartType {
+        return this.getAttribute('type') ?? 'line';
+    }
+    _render(size: ElementSize): void {
+        const { width } = size;
+        const height = size.height || parseFloat(this.style.height) || 240;
+        const type = this._type();
+        const isRadial = RADIAL_TYPES.has(type);
+        const showLegendAttr = this.hasAttribute('show-legend');
+        const showLegend = showLegendAttr || isRadial;
+        const showAxesAttr = this.hasAttribute('show-axes');
+        const showAxes = isRadial ? false : (!showAxesAttr ? true : this.getAttribute('show-axes') !== 'false');
+        this.textContent = '';
+        if (!this._data) {
+            const placeholder = document.createElementNS(SVG_NS, 'svg');
+            placeholder.setAttribute('xmlns', SVG_NS);
+            this.appendChild(placeholder);
+            return;
+        }
+        const colors = paletteColors(this, 8);
+        // Branch on render shape: the `normalize` overloads give us a precisely
+        // typed `NormalizedSeriesData` or `NormalizedSlicesData` per branch — no
+        // post-hoc casts needed downstream.
+        if (isRadial) {
+            const normalized = normalize(this._data, 'slices');
+            if (width <= 0 || height <= 0)
+                return;
+            const label = this.getAttribute('label') ?? this._defaultLabelSlices(type, normalized);
+            const svg = this._makeSvg(width, height, label);
+            this._renderRadial(svg, type, normalized, { width, height, colors });
+            this.appendChild(svg);
+            this.appendChild(renderChartDataTable(normalized, type));
+            if (showLegend) {
+                this.appendChild(this._makeLegend(normalized.slices.map(function (s, i) {
+                    return ({ label: s.label, color: colors[i % colors.length] ?? '#000' });
+                })));
+            }
+            return;
+        }
+        const normalized = normalize(this._data, 'series');
+        if (width <= 0 || height <= 0) {
+            // We're offscreen or not yet laid out. ResizeObserver will trigger
+            // another render as soon as real dimensions arrive.
+            return;
+        }
+        const label = this.getAttribute('label') ?? this._defaultLabelSeries(type, normalized);
+        const svg = this._makeSvg(width, height, label);
+        if (CARTESIAN_TYPES.has(type)) {
+            this._renderCartesian(svg, type, normalized, { width, height, colors, showAxes });
+        }
+        this.appendChild(svg);
+        this.appendChild(renderChartDataTable(normalized, type));
+        if (showLegend) {
+            this.appendChild(this._makeLegend(normalized.series.map(function (s, i) {
+                return ({ label: s.name, color: colors[i % colors.length] ?? '#000' });
+            })));
+        }
+    }
+    _makeSvg(width: number, height: number, label: string): SVGSVGElement {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('xmlns', SVG_NS);
+        svg.setAttribute('width', String(width));
+        svg.setAttribute('height', String(height));
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('aria-label', label);
+        return svg;
+    }
+    _makeLegend(entries: Array<{
+        label: string;
+        color: string;
+    }>): HTMLElement {
+        // <atlas-chart-legend> is registered in HTMLElementTagNameMap (see
+        // atlas-chart-legend.ts), so `createElement('atlas-chart-legend')`
+        // returns the typed class with `entries` setter directly.
+        const legend = document.createElement('atlas-chart-legend');
+        legend.entries = entries;
+        return legend;
+    }
+    _renderCartesian(svg: SVGSVGElement, type: ChartType, normalized: NormalizedSeriesData, { width, height, colors, showAxes }: {
+        width: number;
+        height: number;
+        colors: string[];
+        showAxes: boolean;
+    }): void {
+        const { series, xKind } = normalized;
+        if (series.length === 0)
+            return;
+        const pad = { left: 44, top: 12, right: 16, bottom: 28 };
+        const bounds: AxisBounds = {
+            left: pad.left,
+            top: pad.top,
+            right: width - pad.right,
+            bottom: height - pad.bottom,
+        };
+        // X scale — linear if numeric, time if Dates, band if categorical.
+        const xScale = makeXScale(type, xKind, series, [bounds.left, bounds.right]);
+        // Y scale — linear over (0 or min, max) for grouped; (0, maxSum) for stacked.
+        const yScale = makeYScale(type, series, [bounds.bottom, bounds.top]);
+        // Wrap the typed scales in the structural shapes the axis and renderer
+        // contracts expect. The scale objects already carry these methods —
+        // these adapters just relax the input type from the scale's literal
+        // (number | string | Date) down to `unknown`, which is sound because
+        // the scale implementations all coerce via Number(...) internally.
+        const xAxisScale = toAxisScale(xScale);
+        const yAxisScale = toAxisScale(yScale);
+        // For band scales, callers pass `PointX` (number | Date | string).
+        // Date values must be narrowed to numeric (`getTime()`) so they match
+        // the band domain keys built by `narrowBandKey` in `makeXScale`. For
+        // linear/time scales the scale's own coercion handles Date inputs.
+        const xRendererScale: LineRendererScale & {
+            bandwidth: number;
+        } = {
+            scale: makeRendererScaleFn(xScale),
+            bandwidth: xScale.kind === 'band' ? xScale.bandwidth : 0,
+            kind: xScale.kind,
+        };
+        const yRendererScale = { scale: function (v: number): number {
+                return yScale.scale(v);
+            } };
+        if (showAxes) {
+            const grid = renderGridLines(yScale, bounds, gridColor(this));
+            svg.appendChild(grid);
+            svg.appendChild(renderAxis({ scale: yAxisScale, orientation: 'left', bounds, axisColor: axisColor(this) }));
+            svg.appendChild(renderAxis({ scale: xAxisScale, orientation: 'bottom', bounds, axisColor: axisColor(this) }));
+        }
+        const rendererOpts = {
+            series,
+            xScale: xRendererScale,
+            yScale: yRendererScale,
+            bounds,
+            colors,
+        };
+        let plot: SVGGElement | undefined;
+        if (type === 'line')
+            plot = renderLine(rendererOpts);
+        else if (type === 'area')
+            plot = renderArea(rendererOpts);
+        else if (type === 'bar')
+            plot = renderBar(rendererOpts);
+        else if (type === 'stacked-bar')
+            plot = renderStackedBar(rendererOpts);
+        if (plot)
+            svg.appendChild(plot);
+        // Keyboard navigation + focus telemetry: delegate on svg.
+        svg.addEventListener('focusin', (e) => this._onFocus(e));
+        svg.addEventListener('focusout', () => this._onBlur());
+        svg.addEventListener('click', (e) => this._onClick(e));
+    }
+    _renderRadial(svg: SVGSVGElement, type: ChartType, normalized: NormalizedSlicesData, { width, height, colors }: {
+        width: number;
+        height: number;
+        colors: string[];
+    }): void {
+        const cx = width / 2;
+        const cy = height / 2;
+        const radius = Math.min(width, height) / 2 - 8;
+        const innerFraction = type === 'donut'
+            ? clamp01(Number(this.getAttribute('inner-radius') ?? 0.6))
+            : 0;
+        const inner = radius * innerFraction;
+        svg.appendChild(renderPie({ slices: normalized.slices, cx, cy, radius, innerRadius: inner, colors }));
+    }
+    _defaultLabelSlices(type: ChartType, normalized: NormalizedSlicesData): string {
+        return `${type} chart with ${normalized.slices.length} slices`;
+    }
+    _defaultLabelSeries(type: ChartType, normalized: NormalizedSeriesData): string {
+        return `${type} chart with ${normalized.series.length} series`;
+    }
+    _onFocus(e: Event): void {
+        const target = isElement(e.target) ? e.target : null;
+        const seriesIdx = Number(target?.getAttribute('data-series'));
+        const index = Number(target?.getAttribute('data-index'));
+        if (!Number.isFinite(seriesIdx) && !Number.isFinite(index))
+            return;
+        this.dispatchEvent(new CustomEvent('point-focus', {
+            bubbles: true, detail: { seriesIdx, index },
+        }));
+    }
+    _onBlur(): void {
+        this.dispatchEvent(new CustomEvent('point-blur', { bubbles: true }));
+    }
+    _onClick(e: Event): void {
+        const target = isElement(e.target) ? e.target : null;
+        const seriesIdx = Number(target?.getAttribute('data-series'));
+        const index = Number(target?.getAttribute('data-index'));
+        const seriesId = target?.getAttribute('data-series-id') ?? null;
+        const pointValue = target?.getAttribute('data-x') ?? null;
+        if (!Number.isFinite(seriesIdx) && !Number.isFinite(index) && !seriesId)
+            return;
+        this.dispatchEvent(new CustomEvent('point-click', {
+            bubbles: true,
+            detail: { seriesIdx, index, seriesId, pointValue },
+        }));
+    }
 }
-
 // Adapt a typed scale (LinearScale/BandScale/TimeScale) to the structural
 // `AxisScaleShape` the axis renderer expects. Each branch retains the
 // scale's concrete input type — no `unknown → never` widening.
 function toAxisScale(scale: AnyScale): AxisScaleShape {
-  if (scale.kind === 'band') {
+    if (scale.kind === 'band') {
+        return {
+            scale: function (v: unknown): number {
+                return scale.scale(coerceBandInput(v));
+            },
+            ticks: function (): unknown[] {
+                return scale.ticks();
+            },
+            kind: scale.kind,
+            bandwidth: scale.bandwidth,
+        };
+    }
+    if (scale.kind === 'time') {
+        return {
+            scale: function (v: unknown): number {
+                return scale.scale(coerceTimeInput(v));
+            },
+            ticks: function (n?: number): unknown[] {
+                return scale.ticks(n);
+            },
+            kind: scale.kind,
+        };
+    }
     return {
-      scale: (v: unknown): number => scale.scale(coerceBandInput(v)),
-      ticks: (): unknown[] => scale.ticks(),
-      kind: scale.kind,
-      bandwidth: scale.bandwidth,
+        scale: function (v: unknown): number {
+            return scale.scale(coerceLinearInput(v));
+        },
+        ticks: function (n?: number): unknown[] {
+            return scale.ticks(n);
+        },
+        kind: scale.kind,
     };
-  }
-  if (scale.kind === 'time') {
-    return {
-      scale: (v: unknown): number => scale.scale(coerceTimeInput(v)),
-      ticks: (n?: number): unknown[] => scale.ticks(n),
-      kind: scale.kind,
-    };
-  }
-  return {
-    scale: (v: unknown): number => scale.scale(coerceLinearInput(v)),
-    ticks: (n?: number): unknown[] => scale.ticks(n),
-    kind: scale.kind,
-  };
 }
-
 function makeRendererScaleFn(scale: AnyScale): (v: unknown) => number {
-  if (scale.kind === 'band') {
-    return (v: unknown): number => scale.scale(coerceBandInput(v));
-  }
-  if (scale.kind === 'time') {
-    return (v: unknown): number => scale.scale(coerceTimeInput(v));
-  }
-  return (v: unknown): number => scale.scale(coerceLinearInput(v));
+    if (scale.kind === 'band') {
+        return function (v: unknown): number {
+            return scale.scale(coerceBandInput(v));
+        };
+    }
+    if (scale.kind === 'time') {
+        return function (v: unknown): number {
+            return scale.scale(coerceTimeInput(v));
+        };
+    }
+    return function (v: unknown): number {
+        return scale.scale(coerceLinearInput(v));
+    };
 }
-
 function coerceBandInput(v: unknown): string | number {
-  if (typeof v === 'number' || typeof v === 'string') return v;
-  if (v instanceof Date) return v.getTime();
-  return String(v);
+    if (typeof v === 'number' || typeof v === 'string')
+        return v;
+    if (v instanceof Date)
+        return v.getTime();
+    return String(v);
 }
-
 function coerceTimeInput(v: unknown): Date | number | string {
-  if (v instanceof Date) return v;
-  if (typeof v === 'number' || typeof v === 'string') return v;
-  return String(v);
+    if (v instanceof Date)
+        return v;
+    if (typeof v === 'number' || typeof v === 'string')
+        return v;
+    return String(v);
 }
-
 function coerceLinearInput(v: unknown): number | string {
-  if (typeof v === 'number' || typeof v === 'string') return v;
-  if (v instanceof Date) return v.getTime();
-  return String(v);
+    if (typeof v === 'number' || typeof v === 'string')
+        return v;
+    if (v instanceof Date)
+        return v.getTime();
+    return String(v);
 }
-
 // ── helpers ───────────────────────────────────────────────────────
-
-function makeXScale(type: ChartType, xKind: XKind, series: Series[], range: [number, number]): AnyScale {
-  const xs = flattenXs(series);
-  if (type === 'bar' || type === 'stacked-bar' || xKind === 'band') {
-    // `uniqueOrdered` preserves `PointX` (number | Date | string). For a
-    // band scale we narrow Dates to their numeric `getTime()` value so
-    // the domain is `string | number`; the renderer's `toAxisScale`
-    // adapter does the matching narrowing when looking up values, so
-    // string vs. Date stays consistent end-to-end.
-    const domain: Array<string | number> = uniqueOrdered(xs).map(narrowBandKey);
-    return bandScale({ domain, range, padding: 0.2 });
-  }
-  if (xKind === 'time') {
-    const ms = xs.map((x) => (x instanceof Date ? x : new Date(x as string | number)));
-    const d0 = ms.reduce((a, b) => (a < b ? a : b));
-    const d1 = ms.reduce((a, b) => (a > b ? a : b));
-    return timeScale({ domain: [d0, d1], range });
-  }
-  const nums = xs.map((x) => Number(x)).filter((n) => Number.isFinite(n));
-  const d0 = Math.min(...nums);
-  const d1 = Math.max(...nums);
-  return linearScale({ domain: [d0, d1], range });
+function makeXScale(type: ChartType, xKind: XKind, series: Series[], range: [
+    number,
+    number
+]): AnyScale {
+    const xs = flattenXs(series);
+    if (type === 'bar' || type === 'stacked-bar' || xKind === 'band') {
+        // `uniqueOrdered` preserves `PointX` (number | Date | string). For a
+        // band scale we narrow Dates to their numeric `getTime()` value so
+        // the domain is `string | number`; the renderer's `toAxisScale`
+        // adapter does the matching narrowing when looking up values, so
+        // string vs. Date stays consistent end-to-end.
+        const domain: Array<string | number> = uniqueOrdered(xs).map(narrowBandKey);
+        return bandScale({ domain, range, padding: 0.2 });
+    }
+    if (xKind === 'time') {
+        const ms = xs.map(function (x) {
+            return (x instanceof Date ? x : new Date(x as string | number));
+        });
+        const d0 = ms.reduce(function (a, b) {
+            return (a < b ? a : b);
+        });
+        const d1 = ms.reduce(function (a, b) {
+            return (a > b ? a : b);
+        });
+        return timeScale({ domain: [d0, d1], range });
+    }
+    const nums = xs.map(function (x) {
+        return Number(x);
+    }).filter(function (n) {
+        return Number.isFinite(n);
+    });
+    const d0 = Math.min(...nums);
+    const d1 = Math.max(...nums);
+    return linearScale({ domain: [d0, d1], range });
 }
-
-function makeYScale(type: ChartType, series: Series[], range: [number, number]) {
-  if (type === 'stacked-bar') {
-    const byX = new Map<string, number>();
+function makeYScale(type: ChartType, series: Series[], range: [
+    number,
+    number
+]) {
+    if (type === 'stacked-bar') {
+        const byX = new Map<string, number>();
+        for (const s of series) {
+            for (const p of s.values) {
+                const key = p.x instanceof Date ? String(p.x.getTime()) : String(p.x);
+                byX.set(key, (byX.get(key) ?? 0) + p.y);
+            }
+        }
+        const values = [...byX.values()];
+        const max = values.length ? Math.max(...values) : 1;
+        return linearScale({ domain: [0, max || 1], range });
+    }
+    let min = Infinity;
+    let max = -Infinity;
     for (const s of series) {
-      for (const p of s.values) {
-        const key = p.x instanceof Date ? String(p.x.getTime()) : String(p.x);
-        byX.set(key, (byX.get(key) ?? 0) + p.y);
-      }
+        for (const p of s.values) {
+            if (p.y < min)
+                min = p.y;
+            if (p.y > max)
+                max = p.y;
+        }
     }
-    const values = [...byX.values()];
-    const max = values.length ? Math.max(...values) : 1;
-    return linearScale({ domain: [0, max || 1], range });
-  }
-  let min = Infinity;
-  let max = -Infinity;
-  for (const s of series) {
-    for (const p of s.values) {
-      if (p.y < min) min = p.y;
-      if (p.y > max) max = p.y;
-    }
-  }
-  if (!Number.isFinite(min)) min = 0;
-  if (!Number.isFinite(max)) max = 1;
-  // Ensure bars/areas always reach the axis baseline by including 0.
-  min = Math.min(0, min);
-  if (max === min) max = min + 1;
-  return linearScale({ domain: [min, max], range });
+    if (!Number.isFinite(min))
+        min = 0;
+    if (!Number.isFinite(max))
+        max = 1;
+    // Ensure bars/areas always reach the axis baseline by including 0.
+    min = Math.min(0, min);
+    if (max === min)
+        max = min + 1;
+    return linearScale({ domain: [min, max], range });
 }
-
 function narrowBandKey(v: PointX): string | number {
-  if (v instanceof Date) return v.getTime();
-  return v;
+    if (v instanceof Date)
+        return v.getTime();
+    return v;
 }
-
 function flattenXs(series: Series[]): PointX[] {
-  const xs: PointX[] = [];
-  for (const s of series) for (const p of s.values) xs.push(p.x);
-  return xs;
+    const xs: PointX[] = [];
+    for (const s of series)
+        for (const p of s.values)
+            xs.push(p.x);
+    return xs;
 }
-
 function uniqueOrdered(values: PointX[]): PointX[] {
-  const seen = new Set<string>();
-  const out: PointX[] = [];
-  for (const v of values) {
-    const key = v instanceof Date ? String(v.getTime()) : String(v);
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(v);
+    const seen = new Set<string>();
+    const out: PointX[] = [];
+    for (const v of values) {
+        const key = v instanceof Date ? String(v.getTime()) : String(v);
+        if (!seen.has(key)) {
+            seen.add(key);
+            out.push(v);
+        }
     }
-  }
-  return out;
+    return out;
 }
-
 function clamp01(n: number): number {
-  if (!Number.isFinite(n)) return 0.6;
-  if (n < 0) return 0;
-  if (n > 0.95) return 0.95;
-  return n;
+    if (!Number.isFinite(n))
+        return 0.6;
+    if (n < 0)
+        return 0;
+    if (n > 0.95)
+        return 0.95;
+    return n;
 }
-
-function renderGridLines(yScale: { ticks?: (n?: number) => number[]; scale(v: number): number }, bounds: AxisBounds, color: string): SVGGElement {
-  const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('class', 'atlas-chart-grid');
-  g.setAttribute('aria-hidden', 'true');
-  const ticks = yScale.ticks?.(5) ?? [];
-  for (const t of ticks) {
-    const y = yScale.scale(t);
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('x1', String(bounds.left));
-    line.setAttribute('y1', String(y));
-    line.setAttribute('x2', String(bounds.right));
-    line.setAttribute('y2', String(y));
-    line.setAttribute('stroke', color);
-    line.setAttribute('stroke-dasharray', '2 3');
-    line.setAttribute('stroke-width', '1');
-    g.appendChild(line);
-  }
-  return g;
+function renderGridLines(yScale: {
+    ticks?: (n?: number) => number[];
+    scale(v: number): number;
+}, bounds: AxisBounds, color: string): SVGGElement {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'atlas-chart-grid');
+    g.setAttribute('aria-hidden', 'true');
+    const ticks = yScale.ticks?.(5) ?? [];
+    for (const t of ticks) {
+        const y = yScale.scale(t);
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', String(bounds.left));
+        line.setAttribute('y1', String(y));
+        line.setAttribute('x2', String(bounds.right));
+        line.setAttribute('y2', String(y));
+        line.setAttribute('stroke', color);
+        line.setAttribute('stroke-dasharray', '2 3');
+        line.setAttribute('stroke-width', '1');
+        g.appendChild(line);
+    }
+    return g;
 }
-
 AtlasElement.define('atlas-chart', AtlasChart);

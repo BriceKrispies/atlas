@@ -135,6 +135,7 @@ export class AtlasIcon extends AtlasElement {
       host.innerHTML = '';
       if (!_warnedNames.has(name)) {
         _warnedNames.add(name);
+        // eslint-disable-next-line no-console -- dev-only: design-system author-time warning when a non-existent icon name is referenced; one-shot per name to keep the dev console signal-rich
         console.warn('[atlas-icon] unknown icon "%s"', name);
       }
       return;

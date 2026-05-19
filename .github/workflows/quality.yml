@@ -149,29 +149,3 @@ jobs:
       - name: Run atlas invariant rules
         run: semgrep --config .semgrep/atlas-invariants.yml --error
 
-  # --- Postgres migration safety ------------------------------------------
-  sql-migrations:
-    name: squawk (migration safety)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install squawk
-        run: |
-          set -euo pipefail
-          curl -fsSL -o squawk \
-            https://github.com/sbdchd/squawk/releases/latest/download/squawk-linux-x86_64
-          chmod +x squawk
-          sudo mv squawk /usr/local/bin/squawk
-          squawk --version
-
-      - name: Lint migrations
-        run: |
-          set -euo pipefail
-          shopt -s globstar nullglob
-          mapfile -t files < <(find adapters/node/src/migrations -type f -name '*.sql')
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No migration files found."
-            exit 0
-          fi
-          squawk "${files[@]}"

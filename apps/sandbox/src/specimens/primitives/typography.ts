@@ -1,14 +1,13 @@
 import { parseMountConfig, v } from '../../internal/assert.ts';
 import { S } from '../_register.ts';
-
 S({
-  id: 'heading',
-  name: 'Heading',
-  tag: 'atlas-heading',
-  variants: [
-    {
-      name: 'All levels',
-      html: `
+    id: 'heading',
+    name: 'Heading',
+    tag: 'atlas-heading',
+    variants: [
+        {
+            name: 'All levels',
+            html: `
         <atlas-stack gap="sm">
           <atlas-heading level="1">Heading level 1</atlas-heading>
           <atlas-heading level="2">Heading level 2</atlas-heading>
@@ -18,18 +17,17 @@ S({
           <atlas-heading level="6">Heading level 6</atlas-heading>
         </atlas-stack>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'text',
-  name: 'Text',
-  tag: 'atlas-text',
-  variants: [
-    {
-      name: 'Variants',
-      html: `
+    id: 'text',
+    name: 'Text',
+    tag: 'atlas-text',
+    variants: [
+        {
+            name: 'Variants',
+            html: `
         <atlas-stack gap="sm">
           <atlas-text block>Default body text</atlas-text>
           <atlas-text block variant="medium">Medium weight text</atlas-text>
@@ -39,24 +37,23 @@ S({
           <atlas-text block variant="mono">Monospace code text</atlas-text>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Inline usage',
-      html: `
+        },
+        {
+            name: 'Inline usage',
+            html: `
         <atlas-text>This is <atlas-text variant="medium">medium</atlas-text> and <atlas-text variant="muted">muted</atlas-text> inline.</atlas-text>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'label',
-  name: 'Label',
-  tag: 'atlas-label',
-  variants: [
-    {
-      name: 'Tone variants',
-      html: `
+    id: 'label',
+    name: 'Label',
+    tag: 'atlas-label',
+    variants: [
+        {
+            name: 'Tone variants',
+            html: `
         <atlas-stack gap="sm">
           <atlas-label>Default caption</atlas-label>
           <atlas-label tone="strong">Strong caption</atlas-label>
@@ -64,37 +61,36 @@ S({
           <atlas-label size="xs">Extra small</atlas-label>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Above a control',
-      html: `
+        },
+        {
+            name: 'Above a control',
+            html: `
         <atlas-stack gap="xs">
           <atlas-label>Plan</atlas-label>
           <atlas-text variant="medium">Pro — $12/mo</atlas-text>
         </atlas-stack>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'code',
-  name: 'Code',
-  tag: 'atlas-code',
-  variants: [
-    {
-      name: 'Inline + tones',
-      html: `
+    id: 'code',
+    name: 'Code',
+    tag: 'atlas-code',
+    variants: [
+        {
+            name: 'Inline + tones',
+            html: `
         <atlas-stack gap="sm">
           <atlas-text>Run <atlas-code>pnpm dev</atlas-code> to start the sandbox.</atlas-text>
           <atlas-text>The tag is <atlas-code tone="strong">&lt;atlas-button&gt;</atlas-code>.</atlas-text>
           <atlas-text>Unstyled: <atlas-code tone="none">mono only</atlas-code> here.</atlas-text>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Block',
-      html: `
+        },
+        {
+            name: 'Block',
+            html: `
         <atlas-code block>import { AtlasElement } from '@atlas/core';
 
 class Example extends AtlasElement {
@@ -104,46 +100,47 @@ class Example extends AtlasElement {
 }
 AtlasElement.define('atlas-example', Example);</atlas-code>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 interface CodeEditorConfig {
-  language?: string;
-  theme?: string;
-  readonly?: boolean;
-  value?: string;
+    language?: string;
+    theme?: string;
+    readonly?: boolean;
+    value?: string;
 }
-
 S({
-  id: 'code-editor',
-  name: 'CodeEditor',
-  tag: 'atlas-code-editor',
-  mount: (demoEl, { config, onLog }) => {
-    const cfg = parseMountConfig<CodeEditorConfig>(config, {
-      language: v.string,
-      theme: v.string,
-      readonly: v.boolean,
-      value: v.string,
-    });
-    const el = document.createElement('atlas-code-editor');
-    const language = cfg.language ?? 'typescript';
-    el.setAttribute('language', language);
-    el.setAttribute('theme', cfg.theme ?? 'vs-dark');
-    if (cfg.readonly) el.setAttribute('readonly', '');
-    el.setAttribute('value', cfg.value ?? '');
-    el.style.height = '360px';
-    demoEl.appendChild(el);
-    onLog('mount', `lazy-loading Monaco for language=${language}`);
-    return () => el.remove();
-  },
-  configVariants: [
-    {
-      name: 'TypeScript',
-      config: {
-        language: 'typescript',
-        theme: 'vs-dark',
-        value: `import { AtlasElement } from '@atlas/core';
+    id: 'code-editor',
+    name: 'CodeEditor',
+    tag: 'atlas-code-editor',
+    mount: function (demoEl, { config, onLog }) {
+        const cfg = parseMountConfig<CodeEditorConfig>(config, {
+            language: v.string,
+            theme: v.string,
+            readonly: v.boolean,
+            value: v.string,
+        });
+        const el = document.createElement('atlas-code-editor');
+        const language = cfg.language ?? 'typescript';
+        el.setAttribute('language', language);
+        el.setAttribute('theme', cfg.theme ?? 'vs-dark');
+        if (cfg.readonly)
+            el.setAttribute('readonly', '');
+        el.setAttribute('value', cfg.value ?? '');
+        el.style.height = '360px';
+        demoEl.appendChild(el);
+        onLog('mount', `lazy-loading Monaco for language=${language}`);
+        return function () {
+            return el.remove();
+        };
+    },
+    configVariants: [
+        {
+            name: 'TypeScript',
+            config: {
+                language: 'typescript',
+                theme: 'vs-dark',
+                value: `import { AtlasElement } from '@atlas/core';
 
 class Example extends AtlasElement {
   override connectedCallback(): void {
@@ -153,14 +150,14 @@ class Example extends AtlasElement {
 }
 AtlasElement.define('atlas-example', Example);
 `,
-      },
-    },
-    {
-      name: 'JSON',
-      config: {
-        language: 'json',
-        theme: 'vs-dark',
-        value: `{
+            },
+        },
+        {
+            name: 'JSON',
+            config: {
+                language: 'json',
+                theme: 'vs-dark',
+                value: `{
   "surfaceId": "content.pages",
   "required": ["loading", "success", "empty"],
   "selectors": {
@@ -169,47 +166,46 @@ AtlasElement.define('atlas-example', Example);
   }
 }
 `,
-      },
-    },
-    {
-      name: 'CSS',
-      config: {
-        language: 'css',
-        theme: 'vs',
-        value: `:host {
+            },
+        },
+        {
+            name: 'CSS',
+            config: {
+                language: 'css',
+                theme: 'vs',
+                value: `:host {
   display: block;
   padding: var(--atlas-space-lg);
   background: var(--atlas-color-surface);
   border-radius: var(--atlas-radius-md);
 }
 `,
-      },
-    },
-    {
-      name: 'Read-only markdown',
-      config: {
-        language: 'markdown',
-        theme: 'vs',
-        readonly: true,
-        value: `# Atlas sandbox
+            },
+        },
+        {
+            name: 'Read-only markdown',
+            config: {
+                language: 'markdown',
+                theme: 'vs',
+                readonly: true,
+                value: `# Atlas sandbox
 
 A **read-only** editor variant. Useful for rendering fixed
 snippets where you still want syntax highlighting and a
 scroll gutter.
 `,
-      },
-    },
-  ],
+            },
+        },
+    ],
 });
-
 S({
-  id: 'kbd',
-  name: 'Kbd',
-  tag: 'atlas-kbd',
-  variants: [
-    {
-      name: 'Single keys',
-      html: `
+    id: 'kbd',
+    name: 'Kbd',
+    tag: 'atlas-kbd',
+    variants: [
+        {
+            name: 'Single keys',
+            html: `
         <atlas-stack direction="row" gap="sm" align="center">
           <atlas-kbd>⌘</atlas-kbd>
           <atlas-kbd>Ctrl</atlas-kbd>
@@ -219,27 +215,26 @@ S({
           <atlas-kbd>K</atlas-kbd>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Combinations (inline)',
-      html: `
+        },
+        {
+            name: 'Combinations (inline)',
+            html: `
         <atlas-stack gap="sm">
           <atlas-text>Open palette: <atlas-kbd>⌘</atlas-kbd> + <atlas-kbd>K</atlas-kbd></atlas-text>
           <atlas-text>Save: <atlas-kbd size="xs">Ctrl</atlas-kbd> + <atlas-kbd size="xs">S</atlas-kbd></atlas-text>
         </atlas-stack>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'link',
-  name: 'Link',
-  tag: 'atlas-link',
-  variants: [
-    {
-      name: 'Variants',
-      html: `
+    id: 'link',
+    name: 'Link',
+    tag: 'atlas-link',
+    variants: [
+        {
+            name: 'Variants',
+            html: `
         <atlas-stack gap="sm">
           <atlas-text><atlas-link href="#">Primary link</atlas-link></atlas-text>
           <atlas-text><atlas-link href="#" tone="muted">Muted link</atlas-link></atlas-text>
@@ -247,24 +242,23 @@ S({
           <atlas-text><atlas-link href="#" underline="none">No underline on hover</atlas-link></atlas-text>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'External (target=_blank)',
-      html: `
+        },
+        {
+            name: 'External (target=_blank)',
+            html: `
         <atlas-text><atlas-link href="https://example.com" target="_blank">Open example.com</atlas-link> — auto rel=noopener.</atlas-text>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'icon',
-  name: 'Icon',
-  tag: 'atlas-icon',
-  variants: [
-    {
-      name: 'Sizes + registry sampling',
-      html: `
+    id: 'icon',
+    name: 'Icon',
+    tag: 'atlas-icon',
+    variants: [
+        {
+            name: 'Sizes + registry sampling',
+            html: `
         <atlas-stack gap="md">
           <atlas-stack direction="row" gap="md" align="center">
             <atlas-icon name="menu" size="sm"></atlas-icon>
@@ -282,16 +276,16 @@ S({
           </atlas-stack>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Colour inheritance',
-      html: `
+        },
+        {
+            name: 'Colour inheritance',
+            html: `
         <atlas-stack gap="sm">
           <atlas-text>Inherits text colour: <atlas-icon name="check"></atlas-icon> done.</atlas-text>
           <atlas-text variant="error">In error context: <atlas-icon name="x"></atlas-icon> failed.</atlas-text>
           <atlas-box style="color: var(--atlas-color-primary)"><atlas-icon name="menu"></atlas-icon> primary</atlas-box>
         </atlas-stack>
       `,
-    },
-  ],
+        },
+    ],
 });

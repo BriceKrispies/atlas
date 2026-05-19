@@ -34,110 +34,108 @@
  * `KeepAlive::new().interval(Duration::from_secs(15))` in Rust) to keep
  * proxies from idle-killing the connection.
  */
-
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type { ServerEvent } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
-
-type AppCtx = Context<{ Variables: ServerVariables }>;
-
-const KEEPALIVE_INTERVAL_MS = 15_000;
-
-export function eventsRoutes(state: AppState): Hono<{ Variables: ServerVariables }> {
-  const app = new Hono<{ Variables: ServerVariables }>();
-
-  app.get('/api/v1/events', (c: AppCtx) => {
-    const principal = c.get('principal');
-    const tenantId = principal.tenantId;
-
-    // Last-Event-ID is honored only for the id counter; v1 has no replay.
-    const lastEventIdHeader = c.req.header('Last-Event-ID') ?? '0';
-    const parsed = Number.parseInt(lastEventIdHeader, 10);
-    const startCounter = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-
-    // ?tags=Tag1,Tag2 → at-least-one-of (strict equality, no wildcards).
-    // Empty/missing → no tag filter (back-compat with the original
-    // tenant-only stream).
-    const tagsParam = c.req.query('tags') ?? '';
-    const requestedTags = tagsParam
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-    const tagFilter: ReadonlySet<string> | null =
-      requestedTags.length > 0 ? new Set(requestedTags) : null;
-
-    return streamSSE(c, async (stream) => {
-      const { events, unsubscribe } = state.serverEvents.subscribe();
-
-      // Tie cleanup to the request's abort signal so a hung iterator
-      // (no events arriving) still releases its slot when the client
-      // disconnects. `streamSSE` also wires its own onAbort but it
-      // operates on the writer side; we need the subscriber side too.
-      const abort = c.req.raw.signal;
-      const onAbort = (): void => {
-        unsubscribe();
-      };
-      if (abort.aborted) {
-        unsubscribe();
-        return;
-      }
-      abort.addEventListener('abort', onAbort, { once: true });
-
-      // Periodic keepalive so idle connections don't get reaped by
-      // proxies. Hono's stream API doesn't expose a comment helper, so
-      // we write the raw `: keepalive\n\n` SSE comment frame.
-      const keepalive = setInterval(() => {
-        // `stream.write` accepts strings; comment lines (`:` prefix)
-        // are valid SSE frames the browser silently discards.
-        stream.write(': keepalive\n\n').catch(() => {
-          // Write failures usually mean the client is gone — let the
-          // iterator loop exit naturally on the next aborted check.
+type AppCtx = Context<{
+    Variables: ServerVariables;
+}>;
+const KEEPALIVE_INTERVAL_MS = 15000;
+export function eventsRoutes(state: AppState): Hono<{
+    Variables: ServerVariables;
+}> {
+    const app = new Hono<{
+        Variables: ServerVariables;
+    }>();
+    app.get('/api/v1/events', function (c: AppCtx) {
+        const principal = c.get('principal');
+        const tenantId = principal.tenantId;
+        // Last-Event-ID is honored only for the id counter; v1 has no replay.
+        const lastEventIdHeader = c.req.header('Last-Event-ID') ?? '0';
+        const parsed = Number.parseInt(lastEventIdHeader, 10);
+        const startCounter = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        // ?tags=Tag1,Tag2 → at-least-one-of (strict equality, no wildcards).
+        // Empty/missing → no tag filter (back-compat with the original
+        // tenant-only stream).
+        const tagsParam = c.req.query('tags') ?? '';
+        const requestedTags = tagsParam
+            .split(',')
+            .map(function (t) {
+            return t.trim();
+        })
+            .filter(function (t) {
+            return t.length > 0;
         });
-      }, KEEPALIVE_INTERVAL_MS);
-
-      let counter = startCounter;
-      try {
-        for await (const event of events) {
-          // Tenant isolation (Invariant I7 / mirrors Rust SSE filter).
-          if (event.tenantId !== tenantId) continue;
-
-          // Tag overlap filter — AND'd with tenant. Strict equality on
-          // each tag; if the client asked for tags but the event has
-          // none, drop it. Wildcards are NOT supported in phase 5.
-          if (tagFilter) {
-            const eventTags = event.tags;
-            if (!eventTags || eventTags.length === 0) continue;
-            let matched = false;
-            for (const t of eventTags) {
-              if (tagFilter.has(t)) {
-                matched = true;
-                break;
-              }
+        const tagFilter: ReadonlySet<string> | null = requestedTags.length > 0 ? new Set(requestedTags) : null;
+        return streamSSE(c, async function (stream) {
+            const { events, unsubscribe } = state.serverEvents.subscribe();
+            // Tie cleanup to the request's abort signal so a hung iterator
+            // (no events arriving) still releases its slot when the client
+            // disconnects. `streamSSE` also wires its own onAbort but it
+            // operates on the writer side; we need the subscriber side too.
+            const abort = c.req.raw.signal;
+            const onAbort = function (): void {
+                unsubscribe();
+            };
+            if (abort.aborted) {
+                unsubscribe();
+                return;
             }
-            if (!matched) continue;
-          }
-
-          counter += 1;
-          await stream.writeSSE({
-            event: event.eventType,
-            id: counter.toString(),
-            data: serialize(event),
-          });
-        }
-      } finally {
-        clearInterval(keepalive);
-        abort.removeEventListener('abort', onAbort);
-        unsubscribe();
-      }
+            abort.addEventListener('abort', onAbort, { once: true });
+            // Periodic keepalive so idle connections don't get reaped by
+            // proxies. Hono's stream API doesn't expose a comment helper, so
+            // we write the raw `: keepalive\n\n` SSE comment frame.
+            const keepalive = setInterval(function () {
+                // `stream.write` accepts strings; comment lines (`:` prefix)
+                // are valid SSE frames the browser silently discards.
+                stream.write(': keepalive\n\n').catch(function () {
+                    // Write failures usually mean the client is gone — let the
+                    // iterator loop exit naturally on the next aborted check.
+                });
+            }, KEEPALIVE_INTERVAL_MS);
+            let counter = startCounter;
+            try {
+                for await (const event of events) {
+                    // Tenant isolation (Invariant I7 / mirrors Rust SSE filter).
+                    if (event.tenantId !== tenantId)
+                        continue;
+                    // Tag overlap filter — AND'd with tenant. Strict equality on
+                    // each tag; if the client asked for tags but the event has
+                    // none, drop it. Wildcards are NOT supported in phase 5.
+                    if (tagFilter) {
+                        const eventTags = event.tags;
+                        if (!eventTags || eventTags.length === 0)
+                            continue;
+                        let matched = false;
+                        for (const t of eventTags) {
+                            if (tagFilter.has(t)) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched)
+                            continue;
+                    }
+                    counter += 1;
+                    await stream.writeSSE({
+                        event: event.eventType,
+                        id: counter.toString(),
+                        data: serialize(event),
+                    });
+                }
+            }
+            finally {
+                clearInterval(keepalive);
+                abort.removeEventListener('abort', onAbort);
+                unsubscribe();
+            }
+        });
     });
-  });
-
-  return app;
+    return app;
 }
-
 /**
  * JSON-serialise a `ServerEvent` for the wire, omitting `tenantId` —
  * matches Rust's `#[serde(skip)]` on the same field. Subscribers must
@@ -145,17 +143,17 @@ export function eventsRoutes(state: AppState): Hono<{ Variables: ServerVariables
  * filter above also enforces this).
  */
 function serialize(event: ServerEvent): string {
-  // `tags` is included on the wire when present so the client-side
-  // refetch path can tag-match identically to the server filter; this
-  // matters when a client subscribes broadly and wants per-surface
-  // filtering. `tenantId` is omitted (defense in depth — the route
-  // filter already enforces tenant isolation).
-  return JSON.stringify({
-    eventType: event.eventType,
-    resourceType: event.resourceType,
-    resourceId: event.resourceId,
-    correlationId: event.correlationId,
-    occurredAt: event.occurredAt,
-    ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {}),
-  });
+    // `tags` is included on the wire when present so the client-side
+    // refetch path can tag-match identically to the server filter; this
+    // matters when a client subscribes broadly and wants per-surface
+    // filtering. `tenantId` is omitted (defense in depth — the route
+    // filter already enforces tenant isolation).
+    return JSON.stringify({
+        eventType: event.eventType,
+        resourceType: event.resourceType,
+        resourceId: event.resourceId,
+        correlationId: event.correlationId,
+        occurredAt: event.occurredAt,
+        ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {}),
+    });
 }

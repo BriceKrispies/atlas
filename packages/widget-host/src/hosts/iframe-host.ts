@@ -15,152 +15,135 @@
  * instance of the class inside its own realm. The signature matches
  * the inline/shadow hosts for parity.
  */
-
 import { emitTelemetry } from '@atlas/core';
-
 import { BOOT_SCRIPT } from '../iframe-runtime/boot.ts';
 import { createPostMessageTransport } from '../transport/postmessage.ts';
 import type { HostMountArgs } from '../types.ts';
-
-export async function mount({
-  manifest,
-  config,
-  context,
-  instanceId,
-  hostContainer,
-  onError,
-  widgetModuleUrl,
-  supportModuleUrls,
-}: HostMountArgs): Promise<() => void> {
-  if (!widgetModuleUrl) {
-    try {
-      onError(
-        new Error(
-          `iframe isolation requires a widgetModuleUrl for '${manifest.widgetId}' — ` +
-            'set <widget-host>.resolveWidgetModuleUrl to provide one.',
-        ),
-      );
-    } catch {
-      /* never throw from the error handler */
+export async function mount({ manifest, config, context, instanceId, hostContainer, onError, widgetModuleUrl, supportModuleUrls, }: HostMountArgs): Promise<() => void> {
+    if (!widgetModuleUrl) {
+        try {
+            onError(new Error(`iframe isolation requires a widgetModuleUrl for '${manifest.widgetId}' — ` +
+                'set <widget-host>.resolveWidgetModuleUrl to provide one.'));
+        }
+        catch {
+            /* never throw from the error handler */
+        }
+        return function (): void { };
     }
-    return (): void => {};
-  }
-
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('sandbox', 'allow-scripts');
-  iframe.setAttribute('data-widget-id', manifest.widgetId);
-  iframe.setAttribute('data-widget-instance-id', instanceId);
-  iframe.style.cssText = 'width:100%;border:0;display:block;min-height:0;';
-  iframe.srcdoc =
-    '<!doctype html><html><body><div id="root"></div>' +
-    '<script type="module">' +
-    BOOT_SCRIPT +
-    '</script>' +
-    '</body></html>';
-
-  const transport = createPostMessageTransport({
-    iframe,
-    onReady: (): void => {
-      // Strip non-serializable fields (functions, mediator/bridge,
-      // log closures) before crossing the postMessage boundary.
-      const serializableContext = {
-        correlationId: context.correlationId,
-        principal: context.principal,
-        tenantId: context.tenantId,
-        locale: context.locale,
-        theme: context.theme,
-      };
-      transport.send({
-        kind: 'init',
-        config,
-        context: serializableContext,
-        manifest: {
-          widgetId: manifest.widgetId,
-          version: manifest.version,
-          capabilities: Array.isArray(manifest.capabilities)
-            ? manifest.capabilities
-            : [],
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.setAttribute('data-widget-id', manifest.widgetId);
+    iframe.setAttribute('data-widget-instance-id', instanceId);
+    iframe.style.cssText = 'width:100%;border:0;display:block;min-height:0;';
+    iframe.srcdoc =
+        '<!doctype html><html><body><div id="root"></div>' +
+            '<script type="module">' +
+            BOOT_SCRIPT +
+            '</script>' +
+            '</body></html>';
+    const transport = createPostMessageTransport({
+        iframe,
+        onReady: function (): void {
+            // Strip non-serializable fields (functions, mediator/bridge,
+            // log closures) before crossing the postMessage boundary.
+            const serializableContext = {
+                correlationId: context.correlationId,
+                principal: context.principal,
+                tenantId: context.tenantId,
+                locale: context.locale,
+                theme: context.theme,
+            };
+            transport.send({
+                kind: 'init',
+                config,
+                context: serializableContext,
+                manifest: {
+                    widgetId: manifest.widgetId,
+                    version: manifest.version,
+                    capabilities: Array.isArray(manifest.capabilities)
+                        ? manifest.capabilities
+                        : [],
+                },
+                instanceId,
+                widgetModuleUrl,
+                supportModuleUrls: Array.isArray(supportModuleUrls)
+                    ? supportModuleUrls
+                    : [],
+            });
         },
-        instanceId,
-        widgetModuleUrl,
-        supportModuleUrls: Array.isArray(supportModuleUrls)
-          ? supportModuleUrls
-          : [],
-      });
-    },
-    onPublish: ({ topic, payload }): void => {
-      try {
-        context.channel.publish(topic, payload);
-      } catch (err) {
-        // A widget publishing an undeclared topic throws inside its
-        // own frame at request time; the iframe's publish is
-        // fire-and-forget, so any mediator-side rejection surfaces
-        // here. Route through telemetry so log shippers see it.
-        emitTelemetry({
-          eventName: 'atlas.widget.iframe.publish.threw',
-          level: 'error',
-          source: 'widget-host.iframe-host',
-          widgetId: manifest.widgetId,
-          instanceId,
-          topic,
-          'error.message': err instanceof Error ? err.message : String(err),
-        });
-      }
-    },
-    onCapabilityInvoke: async ({ id, capability, payload }): Promise<void> => {
-      try {
-        const result = await context.request(capability, payload);
-        transport.send({
-          id,
-          kind: 'capability.ack',
-          ok: true,
-          payload: result,
-        });
-      } catch (err) {
-        const error =
-          err instanceof Error
-            ? { message: err.message, ...(err.name ? { name: err.name } : {}) }
-            : { message: String(err) };
-        transport.send({
-          id,
-          kind: 'capability.ack',
-          ok: false,
-          error,
-        });
-      }
-    },
-    // Forward iframe-side log records onto the parent's telemetry
-    // pipeline. tenantId + widgetId + instanceId are stamped here so
-    // log shippers can attribute tenant-code observability.
-    onLog: ({ level, args }): void => {
-      emitTelemetry({
-        eventName: 'atlas.widget.log',
-        level,
-        source: 'widget-host.iframe-runtime',
-        widgetId: manifest.widgetId,
-        instanceId,
-        tenantId: context.tenantId,
-        correlationId: context.correlationId,
-        message: args.join(' '),
-        args,
-      });
-    },
-  });
-
-  hostContainer.appendChild(iframe);
-
-  return (): void => {
-    try {
-      transport.dispose();
-    } catch {
-      /* already disposed */
-    }
-    try {
-      iframe.remove();
-    } catch {
-      /* detached already */
-    }
-  };
+        onPublish: function ({ topic, payload }): void {
+            try {
+                context.channel.publish(topic, payload);
+            }
+            catch (err) {
+                // A widget publishing an undeclared topic throws inside its
+                // own frame at request time; the iframe's publish is
+                // fire-and-forget, so any mediator-side rejection surfaces
+                // here. Route through telemetry so log shippers see it.
+                emitTelemetry({
+                    eventName: 'atlas.widget.iframe.publish.threw',
+                    level: 'error',
+                    source: 'widget-host.iframe-host',
+                    widgetId: manifest.widgetId,
+                    instanceId,
+                    topic,
+                    'error.message': err instanceof Error ? err.message : String(err),
+                });
+            }
+        },
+        onCapabilityInvoke: async function ({ id, capability, payload }): Promise<void> {
+            try {
+                const result = await context.request(capability, payload);
+                transport.send({
+                    id,
+                    kind: 'capability.ack',
+                    ok: true,
+                    payload: result,
+                });
+            }
+            catch (err) {
+                const error = err instanceof Error
+                    ? { message: err.message, ...(err.name ? { name: err.name } : {}) }
+                    : { message: String(err) };
+                transport.send({
+                    id,
+                    kind: 'capability.ack',
+                    ok: false,
+                    error,
+                });
+            }
+        },
+        // Forward iframe-side log records onto the parent's telemetry
+        // pipeline. tenantId + widgetId + instanceId are stamped here so
+        // log shippers can attribute tenant-code observability.
+        onLog: function ({ level, args }): void {
+            emitTelemetry({
+                eventName: 'atlas.widget.log',
+                level,
+                source: 'widget-host.iframe-runtime',
+                widgetId: manifest.widgetId,
+                instanceId,
+                tenantId: context.tenantId,
+                correlationId: context.correlationId,
+                message: args.join(' '),
+                args,
+            });
+        },
+    });
+    hostContainer.appendChild(iframe);
+    return function (): void {
+        try {
+            transport.dispose();
+        }
+        catch {
+            /* already disposed */
+        }
+        try {
+            iframe.remove();
+        }
+        catch {
+            /* detached already */
+        }
+    };
 }
-
 export default { mount };

@@ -1,6 +1,7 @@
 import { moduleManifests, getSchemaValidator } from '@atlas/schemas';
 import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { ActionEntry, ControlPlaneRegistry } from '@atlas/ports';
+import type { Logger } from '@atlas/platform-core';
 
 /**
  * Convention-based mapping from a manifest `actionId` to its payload-schema
@@ -17,7 +18,7 @@ function toSnake(segment: string): string {
 }
 
 function actionIdToSchemaId(actionId: string): { schemaId: string; schemaVersion: number } {
-  const segments = actionId.split('.').map(toSnake).filter((s) => s.length > 0);
+  const segments = actionId.split('.').map(toSnake).filter(function (s) { return s.length > 0; });
   return { schemaId: `${segments.join('.')}.v1`, schemaVersion: 1 };
 }
 
@@ -34,7 +35,7 @@ interface ManifestLike {
 export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
   private actions: Map<string, ActionEntry>;
 
-  constructor() {
+  constructor(logger?: Logger) {
     this.actions = new Map();
     const manifests = moduleManifests() as ReadonlyArray<ManifestLike>;
     const ownerByAction = new Map<string, string>();
@@ -47,11 +48,15 @@ export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
           // Followups: ditto for the IDB sim adapter once a second sim
           // module lands. Today only one module owns each action, so the
           // warning fires only on a manifest authoring mistake.
-          console.warn(
-            `[control-plane-registry] duplicate actionId "${a.actionId}": ` +
-              `previously declared by "${ownerByAction.get(a.actionId) ?? '<unknown>'}", ` +
-              `now overwritten by "${ownerId}" (last-wins)`,
-          );
+          logger?.warn('duplicate actionId in module manifest', {
+            event: 'ControlPlaneRegistry.DuplicateAction',
+            properties: {
+              cause: 'two modules claim the same actionId — last-wins',
+              actionId: a.actionId,
+              previousOwner: ownerByAction.get(a.actionId) ?? '<unknown>',
+              newOwner: ownerId,
+            },
+          });
         }
         ownerByAction.set(a.actionId, ownerId);
         this.actions.set(a.actionId, {

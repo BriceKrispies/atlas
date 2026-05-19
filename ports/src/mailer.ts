@@ -36,8 +36,23 @@ export interface MailerSendResult {
   sentAt: string;
 }
 
+/**
+ * Per-call options for {@link Mailer.send}. The optional `logger` is the
+ * caller's per-request structured logger; adapters log the
+ * `Mailer.Send.Success` (and failure) lines through it so the lines
+ * carry the request's `correlationId` at the top level and surface in
+ * the per-correlation ring buffer (`/api/v1/admin/logging/correlation/
+ * :id/recent`). When omitted, adapters fall back to their construction-
+ * time logger (if any) — useful for adapter-internal flows that have no
+ * request context.
+ */
+import type { Logger } from '@atlas/platform-core';
+export interface MailerSendOptions {
+  logger?: Logger;
+}
+
 export interface Mailer {
-  send(msg: EmailMessage): Promise<MailerSendResult>;
+  send(msg: EmailMessage, opts?: MailerSendOptions): Promise<MailerSendResult>;
   /**
    * Optional. Called by apps during graceful shutdown to release transport
    * resources (SMTP connection pools, etc). Adapters that don't hold

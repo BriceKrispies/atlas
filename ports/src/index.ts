@@ -24,6 +24,7 @@ export type { CustomDomainStore, CustomDomain } from './custom-domain-store.ts';
 export type {
   Mailer,
   EmailMessage,
+  MailerSendOptions,
   MailerSendResult,
   EmailLogStore,
   EmailLogEntry,

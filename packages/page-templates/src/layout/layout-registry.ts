@@ -9,41 +9,34 @@
  * The registry is read-only from the app's perspective; the editor
  * writes new / modified layouts through a `LayoutStore`, not here.
  */
-
-import {
-  validateLayoutDocument,
-  cloneLayoutDocument,
-  type LayoutDocument,
-} from './layout-document.ts';
-
+import { validateLayoutDocument, cloneLayoutDocument, type LayoutDocument, } from './layout-document.ts';
 export class LayoutRegistry {
-  private _map: Map<string, LayoutDocument> = new Map();
-
-  register(doc: LayoutDocument): this {
-    const result = validateLayoutDocument(doc);
-    if (!result.ok) {
-      const summary = result.errors
-        .map((e) => `${e.path || '(root)'} ${e.message}`)
-        .join('; ');
-      throw new Error(`invalid layout: ${summary}`);
+    private _map: Map<string, LayoutDocument> = new Map();
+    register(doc: LayoutDocument): this {
+        const result = validateLayoutDocument(doc);
+        if (!result.ok) {
+            const summary = result.errors
+                .map(function (e) {
+                return `${e.path || '(root)'} ${e.message}`;
+            })
+                .join('; ');
+            throw new Error(`invalid layout: ${summary}`);
+        }
+        this._map.set(doc.layoutId, cloneLayoutDocument(doc));
+        return this;
     }
-    this._map.set(doc.layoutId, cloneLayoutDocument(doc));
-    return this;
-  }
-
-  has(layoutId: string): boolean {
-    return this._map.has(layoutId);
-  }
-
-  get(layoutId: string): LayoutDocument | null {
-    const doc = this._map.get(layoutId);
-    return doc ? cloneLayoutDocument(doc) : null;
-  }
-
-  list(): LayoutDocument[] {
-    return [...this._map.values()].map((d) => cloneLayoutDocument(d));
-  }
+    has(layoutId: string): boolean {
+        return this._map.has(layoutId);
+    }
+    get(layoutId: string): LayoutDocument | null {
+        const doc = this._map.get(layoutId);
+        return doc ? cloneLayoutDocument(doc) : null;
+    }
+    list(): LayoutDocument[] {
+        return [...this._map.values()].map(function (d) {
+            return cloneLayoutDocument(d);
+        });
+    }
 }
-
 /** Module-default registry. Bundle packages register presets into this. */
 export const moduleDefaultLayoutRegistry = new LayoutRegistry();

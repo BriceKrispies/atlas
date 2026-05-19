@@ -32,14 +32,12 @@
  *   - `Principal` lacks `principalType` and `claims` (TS type error / runtime undefined)
  *   - `parseDebugPrincipal` (in `principal.ts`) does not set those fields
  */
-
 import { describe, test, expect } from 'vitest';
 import { Hono } from 'hono';
 import type { Principal } from '@atlas/platform-core';
 import { principalMiddleware, type ServerVariables } from './principal.ts';
 import type { AppState } from '../bootstrap.ts';
 import { buildFakeAppState } from '../../test/lib/factories.ts';
-
 /**
  * Build an `AppState` for the principal middleware. We lean on the shared
  * `buildFakeAppState` typed factory (throw-on-access proxies for the
@@ -50,25 +48,25 @@ import { buildFakeAppState } from '../../test/lib/factories.ts';
  * all of which `buildFakeAppState` populates.
  */
 function makeState(): AppState {
-  const { state } = buildFakeAppState({ tenantId: 'default-tenant' });
-  return state;
+    const { state } = buildFakeAppState({ tenantId: 'default-tenant' });
+    return state;
 }
-
 /**
  * Build a Hono app with the middleware mounted and a sink route that echoes
  * back the principal stored on the context. This is how we observe
  * `parseDebugPrincipal` indirectly without exporting it from the source.
  */
 function buildApp() {
-  const app = new Hono<{ Variables: ServerVariables }>();
-  app.use('*', principalMiddleware(makeState()));
-  app.get('/echo', (c) => {
-    const p = c.get('principal');
-    return c.json(p);
-  });
-  return app;
+    const app = new Hono<{
+        Variables: ServerVariables;
+    }>();
+    app.use('*', principalMiddleware(makeState()));
+    app.get('/echo', function (c) {
+        const p = c.get('principal');
+        return c.json(p);
+    });
+    return app;
 }
-
 // RED PHASE: `principalType` + `claims` are pre-driven from the Rust
 // `authn::Principal` shape but not yet on the TS `Principal` type. Tests are
 // skipped at runtime via `describe.skip`; the wider type cast below keeps
@@ -76,10 +74,9 @@ function buildApp() {
 // point the cast becomes a no-op and `describe.skip` flips back to
 // `describe`.
 type ExtendedPrincipal = Principal & {
-  principalType?: 'user' | 'service' | 'anonymous';
-  claims?: Record<string, unknown>;
+    principalType?: 'user' | 'service' | 'anonymous';
+    claims?: Record<string, unknown>;
 };
-
 /**
  * Narrow a JSON-parsed `unknown` to `ExtendedPrincipal` shape. Only the
  * fields the assertions read are checked — `principalId` + `tenantId` are
@@ -89,93 +86,88 @@ type ExtendedPrincipal = Principal & {
  * receive a properly-typed value without a cast at the assertion line.
  */
 function asExtendedPrincipal(v: unknown): ExtendedPrincipal {
-  if (typeof v !== 'object' || v === null) {
-    throw new Error(`expected principal object, got ${typeof v}`);
-  }
-  // `v` is now `object` (typeof object + non-null). `Object.fromEntries`
-  // over `Object.entries` materialises a fresh `Record<string, unknown>`
-  // — `Object.entries(o: object)` has signature `[string, unknown][]`, so
-  // no narrowing cast is needed on the input.
-  const obj: Record<string, unknown> = Object.fromEntries(Object.entries(v));
-  const principalId = obj['principalId'];
-  const tenantId = obj['tenantId'];
-  if (typeof principalId !== 'string') {
-    throw new Error('principal.principalId missing or not a string');
-  }
-  if (typeof tenantId !== 'string') {
-    throw new Error('principal.tenantId missing or not a string');
-  }
-  const out: ExtendedPrincipal = { principalId, tenantId };
-  const pt = obj['principalType'];
-  if (pt === 'user' || pt === 'service' || pt === 'anonymous') {
-    out.principalType = pt;
-  } else if (pt !== undefined) {
-    throw new Error(`principal.principalType invalid: ${String(pt)}`);
-  }
-  const claims = obj['claims'];
-  if (claims !== undefined) {
-    if (typeof claims !== 'object' || claims === null || Array.isArray(claims)) {
-      throw new Error('principal.claims must be an object');
+    if (typeof v !== 'object' || v === null) {
+        throw new Error(`expected principal object, got ${typeof v}`);
     }
-    // Rebuild the claims map from `Object.entries`, which has signature
-    // `(o: object) => [string, unknown][]`. That gives a fresh
-    // `Record<string, unknown>` without any narrowing cast on the input.
-    out.claims = Object.fromEntries(Object.entries(claims));
-  }
-  return out;
+    // `v` is now `object` (typeof object + non-null). `Object.fromEntries`
+    // over `Object.entries` materialises a fresh `Record<string, unknown>`
+    // — `Object.entries(o: object)` has signature `[string, unknown][]`, so
+    // no narrowing cast is needed on the input.
+    const obj: Record<string, unknown> = Object.fromEntries(Object.entries(v));
+    const principalId = obj['principalId'];
+    const tenantId = obj['tenantId'];
+    if (typeof principalId !== 'string') {
+        throw new Error('principal.principalId missing or not a string');
+    }
+    if (typeof tenantId !== 'string') {
+        throw new Error('principal.tenantId missing or not a string');
+    }
+    const out: ExtendedPrincipal = { principalId, tenantId };
+    const pt = obj['principalType'];
+    if (pt === 'user' || pt === 'service' || pt === 'anonymous') {
+        out.principalType = pt;
+    }
+    else if (pt !== undefined) {
+        throw new Error(`principal.principalType invalid: ${String(pt)}`);
+    }
+    const claims = obj['claims'];
+    if (claims !== undefined) {
+        if (typeof claims !== 'object' || claims === null || Array.isArray(claims)) {
+            throw new Error('principal.claims must be an object');
+        }
+        // Rebuild the claims map from `Object.entries`, which has signature
+        // `(o: object) => [string, unknown][]`. That gives a fresh
+        // `Record<string, unknown>` without any narrowing cast on the input.
+        out.claims = Object.fromEntries(Object.entries(claims));
+    }
+    return out;
 }
-
-describe.skip('Principal interface parity with Rust authn::Principal', () => {
-  test('Principal has principalType and claims fields (type-level + runtime literal)', () => {
-    const p: ExtendedPrincipal = {
-      principalId: 'alice',
-      tenantId: 't1',
-      principalType: 'user',
-      claims: {},
-    };
-    expect(p.principalType).toBe('user');
-    expect(p.claims).toEqual({});
-    expect(Object.keys(p).sort()).toEqual(
-      ['claims', 'principalId', 'principalType', 'tenantId'].sort(),
-    );
-  });
+describe.skip('Principal interface parity with Rust authn::Principal', function () {
+    test('Principal has principalType and claims fields (type-level + runtime literal)', function () {
+        const p: ExtendedPrincipal = {
+            principalId: 'alice',
+            tenantId: 't1',
+            principalType: 'user',
+            claims: {},
+        };
+        expect(p.principalType).toBe('user');
+        expect(p.claims).toEqual({});
+        expect(Object.keys(p).sort()).toEqual(['claims', 'principalId', 'principalType', 'tenantId'].sort());
+    });
 });
-
-describe.skip('principalMiddleware — X-Debug-Principal populates principalType + claims', () => {
-  test('user:alice:t1 → principalType="user", claims={}', async () => {
-    const app = buildApp();
-    const res = await app.request('/echo', {
-      headers: { 'X-Debug-Principal': 'user:alice:t1' },
+describe.skip('principalMiddleware — X-Debug-Principal populates principalType + claims', function () {
+    test('user:alice:t1 → principalType="user", claims={}', async function () {
+        const app = buildApp();
+        const res = await app.request('/echo', {
+            headers: { 'X-Debug-Principal': 'user:alice:t1' },
+        });
+        expect(res.status).toBe(200);
+        const body = asExtendedPrincipal(await res.json());
+        expect(body.principalId).toBe('alice');
+        expect(body.tenantId).toBe('t1');
+        expect(body.principalType).toBe('user');
+        expect(body.claims).toEqual({});
     });
-    expect(res.status).toBe(200);
-    const body = asExtendedPrincipal(await res.json());
-    expect(body.principalId).toBe('alice');
-    expect(body.tenantId).toBe('t1');
-    expect(body.principalType).toBe('user');
-    expect(body.claims).toEqual({});
-  });
-
-  test('service:bot:t1 → principalType="service"', async () => {
-    const app = buildApp();
-    const res = await app.request('/echo', {
-      headers: { 'X-Debug-Principal': 'service:bot:t1' },
+    test('service:bot:t1 → principalType="service"', async function () {
+        const app = buildApp();
+        const res = await app.request('/echo', {
+            headers: { 'X-Debug-Principal': 'service:bot:t1' },
+        });
+        expect(res.status).toBe(200);
+        const body = asExtendedPrincipal(await res.json());
+        expect(body.principalId).toBe('bot');
+        expect(body.tenantId).toBe('t1');
+        expect(body.principalType).toBe('service');
+        expect(body.claims).toEqual({});
     });
-    expect(res.status).toBe(200);
-    const body = asExtendedPrincipal(await res.json());
-    expect(body.principalId).toBe('bot');
-    expect(body.tenantId).toBe('t1');
-    expect(body.principalType).toBe('service');
-    expect(body.claims).toEqual({});
-  });
-
-  test('anonymous:guest:t1 → principalType="anonymous"', async () => {
-    const app = buildApp();
-    const res = await app.request('/echo', {
-      headers: { 'X-Debug-Principal': 'anonymous:guest:t1' },
+    test('anonymous:guest:t1 → principalType="anonymous"', async function () {
+        const app = buildApp();
+        const res = await app.request('/echo', {
+            headers: { 'X-Debug-Principal': 'anonymous:guest:t1' },
+        });
+        expect(res.status).toBe(200);
+        const body = asExtendedPrincipal(await res.json());
+        expect(body.principalType).toBe('anonymous');
+        expect(body.claims).toEqual({});
     });
-    expect(res.status).toBe(200);
-    const body = asExtendedPrincipal(await res.json());
-    expect(body.principalType).toBe('anonymous');
-    expect(body.claims).toEqual({});
-  });
 });

@@ -17,116 +17,96 @@
  * The fixture output mirrors the assertion in
  * `crates/wasm_runtime/src/lib.rs::test_execute_demo_plugin`.
  */
-
 import { describe, test, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  NodeWasmHost,
-  BrowserWasmHost,
-  InMemoryPluginLoader,
-} from '@atlas/wasm-host';
-
-const DEMO_PLUGIN_PATH = join(
-  process.cwd(),
-  'plugins',
-  'demo-transform',
-  'target',
-  'wasm32-unknown-unknown',
-  'release',
-  'demo_transform.wasm',
-);
-
+import { NodeWasmHost, BrowserWasmHost, InMemoryPluginLoader, } from '@atlas/wasm-host';
+const DEMO_PLUGIN_PATH = join(process.cwd(), 'plugins', 'demo-transform', 'target', 'wasm32-unknown-unknown', 'release', 'demo_transform.wasm');
 async function loadDemoPluginBytes(): Promise<Uint8Array | null> {
-  try {
-    return await readFile(DEMO_PLUGIN_PATH);
-  } catch {
-    return null;
-  }
+    try {
+        return await readFile(DEMO_PLUGIN_PATH);
+    }
+    catch {
+        return null;
+    }
 }
-
 const demoInput = {
-  pageId: 'page-123',
-  title: 'My Page',
-  slug: 'my-page',
-  tenantId: 'tenant-001',
-  createdAt: '2026-02-09T10:00:00+00:00',
+    pageId: 'page-123',
+    title: 'My Page',
+    slug: 'my-page',
+    tenantId: 'tenant-001',
+    createdAt: '2026-02-09T10:00:00+00:00',
 };
-
 const expectedOutput = {
-  version: 1,
-  nodes: [
-    {
-      type: 'heading',
-      props: { level: 1 },
-      children: [{ type: 'text', props: { content: 'My Page' } }],
-    },
-    {
-      type: 'paragraph',
-      children: [
+    version: 1,
+    nodes: [
         {
-          type: 'text',
-          props: { content: 'Page: page-123 | Slug: /my-page' },
+            type: 'heading',
+            props: { level: 1 },
+            children: [{ type: 'text', props: { content: 'My Page' } }],
         },
-      ],
-    },
-  ],
+        {
+            type: 'paragraph',
+            children: [
+                {
+                    type: 'text',
+                    props: { content: 'Page: page-123 | Slug: /my-page' },
+                },
+            ],
+        },
+    ],
 };
-
-describe('[wasm-plugin] demo-transform across both hosts', () => {
-  test('NodeWasmHost runs the demo plugin and matches the Rust assertion', async () => {
-    const bytes = await loadDemoPluginBytes();
-    if (!bytes) {
-      // Skip cleanly when the .wasm hasn't been built. The Rust test
-      // suite has the same precondition.
-      console.warn(
-        `[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`,
-      );
-      return;
-    }
-    const loader = new InMemoryPluginLoader([['demo-transform', bytes]]);
-    const host = new NodeWasmHost({ loader });
-    const out = await host.invoke({
-      pluginRef: 'demo-transform',
-      input: demoInput,
+describe('[wasm-plugin] demo-transform across both hosts', function () {
+    test('NodeWasmHost runs the demo plugin and matches the Rust assertion', async function () {
+        const bytes = await loadDemoPluginBytes();
+        if (!bytes) {
+            // Skip cleanly when the .wasm hasn't been built. The Rust test
+            // suite has the same precondition.
+            // eslint-disable-next-line no-console -- harness-diagnostic: parity-suite skip notice when the demo .wasm hasn't been built; surfaces in vitest's reporter so the skipped path is visible
+            console.warn(`[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`);
+            return;
+        }
+        const loader = new InMemoryPluginLoader([['demo-transform', bytes]]);
+        const host = new NodeWasmHost({ loader });
+        const out = await host.invoke({
+            pluginRef: 'demo-transform',
+            input: demoInput,
+        });
+        expect(out).toEqual(expectedOutput);
     });
-    expect(out).toEqual(expectedOutput);
-  });
-
-  test('BrowserWasmHost runs the demo plugin and matches the Rust assertion', async () => {
-    const bytes = await loadDemoPluginBytes();
-    if (!bytes) {
-      console.warn(
-        `[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`,
-      );
-      return;
-    }
-    const loader = new InMemoryPluginLoader([['demo-transform', bytes]]);
-    const host = new BrowserWasmHost({ loader });
-    const out = await host.invoke({
-      pluginRef: 'demo-transform',
-      input: demoInput,
+    test('BrowserWasmHost runs the demo plugin and matches the Rust assertion', async function () {
+        const bytes = await loadDemoPluginBytes();
+        if (!bytes) {
+            // eslint-disable-next-line no-console -- harness-diagnostic: parity-suite skip notice when the demo .wasm hasn't been built; surfaces in vitest's reporter so the skipped path is visible
+            console.warn(`[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`);
+            return;
+        }
+        const loader = new InMemoryPluginLoader([['demo-transform', bytes]]);
+        const host = new BrowserWasmHost({ loader });
+        const out = await host.invoke({
+            pluginRef: 'demo-transform',
+            input: demoInput,
+        });
+        expect(out).toEqual(expectedOutput);
     });
-    expect(out).toEqual(expectedOutput);
-  });
-
-  test('both hosts produce byte-identical output for the same input', async () => {
-    const bytes = await loadDemoPluginBytes();
-    if (!bytes) return;
-    const nodeHost = new NodeWasmHost({
-      loader: new InMemoryPluginLoader([['demo-transform', bytes]]),
+    test('both hosts produce byte-identical output for the same input', async function () {
+        const bytes = await loadDemoPluginBytes();
+        if (!bytes)
+            return;
+        const nodeHost = new NodeWasmHost({
+            loader: new InMemoryPluginLoader([['demo-transform', bytes]]),
+        });
+        const browserHost = new BrowserWasmHost({
+            loader: new InMemoryPluginLoader([['demo-transform', bytes]]),
+        });
+        const a = await nodeHost.invoke({
+            pluginRef: 'demo-transform',
+            input: demoInput,
+        });
+        const b = await browserHost.invoke({
+            pluginRef: 'demo-transform',
+            input: demoInput,
+        });
+        expect(a).toEqual(b);
     });
-    const browserHost = new BrowserWasmHost({
-      loader: new InMemoryPluginLoader([['demo-transform', bytes]]),
-    });
-    const a = await nodeHost.invoke({
-      pluginRef: 'demo-transform',
-      input: demoInput,
-    });
-    const b = await browserHost.invoke({
-      pluginRef: 'demo-transform',
-      input: demoInput,
-    });
-    expect(a).toEqual(b);
-  });
 });

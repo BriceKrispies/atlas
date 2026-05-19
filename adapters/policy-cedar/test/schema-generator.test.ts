@@ -16,119 +16,100 @@
  * the assertion behind a Vitest skip-on-throw rather than a hard skip
  * marker because the suite still wants to run the pure assertions).
  */
-
 import { describe, expect, test } from 'vitest';
 import { assertDefined } from '@atlas/test-fixtures/assert';
-import {
-  ATLAS_NAMESPACE,
-  CedarPolicyEngine,
-  generateCedarSchema,
-  USER_ENTITY_TYPE,
-} from '../src/index.ts';
+import { ATLAS_NAMESPACE, CedarPolicyEngine, generateCedarSchema, USER_ENTITY_TYPE, } from '../src/index.ts';
 import { BundledFixtureLoader } from '../src/bundle-loader.ts';
 import type { ModuleManifest } from '../src/schema-generator.ts';
-
 const SAMPLE_MANIFEST: ModuleManifest = {
-  moduleId: 'test-module',
-  resources: [
-    { resourceType: 'Family' },
-    { resourceType: 'Variant' },
-  ],
-  actions: [
-    { actionId: 'Catalog.Family.Publish', resourceType: 'Family' },
-    { actionId: 'Catalog.Family.Read', resourceType: 'Family' },
-    { actionId: 'Catalog.Variant.Upsert', resourceType: 'Variant' },
-  ],
+    moduleId: 'test-module',
+    resources: [
+        { resourceType: 'Family' },
+        { resourceType: 'Variant' },
+    ],
+    actions: [
+        { actionId: 'Catalog.Family.Publish', resourceType: 'Family' },
+        { actionId: 'Catalog.Family.Read', resourceType: 'Family' },
+        { actionId: 'Catalog.Variant.Upsert', resourceType: 'Variant' },
+    ],
 };
-
 // Round-trip-only manifest: includes the actions referenced by the test
 // policies below so cedar-wasm's strict validator doesn't choke on
 // "unrecognized action" errors. Pure-shape tests use SAMPLE_MANIFEST.
 const ROUND_TRIP_MANIFEST: ModuleManifest = SAMPLE_MANIFEST;
-
-describe('generateCedarSchema — pure shape', () => {
-  test('emits a single namespace key (empty namespace today; see schema-generator.ts)', () => {
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    expect(Object.keys(schema)).toEqual([ATLAS_NAMESPACE]);
-  });
-
-  test('emits User + every declared resource as entity types', () => {
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    expect(Object.keys(ns.entityTypes).sort()).toEqual(
-      [USER_ENTITY_TYPE, 'Family', 'Variant'].sort(),
-    );
-  });
-
-  test('emits every declared action with appliesTo wired to User + resource', () => {
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    expect(Object.keys(ns.actions).sort()).toEqual([
-      'Catalog.Family.Publish',
-      'Catalog.Family.Read',
-      'Catalog.Variant.Upsert',
-    ]);
-    expect(ns.actions['Catalog.Family.Publish']).toEqual({
-      appliesTo: { principalTypes: ['User'], resourceTypes: ['Family'] },
+describe('generateCedarSchema — pure shape', function () {
+    test('emits a single namespace key (empty namespace today; see schema-generator.ts)', function () {
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        expect(Object.keys(schema)).toEqual([ATLAS_NAMESPACE]);
     });
-    expect(ns.actions['Catalog.Variant.Upsert']).toEqual({
-      appliesTo: { principalTypes: ['User'], resourceTypes: ['Variant'] },
+    test('emits User + every declared resource as entity types', function () {
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        expect(Object.keys(ns.entityTypes).sort()).toEqual([USER_ENTITY_TYPE, 'Family', 'Variant'].sort());
     });
-  });
-
-  test('User entity is shape-less (cedar-wasm strict mode does not allow additionalAttributes)', () => {
-    // See `schema-generator.ts::userEntityType` for the rationale —
-    // closing the shape is gated on module manifests declaring an
-    // attribute schema (Chunk 6c+1).
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    const user = assertDefined(ns.entityTypes[USER_ENTITY_TYPE], 'generator always emits a User entity type');
-    expect(user).toEqual({});
-  });
-
-  test('inferred resource entity types when manifest forgets to list them', () => {
-    // An action references `Foo` but the manifest doesn't list `Foo` under
-    // `resources`. Generator emits an inferred entity type so the schema
-    // still validates.
-    const partial: ModuleManifest = {
-      actions: [{ actionId: 'X.Foo.Do', resourceType: 'Foo' }],
-    };
-    const schema = generateCedarSchema([partial]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    expect(ns.entityTypes['Foo']).toBeDefined();
-  });
-
-  test('merges multiple manifests (same resource type collapses to one)', () => {
-    const a: ModuleManifest = {
-      resources: [{ resourceType: 'Shared' }],
-      actions: [{ actionId: 'M1.Shared.Read', resourceType: 'Shared' }],
-    };
-    const b: ModuleManifest = {
-      resources: [{ resourceType: 'Shared' }],
-      actions: [{ actionId: 'M2.Shared.Write', resourceType: 'Shared' }],
-    };
-    const schema = generateCedarSchema([a, b]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    expect(Object.keys(ns.entityTypes).sort()).toEqual([
-      USER_ENTITY_TYPE,
-      'Shared',
-    ].sort());
-    expect(Object.keys(ns.actions).sort()).toEqual([
-      'M1.Shared.Read',
-      'M2.Shared.Write',
-    ]);
-  });
-
-  test('empty manifests still produce a User entity (the namespace stays valid)', () => {
-    const schema = generateCedarSchema([]);
-    const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
-    expect(ns.entityTypes[USER_ENTITY_TYPE]).toBeDefined();
-    expect(Object.keys(ns.actions)).toHaveLength(0);
-  });
+    test('emits every declared action with appliesTo wired to User + resource', function () {
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        expect(Object.keys(ns.actions).sort()).toEqual([
+            'Catalog.Family.Publish',
+            'Catalog.Family.Read',
+            'Catalog.Variant.Upsert',
+        ]);
+        expect(ns.actions['Catalog.Family.Publish']).toEqual({
+            appliesTo: { principalTypes: ['User'], resourceTypes: ['Family'] },
+        });
+        expect(ns.actions['Catalog.Variant.Upsert']).toEqual({
+            appliesTo: { principalTypes: ['User'], resourceTypes: ['Variant'] },
+        });
+    });
+    test('User entity is shape-less (cedar-wasm strict mode does not allow additionalAttributes)', function () {
+        // See `schema-generator.ts::userEntityType` for the rationale —
+        // closing the shape is gated on module manifests declaring an
+        // attribute schema (Chunk 6c+1).
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        const user = assertDefined(ns.entityTypes[USER_ENTITY_TYPE], 'generator always emits a User entity type');
+        expect(user).toEqual({});
+    });
+    test('inferred resource entity types when manifest forgets to list them', function () {
+        // An action references `Foo` but the manifest doesn't list `Foo` under
+        // `resources`. Generator emits an inferred entity type so the schema
+        // still validates.
+        const partial: ModuleManifest = {
+            actions: [{ actionId: 'X.Foo.Do', resourceType: 'Foo' }],
+        };
+        const schema = generateCedarSchema([partial]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        expect(ns.entityTypes['Foo']).toBeDefined();
+    });
+    test('merges multiple manifests (same resource type collapses to one)', function () {
+        const a: ModuleManifest = {
+            resources: [{ resourceType: 'Shared' }],
+            actions: [{ actionId: 'M1.Shared.Read', resourceType: 'Shared' }],
+        };
+        const b: ModuleManifest = {
+            resources: [{ resourceType: 'Shared' }],
+            actions: [{ actionId: 'M2.Shared.Write', resourceType: 'Shared' }],
+        };
+        const schema = generateCedarSchema([a, b]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        expect(Object.keys(ns.entityTypes).sort()).toEqual([
+            USER_ENTITY_TYPE,
+            'Shared',
+        ].sort());
+        expect(Object.keys(ns.actions).sort()).toEqual([
+            'M1.Shared.Read',
+            'M2.Shared.Write',
+        ]);
+    });
+    test('empty manifests still produce a User entity (the namespace stays valid)', function () {
+        const schema = generateCedarSchema([]);
+        const ns = assertDefined(schema[ATLAS_NAMESPACE], 'generator always emits the ATLAS namespace');
+        expect(ns.entityTypes[USER_ENTITY_TYPE]).toBeDefined();
+        expect(Object.keys(ns.actions)).toHaveLength(0);
+    });
 });
-
 // --- Round-trip with real cedar-wasm ----------------------------------------
-
 const VALID_POLICY = `
   permit (
     principal,
@@ -136,7 +117,6 @@ const VALID_POLICY = `
     resource is Family
   );
 `;
-
 const POLICY_REFERENCING_UNKNOWN_ACTION = `
   permit (
     principal,
@@ -144,41 +124,40 @@ const POLICY_REFERENCING_UNKNOWN_ACTION = `
     resource is Family
   );
 `;
-
-describe('generateCedarSchema — round-trip with cedar-wasm validate', () => {
-  test('valid policy passes schema validation', async () => {
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
-      schema,
+describe('generateCedarSchema — round-trip with cedar-wasm validate', function () {
+    test('valid policy passes schema validation', async function () {
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
+            schema,
+        });
+        const answer = await engine.validate(VALID_POLICY);
+        if (answer.type === 'failure') {
+            throw new Error(`cedar validate failed unexpectedly: ${JSON.stringify(answer.errors)}`);
+        }
+        expect(answer.type).toBe('success');
+        expect(answer.validationErrors).toEqual([]);
     });
-    const answer = await engine.validate(VALID_POLICY);
-    if (answer.type === 'failure') {
-      throw new Error(
-        `cedar validate failed unexpectedly: ${JSON.stringify(answer.errors)}`,
-      );
-    }
-    expect(answer.type).toBe('success');
-    expect(answer.validationErrors).toEqual([]);
-  });
-
-  test('policy referencing a non-existent action fails validation', async () => {
-    const schema = generateCedarSchema([SAMPLE_MANIFEST]);
-    const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
-      schema,
+    test('policy referencing a non-existent action fails validation', async function () {
+        const schema = generateCedarSchema([SAMPLE_MANIFEST]);
+        const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
+            schema,
+        });
+        const answer = await engine.validate(POLICY_REFERENCING_UNKNOWN_ACTION);
+        // cedar-wasm reports unknown actions either as validationErrors
+        // (`type: 'success'`) or as parse failures depending on the build.
+        // Accept either form so this test stays stable across cedar-wasm
+        // patch versions.
+        if (answer.type === 'success') {
+            expect(answer.validationErrors.length).toBeGreaterThan(0);
+            const messages = answer.validationErrors
+                .map(function (e) {
+                return e.error.message;
+            })
+                .join(' | ');
+            expect(messages).toMatch(/NoSuchAction|undeclared action|Action::"Catalog\.Family\.NoSuchAction"/i);
+        }
+        else {
+            expect(answer.errors.length).toBeGreaterThan(0);
+        }
     });
-    const answer = await engine.validate(POLICY_REFERENCING_UNKNOWN_ACTION);
-    // cedar-wasm reports unknown actions either as validationErrors
-    // (`type: 'success'`) or as parse failures depending on the build.
-    // Accept either form so this test stays stable across cedar-wasm
-    // patch versions.
-    if (answer.type === 'success') {
-      expect(answer.validationErrors.length).toBeGreaterThan(0);
-      const messages = answer.validationErrors
-        .map((e) => e.error.message)
-        .join(' | ');
-      expect(messages).toMatch(/NoSuchAction|undeclared action|Action::"Catalog\.Family\.NoSuchAction"/i);
-    } else {
-      expect(answer.errors.length).toBeGreaterThan(0);
-    }
-  });
 });

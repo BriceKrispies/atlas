@@ -2,6 +2,8 @@
 
 **Atlas is a multi-tenant platform fabric.** A tenant signs up, defines the data model their application needs, optionally provisions backend services to run alongside it, writes functions and workflows against their own data, and gets identity, authorization, audit, observability, and search applied uniformly to every operation — for free, by virtue of being a tenant on Atlas.
 
+**Mechanically, Atlas is a governed application runtime — an application VM.** Tenants submit programs composed of intents, schemas, policies, workflows, functions, surfaces, deployments, and storage declarations. The runtime executes those programs through a tiny trusted kernel that enforces the platform invariants on every step. See [`crosscut/atlas-runtime.md`](crosscut/atlas-runtime.md) for the runtime model, [`crosscut/runtime-instruction-set.md`](crosscut/runtime-instruction-set.md) for the instructions tenant programs issue, and [`crosscut/kernel-vs-data.md`](crosscut/kernel-vs-data.md) for the trusted-code / hot-changeable-data split.
+
 Atlas is **software**. Anyone can self-host it. The author runs a public hosted instance (`atlas.<domain>`) as one example deployment, with open public signup, but the public instance is not a privileged form — it's the same software anyone else runs.
 
 ## The dream

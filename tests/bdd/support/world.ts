@@ -14,6 +14,30 @@ export interface IngressFailureRecord {
   correlationId?: string;
 }
 
+/**
+ * Per-scenario state for the `@server`-tagged track that drives the real
+ * `apps/server` + Postgres + smtp4dev stack. Sim scenarios leave these
+ * unset; the `After('@server', …)` hook in `hooks.ts` reads them for
+ * row-level cleanup. The fields are kept narrow — anything that's only
+ * read by a single step should stay local to that step.
+ */
+export interface ServerStackContext {
+  /** `Date.now().toString(36)` per scenario — namespaces every identifier. */
+  runId: string;
+  /** Public-signup form input. */
+  email: string;
+  tenantSlug: string;
+  organizationName: string;
+  /** correlationId minted by the harness and pinned via `X-Correlation-Id`. */
+  correlationId: string;
+  /** Set after POST /api/v1/signup succeeds (returns 202 with `signupId`). */
+  signupId: string | null;
+  /** Set after POST /api/v1/admin/signups/:id/approve succeeds. */
+  tenantId: string | null;
+  /** Set in the Given that boots the postgres client. */
+  hasPostgres: boolean;
+}
+
 export interface BddWorld {
   /** Maps human-readable tenant aliases ("acme", "globex") to real ids. */
   readonly tenantsByAlias: Map<string, string>;
@@ -30,6 +54,12 @@ export interface BddWorld {
   lastSubmitFailure: IngressFailureRecord | null;
   /** Last query response (for "the response describes …" assertions). */
   lastQueryResponse: unknown;
+  /**
+   * Populated by `@server`-tagged scenarios. Sim scenarios leave this
+   * `null`. Keeping it on `world` rather than a separate fixture means
+   * the cleanup `After` hook can find the data without re-deriving it.
+   */
+  serverStack: ServerStackContext | null;
 }
 
 export function createWorld(): BddWorld {
@@ -42,5 +72,6 @@ export function createWorld(): BddWorld {
     lastSubmitOk: null,
     lastSubmitFailure: null,
     lastQueryResponse: null,
+    serverStack: null,
   };
 }

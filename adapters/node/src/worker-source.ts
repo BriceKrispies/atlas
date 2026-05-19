@@ -21,7 +21,8 @@
  * acks (e.g. retried processing of a stale seq) cannot regress the cursor.
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
+import { toLogError } from '@atlas/platform-core';
 import type { StoredEvent, WorkerSource, WorkerSubscription } from '@atlas/ports';
 import type postgres from 'postgres';
 
@@ -97,10 +98,11 @@ class PostgresWorkerSubscription implements WorkerSubscription {
     private readonly tenantId: string,
     private readonly moduleId: string,
     afterSeq: bigint,
+    private readonly logger?: Logger,
   ) {
     this.cursor = afterSeq;
     // Bootstrap waker; replaced on each consumer await.
-    this.wake = () => {};
+    this.wake = function () {};
     this.waker = new Promise<void>((resolve) => {
       this.wake = resolve;
     });
@@ -131,7 +133,7 @@ class PostgresWorkerSubscription implements WorkerSubscription {
       });
       if (this.closed) {
         // close() raced ahead — release immediately.
-        await handle.unlisten().catch(() => {});
+        await handle.unlisten().catch(function () {});
         return;
       }
       this.listenHandle = handle;
@@ -142,7 +144,14 @@ class PostgresWorkerSubscription implements WorkerSubscription {
       // will see termination; ack() will reject.
       this.closed = true;
       this.signal();
-      console.error('PostgresWorkerSource: LISTEN setup failed', err);
+      this.logger?.error('postgres worker LISTEN setup failed', {
+        event: 'Worker.Source.ListenFailed',
+        error: toLogError(err),
+        properties: {
+          tenantId: this.tenantId,
+          moduleId: this.moduleId,
+        },
+      });
     }
   }
 
@@ -182,7 +191,14 @@ class PostgresWorkerSubscription implements WorkerSubscription {
         if (rows.length < DRAIN_BATCH_SIZE) break;
       }
     } catch (err) {
-      console.error('PostgresWorkerSource: drain failed', err);
+      this.logger?.error('postgres worker drain failed', {
+        event: 'Worker.Source.DrainFailed',
+        error: toLogError(err),
+        properties: {
+          tenantId: this.tenantId,
+          moduleId: this.moduleId,
+        },
+      });
     } finally {
       this.draining = false;
       if (this.drainPending && !this.closed) {
@@ -257,9 +273,16 @@ export class PostgresWorkerSource implements WorkerSource {
   constructor(
     private readonly sql: postgres.Sql,
     private readonly moduleId: string,
+    private readonly logger?: Logger,
   ) {}
 
   subscribe(tenantId: string, afterSeq: bigint): WorkerSubscription {
-    return new PostgresWorkerSubscription(this.sql, tenantId, this.moduleId, afterSeq);
+    return new PostgresWorkerSubscription(
+      this.sql,
+      tenantId,
+      this.moduleId,
+      afterSeq,
+      this.logger,
+    );
   }
 }

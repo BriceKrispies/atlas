@@ -13,29 +13,21 @@
  * runs unchanged. `ensureTenantMigrated` is stubbed to a no-op since
  * the test doesn't need real Postgres pools.
  */
-
 import { describe, expect, test, beforeEach, vi } from 'vitest';
 import { Hono } from 'hono';
-
 /**
  * Boundary reader for the route's JSON responses. The wire shape is the
  * route's contract; we narrow `any` to `T` once in this helper instead
  * of at every call site.
  */
 async function readJsonAs<T>(res: Response): Promise<T> {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: route test reader — T is the route's contracted response shape (RepositoryRecord[] etc.).
-  return (await res.json()) as T;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: route test reader — T is the route's contracted response shape (RepositoryRecord[] etc.).
+    return (await res.json()) as T;
 }
-import type {
-  RepositoryRecord,
-  RepositoryRevisionStore,
-  RepositoryStore,
-  RevisionRecord,
-} from '@atlas/ports';
+import type { RepositoryRecord, RepositoryRevisionStore, RepositoryStore, RevisionRecord, } from '@atlas/ports';
 import { repositoryRoutes } from './repositories.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
 import type { AppState } from '../bootstrap.ts';
-
 // ----------------------------------------------------------------------
 // In-memory adapter shims. The store keys by tenantId so a single shared
 // instance can hold both tenants' data — the production adapter is bound
@@ -43,353 +35,316 @@ import type { AppState } from '../bootstrap.ts';
 // the in-memory version honours it so cross-tenant queries surface as
 // the correct null/empty results.
 // ----------------------------------------------------------------------
-
 class InMemoryRepositoryStore implements RepositoryStore {
-  rows: RepositoryRecord[] = [];
-  // Tenant binding is captured by which tenant owns which row. The port
-  // signature carries `tenantId` for cross-adapter parity but the
-  // production Postgres adapter doesn't filter by it — it relies on the
-  // per-tenant pool. The test shim DOES filter so cross-tenant queries
-  // can be exercised.
-  byTenant = new Map<string, Map<string, RepositoryRecord>>();
-
-  async getBySlug(tenantId: string, repoSlug: string): Promise<RepositoryRecord | null> {
-    const t = this.byTenant.get(tenantId);
-    if (!t) return null;
-    for (const r of t.values()) if (r.repoSlug === repoSlug) return r;
-    return null;
-  }
-  async get(tenantId: string, repoId: string): Promise<RepositoryRecord | null> {
-    return this.byTenant.get(tenantId)?.get(repoId) ?? null;
-  }
-  async list(tenantId: string): Promise<readonly RepositoryRecord[]> {
-    return Array.from(this.byTenant.get(tenantId)?.values() ?? []);
-  }
-  async create(
-    tenantId: string,
-    input: {
-      repoId: string;
-      repoSlug: string;
-      name: string;
-      description?: string;
-      createdBy: string;
-    },
-  ): Promise<void> {
-    const t = this.byTenant.get(tenantId) ?? new Map<string, RepositoryRecord>();
-    t.set(input.repoId, {
-      repoId: input.repoId,
-      repoSlug: input.repoSlug,
-      name: input.name,
-      description: input.description ?? null,
-      createdAt: new Date('2026-05-01T00:00:00Z').toISOString(),
-      createdBy: input.createdBy,
-    });
-    this.byTenant.set(tenantId, t);
-  }
-
-  /** Test helper — seed without going through the store contract. */
-  seed(tenantId: string, row: RepositoryRecord): void {
-    const t = this.byTenant.get(tenantId) ?? new Map<string, RepositoryRecord>();
-    t.set(row.repoId, row);
-    this.byTenant.set(tenantId, t);
-  }
-
-  reset(): void {
-    this.byTenant.clear();
-  }
+    rows: RepositoryRecord[] = [];
+    // Tenant binding is captured by which tenant owns which row. The port
+    // signature carries `tenantId` for cross-adapter parity but the
+    // production Postgres adapter doesn't filter by it — it relies on the
+    // per-tenant pool. The test shim DOES filter so cross-tenant queries
+    // can be exercised.
+    byTenant = new Map<string, Map<string, RepositoryRecord>>();
+    async getBySlug(tenantId: string, repoSlug: string): Promise<RepositoryRecord | null> {
+        const t = this.byTenant.get(tenantId);
+        if (!t)
+            return null;
+        for (const r of t.values())
+            if (r.repoSlug === repoSlug)
+                return r;
+        return null;
+    }
+    async get(tenantId: string, repoId: string): Promise<RepositoryRecord | null> {
+        return this.byTenant.get(tenantId)?.get(repoId) ?? null;
+    }
+    async list(tenantId: string): Promise<readonly RepositoryRecord[]> {
+        return Array.from(this.byTenant.get(tenantId)?.values() ?? []);
+    }
+    async create(tenantId: string, input: {
+        repoId: string;
+        repoSlug: string;
+        name: string;
+        description?: string;
+        createdBy: string;
+    }): Promise<void> {
+        const t = this.byTenant.get(tenantId) ?? new Map<string, RepositoryRecord>();
+        t.set(input.repoId, {
+            repoId: input.repoId,
+            repoSlug: input.repoSlug,
+            name: input.name,
+            description: input.description ?? null,
+            createdAt: new Date('2026-05-01T00:00:00Z').toISOString(),
+            createdBy: input.createdBy,
+        });
+        this.byTenant.set(tenantId, t);
+    }
+    /** Test helper — seed without going through the store contract. */
+    seed(tenantId: string, row: RepositoryRecord): void {
+        const t = this.byTenant.get(tenantId) ?? new Map<string, RepositoryRecord>();
+        t.set(row.repoId, row);
+        this.byTenant.set(tenantId, t);
+    }
+    reset(): void {
+        this.byTenant.clear();
+    }
 }
-
 class InMemoryRevisionStore implements RepositoryRevisionStore {
-  // Per-tenant revision map: tenantId -> revisionId -> { meta, bytes }
-  byTenant = new Map<
-    string,
-    Map<string, { meta: RevisionRecord; bytes: Uint8Array }>
-  >();
-
-  async getMetadata(tenantId: string, revisionId: string): Promise<RevisionRecord | null> {
-    return this.byTenant.get(tenantId)?.get(revisionId)?.meta ?? null;
-  }
-  async listForRepo(
-    tenantId: string,
-    repoId: string,
-  ): Promise<readonly RevisionRecord[]> {
-    const t = this.byTenant.get(tenantId);
-    if (!t) return [];
-    return Array.from(t.values())
-      .map((v) => v.meta)
-      .filter((m) => m.repoId === repoId);
-  }
-  async getBytes(tenantId: string, revisionId: string): Promise<Uint8Array | null> {
-    return this.byTenant.get(tenantId)?.get(revisionId)?.bytes ?? null;
-  }
-  async append(
-    tenantId: string,
-    input: {
-      revisionId: string;
-      repoId: string;
-      bytes: Uint8Array;
-      byteCount: number;
-      contentHash: string;
-      pushedBy: string;
-      correlationId: string;
-    },
-  ): Promise<void> {
-    const t = this.byTenant.get(tenantId) ?? new Map<string, { meta: RevisionRecord; bytes: Uint8Array }>();
-    t.set(input.revisionId, {
-      meta: {
-        revisionId: input.revisionId,
-        repoId: input.repoId,
-        byteCount: input.byteCount,
-        contentHash: input.contentHash,
-        pushedAt: new Date('2026-05-01T00:00:00Z').toISOString(),
-        pushedBy: input.pushedBy,
-        correlationId: input.correlationId,
-      },
-      bytes: input.bytes,
-    });
-    this.byTenant.set(tenantId, t);
-  }
-
-  /** Test helper — seed without going through the store contract. */
-  seed(
-    tenantId: string,
-    meta: RevisionRecord,
-    bytes: Uint8Array,
-  ): void {
-    const t =
-      this.byTenant.get(tenantId) ??
-      new Map<string, { meta: RevisionRecord; bytes: Uint8Array }>();
-    t.set(meta.revisionId, { meta, bytes });
-    this.byTenant.set(tenantId, t);
-  }
-
-  reset(): void {
-    this.byTenant.clear();
-  }
+    // Per-tenant revision map: tenantId -> revisionId -> { meta, bytes }
+    byTenant = new Map<string, Map<string, {
+        meta: RevisionRecord;
+        bytes: Uint8Array;
+    }>>();
+    async getMetadata(tenantId: string, revisionId: string): Promise<RevisionRecord | null> {
+        return this.byTenant.get(tenantId)?.get(revisionId)?.meta ?? null;
+    }
+    async listForRepo(tenantId: string, repoId: string): Promise<readonly RevisionRecord[]> {
+        const t = this.byTenant.get(tenantId);
+        if (!t)
+            return [];
+        return Array.from(t.values())
+            .map(function (v) {
+            return v.meta;
+        })
+            .filter(function (m) {
+            return m.repoId === repoId;
+        });
+    }
+    async getBytes(tenantId: string, revisionId: string): Promise<Uint8Array | null> {
+        return this.byTenant.get(tenantId)?.get(revisionId)?.bytes ?? null;
+    }
+    async append(tenantId: string, input: {
+        revisionId: string;
+        repoId: string;
+        bytes: Uint8Array;
+        byteCount: number;
+        contentHash: string;
+        pushedBy: string;
+        correlationId: string;
+    }): Promise<void> {
+        const t = this.byTenant.get(tenantId) ?? new Map<string, {
+            meta: RevisionRecord;
+            bytes: Uint8Array;
+        }>();
+        t.set(input.revisionId, {
+            meta: {
+                revisionId: input.revisionId,
+                repoId: input.repoId,
+                byteCount: input.byteCount,
+                contentHash: input.contentHash,
+                pushedAt: new Date('2026-05-01T00:00:00Z').toISOString(),
+                pushedBy: input.pushedBy,
+                correlationId: input.correlationId,
+            },
+            bytes: input.bytes,
+        });
+        this.byTenant.set(tenantId, t);
+    }
+    /** Test helper — seed without going through the store contract. */
+    seed(tenantId: string, meta: RevisionRecord, bytes: Uint8Array): void {
+        const t = this.byTenant.get(tenantId) ??
+            new Map<string, {
+                meta: RevisionRecord;
+                bytes: Uint8Array;
+            }>();
+        t.set(meta.revisionId, { meta, bytes });
+        this.byTenant.set(tenantId, t);
+    }
+    reset(): void {
+        this.byTenant.clear();
+    }
 }
-
 const repositories = new InMemoryRepositoryStore();
 const revisions = new InMemoryRevisionStore();
-
 // ----------------------------------------------------------------------
 // Mocks: short-circuit `ensureTenantMigrated` and replace adapter
 // constructors with the in-memory shims. Same pattern as
 // `identity-a7.test.ts`.
 // ----------------------------------------------------------------------
-
-vi.mock('../bootstrap.ts', async () => {
-  const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
-  // Same shim shape as `identity-a7.test.ts`: the route never dereferences
-  // the returned postgres.Sql handle (the @atlas/adapter-node mock below
-  // replaces the stores wholesale), so a no-op implementation is fine.
-  // The double-cast through `unknown` is the documented boundary: there's
-  // no postgres.Sql fixture lean enough to instantiate from a test.
-  const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async () =>
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced; identity-a7.test.ts uses the same shim shape with the same justification.
-    undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
-  return {
-    ...actual,
-    ensureTenantMigrated: vi.fn(ensureTenantMigrated),
-  };
+vi.mock('../bootstrap.ts', async function () {
+    const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
+    // Same shim shape as `identity-a7.test.ts`: the route never dereferences
+    // the returned postgres.Sql handle (the @atlas/adapter-node mock below
+    // replaces the stores wholesale), so a no-op implementation is fine.
+    // The double-cast through `unknown` is the documented boundary: there's
+    // no postgres.Sql fixture lean enough to instantiate from a test.
+    const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async function () {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced; identity-a7.test.ts uses the same shim shape with the same justification.
+        return undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
+    };
+    return {
+        ...actual,
+        ensureTenantMigrated: vi.fn(ensureTenantMigrated),
+    };
 });
-
-vi.mock('@atlas/adapter-node', async () => {
-  const actual =
-    await vi.importActual<typeof import('@atlas/adapter-node')>('@atlas/adapter-node');
-  // Function expressions (not arrows) so `new PostgresRepositoryStore(sql)`
-  // can invoke them as constructors. The route code passes a `tenantId`
-  // on every method call — the shims read it explicitly so cross-tenant
-  // queries return the right null/empty result (the real adapter relies
-  // on the per-tenant connection pool for that isolation).
-  function FakeRepositoryStore(this: unknown): unknown {
-    return repositories;
-  }
-  function FakeRepositoryRevisionStore(this: unknown): unknown {
-    return revisions;
-  }
-  return {
-    ...actual,
-    PostgresRepositoryStore: FakeRepositoryStore,
-    PostgresRepositoryRevisionStore: FakeRepositoryRevisionStore,
-  };
+vi.mock('@atlas/adapter-node', async function () {
+    const actual = await vi.importActual<typeof import('@atlas/adapter-node')>('@atlas/adapter-node');
+    // Function expressions (not arrows) so `new PostgresRepositoryStore(sql)`
+    // can invoke them as constructors. The route code passes a `tenantId`
+    // on every method call — the shims read it explicitly so cross-tenant
+    // queries return the right null/empty result (the real adapter relies
+    // on the per-tenant connection pool for that isolation).
+    function FakeRepositoryStore(this: unknown): unknown {
+        return repositories;
+    }
+    function FakeRepositoryRevisionStore(this: unknown): unknown {
+        return revisions;
+    }
+    return {
+        ...actual,
+        PostgresRepositoryStore: FakeRepositoryStore,
+        PostgresRepositoryRevisionStore: FakeRepositoryRevisionStore,
+    };
 });
-
 // ----------------------------------------------------------------------
 // Test fixtures.
 // ----------------------------------------------------------------------
-
 function makeState(): AppState {
-  // Route under test only reads `state.config` (and even then only the
-  // `testAuth` + `policyEngine` fields). Building a full AppState would
-  // require instantiating Postgres pools, JWKS caches, log pipelines,
-  // adapter constructors, etc. — every one of which the @atlas/adapter-node
-  // and ../bootstrap.ts mocks above already short-circuit. We declare the
-  // partial as `AppState` at the boundary; if the route grows a new
-  // read against AppState, the failure is a clean undefined-deref rather
-  // than a silent bad-value.
-  const partial = {
-    config: {
-      port: 3000,
-      controlPlaneDbUrl: 'postgres://unused',
-      oidc: { issuerUrl: '', jwksUrl: '', audience: '' },
-      testAuth: { enabled: true, debugEndpoints: false },
-      tenantId: '_platform',
-      rustLog: '',
-      policyEngine: 'stub' as const,
-    },
-  };
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — see makeState() JSDoc; full AppState requires Postgres + JWKS + adapter wiring that this suite intentionally short-circuits via vi.mock above.
-  return partial as unknown as AppState;
+    // Route under test only reads `state.config` (and even then only the
+    // `testAuth` + `policyEngine` fields). Building a full AppState would
+    // require instantiating Postgres pools, JWKS caches, log pipelines,
+    // adapter constructors, etc. — every one of which the @atlas/adapter-node
+    // and ../bootstrap.ts mocks above already short-circuit. We declare the
+    // partial as `AppState` at the boundary; if the route grows a new
+    // read against AppState, the failure is a clean undefined-deref rather
+    // than a silent bad-value.
+    const partial = {
+        config: {
+            port: 3000,
+            controlPlaneDbUrl: 'postgres://unused',
+            oidc: { issuerUrl: '', jwksUrl: '', audience: '' },
+            testAuth: { enabled: true, debugEndpoints: false },
+            tenantId: '_platform',
+            rustLog: '',
+            policyEngine: 'stub' as const,
+        },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — see makeState() JSDoc; full AppState requires Postgres + JWKS + adapter wiring that this suite intentionally short-circuits via vi.mock above.
+    return partial as unknown as AppState;
 }
-
 interface PrincipalSpec {
-  principalId: string;
-  tenantId: string;
+    principalId: string;
+    tenantId: string;
 }
-
 function buildApp(principal: PrincipalSpec) {
-  const app = new Hono<{ Variables: ServerVariables }>();
-  app.use('*', async (c, next) => {
-    c.set('principal', {
-      principalId: principal.principalId,
-      tenantId: principal.tenantId,
+    const app = new Hono<{
+        Variables: ServerVariables;
+    }>();
+    app.use('*', async function (c, next) {
+        c.set('principal', {
+            principalId: principal.principalId,
+            tenantId: principal.tenantId,
+        });
+        c.set('correlationId', 'test-corr');
+        await next();
     });
-    c.set('correlationId', 'test-corr');
-    await next();
-  });
-  app.route('/', repositoryRoutes(makeState()));
-  return app;
+    app.route('/', repositoryRoutes(makeState()));
+    return app;
 }
-
-beforeEach(() => {
-  repositories.reset();
-  revisions.reset();
+beforeEach(function () {
+    repositories.reset();
+    revisions.reset();
 });
-
 // ----------------------------------------------------------------------
 // Tests
 // ----------------------------------------------------------------------
-
-describe('GET /api/v1/repositories', () => {
-  test('returns tenant\'s repos only', async () => {
-    const tenantA = 'tenant-a';
-    const tenantB = 'tenant-b';
-
-    repositories.seed(tenantA, {
-      repoId: 'repo-a-1',
-      repoSlug: 'alpha',
-      name: 'Alpha',
-      description: null,
-      createdAt: '2026-05-01T00:00:00Z',
-      createdBy: 'usr-a',
+describe('GET /api/v1/repositories', function () {
+    test('returns tenant\'s repos only', async function () {
+        const tenantA = 'tenant-a';
+        const tenantB = 'tenant-b';
+        repositories.seed(tenantA, {
+            repoId: 'repo-a-1',
+            repoSlug: 'alpha',
+            name: 'Alpha',
+            description: null,
+            createdAt: '2026-05-01T00:00:00Z',
+            createdBy: 'usr-a',
+        });
+        repositories.seed(tenantA, {
+            repoId: 'repo-a-2',
+            repoSlug: 'alpha-two',
+            name: 'AlphaTwo',
+            description: null,
+            createdAt: '2026-05-01T00:00:00Z',
+            createdBy: 'usr-a',
+        });
+        repositories.seed(tenantB, {
+            repoId: 'repo-b-1',
+            repoSlug: 'bravo',
+            name: 'Bravo',
+            description: null,
+            createdAt: '2026-05-01T00:00:00Z',
+            createdBy: 'usr-b',
+        });
+        const app = buildApp({ principalId: 'usr-a', tenantId: tenantA });
+        const res = await app.request('/api/v1/repositories');
+        expect(res.status).toBe(200);
+        const body = await readJsonAs<RepositoryRecord[]>(res);
+        const ids = body.map(function (r) {
+            return r.repoId;
+        }).sort();
+        expect(ids).toEqual(['repo-a-1', 'repo-a-2']);
+        expect(ids).not.toContain('repo-b-1');
     });
-    repositories.seed(tenantA, {
-      repoId: 'repo-a-2',
-      repoSlug: 'alpha-two',
-      name: 'AlphaTwo',
-      description: null,
-      createdAt: '2026-05-01T00:00:00Z',
-      createdBy: 'usr-a',
-    });
-    repositories.seed(tenantB, {
-      repoId: 'repo-b-1',
-      repoSlug: 'bravo',
-      name: 'Bravo',
-      description: null,
-      createdAt: '2026-05-01T00:00:00Z',
-      createdBy: 'usr-b',
-    });
-
-    const app = buildApp({ principalId: 'usr-a', tenantId: tenantA });
-    const res = await app.request('/api/v1/repositories');
-    expect(res.status).toBe(200);
-    const body = await readJsonAs<RepositoryRecord[]>(res);
-    const ids = body.map((r) => r.repoId).sort();
-    expect(ids).toEqual(['repo-a-1', 'repo-a-2']);
-    expect(ids).not.toContain('repo-b-1');
-  });
 });
-
-describe('GET /.../revisions/:revisionId/bytes', () => {
-  test('tenant A cannot fetch tenant B\'s revision (I7) — returns 404', async () => {
-    const tenantA = 'tenant-a';
-    const tenantB = 'tenant-b';
-
-    // Seed both tenants with a repo + revision each. The revision ids
-    // are distinct so nothing collides at the in-memory map level —
-    // tenant isolation is what's under test.
-    repositories.seed(tenantA, {
-      repoId: 'repo-a',
-      repoSlug: 'alpha',
-      name: 'Alpha',
-      description: null,
-      createdAt: '2026-05-01T00:00:00Z',
-      createdBy: 'usr-a',
+describe('GET /.../revisions/:revisionId/bytes', function () {
+    test('tenant A cannot fetch tenant B\'s revision (I7) — returns 404', async function () {
+        const tenantA = 'tenant-a';
+        const tenantB = 'tenant-b';
+        // Seed both tenants with a repo + revision each. The revision ids
+        // are distinct so nothing collides at the in-memory map level —
+        // tenant isolation is what's under test.
+        repositories.seed(tenantA, {
+            repoId: 'repo-a',
+            repoSlug: 'alpha',
+            name: 'Alpha',
+            description: null,
+            createdAt: '2026-05-01T00:00:00Z',
+            createdBy: 'usr-a',
+        });
+        repositories.seed(tenantB, {
+            repoId: 'repo-b',
+            repoSlug: 'bravo',
+            name: 'Bravo',
+            description: null,
+            createdAt: '2026-05-01T00:00:00Z',
+            createdBy: 'usr-b',
+        });
+        const bytesA = new Uint8Array([0x1f, 0x8b, 0x08, 0x00]); // gzip header-ish
+        const bytesB = new Uint8Array([0x1f, 0x8b, 0x08, 0x01]);
+        revisions.seed(tenantA, {
+            revisionId: 'rev-a',
+            repoId: 'repo-a',
+            byteCount: bytesA.byteLength,
+            contentHash: 'aaa',
+            pushedAt: '2026-05-01T00:00:00Z',
+            pushedBy: 'usr-a',
+            correlationId: 'corr-a',
+        }, bytesA);
+        revisions.seed(tenantB, {
+            revisionId: 'rev-b',
+            repoId: 'repo-b',
+            byteCount: bytesB.byteLength,
+            contentHash: 'bbb',
+            pushedAt: '2026-05-01T00:00:00Z',
+            pushedBy: 'usr-b',
+            correlationId: 'corr-b',
+        }, bytesB);
+        // Principal is tenant A asking for tenant B's revision id. We don't
+        // even know B's repoId from inside A, but try a few shapes — all
+        // must 404, never 403, never leak existence.
+        const app = buildApp({ principalId: 'usr-a', tenantId: tenantA });
+        // Cross-tenant repoId — A doesn't own repo-b, so the repo lookup
+        // 404s before we even get to the revision.
+        const r1 = await app.request('/api/v1/repositories/repo-b/revisions/rev-b/bytes');
+        expect(r1.status).toBe(404);
+        // A owns repo-a, but rev-b is tenant B's revision. The revision
+        // metadata read scoped to tenant A returns null → 404.
+        const r2 = await app.request('/api/v1/repositories/repo-a/revisions/rev-b/bytes');
+        expect(r2.status).toBe(404);
+        // Sanity check: A CAN fetch its own revision.
+        const r3 = await app.request('/api/v1/repositories/repo-a/revisions/rev-a/bytes');
+        expect(r3.status).toBe(200);
+        expect(r3.headers.get('Content-Type')).toBe('application/gzip');
+        expect(r3.headers.get('Content-Disposition') ?? '').toContain('alpha-rev-a.tar.gz');
+        const buf = new Uint8Array(await r3.arrayBuffer());
+        expect(Array.from(buf)).toEqual(Array.from(bytesA));
     });
-    repositories.seed(tenantB, {
-      repoId: 'repo-b',
-      repoSlug: 'bravo',
-      name: 'Bravo',
-      description: null,
-      createdAt: '2026-05-01T00:00:00Z',
-      createdBy: 'usr-b',
-    });
-    const bytesA = new Uint8Array([0x1f, 0x8b, 0x08, 0x00]); // gzip header-ish
-    const bytesB = new Uint8Array([0x1f, 0x8b, 0x08, 0x01]);
-    revisions.seed(
-      tenantA,
-      {
-        revisionId: 'rev-a',
-        repoId: 'repo-a',
-        byteCount: bytesA.byteLength,
-        contentHash: 'aaa',
-        pushedAt: '2026-05-01T00:00:00Z',
-        pushedBy: 'usr-a',
-        correlationId: 'corr-a',
-      },
-      bytesA,
-    );
-    revisions.seed(
-      tenantB,
-      {
-        revisionId: 'rev-b',
-        repoId: 'repo-b',
-        byteCount: bytesB.byteLength,
-        contentHash: 'bbb',
-        pushedAt: '2026-05-01T00:00:00Z',
-        pushedBy: 'usr-b',
-        correlationId: 'corr-b',
-      },
-      bytesB,
-    );
-
-    // Principal is tenant A asking for tenant B's revision id. We don't
-    // even know B's repoId from inside A, but try a few shapes — all
-    // must 404, never 403, never leak existence.
-    const app = buildApp({ principalId: 'usr-a', tenantId: tenantA });
-
-    // Cross-tenant repoId — A doesn't own repo-b, so the repo lookup
-    // 404s before we even get to the revision.
-    const r1 = await app.request(
-      '/api/v1/repositories/repo-b/revisions/rev-b/bytes',
-    );
-    expect(r1.status).toBe(404);
-
-    // A owns repo-a, but rev-b is tenant B's revision. The revision
-    // metadata read scoped to tenant A returns null → 404.
-    const r2 = await app.request(
-      '/api/v1/repositories/repo-a/revisions/rev-b/bytes',
-    );
-    expect(r2.status).toBe(404);
-
-    // Sanity check: A CAN fetch its own revision.
-    const r3 = await app.request(
-      '/api/v1/repositories/repo-a/revisions/rev-a/bytes',
-    );
-    expect(r3.status).toBe(200);
-    expect(r3.headers.get('Content-Type')).toBe('application/gzip');
-    expect(r3.headers.get('Content-Disposition') ?? '').toContain('alpha-rev-a.tar.gz');
-    const buf = new Uint8Array(await r3.arrayBuffer());
-    expect(Array.from(buf)).toEqual(Array.from(bytesA));
-  });
 });

@@ -1,44 +1,40 @@
 import { S } from '../_register.ts';
 import { customDetail, isValueDetail, must } from '../../internal/assert.ts';
-
 // `atlas-tabs` and `atlas-segmented-control` augment `HTMLElementTagNameMap`
 // in `@atlas/design`, so `document.createElement('atlas-tabs')` already
 // returns the typed element — no structural cast needed.
-
 S({
-  id: 'tabs',
-  name: 'Tabs',
-  tag: 'atlas-tabs',
-  mount: (demoEl, { onLog }) => {
-    const tabs = document.createElement('atlas-tabs');
-    tabs.setAttribute('name', 'view');
-    tabs.setAttribute('aria-label', 'View');
-    tabs.tabs = [
-      { value: 'preview', label: 'Preview' },
-      { value: 'props', label: 'Props' },
-      { value: 'source', label: 'Source' },
-      { value: 'notes', label: 'Notes' },
-    ];
-    tabs.value = 'preview';
-    tabs.addEventListener('change', (ev) => {
-      onLog('change', customDetail(ev, isValueDetail, 'atlas-tabs.change'));
-    });
-
-    const stretched = document.createElement('atlas-tabs');
-    stretched.setAttribute('name', 'size');
-    stretched.setAttribute('stretch', '');
-    stretched.setAttribute('size', 'sm');
-    stretched.setAttribute('aria-label', 'Size');
-    stretched.tabs = [
-      { value: 'sm', label: 'Small' },
-      { value: 'md', label: 'Medium' },
-      { value: 'lg', label: 'Large' },
-    ];
-    stretched.value = 'md';
-
-    const stack = document.createElement('atlas-stack');
-    stack.setAttribute('gap', 'lg');
-    stack.innerHTML = `
+    id: 'tabs',
+    name: 'Tabs',
+    tag: 'atlas-tabs',
+    mount: function (demoEl, { onLog }) {
+        const tabs = document.createElement('atlas-tabs');
+        tabs.setAttribute('name', 'view');
+        tabs.setAttribute('aria-label', 'View');
+        tabs.tabs = [
+            { value: 'preview', label: 'Preview' },
+            { value: 'props', label: 'Props' },
+            { value: 'source', label: 'Source' },
+            { value: 'notes', label: 'Notes' },
+        ];
+        tabs.value = 'preview';
+        tabs.addEventListener('change', function (ev) {
+            onLog('change', customDetail(ev, isValueDetail, 'atlas-tabs.change'));
+        });
+        const stretched = document.createElement('atlas-tabs');
+        stretched.setAttribute('name', 'size');
+        stretched.setAttribute('stretch', '');
+        stretched.setAttribute('size', 'sm');
+        stretched.setAttribute('aria-label', 'Size');
+        stretched.tabs = [
+            { value: 'sm', label: 'Small' },
+            { value: 'md', label: 'Medium' },
+            { value: 'lg', label: 'Large' },
+        ];
+        stretched.value = 'md';
+        const stack = document.createElement('atlas-stack');
+        stack.setAttribute('gap', 'lg');
+        stack.innerHTML = `
       <atlas-stack gap="xs">
         <atlas-label>Content view — default</atlas-label>
       </atlas-stack>
@@ -46,33 +42,39 @@ S({
         <atlas-label>Stretched, size="sm"</atlas-label>
       </atlas-stack>
     `;
-    must(stack.children[0], 'tabs specimen: first child stack present').appendChild(tabs);
-    must(stack.children[1], 'tabs specimen: second child stack present').appendChild(stretched);
-    demoEl.appendChild(stack);
-    return () => stack.remove();
-  },
-  configVariants: [{ name: 'default', config: {} }],
+        must(stack.children[0], 'tabs specimen: first child stack present').appendChild(tabs);
+        must(stack.children[1], 'tabs specimen: second child stack present').appendChild(stretched);
+        demoEl.appendChild(stack);
+        return function () {
+            return stack.remove();
+        };
+    },
+    configVariants: [{ name: 'default', config: {} }],
 });
-
 S({
-  id: 'segmented-control',
-  name: 'SegmentedControl',
-  tag: 'atlas-segmented-control',
-  mount: (demoEl, { onLog }) => {
-    function makeSeg(attrs: Record<string, string>, options: Array<{ value: string; label: string; disabled?: boolean }>, value?: string): HTMLElement {
-      const sc = document.createElement('atlas-segmented-control');
-      for (const [k, v] of Object.entries(attrs)) sc.setAttribute(k, v);
-      sc.options = options;
-      if (value !== undefined) sc.value = value;
-      sc.addEventListener('change', (ev) =>
-        onLog('change', customDetail(ev, isValueDetail, 'atlas-segmented-control.change')),
-      );
-      return sc;
-    }
-
-    const stack = document.createElement('atlas-stack');
-    stack.setAttribute('gap', 'lg');
-    stack.innerHTML = `
+    id: 'segmented-control',
+    name: 'SegmentedControl',
+    tag: 'atlas-segmented-control',
+    mount: function (demoEl, { onLog }) {
+        function makeSeg(attrs: Record<string, string>, options: Array<{
+            value: string;
+            label: string;
+            disabled?: boolean;
+        }>, value?: string): HTMLElement {
+            const sc = document.createElement('atlas-segmented-control');
+            for (const [k, v] of Object.entries(attrs))
+                sc.setAttribute(k, v);
+            sc.options = options;
+            if (value !== undefined)
+                sc.value = value;
+            sc.addEventListener('change', function (ev) {
+                return onLog('change', customDetail(ev, isValueDetail, 'atlas-segmented-control.change'));
+            });
+            return sc;
+        }
+        const stack = document.createElement('atlas-stack');
+        stack.setAttribute('gap', 'lg');
+        stack.innerHTML = `
       <atlas-stack gap="xs">
         <atlas-label>Default</atlas-label>
       </atlas-stack>
@@ -86,39 +88,40 @@ S({
         <atlas-label>Fully disabled</atlas-label>
       </atlas-stack>
     `;
-    must(stack.children[0], 'segmented-control specimen: child 0').appendChild(makeSeg({ name: 'period', 'aria-label': 'Period' }, [
-      { value: 'day', label: 'Day' },
-      { value: 'week', label: 'Week' },
-      { value: 'month', label: 'Month' },
-    ], 'week'));
-    must(stack.children[1], 'segmented-control specimen: child 1').appendChild(makeSeg({ name: 'density', size: 'sm', stretch: '', 'aria-label': 'Density' }, [
-      { value: 'compact', label: 'Compact' },
-      { value: 'comfortable', label: 'Comfortable' },
-      { value: 'spacious', label: 'Spacious' },
-    ], 'comfortable'));
-    must(stack.children[2], 'segmented-control specimen: child 2').appendChild(makeSeg({ name: 'plan', 'aria-label': 'Plan' }, [
-      { value: 'free', label: 'Free' },
-      { value: 'pro', label: 'Pro' },
-      { value: 'enterprise', label: 'Enterprise', disabled: true },
-    ], 'pro'));
-    must(stack.children[3], 'segmented-control specimen: child 3').appendChild(makeSeg({ name: 'locked', disabled: '', 'aria-label': 'Locked' }, [
-      { value: 'a', label: 'A' },
-      { value: 'b', label: 'B' },
-    ], 'a'));
-    demoEl.appendChild(stack);
-    return () => stack.remove();
-  },
-  configVariants: [{ name: 'default', config: {} }],
+        must(stack.children[0], 'segmented-control specimen: child 0').appendChild(makeSeg({ name: 'period', 'aria-label': 'Period' }, [
+            { value: 'day', label: 'Day' },
+            { value: 'week', label: 'Week' },
+            { value: 'month', label: 'Month' },
+        ], 'week'));
+        must(stack.children[1], 'segmented-control specimen: child 1').appendChild(makeSeg({ name: 'density', size: 'sm', stretch: '', 'aria-label': 'Density' }, [
+            { value: 'compact', label: 'Compact' },
+            { value: 'comfortable', label: 'Comfortable' },
+            { value: 'spacious', label: 'Spacious' },
+        ], 'comfortable'));
+        must(stack.children[2], 'segmented-control specimen: child 2').appendChild(makeSeg({ name: 'plan', 'aria-label': 'Plan' }, [
+            { value: 'free', label: 'Free' },
+            { value: 'pro', label: 'Pro' },
+            { value: 'enterprise', label: 'Enterprise', disabled: true },
+        ], 'pro'));
+        must(stack.children[3], 'segmented-control specimen: child 3').appendChild(makeSeg({ name: 'locked', disabled: '', 'aria-label': 'Locked' }, [
+            { value: 'a', label: 'A' },
+            { value: 'b', label: 'B' },
+        ], 'a'));
+        demoEl.appendChild(stack);
+        return function () {
+            return stack.remove();
+        };
+    },
+    configVariants: [{ name: 'default', config: {} }],
 });
-
 S({
-  id: 'accordion',
-  name: 'Accordion',
-  tag: 'atlas-accordion',
-  variants: [
-    {
-      name: 'Single (default)',
-      html: `
+    id: 'accordion',
+    name: 'Accordion',
+    tag: 'atlas-accordion',
+    variants: [
+        {
+            name: 'Single (default)',
+            html: `
         <atlas-accordion>
           <atlas-accordion-item value="general" open>
             General settings
@@ -137,10 +140,10 @@ S({
           </atlas-accordion-item>
         </atlas-accordion>
       `,
-    },
-    {
-      name: 'Multiple + disabled',
-      html: `
+        },
+        {
+            name: 'Multiple + disabled',
+            html: `
         <atlas-accordion type="multiple">
           <atlas-accordion-item value="a" open>
             Section A
@@ -156,21 +159,20 @@ S({
           </atlas-accordion-item>
         </atlas-accordion>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'nav',
-  name: 'Nav + Nav Item',
-  tag: 'atlas-nav',
-  states: {
-    loading: `
+    id: 'nav',
+    name: 'Nav + Nav Item',
+    tag: 'atlas-nav',
+    states: {
+        loading: `
       <atlas-box style="width:220px;background:var(--atlas-color-surface);border:1px solid var(--atlas-color-border);padding:var(--atlas-space-md)">
         <atlas-skeleton rows="4"></atlas-skeleton>
       </atlas-box>
     `,
-    error: `
+        error: `
       <atlas-box style="width:220px;background:var(--atlas-color-surface);border:1px solid var(--atlas-color-border);padding:var(--atlas-space-md)">
         <atlas-stack gap="sm">
           <atlas-text variant="error">Failed to load navigation</atlas-text>
@@ -178,12 +180,12 @@ S({
         </atlas-stack>
       </atlas-box>
     `,
-    empty: `
+        empty: `
       <atlas-box style="width:220px;background:var(--atlas-color-surface);border:1px solid var(--atlas-color-border);padding:var(--atlas-space-md)">
         <atlas-text variant="muted">No modules available</atlas-text>
       </atlas-box>
     `,
-    success: `
+        success: `
       <atlas-box style="width:220px;background:var(--atlas-color-surface);border:1px solid var(--atlas-color-border);padding:var(--atlas-space-md)">
         <atlas-nav label="Example navigation">
           <atlas-heading level="3">Modules</atlas-heading>
@@ -194,5 +196,5 @@ S({
         </atlas-nav>
       </atlas-box>
     `,
-  },
+    },
 });

@@ -37,7 +37,7 @@ import { acquireLeadership } from './leader.ts';
 
 async function main(bootCtx: AtlasExecutionContext): Promise<void> {
   const config = loadWorkerConfig();
-  const state = await bootstrap(config);
+  const state = await bootstrap(config, bootCtx.logger);
   bootCtx.logger.info('worker booted', {
     event: 'ProjectionWorker.Boot.Complete',
     properties: { mode: config.workerMode, moduleId: config.moduleId },
@@ -63,7 +63,7 @@ async function main(bootCtx: AtlasExecutionContext): Promise<void> {
     state,
   );
 
-  const shutdownOnce = once(async (signal: string) => {
+  const shutdownOnce = once(async function (signal: string) {
     bootCtx.logger.info(`received ${signal}, shutting down`, {
       event: 'ProjectionWorker.Shutdown.Received',
       properties: { signal },
@@ -77,13 +77,13 @@ async function main(bootCtx: AtlasExecutionContext): Promise<void> {
     process.exit(0);
   });
 
-  process.on('SIGINT', () => void shutdownOnce('SIGINT'));
-  process.on('SIGTERM', () => void shutdownOnce('SIGTERM'));
+  process.on('SIGINT', function () { return void shutdownOnce('SIGINT'); });
+  process.on('SIGTERM', function () { return void shutdownOnce('SIGTERM'); });
 }
 
 function once<A extends unknown[]>(fn: (...args: A) => Promise<void>): (...args: A) => Promise<void> {
   let called = false;
-  return async (...args: A) => {
+  return async function (...args: A) {
     if (called) return;
     called = true;
     await fn(...args);
@@ -95,7 +95,7 @@ function once<A extends unknown[]>(fn: (...args: A) => Promise<void>): (...args:
 // global override on the level controller; defaults to 'info' for prod
 // parity. Smoke / debugging flows set LOG_LEVEL=debug to surface the
 // per-event boundary lines (Dispatcher.Ran, etc.).
-const initialLevel: LogLevel = (() => {
+const initialLevel: LogLevel = (function () {
   const raw = process.env['LOG_LEVEL'];
   if (raw && isLogLevel(raw)) return raw;
   return 'info';
@@ -112,7 +112,7 @@ registerForExitFlush(logPipeline);
 // hasn't run yet, but the boot context needs an environment to stamp on
 // the very first log line. The config-read happens inside main(); the
 // two are kept in sync via the same env var.
-const bootEnvironment = ((): 'development' | 'staging' | 'production' | 'test' => {
+const bootEnvironment = (function (): 'development' | 'staging' | 'production' | 'test' {
   const raw = process.env['ATLAS_ENVIRONMENT'];
   if (raw === 'production' || raw === 'staging' || raw === 'test') return raw;
   return 'development';
@@ -124,7 +124,7 @@ const bootCtx = createSystemContext({
   moduleId: '@atlas/projection-worker',
 });
 
-main(bootCtx).catch((err) => {
+main(bootCtx).catch(function (err) {
   bootCtx.logger.fatal('worker failed during startup', {
     event: 'ProjectionWorker.Startup.Failed',
     error: {

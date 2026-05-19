@@ -26,87 +26,79 @@
  *   - `_sort` (if present) lands in `sort_values`.
  *   - `_score` is added on read.
  */
-
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchEngine } from '@atlas/ports';
 import type postgres from 'postgres';
 import { jsonParam } from './seeds/sql-json.ts';
-
 const DEFAULT_LIMIT = 100;
-
 function isJsonObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+    return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
-
 interface RawSearchRow {
-  document_type: string;
-  document_id: string;
-  title: string;
-  summary: string | null;
-  body_text: string | null;
-  taxonomy_path: string | null;
-  permission_attributes: { allowedPrincipals?: unknown } | null;
-  filter_values: Record<string, unknown> | null;
-  sort_values: Record<string, unknown> | null;
-  rank: number;
+    document_type: string;
+    document_id: string;
+    title: string;
+    summary: string | null;
+    body_text: string | null;
+    taxonomy_path: string | null;
+    permission_attributes: {
+        allowedPrincipals?: unknown;
+    } | null;
+    filter_values: Record<string, unknown> | null;
+    sort_values: Record<string, unknown> | null;
+    rank: number;
 }
-
 function asString(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
+    return typeof v === 'string' ? v : null;
 }
-
-function parsePermissionAttrs(
-  v: { allowedPrincipals?: unknown } | null,
-): { allowedPrincipals: string[] } | null {
-  if (v == null) return null;
-  const arr = v.allowedPrincipals;
-  if (!Array.isArray(arr)) return null;
-  const principals = arr.filter((x): x is string => typeof x === 'string');
-  return { allowedPrincipals: principals };
+function parsePermissionAttrs(v: {
+    allowedPrincipals?: unknown;
+} | null): {
+    allowedPrincipals: string[];
+} | null {
+    if (v == null)
+        return null;
+    const arr = v.allowedPrincipals;
+    if (!Array.isArray(arr))
+        return null;
+    const principals = arr.filter(function (x): x is string {
+        return typeof x === 'string';
+    });
+    return { allowedPrincipals: principals };
 }
-
 export class PostgresSearchEngine implements SearchEngine {
-  constructor(private readonly sql: postgres.Sql) {}
-
-  async index(doc: SearchDocument): Promise<void> {
-    const title = asString(doc.fields['title']);
-    if (title === null) {
-      throw new Error(
-        `search document ${doc.documentType}/${doc.documentId} missing required string field 'title'`,
-      );
-    }
-    const summary = asString(doc.fields['summary']);
-    const bodyText = asString(doc.fields['body_text']);
-    const taxonomyPath = asString(doc.fields['taxonomy_path']);
-
-    const filterValues: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(doc.fields)) {
-      if (
-        k === 'title' ||
-        k === 'summary' ||
-        k === 'body_text' ||
-        k === 'taxonomy_path' ||
-        k === '_sort' ||
-        k === '_score'
-      ) {
-        continue;
-      }
-      filterValues[k] = v;
-    }
-
-    // `_sort` is a free-form object the catalog populates per document.
-    // Narrow at the boundary (mirrors `parsePermissionAttrs`) so we hand
-    // a typed `Record<string, unknown>` to `jsonParam` rather than blind-
-    // casting via `as`.
-    const sortValues: Record<string, unknown> = isJsonObject(doc.fields['_sort'])
-      ? doc.fields['_sort']
-      : {};
-
-    const permissionJson = doc.permissionAttributes
-      ? { allowedPrincipals: doc.permissionAttributes.allowedPrincipals }
-      : null;
-
-    await this.sql`
+    constructor(private readonly sql: postgres.Sql) { }
+    async index(doc: SearchDocument): Promise<void> {
+        const title = asString(doc.fields['title']);
+        if (title === null) {
+            throw new Error(`search document ${doc.documentType}/${doc.documentId} missing required string field 'title'`);
+        }
+        const summary = asString(doc.fields['summary']);
+        const bodyText = asString(doc.fields['body_text']);
+        const taxonomyPath = asString(doc.fields['taxonomy_path']);
+        const filterValues: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(doc.fields)) {
+            if (k === 'title' ||
+                k === 'summary' ||
+                k === 'body_text' ||
+                k === 'taxonomy_path' ||
+                k === '_sort' ||
+                k === '_score') {
+                continue;
+            }
+            filterValues[k] = v;
+        }
+        // `_sort` is a free-form object the catalog populates per document.
+        // Narrow at the boundary (mirrors `parsePermissionAttrs`) so we hand
+        // a typed `Record<string, unknown>` to `jsonParam` rather than blind-
+        // casting via `as`.
+        const sortValues: Record<string, unknown> = isJsonObject(doc.fields['_sort'])
+            ? doc.fields['_sort']
+            : {};
+        const permissionJson = doc.permissionAttributes
+            ? { allowedPrincipals: doc.permissionAttributes.allowedPrincipals }
+            : null;
+        await this.sql `
       INSERT INTO catalog_search_documents (
         tenant_id, document_type, document_id, title, summary, body_text,
         taxonomy_path, permission_attributes, filter_values, sort_values,
@@ -134,37 +126,20 @@ export class PostgresSearchEngine implements SearchEngine {
         sort_values = EXCLUDED.sort_values,
         updated_at = now()
     `;
-  }
-
-  async deleteByDocument(
-    tenantId: string,
-    documentType: string,
-    documentId: string,
-  ): Promise<void> {
-    await this.sql`
+    }
+    async deleteByDocument(tenantId: string, documentType: string, documentId: string): Promise<void> {
+        await this.sql `
       DELETE FROM catalog_search_documents
       WHERE tenant_id = ${tenantId}
         AND document_type = ${documentType}
         AND document_id = ${documentId}
     `;
-  }
-
-  async search(
-    query: string,
-    tenantId: string,
-    principalId: string,
-  ): Promise<SearchDocument[]> {
-    return this.searchPaginated(query, tenantId, principalId, DEFAULT_LIMIT, 0);
-  }
-
-  private async searchPaginated(
-    query: string,
-    tenantId: string,
-    principalId: string,
-    limit: number,
-    offset: number,
-  ): Promise<SearchDocument[]> {
-    const rows = await this.sql<RawSearchRow[]>`
+    }
+    async search(query: string, tenantId: string, principalId: string): Promise<SearchDocument[]> {
+        return this.searchPaginated(query, tenantId, principalId, DEFAULT_LIMIT, 0);
+    }
+    private async searchPaginated(query: string, tenantId: string, principalId: string, limit: number, offset: number): Promise<SearchDocument[]> {
+        const rows = await this.sql<RawSearchRow[]> `
       SELECT document_type, document_id, title, summary, body_text, taxonomy_path,
              permission_attributes, filter_values, sort_values,
              ts_rank(search_vector, plainto_tsquery('english', ${query})) AS rank
@@ -177,36 +152,35 @@ export class PostgresSearchEngine implements SearchEngine {
       ORDER BY rank DESC, document_id ASC
       LIMIT ${limit} OFFSET ${offset}
     `;
-
-    return rows.map((row): SearchDocument => {
-      const fields: Record<string, unknown> = {
-        title: row.title,
-      };
-      if (row.summary !== null) fields['summary'] = row.summary;
-      if (row.body_text !== null) fields['body_text'] = row.body_text;
-      if (row.taxonomy_path !== null) fields['taxonomy_path'] = row.taxonomy_path;
-
-      if (row.filter_values && typeof row.filter_values === 'object') {
-        for (const [k, v] of Object.entries(row.filter_values)) {
-          if (!(k in fields)) fields[k] = v;
-        }
-      }
-      if (
-        row.sort_values &&
-        typeof row.sort_values === 'object' &&
-        Object.keys(row.sort_values).length > 0
-      ) {
-        fields['_sort'] = row.sort_values;
-      }
-      fields['_score'] = row.rank;
-
-      return {
-        documentId: row.document_id,
-        documentType: row.document_type,
-        tenantId,
-        fields,
-        permissionAttributes: parsePermissionAttrs(row.permission_attributes),
-      };
-    });
-  }
+        return rows.map(function (row): SearchDocument {
+            const fields: Record<string, unknown> = {
+                title: row.title,
+            };
+            if (row.summary !== null)
+                fields['summary'] = row.summary;
+            if (row.body_text !== null)
+                fields['body_text'] = row.body_text;
+            if (row.taxonomy_path !== null)
+                fields['taxonomy_path'] = row.taxonomy_path;
+            if (row.filter_values && typeof row.filter_values === 'object') {
+                for (const [k, v] of Object.entries(row.filter_values)) {
+                    if (!(k in fields))
+                        fields[k] = v;
+                }
+            }
+            if (row.sort_values &&
+                typeof row.sort_values === 'object' &&
+                Object.keys(row.sort_values).length > 0) {
+                fields['_sort'] = row.sort_values;
+            }
+            fields['_score'] = row.rank;
+            return {
+                documentId: row.document_id,
+                documentType: row.document_type,
+                tenantId,
+                fields,
+                permissionAttributes: parsePermissionAttrs(row.permission_attributes),
+            };
+        });
+    }
 }

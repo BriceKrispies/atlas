@@ -1,15 +1,14 @@
 import { S } from '../_register.ts';
 import { customDetail, isElement, isValueDetail } from '../../internal/assert.ts';
-
 S({
-  id: 'menu',
-  name: 'Menu',
-  tag: 'atlas-menu',
-  mount: (demoEl, { onLog }) => {
-    // ── Variant 1: dropdown anchored to a trigger button ────────────
-    const dropdownWrap = document.createElement('atlas-stack');
-    dropdownWrap.setAttribute('gap', 'sm');
-    dropdownWrap.innerHTML = `
+    id: 'menu',
+    name: 'Menu',
+    tag: 'atlas-menu',
+    mount: function (demoEl, { onLog }) {
+        // ── Variant 1: dropdown anchored to a trigger button ────────────
+        const dropdownWrap = document.createElement('atlas-stack');
+        dropdownWrap.setAttribute('gap', 'sm');
+        dropdownWrap.innerHTML = `
       <atlas-text variant="muted">Click the button to open a dropdown.</atlas-text>
       <atlas-stack direction="row" gap="md" align="center">
         <atlas-button id="popups-menu-trigger-1">Actions</atlas-button>
@@ -22,11 +21,10 @@ S({
         </atlas-menu>
       </atlas-stack>
     `;
-
-    // ── Variant 2: long-press / right-click context menu ────────────
-    const contextWrap = document.createElement('atlas-stack');
-    contextWrap.setAttribute('gap', 'sm');
-    contextWrap.innerHTML = `
+        // ── Variant 2: long-press / right-click context menu ────────────
+        const contextWrap = document.createElement('atlas-stack');
+        contextWrap.setAttribute('gap', 'sm');
+        contextWrap.innerHTML = `
       <atlas-text variant="muted">
         Long-press (touch) or right-click the card to open a context menu.
       </atlas-text>
@@ -44,51 +42,52 @@ S({
         <atlas-menu-item value="delete" destructive>Delete</atlas-menu-item>
       </atlas-menu>
     `;
-
-    const stack = document.createElement('atlas-stack');
-    stack.setAttribute('gap', 'xl');
-    stack.appendChild(dropdownWrap);
-    stack.appendChild(contextWrap);
-    demoEl.appendChild(stack);
-
-    // Wire dropdown after attachment so anchor selector / sibling
-    // resolution sees the final DOM tree.
-    const dropdownTrigger = stack.querySelector('#popups-menu-trigger-1') as HTMLElement | null;
-    const dropdownMenu = stack.querySelector('atlas-menu[data-menu="dropdown"]') as
-      | (HTMLElement & { open: (anchor?: HTMLElement) => void })
-      | null;
-    if (dropdownTrigger && dropdownMenu) {
-      dropdownTrigger.addEventListener('click', () => dropdownMenu.open(dropdownTrigger));
-    }
-
-    for (const menu of stack.querySelectorAll('atlas-menu')) {
-      const which = menu.getAttribute('data-menu') ?? 'menu';
-      menu.addEventListener('select', (ev) => {
-        // Menu items dispatch `select` with `{ value }`. Validate
-        // through a typed reader; a drift in shape surfaces here rather
-        // than as a silent `undefined` in the log.
-        const detail = customDetail(ev, isValueDetail, `${which} select event`);
-        onLog(`${which}.select`, detail);
-      });
-      menu.addEventListener('open', () => onLog(`${which}.open`, {}));
-      menu.addEventListener('close', () => onLog(`${which}.close`, {}));
-    }
-
-    return () => {
-      stack.remove();
-    };
-  },
-  configVariants: [{ name: 'default', config: {} }],
+        const stack = document.createElement('atlas-stack');
+        stack.setAttribute('gap', 'xl');
+        stack.appendChild(dropdownWrap);
+        stack.appendChild(contextWrap);
+        demoEl.appendChild(stack);
+        // Wire dropdown after attachment so anchor selector / sibling
+        // resolution sees the final DOM tree.
+        const dropdownTrigger = stack.querySelector('#popups-menu-trigger-1') as HTMLElement | null;
+        const dropdownMenu = stack.querySelector('atlas-menu[data-menu="dropdown"]') as (HTMLElement & {
+            open: (anchor?: HTMLElement) => void;
+        }) | null;
+        if (dropdownTrigger && dropdownMenu) {
+            dropdownTrigger.addEventListener('click', function () {
+                return dropdownMenu.open(dropdownTrigger);
+            });
+        }
+        for (const menu of stack.querySelectorAll('atlas-menu')) {
+            const which = menu.getAttribute('data-menu') ?? 'menu';
+            menu.addEventListener('select', function (ev) {
+                // Menu items dispatch `select` with `{ value }`. Validate
+                // through a typed reader; a drift in shape surfaces here rather
+                // than as a silent `undefined` in the log.
+                const detail = customDetail(ev, isValueDetail, `${which} select event`);
+                onLog(`${which}.select`, detail);
+            });
+            menu.addEventListener('open', function () {
+                return onLog(`${which}.open`, {});
+            });
+            menu.addEventListener('close', function () {
+                return onLog(`${which}.close`, {});
+            });
+        }
+        return function () {
+            stack.remove();
+        };
+    },
+    configVariants: [{ name: 'default', config: {} }],
 });
-
 S({
-  id: 'popover',
-  name: 'Popover',
-  tag: 'atlas-popover',
-  mount: (demoEl, { onLog }) => {
-    const wrap = document.createElement('atlas-stack');
-    wrap.setAttribute('gap', 'xl');
-    wrap.innerHTML = `
+    id: 'popover',
+    name: 'Popover',
+    tag: 'atlas-popover',
+    mount: function (demoEl, { onLog }) {
+        const wrap = document.createElement('atlas-stack');
+        wrap.setAttribute('gap', 'xl');
+        wrap.innerHTML = `
       <atlas-stack gap="sm">
         <atlas-heading level="4">Triggers</atlas-heading>
         <atlas-stack direction="row" gap="lg" align="center" wrap>
@@ -151,37 +150,40 @@ S({
         </atlas-popover>
       </atlas-stack>
     `;
-    demoEl.appendChild(wrap);
-
-    for (const pop of wrap.querySelectorAll('atlas-popover')) {
-      const which = pop.getAttribute('data-pop') ?? 'popover';
-      pop.addEventListener('open', () => onLog(`${which}.open`, {}));
-      pop.addEventListener('close', () => onLog(`${which}.close`, {}));
-    }
-    // Wire the cancel/apply buttons inside the rich-content popover so
-    // the demo logs intent without leaving the popover open.
-    wrap.addEventListener('click', (ev) => {
-      const target = ev.target;
-      if (!isElement(target)) return;
-      const apply = target.closest('[data-pop-apply]');
-      const cancel = target.closest('[data-pop-cancel]');
-      if (!apply && !cancel) return;
-      const pop = target.closest('atlas-popover[data-pop="form"]');
-      onLog(apply ? 'form.apply' : 'form.cancel', {});
-      // `<atlas-popover>` exposes `close()` on the custom-element class;
-      // `closest()` returns Element, so call through `invokeCloseIfAny`
-      // which probes for a callable `close` without leaking a
-      // structural narrowing into the call site.
-      invokeCloseIfAny(pop);
-    });
-
-    return () => {
-      wrap.remove();
-    };
-  },
-  configVariants: [{ name: 'default', config: {} }],
+        demoEl.appendChild(wrap);
+        for (const pop of wrap.querySelectorAll('atlas-popover')) {
+            const which = pop.getAttribute('data-pop') ?? 'popover';
+            pop.addEventListener('open', function () {
+                return onLog(`${which}.open`, {});
+            });
+            pop.addEventListener('close', function () {
+                return onLog(`${which}.close`, {});
+            });
+        }
+        // Wire the cancel/apply buttons inside the rich-content popover so
+        // the demo logs intent without leaving the popover open.
+        wrap.addEventListener('click', function (ev) {
+            const target = ev.target;
+            if (!isElement(target))
+                return;
+            const apply = target.closest('[data-pop-apply]');
+            const cancel = target.closest('[data-pop-cancel]');
+            if (!apply && !cancel)
+                return;
+            const pop = target.closest('atlas-popover[data-pop="form"]');
+            onLog(apply ? 'form.apply' : 'form.cancel', {});
+            // `<atlas-popover>` exposes `close()` on the custom-element class;
+            // `closest()` returns Element, so call through `invokeCloseIfAny`
+            // which probes for a callable `close` without leaking a
+            // structural narrowing into the call site.
+            invokeCloseIfAny(pop);
+        });
+        return function () {
+            wrap.remove();
+        };
+    },
+    configVariants: [{ name: 'default', config: {} }],
 });
-
 /**
  * Probe `el?.close` for a parameterless callable and invoke it. Lets
  * us drive custom-element imperative APIs (`<atlas-popover>.close()`,
@@ -189,10 +191,12 @@ S({
  * without leaking a structural cast into the call site.
  */
 function invokeCloseIfAny(el: Element | null): void {
-  if (!el) return;
-  // `Element` doesn't declare `close` — the method lives on the custom
-  // element class. Use Reflect to read/invoke through `unknown` rather
-  // than a structural narrowing cast.
-  const close: unknown = Reflect.get(el, 'close');
-  if (typeof close === 'function') Reflect.apply(close, el, []);
+    if (!el)
+        return;
+    // `Element` doesn't declare `close` — the method lives on the custom
+    // element class. Use Reflect to read/invoke through `unknown` rather
+    // than a structural narrowing cast.
+    const close: unknown = Reflect.get(el, 'close');
+    if (typeof close === 'function')
+        Reflect.apply(close, el, []);
 }

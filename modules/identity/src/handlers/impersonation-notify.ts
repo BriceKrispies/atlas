@@ -33,35 +33,26 @@
  * `identityDispatcher` via `composeDispatchers`. Apps that don't want
  * notifications skip composing it.
  */
-
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventDispatcher, EventStore } from '@atlas/ports';
 import { newEventId } from '../ids.ts';
-
 /** Channels the notifications dispatcher targets. */
-export type NotificationChannel =
-  | 'tenant_admin'
-  | 'ops_pager'
-  | 'security_pager'
-  | 'grant_issuer';
-
+export type NotificationChannel = 'tenant_admin' | 'ops_pager' | 'security_pager' | 'grant_issuer';
 export interface NotificationEmitOptions {
-  /**
-   * Optional override for who the notification should target. When unset,
-   * the dispatcher derives sensible defaults from event type:
-   *   - ImpersonationStarted   → tenant primary admin + ops engineer
-   *   - ImpersonationEnded     → tenant primary admin (+ ops on tenant_revoked)
-   *   - BreakGlassIssued       → tenant primary admin + security@atlas
-   *   - BreakGlassApproved     → tenant primary admin + issuer
-   *   - BreakGlassRevoked/Expired/Denied → tenant primary admin + issuer
-   */
-  channels?: ReadonlyArray<NotificationChannel>;
+    /**
+     * Optional override for who the notification should target. When unset,
+     * the dispatcher derives sensible defaults from event type:
+     *   - ImpersonationStarted   → tenant primary admin + ops engineer
+     *   - ImpersonationEnded     → tenant primary admin (+ ops on tenant_revoked)
+     *   - BreakGlassIssued       → tenant primary admin + security@atlas
+     *   - BreakGlassApproved     → tenant primary admin + issuer
+     *   - BreakGlassRevoked/Expired/Denied → tenant primary admin + issuer
+     */
+    channels?: ReadonlyArray<NotificationChannel>;
 }
-
 // =====================================================================
 // Source-event recognition
 // =====================================================================
-
 /**
  * Subset of A7 event types that the dispatcher emits notifications FOR.
  * Action events are recognised in `isA7Event` but excluded here — they
@@ -69,20 +60,18 @@ export interface NotificationEmitOptions {
  * audit log on the source side).
  */
 const A7_NOTIFY_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'Authorization.ImpersonationStarted',
-  'Authorization.ImpersonationEnded',
-  'Authorization.BreakGlassIssued',
-  'Authorization.BreakGlassApproved',
-  'Authorization.BreakGlassDenied',
-  'Authorization.BreakGlassRevoked',
-  'Authorization.BreakGlassExpired',
+    'Authorization.ImpersonationStarted',
+    'Authorization.ImpersonationEnded',
+    'Authorization.BreakGlassIssued',
+    'Authorization.BreakGlassApproved',
+    'Authorization.BreakGlassDenied',
+    'Authorization.BreakGlassRevoked',
+    'Authorization.BreakGlassExpired',
 ]);
-
 const A7_ACTION_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'Authorization.ImpersonationAction',
-  'Authorization.BreakGlassAction',
+    'Authorization.ImpersonationAction',
+    'Authorization.BreakGlassAction',
 ]);
-
 /**
  * True when the event is part of the Phase A7 impersonation / break-glass
  * family. Action events count as A7 even though they don't trigger
@@ -90,48 +79,43 @@ const A7_ACTION_EVENT_TYPES: ReadonlySet<string> = new Set([
  * the dispatcher's no-op short-circuit semantics.
  */
 function isA7Event(event: EventEnvelope): boolean {
-  return (
-    A7_NOTIFY_EVENT_TYPES.has(event.eventType) ||
-    A7_ACTION_EVENT_TYPES.has(event.eventType)
-  );
+    return (A7_NOTIFY_EVENT_TYPES.has(event.eventType) ||
+        A7_ACTION_EVENT_TYPES.has(event.eventType));
 }
-
 // =====================================================================
 // Default channels per event type
 // =====================================================================
-
 function defaultChannelsFor(event: EventEnvelope): ReadonlyArray<NotificationChannel> {
-  const payload = event.payload;
-  switch (event.eventType) {
-    case 'Authorization.ImpersonationStarted':
-      return ['tenant_admin', 'ops_pager'];
-    case 'Authorization.ImpersonationEnded': {
-      // Tenant-revoked end MUST notify ops out-of-band per spec.
-      const reason =
-        typeof payload === 'object' && payload !== null
-          ? (payload as { reason?: unknown }).reason
-          : undefined;
-      if (reason === 'tenant_revoked' || reason === 'platform_revoked') {
-        return ['tenant_admin', 'ops_pager'];
-      }
-      return ['tenant_admin'];
+    const payload = event.payload;
+    switch (event.eventType) {
+        case 'Authorization.ImpersonationStarted':
+            return ['tenant_admin', 'ops_pager'];
+        case 'Authorization.ImpersonationEnded': {
+            // Tenant-revoked end MUST notify ops out-of-band per spec.
+            const reason = typeof payload === 'object' && payload !== null
+                ? (payload as {
+                    reason?: unknown;
+                }).reason
+                : undefined;
+            if (reason === 'tenant_revoked' || reason === 'platform_revoked') {
+                return ['tenant_admin', 'ops_pager'];
+            }
+            return ['tenant_admin'];
+        }
+        case 'Authorization.BreakGlassIssued':
+            return ['tenant_admin', 'security_pager'];
+        case 'Authorization.BreakGlassApproved':
+        case 'Authorization.BreakGlassDenied':
+        case 'Authorization.BreakGlassRevoked':
+        case 'Authorization.BreakGlassExpired':
+            return ['tenant_admin', 'grant_issuer'];
+        default:
+            return [];
     }
-    case 'Authorization.BreakGlassIssued':
-      return ['tenant_admin', 'security_pager'];
-    case 'Authorization.BreakGlassApproved':
-    case 'Authorization.BreakGlassDenied':
-    case 'Authorization.BreakGlassRevoked':
-    case 'Authorization.BreakGlassExpired':
-      return ['tenant_admin', 'grant_issuer'];
-    default:
-      return [];
-  }
 }
-
 // =====================================================================
 // Audit-grade payload extraction
 // =====================================================================
-
 /**
  * Whitelist of fields the dispatcher is willing to copy from the source
  * payload into the notification follow-up. Everything else is dropped.
@@ -142,74 +126,68 @@ function defaultChannelsFor(event: EventEnvelope): ReadonlyArray<NotificationCha
  * whitelist explicitly keeps the contract obvious and testable.
  */
 const AUDIT_FIELD_WHITELIST: ReadonlySet<string> = new Set([
-  // Common identifiers
-  'impersonationId',
-  'grantId',
-  // Actors
-  'operatorId',
-  'targetUserId',
-  'issuedBy',
-  'grantedTo',
-  'approvedBy',
-  'deniedBy',
-  'revokedBy',
-  'endedBy',
-  // Audit context
-  'reason',
-  'justification',
-  'ticketUrl',
-  'incidentUrl',
-  'maxDurationMin',
-  'expiresAt',
-  'status',
-  'requireApproval',
-  'actionId',
-  'resourceType',
-  'resourceId',
-  'grantedRoles',
+    // Common identifiers
+    'impersonationId',
+    'grantId',
+    // Actors
+    'operatorId',
+    'targetUserId',
+    'issuedBy',
+    'grantedTo',
+    'approvedBy',
+    'deniedBy',
+    'revokedBy',
+    'endedBy',
+    // Audit context
+    'reason',
+    'justification',
+    'ticketUrl',
+    'incidentUrl',
+    'maxDurationMin',
+    'expiresAt',
+    'status',
+    'requireApproval',
+    'actionId',
+    'resourceType',
+    'resourceId',
+    'grantedRoles',
 ]);
-
-function extractAuditMetadata(
-  payload: unknown,
-): Record<string, unknown> {
-  if (payload == null || typeof payload !== 'object') return {};
-  const out: Record<string, unknown> = {};
-  // `payload` is now narrowed to `object`; `Object.entries` accepts it
-  // and returns `[string, unknown][]` — no structural cast needed.
-  for (const [k, v] of Object.entries(payload)) {
-    if (AUDIT_FIELD_WHITELIST.has(k)) {
-      out[k] = v;
+function extractAuditMetadata(payload: unknown): Record<string, unknown> {
+    if (payload == null || typeof payload !== 'object')
+        return {};
+    const out: Record<string, unknown> = {};
+    // `payload` is now narrowed to `object`; `Object.entries` accepts it
+    // and returns `[string, unknown][]` — no structural cast needed.
+    for (const [k, v] of Object.entries(payload)) {
+        if (AUDIT_FIELD_WHITELIST.has(k)) {
+            out[k] = v;
+        }
     }
-  }
-  return out;
+    return out;
 }
-
 // =====================================================================
 // Channel → recipient hint
 // =====================================================================
-
 /**
  * The recipient address / pager-route is resolved by the future
  * notifications domain — this dispatcher only stamps an audit-friendly
  * hint string so log readers know who SHOULD have been paged.
  */
 function recipientHintFor(channel: NotificationChannel): string {
-  switch (channel) {
-    case 'tenant_admin':
-      return 'tenant:primary_admin';
-    case 'ops_pager':
-      return 'pager:ops';
-    case 'security_pager':
-      return 'pager:security@atlas';
-    case 'grant_issuer':
-      return 'principal:grant_issuer';
-  }
+    switch (channel) {
+        case 'tenant_admin':
+            return 'tenant:primary_admin';
+        case 'ops_pager':
+            return 'pager:ops';
+        case 'security_pager':
+            return 'pager:security@atlas';
+        case 'grant_issuer':
+            return 'principal:grant_issuer';
+    }
 }
-
 // =====================================================================
 // Public API
 // =====================================================================
-
 /**
  * Emit `Notifications.*` follow-up events for an A7 impersonation /
  * break-glass source event. Returns the appended follow-up envelopes
@@ -219,59 +197,54 @@ function recipientHintFor(channel: NotificationChannel): string {
  * Idempotency: each follow-up's key is `notif.<sourceEventId>.<channel>`
  * — re-emitting against the same EventStore returns the existing record.
  */
-export async function emitNotificationsForA7Event(
-  event: EventEnvelope,
-  eventStore: EventStore,
-  opts?: NotificationEmitOptions,
-): Promise<EventEnvelope[]> {
-  if (!isA7Event(event)) return [];
-  // Action events are recognised as A7 but never trigger notifications.
-  if (A7_ACTION_EVENT_TYPES.has(event.eventType)) return [];
-
-  const channels = opts?.channels ?? defaultChannelsFor(event);
-  if (channels.length === 0) return [];
-
-  const sourceEventId = event.eventId;
-  const sourceType = event.eventType;
-  const auditMetadata = extractAuditMetadata(event.payload);
-
-  const emitted: EventEnvelope[] = [];
-  for (const channel of channels) {
-    const envelope: EventEnvelope = {
-      eventId: newEventId(),
-      eventType: `Notifications.${sourceType.replace(/^Authorization\./, '')}`,
-      schemaId: `domain.notifications.${sourceType
-        .replace(/^Authorization\./, '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-        .toLowerCase()}.v1`,
-      schemaVersion: 1,
-      occurredAt: event.occurredAt,
-      tenantId: event.tenantId,
-      correlationId: event.correlationId,
-      idempotencyKey: `notif.${sourceEventId}.${channel}`,
-      causationId: sourceEventId,
-      principalId: event.principalId ?? null,
-      userId: event.userId ?? null,
-      cacheInvalidationTags: [`Tenant:${event.tenantId}`],
-      ...(event.retentionTag !== undefined
-        ? { retentionTag: event.retentionTag }
-        : {}),
-      payload: {
-        sourceEventId,
-        sourceEventType: sourceType,
-        channel,
-        recipientHint: recipientHintFor(channel),
-        ...auditMetadata,
-      },
-    };
-    const stored = await eventStore.append(envelope);
-    envelope.eventId = stored.eventId;
-    envelope.seq = stored.seq;
-    emitted.push(envelope);
-  }
-  return emitted;
+export async function emitNotificationsForA7Event(event: EventEnvelope, eventStore: EventStore, opts?: NotificationEmitOptions): Promise<EventEnvelope[]> {
+    if (!isA7Event(event))
+        return [];
+    // Action events are recognised as A7 but never trigger notifications.
+    if (A7_ACTION_EVENT_TYPES.has(event.eventType))
+        return [];
+    const channels = opts?.channels ?? defaultChannelsFor(event);
+    if (channels.length === 0)
+        return [];
+    const sourceEventId = event.eventId;
+    const sourceType = event.eventType;
+    const auditMetadata = extractAuditMetadata(event.payload);
+    const emitted: EventEnvelope[] = [];
+    for (const channel of channels) {
+        const envelope: EventEnvelope = {
+            eventId: newEventId(),
+            eventType: `Notifications.${sourceType.replace(/^Authorization\./, '')}`,
+            schemaId: `domain.notifications.${sourceType
+                .replace(/^Authorization\./, '')
+                .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+                .toLowerCase()}.v1`,
+            schemaVersion: 1,
+            occurredAt: event.occurredAt,
+            tenantId: event.tenantId,
+            correlationId: event.correlationId,
+            idempotencyKey: `notif.${sourceEventId}.${channel}`,
+            causationId: sourceEventId,
+            principalId: event.principalId ?? null,
+            userId: event.userId ?? null,
+            cacheInvalidationTags: [`Tenant:${event.tenantId}`],
+            ...(event.retentionTag !== undefined
+                ? { retentionTag: event.retentionTag }
+                : {}),
+            payload: {
+                sourceEventId,
+                sourceEventType: sourceType,
+                channel,
+                recipientHint: recipientHintFor(channel),
+                ...auditMetadata,
+            },
+        };
+        const stored = await eventStore.append(envelope);
+        envelope.eventId = stored.eventId;
+        envelope.seq = stored.seq;
+        emitted.push(envelope);
+    }
+    return emitted;
 }
-
 /**
  * Factory: bind an `EventStore` and return an `EventDispatcher` that
  * fires `Notifications.*` follow-ups for every A7 event the chain sees.
@@ -283,11 +256,8 @@ export async function emitNotificationsForA7Event(
  * The `emitNotificationsForA7Event` helper is also exported directly so
  * tests / explicit callers can collect the appended envelopes.
  */
-export function identityNotificationDispatcher(
-  eventStore: EventStore,
-  opts?: NotificationEmitOptions,
-): EventDispatcher {
-  return async (envelope) => {
-    await emitNotificationsForA7Event(envelope, eventStore, opts);
-  };
+export function identityNotificationDispatcher(eventStore: EventStore, opts?: NotificationEmitOptions): EventDispatcher {
+    return async function (envelope) {
+        await emitNotificationsForA7Event(envelope, eventStore, opts);
+    };
 }

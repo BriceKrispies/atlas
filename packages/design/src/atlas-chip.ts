@@ -1,6 +1,5 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet } from './util.ts';
-
 /**
  * <atlas-chip> — interactive chip. Three flavours:
  *   filter — toggleable (selected/unselected) per Material filter chips
@@ -19,7 +18,6 @@ import { adoptSheet, createSheet } from './util.ts';
  * an additional invisible slop area so it doesn't intercept taps meant
  * for the chip body.
  */
-
 const sheet = createSheet(`
   :host {
     --chip-bg: var(--atlas-color-surface);
@@ -136,57 +134,51 @@ const sheet = createSheet(`
   }
   .remove svg { width: 10px; height: 10px; pointer-events: none; }
 `);
-
 export interface AtlasChipChangeDetail {
-  selected: boolean;
-  value: string;
+    selected: boolean;
+    value: string;
 }
 export interface AtlasChipRemoveDetail {
-  value: string;
+    value: string;
 }
-
 export class AtlasChip extends AtlasElement {
-  declare variant: string;
-  declare value: string;
-  declare selected: boolean;
-  declare removable: boolean;
-  declare disabled: boolean;
-
-  static {
-    Object.defineProperty(this.prototype, 'variant',   AtlasElement.strAttr('variant', 'filter'));
-    Object.defineProperty(this.prototype, 'value',     AtlasElement.strAttr('value', ''));
-    Object.defineProperty(this.prototype, 'selected',  AtlasElement.boolAttr('selected'));
-    Object.defineProperty(this.prototype, 'removable', AtlasElement.boolAttr('removable'));
-    Object.defineProperty(this.prototype, 'disabled',  AtlasElement.boolAttr('disabled'));
-  }
-
-  static override get observedAttributes(): readonly string[] {
-    return ['selected', 'disabled', 'removable', 'variant'];
-  }
-
-  private _built = false;
-
-  constructor() {
-    super();
-    const root = this.attachShadow({ mode: 'open' });
-    adoptSheet(root, sheet);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    if (!this._built) this._buildShell();
-    this._sync();
-  }
-
-  override attributeChangedCallback(): void {
-    if (!this._built) return;
-    this._sync();
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    root.innerHTML = `
+    declare variant: string;
+    declare value: string;
+    declare selected: boolean;
+    declare removable: boolean;
+    declare disabled: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'variant', AtlasElement.strAttr('variant', 'filter'));
+        Object.defineProperty(this.prototype, 'value', AtlasElement.strAttr('value', ''));
+        Object.defineProperty(this.prototype, 'selected', AtlasElement.boolAttr('selected'));
+        Object.defineProperty(this.prototype, 'removable', AtlasElement.boolAttr('removable'));
+        Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    }
+    static override get observedAttributes(): readonly string[] {
+        return ['selected', 'disabled', 'removable', 'variant'];
+    }
+    private _built = false;
+    constructor() {
+        super();
+        const root = this.attachShadow({ mode: 'open' });
+        adoptSheet(root, sheet);
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        if (!this._built)
+            this._buildShell();
+        this._sync();
+    }
+    override attributeChangedCallback(): void {
+        if (!this._built)
+            return;
+        this._sync();
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        root.innerHTML = `
       <button type="button" class="chip" part="chip">
         <svg class="check" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -199,101 +191,97 @@ export class AtlasChip extends AtlasElement {
         </button>
       </button>
     `;
-    const chipBtn = root.querySelector<HTMLButtonElement>('.chip');
-    const removeBtn = root.querySelector<HTMLButtonElement>('.remove');
-
-    chipBtn?.addEventListener('click', (e) => {
-      const target = e.target;
-      if (target instanceof Element && target.closest('.remove')) return; // remove handles its own click
-      this._onActivate();
-    });
-    chipBtn?.addEventListener('keydown', (e) => {
-      // <button> already activates on Enter/Space, so we only need to
-      // ensure Space doesn't scroll the page when focus is on the chip.
-      if (e.key === ' ' || e.key === 'Spacebar') e.preventDefault();
-    });
-
-    removeBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._onRemove();
-    });
-
-    this._built = true;
-  }
-
-  private _sync(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const chipBtn = root.querySelector<HTMLButtonElement>('.chip');
-    const removeBtn = root.querySelector<HTMLButtonElement>('.remove');
-    if (!chipBtn || !removeBtn) return;
-
-    const variant = this.getAttribute('variant') ?? 'filter';
-    const isToggle = variant === 'filter' || variant === 'choice';
-    const disabled = this.hasAttribute('disabled');
-    const selected = this.hasAttribute('selected');
-
-    chipBtn.disabled = disabled;
-    if (isToggle) {
-      chipBtn.setAttribute('role', 'button');
-      chipBtn.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    } else {
-      chipBtn.removeAttribute('aria-pressed');
+        const chipBtn = root.querySelector<HTMLButtonElement>('.chip');
+        const removeBtn = root.querySelector<HTMLButtonElement>('.remove');
+        chipBtn?.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target instanceof Element && target.closest('.remove'))
+                return; // remove handles its own click
+            this._onActivate();
+        });
+        chipBtn?.addEventListener('keydown', function (e) {
+            // <button> already activates on Enter/Space, so we only need to
+            // ensure Space doesn't scroll the page when focus is on the chip.
+            if (e.key === ' ' || e.key === 'Spacebar')
+                e.preventDefault();
+        });
+        removeBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._onRemove();
+        });
+        this._built = true;
     }
-
-    if (this.hasAttribute('removable')) {
-      removeBtn.hidden = false;
-      const labelText = this.textContent?.trim() || this.getAttribute('value') || 'chip';
-      removeBtn.setAttribute('aria-label', `Remove ${labelText}`);
-    } else {
-      removeBtn.hidden = true;
+    private _sync(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const chipBtn = root.querySelector<HTMLButtonElement>('.chip');
+        const removeBtn = root.querySelector<HTMLButtonElement>('.remove');
+        if (!chipBtn || !removeBtn)
+            return;
+        const variant = this.getAttribute('variant') ?? 'filter';
+        const isToggle = variant === 'filter' || variant === 'choice';
+        const disabled = this.hasAttribute('disabled');
+        const selected = this.hasAttribute('selected');
+        chipBtn.disabled = disabled;
+        if (isToggle) {
+            chipBtn.setAttribute('role', 'button');
+            chipBtn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        }
+        else {
+            chipBtn.removeAttribute('aria-pressed');
+        }
+        if (this.hasAttribute('removable')) {
+            removeBtn.hidden = false;
+            const labelText = this.textContent?.trim() || this.getAttribute('value') || 'chip';
+            removeBtn.setAttribute('aria-label', `Remove ${labelText}`);
+        }
+        else {
+            removeBtn.hidden = true;
+        }
     }
-  }
-
-  private _resolvedValue(): string {
-    return this.getAttribute('value') ?? this.textContent?.trim() ?? '';
-  }
-
-  private _onActivate(): void {
-    if (this.hasAttribute('disabled')) return;
-    const variant = this.getAttribute('variant') ?? 'filter';
-    if (variant !== 'filter' && variant !== 'choice') return;
-
-    const next = !this.hasAttribute('selected');
-    if (next) this.setAttribute('selected', '');
-    else this.removeAttribute('selected');
-
-    const detail: AtlasChipChangeDetail = {
-      selected: next,
-      value: this._resolvedValue(),
-    };
-    this.dispatchEvent(new CustomEvent<AtlasChipChangeDetail>('change', {
-      detail, bubbles: true, composed: true,
-    }));
-
-    const name = this.getAttribute('name');
-    if (this.surfaceId && name) {
-      this.emit(`${this.surfaceId}.${name}-changed`, { ...detail });
+    private _resolvedValue(): string {
+        return this.getAttribute('value') ?? this.textContent?.trim() ?? '';
     }
-  }
-
-  private _onRemove(): void {
-    if (this.hasAttribute('disabled')) return;
-    const detail: AtlasChipRemoveDetail = { value: this._resolvedValue() };
-    this.dispatchEvent(new CustomEvent<AtlasChipRemoveDetail>('remove', {
-      detail, bubbles: true, composed: true,
-    }));
-    const name = this.getAttribute('name');
-    if (this.surfaceId && name) {
-      this.emit(`${this.surfaceId}.${name}-removed`, { ...detail });
+    private _onActivate(): void {
+        if (this.hasAttribute('disabled'))
+            return;
+        const variant = this.getAttribute('variant') ?? 'filter';
+        if (variant !== 'filter' && variant !== 'choice')
+            return;
+        const next = !this.hasAttribute('selected');
+        if (next)
+            this.setAttribute('selected', '');
+        else
+            this.removeAttribute('selected');
+        const detail: AtlasChipChangeDetail = {
+            selected: next,
+            value: this._resolvedValue(),
+        };
+        this.dispatchEvent(new CustomEvent<AtlasChipChangeDetail>('change', {
+            detail, bubbles: true, composed: true,
+        }));
+        const name = this.getAttribute('name');
+        if (this.surfaceId && name) {
+            this.emit(`${this.surfaceId}.${name}-changed`, { ...detail });
+        }
     }
-  }
+    private _onRemove(): void {
+        if (this.hasAttribute('disabled'))
+            return;
+        const detail: AtlasChipRemoveDetail = { value: this._resolvedValue() };
+        this.dispatchEvent(new CustomEvent<AtlasChipRemoveDetail>('remove', {
+            detail, bubbles: true, composed: true,
+        }));
+        const name = this.getAttribute('name');
+        if (this.surfaceId && name) {
+            this.emit(`${this.surfaceId}.${name}-removed`, { ...detail });
+        }
+    }
 }
-
 AtlasElement.define('atlas-chip', AtlasChip);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-chip': AtlasChip;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-chip': AtlasChip;
+    }
 }

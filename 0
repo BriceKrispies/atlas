@@ -1,2 +1,0 @@
-
-C:\dev\atlas>node  "C:\Program Files\nodejs\\node_modules\corepack\dist\pnpm.js" exec tsx -e setTimeout(_=,60000) 

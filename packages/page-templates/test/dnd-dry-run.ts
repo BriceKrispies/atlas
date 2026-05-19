@@ -1,138 +1,118 @@
 /**
  * DnD subsystem dry-run: unit-tests the leaf modules in a linkedom DOM.
  */
-
 import { document } from './_lib/setup.ts';
 import { must } from '../src/internal/assert.ts';
-
-const {
-  Projection,
-  DragOverlay,
-  CommitBoundary,
-  cloneSourcePreview,
-} = await import('../src/dnd/index.ts');
-
+const { Projection, DragOverlay, CommitBoundary, cloneSourcePreview, } = await import('../src/dnd/index.ts');
 function assert(cond: unknown, msg: string): void {
-  if (!cond) throw new Error(`assertion failed: ${msg}`);
+    if (!cond)
+        throw new Error(`assertion failed: ${msg}`);
 }
 function assertEq<T>(a: T, b: T, msg: string): void {
-  if (a !== b) throw new Error(`${msg}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    if (a !== b)
+        throw new Error(`${msg}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
 }
-
 // ---- CommitBoundary --------------------------------------------------
-
 async function testCommit_successPath(): Promise<void> {
-  const boundary = new CommitBoundary({
-    onDrop: async ({ payload }) => ({ ok: true, payloadId: payload.id }),
-  });
-  const res = await boundary.commit({
-    payload: { type: 'cell', id: 'x' },
-    target: { id: 'z', containerId: 'main', element: document.createElement('div') },
-  });
-  assertEq(res.ok, true, 'commit ok');
-  assertEq(res['payloadId'], 'x', 'payload.id returned');
+    const boundary = new CommitBoundary({
+        onDrop: async function ({ payload }) {
+            return ({ ok: true, payloadId: payload.id });
+        },
+    });
+    const res = await boundary.commit({
+        payload: { type: 'cell', id: 'x' },
+        target: { id: 'z', containerId: 'main', element: document.createElement('div') },
+    });
+    assertEq(res.ok, true, 'commit ok');
+    assertEq(res['payloadId'], 'x', 'payload.id returned');
 }
-
 async function testCommit_throwWrapsAsResult(): Promise<void> {
-  const boundary = new CommitBoundary({
-    onDrop: async () => {
-      throw new Error('boom');
-    },
-  });
-  const res = await boundary.commit({
-    payload: { type: 'cell', id: 'x' },
-    target: { id: 'z', containerId: 'main', element: document.createElement('div') },
-  });
-  assertEq(res.ok, false, 'ok=false on throw');
-  assertEq(res.reason, 'commit-threw', 'reason=commit-threw');
-  assertEq(res['message'], 'boom', 'message passed through');
+    const boundary = new CommitBoundary({
+        onDrop: async function () {
+            throw new Error('boom');
+        },
+    });
+    const res = await boundary.commit({
+        payload: { type: 'cell', id: 'x' },
+        target: { id: 'z', containerId: 'main', element: document.createElement('div') },
+    });
+    assertEq(res.ok, false, 'ok=false on throw');
+    assertEq(res.reason, 'commit-threw', 'reason=commit-threw');
+    assertEq(res['message'], 'boom', 'message passed through');
 }
-
 async function testCommit_noHandler(): Promise<void> {
-  const boundary = new CommitBoundary({});
-  const res = await boundary.commit({
-    payload: { type: '', id: '' },
-    target: { id: 'z', containerId: 'c', element: document.createElement('div') },
-  });
-  assertEq(res.ok, false, 'ok=false when no handler');
-  assertEq(res.reason, 'no-commit-handler', 'reason=no-commit-handler');
+    const boundary = new CommitBoundary({});
+    const res = await boundary.commit({
+        payload: { type: '', id: '' },
+        target: { id: 'z', containerId: 'c', element: document.createElement('div') },
+    });
+    assertEq(res.ok, false, 'ok=false when no handler');
+    assertEq(res.reason, 'no-commit-handler', 'reason=no-commit-handler');
 }
-
 // ---- Projection ------------------------------------------------------
-
 async function testProjection_sourceGhostAndActiveTarget(): Promise<void> {
-  const p = new Projection();
-  const source = document.createElement('div');
-  const t1 = document.createElement('div');
-  const t2 = document.createElement('div');
-  p.setSourceGhost(source, 'ghost');
-  assertEq(source.getAttribute('data-dnd-source'), 'ghost', 'source marked ghost');
-  p.setActiveTarget(t1);
-  assertEq(t1.getAttribute('data-dnd-over'), 'true', 't1 marked over');
-  p.setActiveTarget(t2);
-  assertEq(t1.getAttribute('data-dnd-over'), null, 't1 cleared');
-  assertEq(t2.getAttribute('data-dnd-over'), 'true', 't2 marked');
-  p.markCandidates([t1, t2]);
-  assertEq(t1.getAttribute('data-dnd-candidate'), 'true', 'candidate set');
-  p.clear();
-  assertEq(source.getAttribute('data-dnd-source'), null, 'source cleared');
-  assertEq(t1.getAttribute('data-dnd-candidate'), null, 'candidate cleared');
-  assertEq(t2.getAttribute('data-dnd-over'), null, 'over cleared');
+    const p = new Projection();
+    const source = document.createElement('div');
+    const t1 = document.createElement('div');
+    const t2 = document.createElement('div');
+    p.setSourceGhost(source, 'ghost');
+    assertEq(source.getAttribute('data-dnd-source'), 'ghost', 'source marked ghost');
+    p.setActiveTarget(t1);
+    assertEq(t1.getAttribute('data-dnd-over'), 'true', 't1 marked over');
+    p.setActiveTarget(t2);
+    assertEq(t1.getAttribute('data-dnd-over'), null, 't1 cleared');
+    assertEq(t2.getAttribute('data-dnd-over'), 'true', 't2 marked');
+    p.markCandidates([t1, t2]);
+    assertEq(t1.getAttribute('data-dnd-candidate'), 'true', 'candidate set');
+    p.clear();
+    assertEq(source.getAttribute('data-dnd-source'), null, 'source cleared');
+    assertEq(t1.getAttribute('data-dnd-candidate'), null, 'candidate cleared');
+    assertEq(t2.getAttribute('data-dnd-over'), null, 'over cleared');
 }
-
 // ---- DragOverlay -----------------------------------------------------
-
 async function testOverlay_mountMoveUnmount(): Promise<void> {
-  const overlay = new DragOverlay();
-  const preview = document.createElement('div');
-  overlay.mount(preview, { x: 100, y: 50 }, { x: 10, y: 5 });
-  const wrapper = must(overlay.element, 'mount just installed wrapper');
-  assert(wrapper.parentNode === document.body, 'mounted on body');
-  assert(
-    wrapper.style.transform.includes('90px') && wrapper.style.transform.includes('45px'),
-    `transform set with pickup offset (got ${wrapper.style.transform})`,
-  );
-  overlay.move({ x: 200, y: 100 });
-  assert(
-    wrapper.style.transform.includes('190px') && wrapper.style.transform.includes('95px'),
-    `transform updated (got ${wrapper.style.transform})`,
-  );
-  overlay.unmount();
-  assert(!overlay.element, 'wrapper cleared');
+    const overlay = new DragOverlay();
+    const preview = document.createElement('div');
+    overlay.mount(preview, { x: 100, y: 50 }, { x: 10, y: 5 });
+    const wrapper = must(overlay.element, 'mount just installed wrapper');
+    assert(wrapper.parentNode === document.body, 'mounted on body');
+    assert(wrapper.style.transform.includes('90px') && wrapper.style.transform.includes('45px'), `transform set with pickup offset (got ${wrapper.style.transform})`);
+    overlay.move({ x: 200, y: 100 });
+    assert(wrapper.style.transform.includes('190px') && wrapper.style.transform.includes('95px'), `transform updated (got ${wrapper.style.transform})`);
+    overlay.unmount();
+    assert(!overlay.element, 'wrapper cleared');
 }
-
 async function testClonePreview_matchesSourceFootprint(): Promise<void> {
-  const el = document.createElement('div');
-  el.id = 'my-source';
-  el.textContent = 'hi';
-  const preview = cloneSourcePreview(el, {
-    top: 0,
-    left: 0,
-    right: 80,
-    bottom: 24,
-    width: 80,
-    height: 24,
-  });
-  assertEq(preview.style.width, '80px', 'preview width matches');
-  assertEq(preview.style.height, '24px', 'preview height matches');
-  assertEq(preview.hasAttribute('id'), false, 'id stripped from clone');
-  assertEq(preview.getAttribute('data-dnd-overlay-preview'), '', 'preview marker set');
+    const el = document.createElement('div');
+    el.id = 'my-source';
+    el.textContent = 'hi';
+    const preview = cloneSourcePreview(el, {
+        top: 0,
+        left: 0,
+        right: 80,
+        bottom: 24,
+        width: 80,
+        height: 24,
+    });
+    assertEq(preview.style.width, '80px', 'preview width matches');
+    assertEq(preview.style.height, '24px', 'preview height matches');
+    assertEq(preview.hasAttribute('id'), false, 'id stripped from clone');
+    assertEq(preview.getAttribute('data-dnd-overlay-preview'), '', 'preview marker set');
 }
-
 // ---- main ------------------------------------------------------------
-
 async function main(): Promise<void> {
-  await testCommit_successPath();
-  await testCommit_throwWrapsAsResult();
-  await testCommit_noHandler();
-  await testProjection_sourceGhostAndActiveTarget();
-  await testOverlay_mountMoveUnmount();
-  await testClonePreview_matchesSourceFootprint();
-  console.log('OK');
+    await testCommit_successPath();
+    await testCommit_throwWrapsAsResult();
+    await testCommit_noHandler();
+    await testProjection_sourceGhostAndActiveTarget();
+    await testOverlay_mountMoveUnmount();
+    await testClonePreview_matchesSourceFootprint();
+    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
+    console.log('OK');
 }
-
-main().catch((err: unknown) => {
-  const stack = err instanceof Error ? err.stack : undefined;
-  console.error('FAIL:', stack ?? err);
-  process.exit(1);
+main().catch(function (err: unknown) {
+    const stack = err instanceof Error ? err.stack : undefined;
+    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
+    console.error('FAIL:', stack ?? err);
+    process.exit(1);
 });

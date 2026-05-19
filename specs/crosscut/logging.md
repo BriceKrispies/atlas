@@ -128,13 +128,19 @@ Sinks shipping in `@atlas/logging`:
 - `MemoryRingBufferSink` — bounded ring (default 5000 events) for atlasctl inspection by correlationId.
 - `CollectorSink` — synchronous, unbounded; tests only.
 
+Enforcement (live):
+
+- **No-console gate** — ESLint rule `no-console` (`eslint.config.ts`) + Semgrep rule `atlas-logging-no-console` (`.semgrep/atlas-invariants.yml`) fail CI when `console.*` appears in server-side production paths (`apps/server/src/`, `apps/projection-worker/src/`, `modules/`, `adapters/`, and the server-side packages `platform-core` / `logging` / `ingress` / `metrics` / `wasm-host` / `schemas`). Test files, scripts, CLI bins, and frontend packages are exempt; frontend telemetry follows [`specs/frontend/observability.md`](../frontend/observability.md). One file-level allowlist exists in `adapters/node/src/mailer-stdout.ts` (stdout emission IS the product behaviour of the dev mailer).
+- **Structured-dispatcher gate** — `scripts/overseer-check.ts` check `logging-dispatch-speaks` fails if any `modules/*/src/dispatch.ts` doesn't reference `ctx.logger.<level>(…)`. Dispatchers are the seam where events fan out to projections; an unlit dispatcher means flipping its module to debug produces nothing.
+- **atlasctl runtime control** — `atlasctl logging levels / set / clear / inspect` is live (`apps/atlasctl/src/commands/logging.ts`); wraps `/api/v1/admin/logging/*` on `apps/server`.
+
 Still needed (separate slices):
 
-- Wire `apps/server` and `apps/projection-worker` to the new package. Until that lands, existing `console.log` calls in those apps remain contract violations — flagged by `observability-architect`, migration is follow-up work.
-- An ESLint rule (or CI grep guard) that fails on `console.log` / `console.error` in production paths (`apps/server/src/`, `modules/`, `adapters/`, `packages/` excluding test files).
-- atlasctl operator commands for runtime level control (`atlasctl logging set --module identity debug`).
+- Persistent + multi-replica level overrides. `InMemoryLevelController` resets on restart and a `setModule` on pod A does not propagate to pod B. A `control_plane.logging_overrides` table + boot-time load + broadcast over `ServerEventBroadcast` closes this.
+- Frontend ↔ backend bridge. A server-issued FE log-level (per-session cookie/header) plus a `/atlas/telemetry` ingest endpoint that drops events into the same `MemoryRingBufferSink` keyed by correlationId, so `atlasctl logging inspect` shows the full click → handler → event trace.
+- Ambient port-call instrumentation. A Proxy wrapper around every adapter port that emits `{event: 'Port.<name>.Call', durationMs, outcome}` at debug, so adding a new port gets timing telemetry for free.
 
-New code in any package MUST use `ctx.logger.*(...)` — the observability-architect agent will flag direct `console.*` usage in production paths.
+New code in any package MUST use `ctx.logger.*(...)` — the gates above enforce the negative case (no raw `console.*`) and the observability-architect agent audits the positive case (correlationId / tenantId / event-name presence, redaction discipline, error-path completeness).
 
 ## Happy / sad path examples
 

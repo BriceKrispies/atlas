@@ -219,14 +219,22 @@ export async function handleSignupApprove(
     `set up your account and sign in:\n\n` +
     `${magicLinkUrl}\n\n` +
     `This link expires in 7 days. If you didn't request this, ignore the email.\n`;
-  await deps.mailer.send({
-    to: signup.email,
-    subject,
-    body,
-    tenantId,
-    correlationId: cmd.correlationId,
-    tags: ['magic-link', 'signup-approved'],
-  });
+  await deps.mailer.send(
+    {
+      to: signup.email,
+      subject,
+      body,
+      tenantId,
+      correlationId: cmd.correlationId,
+      tags: ['magic-link', 'signup-approved'],
+    },
+    // Thread the per-request logger so the `Mailer.Send.Success` line
+    // carries this request's correlationId at the top level (visible
+    // via /api/v1/admin/logging/correlation/:id/recent). Without this
+    // the SmtpMailer would emit via its boot-bound logger and the line
+    // would be invisible to the ring-buffer-by-correlationId lookup.
+    deps.logger ? { logger: deps.logger } : undefined,
+  );
 
   // 7. Flip the signup row to approved. Done after the mail-dispatch
   // so a crash before send doesn't strand an "approved" row whose

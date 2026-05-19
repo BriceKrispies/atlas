@@ -1,6 +1,5 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, uid } from './util.ts';
-
 /**
  * <atlas-action-sheet> — iOS-style sheet of actions presented from the
  * bottom edge on mobile, and as a centred dropdown-ish menu on wider
@@ -30,9 +29,8 @@ import { adoptSheet, createSheet, uid } from './util.ts';
  *   open / close
  */
 export interface AtlasActionSheetActionDetail {
-  value: string;
+    value: string;
 }
-
 const sheet = createSheet(`
   :host {
     display: contents;
@@ -107,248 +105,230 @@ const sheet = createSheet(`
     dialog { transition: none; }
   }
 `);
-
 export class AtlasActionSheet extends AtlasElement {
-  static override get observedAttributes(): readonly string[] {
-    return ['open', 'heading', 'description', 'dismissible'];
-  }
-
-  declare dismissible: boolean;
-
-  static {
-    Object.defineProperty(
-      this.prototype,
-      'dismissible',
-      AtlasElement.boolAttr('dismissible'),
-    );
-  }
-
-  private readonly _headingId = uid('atlas-as-h');
-  private _built = false;
-  private _dialog: HTMLDialogElement | null = null;
-  private _headWrap: HTMLElement | null = null;
-  private _headHeading: HTMLElement | null = null;
-  private _headDescription: HTMLElement | null = null;
-  private _activeIndex = -1;
-
-  constructor() {
-    super();
-    const root = this.attachShadow({ mode: 'open' });
-    adoptSheet(root, sheet);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    if (!this._built) this._buildShell();
-    this._syncAll();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    this._sync(name);
-  }
-
-  open(): void {
-    if (!this._dialog) return;
-    if (!this._dialog.open) {
-      this._dialog.showModal();
-      if (!this.hasAttribute('open')) this.setAttribute('open', '');
-      this._activeIndex = this._firstFocusableIndex();
-      this._syncActive();
-      this.dispatchEvent(
-        new CustomEvent('open', { bubbles: true, composed: true }),
-      );
+    static override get observedAttributes(): readonly string[] {
+        return ['open', 'heading', 'description', 'dismissible'];
     }
-  }
-
-  close(returnValue: string = ''): void {
-    if (this._dialog?.open) this._dialog.close(returnValue);
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-
-    const d = document.createElement('dialog');
-    d.setAttribute('data-part', 'sheet');
-    d.setAttribute('role', 'dialog');
-    d.setAttribute('aria-modal', 'true');
-    d.setAttribute('aria-labelledby', this._headingId);
-
-    // Head (heading + description)
-    const headWrap = document.createElement('div');
-    headWrap.className = 'head';
-    const h = document.createElement('h2');
-    h.id = this._headingId;
-    headWrap.appendChild(h);
-    const p = document.createElement('p');
-    headWrap.appendChild(p);
-
-    // Two slots: default = action items; "cancel" = a sticky last item
-    // (iOS-style "Cancel" button visually offset from the rest).
-    const group = document.createElement('div');
-    group.className = 'group';
-    const itemsSlot = document.createElement('slot');
-    itemsSlot.setAttribute('role', 'group');
-    group.appendChild(itemsSlot);
-
-    const cancelGroup = document.createElement('div');
-    cancelGroup.className = 'group cancel-group';
-    const cancelSlot = document.createElement('slot');
-    cancelSlot.setAttribute('name', 'cancel');
-    cancelGroup.appendChild(cancelSlot);
-
-    cancelSlot.addEventListener('slotchange', () => {
-      const has = cancelSlot.assignedNodes({ flatten: true }).length > 0;
-      cancelGroup.style.display = has ? '' : 'none';
-    });
-    cancelGroup.style.display = 'none';
-
-    d.appendChild(headWrap);
-    d.appendChild(group);
-    d.appendChild(cancelGroup);
-    root.appendChild(d);
-
-    d.addEventListener('close', () => {
-      if (this.hasAttribute('open')) this.removeAttribute('open');
-      this.dispatchEvent(
-        new CustomEvent<{ returnValue: string }>('close', {
-          detail: { returnValue: d.returnValue ?? '' },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    });
-    d.addEventListener('click', (ev) => {
-      if (!this._isDismissible()) return;
-      if (ev.target === d) d.close();
-    });
-
-    // Listen for action-item activation (CustomEvent bubbles from light DOM
-    // children — composed=true means it crosses the shadow boundary).
-    this.addEventListener('atlas-action-sheet-item:activate', (ev) => {
-      if (!(ev instanceof CustomEvent)) return;
-      const raw: unknown = ev.detail;
-      const value = raw && typeof raw === 'object' && 'value' in raw && typeof raw.value === 'string'
-        ? raw.value
-        : '';
-      this.dispatchEvent(
-        new CustomEvent<AtlasActionSheetActionDetail>('action', {
-          detail: { value },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-      const name = this.getAttribute('name');
-      if (name && this.surfaceId) {
-        this.emit(`${this.surfaceId}.${name}-action`, { value });
-      }
-      this.close(value);
-    });
-
-    // Keyboard arrow-navigation across items.
-    d.addEventListener('keydown', (ev) => this._onKey(ev));
-
-    this._dialog = d;
-    this._headWrap = headWrap;
-    this._headHeading = h;
-    this._headDescription = p;
-    this._built = true;
-  }
-
-  private _items(): HTMLElement[] {
-    // Combine default-slot and cancel-slot items, in order.
-    const main = Array.from(
-      this.querySelectorAll(':scope > atlas-action-sheet-item:not([slot])'),
-    ) as HTMLElement[];
-    const cancel = Array.from(
-      this.querySelectorAll(':scope > atlas-action-sheet-item[slot="cancel"]'),
-    ) as HTMLElement[];
-    return [...main, ...cancel].filter((el) => !el.hasAttribute('disabled'));
-  }
-
-  private _firstFocusableIndex(): number {
-    return this._items().length > 0 ? 0 : -1;
-  }
-
-  private _syncActive(): void {
-    const items = this._items();
-    items.forEach((el, i) => {
-      if (i === this._activeIndex) {
-        el.setAttribute('data-active', '');
-        el.focus({ preventScroll: true });
-      } else {
-        el.removeAttribute('data-active');
-      }
-    });
-  }
-
-  private _onKey(ev: KeyboardEvent): void {
-    const items = this._items();
-    if (items.length === 0) return;
-    if (ev.key === 'ArrowDown') {
-      ev.preventDefault();
-      this._activeIndex = (this._activeIndex + 1) % items.length;
-      this._syncActive();
-    } else if (ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      this._activeIndex =
-        (this._activeIndex - 1 + items.length) % items.length;
-      this._syncActive();
-    } else if (ev.key === 'Home') {
-      ev.preventDefault();
-      this._activeIndex = 0;
-      this._syncActive();
-    } else if (ev.key === 'End') {
-      ev.preventDefault();
-      this._activeIndex = items.length - 1;
-      this._syncActive();
+    declare dismissible: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'dismissible', AtlasElement.boolAttr('dismissible'));
     }
-    // Enter / Space are handled inside the item itself.
-  }
-
-  private _syncAll(): void {
-    this._syncHead();
-    this._syncOpenAttr();
-  }
-
-  private _sync(name: string): void {
-    if (name === 'open') this._syncOpenAttr();
-    else if (name === 'heading' || name === 'description') this._syncHead();
-  }
-
-  private _syncOpenAttr(): void {
-    if (!this._dialog) return;
-    const want = this.hasAttribute('open');
-    if (want && !this._dialog.open) this.open();
-    else if (!want && this._dialog.open) this.close();
-  }
-
-  private _syncHead(): void {
-    if (!this._headWrap || !this._headHeading || !this._headDescription) return;
-    const heading = this.getAttribute('heading') ?? '';
-    const description = this.getAttribute('description') ?? '';
-    this._headHeading.textContent = heading;
-    this._headDescription.textContent = description;
-    if (description) {
-      this._headDescription.style.display = '';
-    } else {
-      this._headDescription.style.display = 'none';
+    private readonly _headingId = uid('atlas-as-h');
+    private _built = false;
+    private _dialog: HTMLDialogElement | null = null;
+    private _headWrap: HTMLElement | null = null;
+    private _headHeading: HTMLElement | null = null;
+    private _headDescription: HTMLElement | null = null;
+    private _activeIndex = -1;
+    constructor() {
+        super();
+        const root = this.attachShadow({ mode: 'open' });
+        adoptSheet(root, sheet);
     }
-    if (!heading && !description) {
-      this._headWrap.setAttribute('hidden', '');
-    } else {
-      this._headWrap.removeAttribute('hidden');
+    override connectedCallback(): void {
+        super.connectedCallback();
+        if (!this._built)
+            this._buildShell();
+        this._syncAll();
     }
-  }
-
-  private _isDismissible(): boolean {
-    return this.getAttribute('dismissible') !== 'false';
-  }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        this._sync(name);
+    }
+    open(): void {
+        if (!this._dialog)
+            return;
+        if (!this._dialog.open) {
+            this._dialog.showModal();
+            if (!this.hasAttribute('open'))
+                this.setAttribute('open', '');
+            this._activeIndex = this._firstFocusableIndex();
+            this._syncActive();
+            this.dispatchEvent(new CustomEvent('open', { bubbles: true, composed: true }));
+        }
+    }
+    close(returnValue: string = ''): void {
+        if (this._dialog?.open)
+            this._dialog.close(returnValue);
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const d = document.createElement('dialog');
+        d.setAttribute('data-part', 'sheet');
+        d.setAttribute('role', 'dialog');
+        d.setAttribute('aria-modal', 'true');
+        d.setAttribute('aria-labelledby', this._headingId);
+        // Head (heading + description)
+        const headWrap = document.createElement('div');
+        headWrap.className = 'head';
+        const h = document.createElement('h2');
+        h.id = this._headingId;
+        headWrap.appendChild(h);
+        const p = document.createElement('p');
+        headWrap.appendChild(p);
+        // Two slots: default = action items; "cancel" = a sticky last item
+        // (iOS-style "Cancel" button visually offset from the rest).
+        const group = document.createElement('div');
+        group.className = 'group';
+        const itemsSlot = document.createElement('slot');
+        itemsSlot.setAttribute('role', 'group');
+        group.appendChild(itemsSlot);
+        const cancelGroup = document.createElement('div');
+        cancelGroup.className = 'group cancel-group';
+        const cancelSlot = document.createElement('slot');
+        cancelSlot.setAttribute('name', 'cancel');
+        cancelGroup.appendChild(cancelSlot);
+        cancelSlot.addEventListener('slotchange', function () {
+            const has = cancelSlot.assignedNodes({ flatten: true }).length > 0;
+            cancelGroup.style.display = has ? '' : 'none';
+        });
+        cancelGroup.style.display = 'none';
+        d.appendChild(headWrap);
+        d.appendChild(group);
+        d.appendChild(cancelGroup);
+        root.appendChild(d);
+        d.addEventListener('close', () => {
+            if (this.hasAttribute('open'))
+                this.removeAttribute('open');
+            this.dispatchEvent(new CustomEvent<{
+                returnValue: string;
+            }>('close', {
+                detail: { returnValue: d.returnValue ?? '' },
+                bubbles: true,
+                composed: true,
+            }));
+        });
+        d.addEventListener('click', (ev) => {
+            if (!this._isDismissible())
+                return;
+            if (ev.target === d)
+                d.close();
+        });
+        // Listen for action-item activation (CustomEvent bubbles from light DOM
+        // children — composed=true means it crosses the shadow boundary).
+        this.addEventListener('atlas-action-sheet-item:activate', (ev) => {
+            if (!(ev instanceof CustomEvent))
+                return;
+            const raw: unknown = ev.detail;
+            const value = raw && typeof raw === 'object' && 'value' in raw && typeof raw.value === 'string'
+                ? raw.value
+                : '';
+            this.dispatchEvent(new CustomEvent<AtlasActionSheetActionDetail>('action', {
+                detail: { value },
+                bubbles: true,
+                composed: true,
+            }));
+            const name = this.getAttribute('name');
+            if (name && this.surfaceId) {
+                this.emit(`${this.surfaceId}.${name}-action`, { value });
+            }
+            this.close(value);
+        });
+        // Keyboard arrow-navigation across items.
+        d.addEventListener('keydown', (ev) => this._onKey(ev));
+        this._dialog = d;
+        this._headWrap = headWrap;
+        this._headHeading = h;
+        this._headDescription = p;
+        this._built = true;
+    }
+    private _items(): HTMLElement[] {
+        // Combine default-slot and cancel-slot items, in order.
+        const main = Array.from(this.querySelectorAll(':scope > atlas-action-sheet-item:not([slot])')) as HTMLElement[];
+        const cancel = Array.from(this.querySelectorAll(':scope > atlas-action-sheet-item[slot="cancel"]')) as HTMLElement[];
+        return [...main, ...cancel].filter(function (el) {
+            return !el.hasAttribute('disabled');
+        });
+    }
+    private _firstFocusableIndex(): number {
+        return this._items().length > 0 ? 0 : -1;
+    }
+    private _syncActive(): void {
+        const items = this._items();
+        items.forEach((el, i) => {
+            if (i === this._activeIndex) {
+                el.setAttribute('data-active', '');
+                el.focus({ preventScroll: true });
+            }
+            else {
+                el.removeAttribute('data-active');
+            }
+        });
+    }
+    private _onKey(ev: KeyboardEvent): void {
+        const items = this._items();
+        if (items.length === 0)
+            return;
+        if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            this._activeIndex = (this._activeIndex + 1) % items.length;
+            this._syncActive();
+        }
+        else if (ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            this._activeIndex =
+                (this._activeIndex - 1 + items.length) % items.length;
+            this._syncActive();
+        }
+        else if (ev.key === 'Home') {
+            ev.preventDefault();
+            this._activeIndex = 0;
+            this._syncActive();
+        }
+        else if (ev.key === 'End') {
+            ev.preventDefault();
+            this._activeIndex = items.length - 1;
+            this._syncActive();
+        }
+        // Enter / Space are handled inside the item itself.
+    }
+    private _syncAll(): void {
+        this._syncHead();
+        this._syncOpenAttr();
+    }
+    private _sync(name: string): void {
+        if (name === 'open')
+            this._syncOpenAttr();
+        else if (name === 'heading' || name === 'description')
+            this._syncHead();
+    }
+    private _syncOpenAttr(): void {
+        if (!this._dialog)
+            return;
+        const want = this.hasAttribute('open');
+        if (want && !this._dialog.open)
+            this.open();
+        else if (!want && this._dialog.open)
+            this.close();
+    }
+    private _syncHead(): void {
+        if (!this._headWrap || !this._headHeading || !this._headDescription)
+            return;
+        const heading = this.getAttribute('heading') ?? '';
+        const description = this.getAttribute('description') ?? '';
+        this._headHeading.textContent = heading;
+        this._headDescription.textContent = description;
+        if (description) {
+            this._headDescription.style.display = '';
+        }
+        else {
+            this._headDescription.style.display = 'none';
+        }
+        if (!heading && !description) {
+            this._headWrap.setAttribute('hidden', '');
+        }
+        else {
+            this._headWrap.removeAttribute('hidden');
+        }
+    }
+    private _isDismissible(): boolean {
+        return this.getAttribute('dismissible') !== 'false';
+    }
 }
-
 AtlasElement.define('atlas-action-sheet', AtlasActionSheet);
-
 /**
  * <atlas-action-sheet-item> — single row inside an atlas-action-sheet.
  * Renders a button with a 44×44 minimum touch target and dispatches a
@@ -404,121 +384,97 @@ const itemSheet = createSheet(`
     button:hover { background: transparent; }
   }
 `);
-
 export class AtlasActionSheetItem extends AtlasElement {
-  static override get observedAttributes(): readonly string[] {
-    return ['disabled', 'variant'];
-  }
-
-  declare value: string;
-  declare variant: string;
-  declare disabled: boolean;
-  declare cancel: boolean;
-
-  static {
-    Object.defineProperty(
-      this.prototype,
-      'value',
-      AtlasElement.strAttr('value', ''),
-    );
-    Object.defineProperty(
-      this.prototype,
-      'variant',
-      AtlasElement.strAttr('variant', 'default'),
-    );
-    Object.defineProperty(
-      this.prototype,
-      'disabled',
-      AtlasElement.boolAttr('disabled'),
-    );
-    Object.defineProperty(
-      this.prototype,
-      'cancel',
-      AtlasElement.boolAttr('cancel'),
-    );
-  }
-
-  private _built = false;
-  private _btn: HTMLButtonElement | null = null;
-
-  constructor() {
-    super();
-    const root = this.attachShadow({ mode: 'open' });
-    adoptSheet(root, itemSheet);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    if (!this._built) this._buildShell();
-    this._sync('disabled');
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    this._sync(name);
-  }
-
-  /** Programmatic activation — dispatches the same activate event the
-   * sheet listens for. Useful in tests. */
-  activate(): void {
-    if (this.hasAttribute('disabled')) return;
-    const value = this.getAttribute('value') ?? '';
-    this.dispatchEvent(
-      new CustomEvent<{ value: string }>(
-        'atlas-action-sheet-item:activate',
-        { detail: { value }, bubbles: true, composed: true },
-      ),
-    );
-  }
-
-  override focus(options?: FocusOptions): void {
-    this._btn?.focus(options);
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.setAttribute('role', 'menuitem');
-    const slot = document.createElement('slot');
-    btn.appendChild(slot);
-    root.appendChild(btn);
-    btn.addEventListener('click', () => this.activate());
-    btn.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        ev.preventDefault();
-        this.activate();
-      }
-    });
-    this._btn = btn;
-    this._built = true;
-  }
-
-  private _sync(name: string): void {
-    if (!this._btn) return;
-    if (name === 'disabled') {
-      if (this.hasAttribute('disabled')) {
-        this._btn.setAttribute('aria-disabled', 'true');
-      } else {
-        this._btn.removeAttribute('aria-disabled');
-      }
-    } else if (name === 'variant') {
-      const v = this.getAttribute('variant') ?? 'default';
-      if (v === 'destructive') {
-        this._btn.setAttribute('aria-label', `${this._btn.textContent ?? ''} (destructive)`.trim());
-      } else {
-        this._btn.removeAttribute('aria-label');
-      }
+    static override get observedAttributes(): readonly string[] {
+        return ['disabled', 'variant'];
     }
-  }
+    declare value: string;
+    declare variant: string;
+    declare disabled: boolean;
+    declare cancel: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'value', AtlasElement.strAttr('value', ''));
+        Object.defineProperty(this.prototype, 'variant', AtlasElement.strAttr('variant', 'default'));
+        Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+        Object.defineProperty(this.prototype, 'cancel', AtlasElement.boolAttr('cancel'));
+    }
+    private _built = false;
+    private _btn: HTMLButtonElement | null = null;
+    constructor() {
+        super();
+        const root = this.attachShadow({ mode: 'open' });
+        adoptSheet(root, itemSheet);
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        if (!this._built)
+            this._buildShell();
+        this._sync('disabled');
+    }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        this._sync(name);
+    }
+    /** Programmatic activation — dispatches the same activate event the
+     * sheet listens for. Useful in tests. */
+    activate(): void {
+        if (this.hasAttribute('disabled'))
+            return;
+        const value = this.getAttribute('value') ?? '';
+        this.dispatchEvent(new CustomEvent<{
+            value: string;
+        }>('atlas-action-sheet-item:activate', { detail: { value }, bubbles: true, composed: true }));
+    }
+    override focus(options?: FocusOptions): void {
+        this._btn?.focus(options);
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('role', 'menuitem');
+        const slot = document.createElement('slot');
+        btn.appendChild(slot);
+        root.appendChild(btn);
+        btn.addEventListener('click', () => this.activate());
+        btn.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                this.activate();
+            }
+        });
+        this._btn = btn;
+        this._built = true;
+    }
+    private _sync(name: string): void {
+        if (!this._btn)
+            return;
+        if (name === 'disabled') {
+            if (this.hasAttribute('disabled')) {
+                this._btn.setAttribute('aria-disabled', 'true');
+            }
+            else {
+                this._btn.removeAttribute('aria-disabled');
+            }
+        }
+        else if (name === 'variant') {
+            const v = this.getAttribute('variant') ?? 'default';
+            if (v === 'destructive') {
+                this._btn.setAttribute('aria-label', `${this._btn.textContent ?? ''} (destructive)`.trim());
+            }
+            else {
+                this._btn.removeAttribute('aria-label');
+            }
+        }
+    }
 }
-
 AtlasElement.define('atlas-action-sheet-item', AtlasActionSheetItem);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-action-sheet': AtlasActionSheet;
-    'atlas-action-sheet-item': AtlasActionSheetItem;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-action-sheet': AtlasActionSheet;
+        'atlas-action-sheet-item': AtlasActionSheetItem;
+    }
 }

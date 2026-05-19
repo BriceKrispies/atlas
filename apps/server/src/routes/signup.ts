@@ -18,24 +18,11 @@
  * `specs/domains/tenancy/capabilities/public-signup/README.md`
  * "NOT in Scope").
  */
-
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import {
-  PostgresEntityStore,
-  PostgresEventStore,
-  PostgresRelationStore,
-} from '@atlas/adapter-node';
-import {
-  handleInviteAccept,
-  handleInviteIssue,
-  identityDispatcher,
-  IdentityError,
-} from '@atlas/identity';
-import {
-  handleSignupSubmit,
-  TenancyError,
-} from '@atlas/tenancy';
+import { PostgresEntityStore, PostgresEventStore, PostgresRelationStore, } from '@atlas/adapter-node';
+import { handleInviteAccept, handleInviteIssue, identityDispatcher, IdentityError, } from '@atlas/identity';
+import { handleSignupSubmit, TenancyError, } from '@atlas/tenancy';
 import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
@@ -43,42 +30,37 @@ import { errorResponse, mapError } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import { buildSessionCookie } from '../middleware/cookie.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
-
-type AppCtx = Context<{ Variables: ServerVariables }>;
-
+type AppCtx = Context<{
+    Variables: ServerVariables;
+}>;
 interface SignupSubmitBody {
-  email?: unknown;
-  tenantSlug?: unknown;
-  organizationName?: unknown;
+    email?: unknown;
+    tenantSlug?: unknown;
+    organizationName?: unknown;
 }
-
 function readString(v: unknown): string | null {
-  return typeof v === 'string' && v.length > 0 ? v : null;
+    return typeof v === 'string' && v.length > 0 ? v : null;
 }
-
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
-
 /**
  * Sentinels for the small set of status codes the signup form actually
  * returns. Typed as a union literal so `c.body` accepts each value without
  * a downcast.
  */
 type SignupStatus = 200 | 400 | 404 | 409 | 500;
-
 function htmlResponse(c: AppCtx, body: string, status: SignupStatus = 200): Response {
-  return c.body(body, status, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-store',
-  });
+    return c.body(body, status, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+    });
 }
-
 const SIGNUP_FORM_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -146,9 +128,8 @@ f.addEventListener('submit', async (e) => {
 </script>
 </body>
 </html>`;
-
 function confirmHtml(token: string, tenantId: string, email: string): string {
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -211,199 +192,170 @@ f.addEventListener('submit', async (e) => {
 </body>
 </html>`;
 }
-
-export function signupRoutes(state: AppState): Hono<{ Variables: ServerVariables }> {
-  const app = new Hono<{ Variables: ServerVariables }>();
-
-  // ----- HTML form ----------------------------------------------------
-  app.get('/signup', (c: AppCtx) => htmlResponse(c, SIGNUP_FORM_HTML));
-
-  // ----- Submit -------------------------------------------------------
-  app.post('/api/v1/signup', async (c: AppCtx) => {
-    const correlationId = correlationIdFor(c);
-    let body: SignupSubmitBody;
-    try {
-      body = (await c.req.json()) as SignupSubmitBody;
-    } catch {
-      return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'invalid JSON body', 400, correlationId);
-    }
-    const email = readString(body.email);
-    const tenantSlug = readString(body.tenantSlug);
-    const organizationName = readString(body.organizationName);
-    if (!email || !tenantSlug || !organizationName) {
-      return errorResponse(
-        c,
-        'SCHEMA_VALIDATION_FAILED',
-        'email, tenantSlug, organizationName are required',
-        400,
-        correlationId,
-      );
-    }
-    try {
-      const result = await handleSignupSubmit(
-        { email, tenantSlug, organizationName, correlationId },
-        { signupRequests: state.signupRequests, logger: c.get('ctx').logger },
-      );
-      return c.json(
-        {
-          signupId: result.signup.signupId,
-          status: result.signup.status,
-          preexisting: result.preexisting,
-        },
-        202,
-      );
-    } catch (e) {
-      if (e instanceof TenancyError) {
-        return errorResponse(c, e.code, e.message, e.status, correlationId);
-      }
-      return mapError(c, e, correlationId);
-    }
-  });
-
-  // ----- Confirm (HTML page) ------------------------------------------
-  app.get('/signup/confirm', (c: AppCtx) => {
-    const token = c.req.query('token') ?? '';
-    const tenantId = c.req.query('tenantId') ?? '';
-    const email = c.req.query('email') ?? '';
-    if (!token || !tenantId || !email) {
-      return htmlResponse(
-        c,
-        '<!DOCTYPE html><html><body><h1>Invalid link</h1><p>Magic-link is missing one of token, tenantId, email.</p></body></html>',
-        400,
-      );
-    }
-    return htmlResponse(c, confirmHtml(token, tenantId, email));
-  });
-
-  // ----- Confirm (POST) -----------------------------------------------
-  app.post('/signup/confirm', async (c: AppCtx) => {
-    const correlationId = correlationIdFor(c);
-    interface ConfirmBody {
-      tenantId?: unknown;
-      presentedToken?: unknown;
-      acceptedEmail?: unknown;
-    }
-    let body: ConfirmBody;
-    try {
-      body = (await c.req.json()) as ConfirmBody;
-    } catch {
-      return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'invalid JSON body', 400, correlationId);
-    }
-    const tenantId = readString(body.tenantId);
-    const presentedToken = readString(body.presentedToken);
-    const acceptedEmail = readString(body.acceptedEmail);
-    if (!tenantId || !presentedToken || !acceptedEmail) {
-      return errorResponse(
-        c,
-        'SCHEMA_VALIDATION_FAILED',
-        'tenantId, presentedToken, acceptedEmail are required',
-        400,
-        correlationId,
-      );
-    }
-
-    let sql: import('postgres').Sql;
-    try {
-      sql = await ensureTenantMigrated(state, tenantId);
-    } catch (e) {
-      c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
-        event: 'Tenancy.EnsureMigrated.Failed',
-        properties: {
-          tenantId,
-          route: 'signup.confirm',
-          cause: e instanceof Error ? e.message : String(e),
-        },
-      });
-      return errorResponse(c, 'NOT_FOUND', `tenant not found: ${tenantId}`, 404, correlationId);
-    }
-    const eventStore = new PostgresEventStore(sql);
-    const entities = new PostgresEntityStore(sql);
-    const relations = new PostgresRelationStore(sql);
-
-    try {
-      const result = await handleInviteAccept(
-        {
-          tenantId,
-          correlationId,
-          // Public signup confirm runs unauthenticated — the bootstrap
-          // robot is the calling principal so audit captures a real
-          // actor instead of `null` (ADR 0008 §2).
-          principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
-          presentedToken,
-          acceptedEmail,
-        },
-        eventStore,
-        entities,
-      );
-      const dispatch = identityDispatcher({ entities, relations });
-      for (const f of result.follow) await dispatch(f);
-      await dispatch(result.envelope);
-
-      // Set the session cookie on the parent domain so the redirect
-      // target (`<slug>.<apex>`) carries it. INSECURE_COOKIES drops
-      // `Secure` on plain http.
-      if (result.sessionResult) {
-        c.header(
-          'Set-Cookie',
-          buildSessionCookie({
-            payload: result.sessionResult.cookiePayload,
-            secure: !state.config.insecureCookies,
-            ...(state.config.cookieDomain
-              ? { domain: state.config.cookieDomain }
-              : {}),
-          }),
-          { append: true },
-        );
-      }
-
-      const redirect = state.config.tenantBaseUrl(tenantId);
-      // Return 200 with the redirect target in the body. The client
-      // navigates with `window.location.href` so the new session
-      // cookie is attached to the follow-up GET. We previously sent
-      // 303 + Location, but cross-origin auto-follow is opaque in
-      // some browsers (res.redirected/url are unreliable) and 303 is
-      // outside `res.ok`, so the form's error branch fired instead
-      // of the redirect.
-      return c.body(JSON.stringify({ redirect }), 200, {
-        'Content-Type': 'application/json; charset=utf-8',
-      });
-    } catch (e) {
-      if (e instanceof IdentityError) {
-        return errorResponse(c, e.code, e.message, e.status, correlationId);
-      }
-      return mapError(c, e, correlationId);
-    }
-  });
-
-  return app;
+export function signupRoutes(state: AppState): Hono<{
+    Variables: ServerVariables;
+}> {
+    const app = new Hono<{
+        Variables: ServerVariables;
+    }>();
+    // ----- HTML form ----------------------------------------------------
+    app.get('/signup', function (c: AppCtx) {
+        return htmlResponse(c, SIGNUP_FORM_HTML);
+    });
+    // ----- Submit -------------------------------------------------------
+    app.post('/api/v1/signup', async function (c: AppCtx) {
+        const correlationId = correlationIdFor(c);
+        let body: SignupSubmitBody;
+        try {
+            body = (await c.req.json()) as SignupSubmitBody;
+        }
+        catch {
+            return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'invalid JSON body', 400, correlationId);
+        }
+        const email = readString(body.email);
+        const tenantSlug = readString(body.tenantSlug);
+        const organizationName = readString(body.organizationName);
+        if (!email || !tenantSlug || !organizationName) {
+            return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'email, tenantSlug, organizationName are required', 400, correlationId);
+        }
+        try {
+            const result = await handleSignupSubmit({ email, tenantSlug, organizationName, correlationId }, { signupRequests: state.signupRequests, logger: c.get('ctx').logger });
+            return c.json({
+                signupId: result.signup.signupId,
+                status: result.signup.status,
+                preexisting: result.preexisting,
+            }, 202);
+        }
+        catch (e) {
+            if (e instanceof TenancyError) {
+                return errorResponse(c, e.code, e.message, e.status, correlationId);
+            }
+            return mapError(c, e, correlationId);
+        }
+    });
+    // ----- Confirm (HTML page) ------------------------------------------
+    app.get('/signup/confirm', function (c: AppCtx) {
+        const token = c.req.query('token') ?? '';
+        const tenantId = c.req.query('tenantId') ?? '';
+        const email = c.req.query('email') ?? '';
+        if (!token || !tenantId || !email) {
+            return htmlResponse(c, '<!DOCTYPE html><html><body><h1>Invalid link</h1><p>Magic-link is missing one of token, tenantId, email.</p></body></html>', 400);
+        }
+        return htmlResponse(c, confirmHtml(token, tenantId, email));
+    });
+    // ----- Confirm (POST) -----------------------------------------------
+    app.post('/signup/confirm', async function (c: AppCtx) {
+        const correlationId = correlationIdFor(c);
+        interface ConfirmBody {
+            tenantId?: unknown;
+            presentedToken?: unknown;
+            acceptedEmail?: unknown;
+        }
+        let body: ConfirmBody;
+        try {
+            body = (await c.req.json()) as ConfirmBody;
+        }
+        catch {
+            return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'invalid JSON body', 400, correlationId);
+        }
+        const tenantId = readString(body.tenantId);
+        const presentedToken = readString(body.presentedToken);
+        const acceptedEmail = readString(body.acceptedEmail);
+        if (!tenantId || !presentedToken || !acceptedEmail) {
+            return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'tenantId, presentedToken, acceptedEmail are required', 400, correlationId);
+        }
+        let sql: import('postgres').Sql;
+        try {
+            sql = await ensureTenantMigrated(state, tenantId);
+        }
+        catch (e) {
+            c.get('ctx').logger.warn('tenant migrate failed; returning 404', {
+                event: 'Tenancy.EnsureMigrated.Failed',
+                properties: {
+                    tenantId,
+                    route: 'signup.confirm',
+                    cause: e instanceof Error ? e.message : String(e),
+                },
+            });
+            return errorResponse(c, 'NOT_FOUND', `tenant not found: ${tenantId}`, 404, correlationId);
+        }
+        const eventStore = new PostgresEventStore(sql);
+        const entities = new PostgresEntityStore(sql);
+        const relations = new PostgresRelationStore(sql);
+        try {
+            const result = await handleInviteAccept({
+                tenantId,
+                correlationId,
+                // Public signup confirm runs unauthenticated — the bootstrap
+                // robot is the calling principal so audit captures a real
+                // actor instead of `null` (ADR 0008 §2).
+                principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+                presentedToken,
+                acceptedEmail,
+            }, eventStore, entities);
+            const dispatch = identityDispatcher({ entities, relations });
+            for (const f of result.follow)
+                await dispatch(f);
+            await dispatch(result.envelope);
+            // Set the session cookie on the parent domain so the redirect
+            // target (`<slug>.<apex>`) carries it. INSECURE_COOKIES drops
+            // `Secure` on plain http.
+            if (result.sessionResult) {
+                c.header('Set-Cookie', buildSessionCookie({
+                    payload: result.sessionResult.cookiePayload,
+                    secure: !state.config.insecureCookies,
+                    ...(state.config.cookieDomain
+                        ? { domain: state.config.cookieDomain }
+                        : {}),
+                }), { append: true });
+            }
+            const redirect = state.config.tenantBaseUrl(tenantId);
+            // Return 200 with the redirect target in the body. The client
+            // navigates with `window.location.href` so the new session
+            // cookie is attached to the follow-up GET. We previously sent
+            // 303 + Location, but cross-origin auto-follow is opaque in
+            // some browsers (res.redirected/url are unreliable) and 303 is
+            // outside `res.ok`, so the form's error branch fired instead
+            // of the redirect.
+            return c.body(JSON.stringify({ redirect }), 200, {
+                'Content-Type': 'application/json; charset=utf-8',
+            });
+        }
+        catch (e) {
+            if (e instanceof IdentityError) {
+                return errorResponse(c, e.code, e.message, e.status, correlationId);
+            }
+            return mapError(c, e, correlationId);
+        }
+    });
+    return app;
 }
-
 /**
  * Helper used by `admin-signups.ts` to mint the magic-link invite
  * inside the new tenant. Lives here because both files share the
  * "spin up per-tenant adapters + dispatch InviteIssued" sequence.
  */
-export async function issueInviteForTenant(
-  state: AppState,
-  input: { tenantId: string; email: string; correlationId: string },
-): Promise<{ plaintextToken: string }> {
-  const sql = await ensureTenantMigrated(state, input.tenantId);
-  const eventStore = new PostgresEventStore(sql);
-  const entities = new PostgresEntityStore(sql);
-  const relations = new PostgresRelationStore(sql);
-  const result = await handleInviteIssue(
-    {
-      tenantId: input.tenantId,
-      correlationId: input.correlationId,
-      // Issued from the signup-approval pipeline; the calling actor is
-      // the bootstrap robot (not the new tenant's own admin, who only
-      // exists after the invite is redeemed).
-      principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
-      email: input.email,
-      rolesOnAccept: ['admin'],
-    },
-    eventStore,
-  );
-  await identityDispatcher({ entities, relations })(result.envelope);
-  return { plaintextToken: result.plaintextToken };
+export async function issueInviteForTenant(state: AppState, input: {
+    tenantId: string;
+    email: string;
+    correlationId: string;
+}): Promise<{
+    plaintextToken: string;
+}> {
+    const sql = await ensureTenantMigrated(state, input.tenantId);
+    const eventStore = new PostgresEventStore(sql);
+    const entities = new PostgresEntityStore(sql);
+    const relations = new PostgresRelationStore(sql);
+    const result = await handleInviteIssue({
+        tenantId: input.tenantId,
+        correlationId: input.correlationId,
+        // Issued from the signup-approval pipeline; the calling actor is
+        // the bootstrap robot (not the new tenant's own admin, who only
+        // exists after the invite is redeemed).
+        principalId: PLATFORM_ROBOT_PRINCIPAL_ID,
+        email: input.email,
+        rolesOnAccept: ['admin'],
+    }, eventStore);
+    await identityDispatcher({ entities, relations })(result.envelope);
+    return { plaintextToken: result.plaintextToken };
 }

@@ -25,70 +25,58 @@
  * RED PHASE: this file is expected to fail compilation today because
  * `privacy` is not yet on `CacheSetOptions`.
  */
-
 import { describe, test, expect } from 'vitest';
 import { PostgresCache } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';
-
 if (HAS_DB) {
-  describe('PostgresCache.set — Invariant I9 tenant tag guard', () => {
-    test('throws when privacy is non-PUBLIC and tags lack any Tenant:* entry', async () => {
-      const sql = await freshSql();
-      const cache = new PostgresCache(sql);
-      await expect(
-        cache.set('k1', { hello: 'world' }, {
-          ttlSeconds: 60,
-          tags: ['Resource:foo'],
-          // @ts-expect-error — RED PHASE: `privacy` field on CacheSetOptions
-          // is the feature this test is driving. When it lands the directive
-          // becomes a TS6133 (unused), forcing this comment + the test to
-          // be revisited.
-          privacy: 'PRIVATE',
-        }),
-      ).rejects.toThrow(/tenant.*tag|I9/i);
+    describe('PostgresCache.set — Invariant I9 tenant tag guard', function () {
+        test('throws when privacy is non-PUBLIC and tags lack any Tenant:* entry', async function () {
+            const sql = await freshSql();
+            const cache = new PostgresCache(sql);
+            await expect(cache.set('k1', { hello: 'world' }, {
+                ttlSeconds: 60,
+                tags: ['Resource:foo'],
+                // @ts-expect-error — RED PHASE: `privacy` field on CacheSetOptions
+                // is the feature this test is driving. When it lands the directive
+                // becomes a TS6133 (unused), forcing this comment + the test to
+                // be revisited.
+                privacy: 'PRIVATE',
+            })).rejects.toThrow(/tenant.*tag|I9/i);
+        });
+        test('succeeds when privacy is PUBLIC even with no Tenant tag', async function () {
+            const sql = await freshSql();
+            const cache = new PostgresCache(sql);
+            await expect(cache.set('k2', { hello: 'world' }, {
+                ttlSeconds: 60,
+                tags: ['Resource:foo'],
+                // @ts-expect-error — RED PHASE: see test 1.
+                privacy: 'PUBLIC',
+            })).resolves.toBeUndefined();
+        });
+        test('succeeds when a Tenant:* tag is present (privacy: PRIVATE)', async function () {
+            const sql = await freshSql();
+            const cache = new PostgresCache(sql);
+            await expect(cache.set('k3', { hello: 'world' }, {
+                ttlSeconds: 60,
+                tags: ['Tenant:t1', 'Resource:foo'],
+                // @ts-expect-error — RED PHASE: see test 1.
+                privacy: 'PRIVATE',
+            })).resolves.toBeUndefined();
+        });
+        test('succeeds with no privacy specified (default = private behavior) when Tenant:* tag is present', async function () {
+            const sql = await freshSql();
+            const cache = new PostgresCache(sql);
+            await expect(cache.set('k4', { hello: 'world' }, {
+                ttlSeconds: 60,
+                tags: ['Tenant:t1', 'Resource:foo'],
+            })).resolves.toBeUndefined();
+        });
     });
-
-    test('succeeds when privacy is PUBLIC even with no Tenant tag', async () => {
-      const sql = await freshSql();
-      const cache = new PostgresCache(sql);
-      await expect(
-        cache.set('k2', { hello: 'world' }, {
-          ttlSeconds: 60,
-          tags: ['Resource:foo'],
-          // @ts-expect-error — RED PHASE: see test 1.
-          privacy: 'PUBLIC',
-        }),
-      ).resolves.toBeUndefined();
+}
+else {
+    describe('PostgresCache.set — Invariant I9 tenant tag guard (skipped)', function () {
+        test.skip('TEST_TENANT_DB_URL not set — skipping Postgres I9 guard tests', function () {
+            // intentionally empty
+        });
     });
-
-    test('succeeds when a Tenant:* tag is present (privacy: PRIVATE)', async () => {
-      const sql = await freshSql();
-      const cache = new PostgresCache(sql);
-      await expect(
-        cache.set('k3', { hello: 'world' }, {
-          ttlSeconds: 60,
-          tags: ['Tenant:t1', 'Resource:foo'],
-          // @ts-expect-error — RED PHASE: see test 1.
-          privacy: 'PRIVATE',
-        }),
-      ).resolves.toBeUndefined();
-    });
-
-    test('succeeds with no privacy specified (default = private behavior) when Tenant:* tag is present', async () => {
-      const sql = await freshSql();
-      const cache = new PostgresCache(sql);
-      await expect(
-        cache.set('k4', { hello: 'world' }, {
-          ttlSeconds: 60,
-          tags: ['Tenant:t1', 'Resource:foo'],
-        }),
-      ).resolves.toBeUndefined();
-    });
-  });
-} else {
-  describe('PostgresCache.set — Invariant I9 tenant tag guard (skipped)', () => {
-    test.skip('TEST_TENANT_DB_URL not set — skipping Postgres I9 guard tests', () => {
-      // intentionally empty
-    });
-  });
 }

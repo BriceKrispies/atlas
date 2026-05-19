@@ -1,6 +1,5 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, escapeText } from './util.ts';
-
 const sheet = createSheet(`
   :host {
     /* Mobile-first: horizontal-scroll tab strip with snap points. On narrow
@@ -110,17 +109,14 @@ const sheet = createSheet(`
     }
   }
 `);
-
 export interface TabDefinition {
-  value: string;
-  label: string;
+    value: string;
+    label: string;
 }
-
 interface RawTabInput {
-  value: unknown;
-  label?: unknown;
+    value: unknown;
+    label?: unknown;
 }
-
 /**
  * <atlas-tab-bar> — segmented tab switcher.
  *
@@ -149,199 +145,178 @@ interface RawTabInput {
  *   aria-label — accessible label for the tablist
  */
 export class AtlasTabBar extends AtlasElement {
-  declare size: string;
-  declare stretch: boolean;
-
-  static {
-    Object.defineProperty(
-      this.prototype,
-      'size',
-      AtlasElement.strAttr('size', ''),
-    );
-    Object.defineProperty(
-      this.prototype,
-      'stretch',
-      AtlasElement.boolAttr('stretch'),
-    );
-  }
-
-  private _tabs: TabDefinition[] = [];
-  private _value: string | null = null;
-  private _built = false;
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-  }
-
-  get tabs(): TabDefinition[] {
-    return this._tabs;
-  }
-  set tabs(next: readonly RawTabInput[] | null | undefined) {
-    // `Array.isArray` widens its callee to `any[]` in the no-`unknown[]`
-    // mode this project uses; assign through the typed local first so the
-    // map callback sees `RawTabInput` properties without unsafe-any reads.
-    const rawList: readonly RawTabInput[] = Array.isArray(next) ? next : [];
-    this._tabs = rawList.map((t) => ({
-      value: String(t.value),
-      label: String(t.label ?? t.value),
-    }));
-    if (this._value && !this._tabs.some((t) => t.value === this._value)) {
-      this._value = null;
+    declare size: string;
+    declare stretch: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'size', AtlasElement.strAttr('size', ''));
+        Object.defineProperty(this.prototype, 'stretch', AtlasElement.boolAttr('stretch'));
     }
-    if (this._built) this._renderTabs();
-  }
-
-  get value(): string | null {
-    return this._value;
-  }
-  set value(next: string | null | undefined) {
-    const v = next == null ? null : String(next);
-    if (v === this._value) return;
-    this._value = v;
-    if (this._built) this._syncSelection();
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'tablist');
-    if (!this._built) {
-      this._buildShell();
-      this._built = true;
+    private _tabs: TabDefinition[] = [];
+    private _value: string | null = null;
+    private _built = false;
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
     }
-    this._renderTabs();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    // `name` changing alters the auto-testid of each button; safest is to
-    // re-render the list so the attribute gets regenerated.
-    if (name === 'name') this._renderTabs();
-  }
-
-  static override get observedAttributes(): readonly string[] {
-    return ['name'];
-  }
-
-  private _testIdFor(value: string): string | null {
-    const sid = this.surfaceId;
-    const barName = this.getAttribute('name');
-    if (!sid || !barName) return null;
-    return `${sid}.${barName}.${value}`;
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    adoptSheet(root, sheet);
-  }
-
-  private _renderTabs(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const tabs = this._tabs;
-    const selected = this._value;
-    const html = tabs
-      .map((t) => {
-        const isSel = t.value === selected;
-        const testId = this._testIdFor(t.value);
-        const testIdAttr = testId
-          ? ` data-testid="${escapeAttr(testId)}"`
-          : '';
-        return `<button type="button" role="tab" data-value="${escapeAttr(
-          t.value,
-        )}" aria-selected="${isSel ? 'true' : 'false'}" tabindex="${
-          isSel ? '0' : '-1'
-        }"${testIdAttr}>${escapeText(t.label)}</button>`;
-      })
-      .join('');
-    root.innerHTML = html;
-    this._wire();
-  }
-
-  private _syncSelection(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const selected = this._value;
-    const buttons = root.querySelectorAll<HTMLButtonElement>(
-      'button[role="tab"]',
-    );
-    for (const btn of buttons) {
-      const isSel = (btn.dataset['value'] ?? null) === selected;
-      btn.setAttribute('aria-selected', isSel ? 'true' : 'false');
-      btn.setAttribute('tabindex', isSel ? '0' : '-1');
+    get tabs(): TabDefinition[] {
+        return this._tabs;
     }
-  }
-
-  private _wire(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const buttons = Array.from(
-      root.querySelectorAll<HTMLButtonElement>('button[role="tab"]'),
-    );
-    for (const btn of buttons) {
-      btn.addEventListener('click', () =>
-        this._select(btn.dataset['value'] ?? null),
-      );
-      btn.addEventListener('keydown', (ev) => this._onKey(ev, buttons));
+    set tabs(next: readonly RawTabInput[] | null | undefined) {
+        // `Array.isArray` widens its callee to `any[]` in the no-`unknown[]`
+        // mode this project uses; assign through the typed local first so the
+        // map callback sees `RawTabInput` properties without unsafe-any reads.
+        const rawList: readonly RawTabInput[] = Array.isArray(next) ? next : [];
+        this._tabs = rawList.map(function (t) {
+            return ({
+                value: String(t.value),
+                label: String(t.label ?? t.value),
+            });
+        });
+        if (this._value && !this._tabs.some((t) => t.value === this._value)) {
+            this._value = null;
+        }
+        if (this._built)
+            this._renderTabs();
     }
-  }
-
-  private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
-    const current = ev.currentTarget instanceof HTMLButtonElement ? ev.currentTarget : null;
-    if (!current) return;
-    const idx = buttons.indexOf(current);
-    if (idx < 0) return;
-    let next = -1;
-    switch (ev.key) {
-      case 'ArrowRight':
-      case 'ArrowDown':
-        next = (idx + 1) % buttons.length;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowUp':
-        next = (idx - 1 + buttons.length) % buttons.length;
-        break;
-      case 'Home':
-        next = 0;
-        break;
-      case 'End':
-        next = buttons.length - 1;
-        break;
-      case 'Enter':
-      case ' ':
-        this._select(current.dataset['value'] ?? null);
+    get value(): string | null {
+        return this._value;
+    }
+    set value(next: string | null | undefined) {
+        const v = next == null ? null : String(next);
+        if (v === this._value)
+            return;
+        this._value = v;
+        if (this._built)
+            this._syncSelection();
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'tablist');
+        if (!this._built) {
+            this._buildShell();
+            this._built = true;
+        }
+        this._renderTabs();
+    }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        // `name` changing alters the auto-testid of each button; safest is to
+        // re-render the list so the attribute gets regenerated.
+        if (name === 'name')
+            this._renderTabs();
+    }
+    static override get observedAttributes(): readonly string[] {
+        return ['name'];
+    }
+    private _testIdFor(value: string): string | null {
+        const sid = this.surfaceId;
+        const barName = this.getAttribute('name');
+        if (!sid || !barName)
+            return null;
+        return `${sid}.${barName}.${value}`;
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        adoptSheet(root, sheet);
+    }
+    private _renderTabs(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const tabs = this._tabs;
+        const selected = this._value;
+        const html = tabs
+            .map((t) => {
+            const isSel = t.value === selected;
+            const testId = this._testIdFor(t.value);
+            const testIdAttr = testId
+                ? ` data-testid="${escapeAttr(testId)}"`
+                : '';
+            return `<button type="button" role="tab" data-value="${escapeAttr(t.value)}" aria-selected="${isSel ? 'true' : 'false'}" tabindex="${isSel ? '0' : '-1'}"${testIdAttr}>${escapeText(t.label)}</button>`;
+        })
+            .join('');
+        root.innerHTML = html;
+        this._wire();
+    }
+    private _syncSelection(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const selected = this._value;
+        const buttons = root.querySelectorAll<HTMLButtonElement>('button[role="tab"]');
+        for (const btn of buttons) {
+            const isSel = (btn.dataset['value'] ?? null) === selected;
+            btn.setAttribute('aria-selected', isSel ? 'true' : 'false');
+            btn.setAttribute('tabindex', isSel ? '0' : '-1');
+        }
+    }
+    private _wire(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button[role="tab"]'));
+        for (const btn of buttons) {
+            btn.addEventListener('click', () => this._select(btn.dataset['value'] ?? null));
+            btn.addEventListener('keydown', (ev) => this._onKey(ev, buttons));
+        }
+    }
+    private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
+        const current = ev.currentTarget instanceof HTMLButtonElement ? ev.currentTarget : null;
+        if (!current)
+            return;
+        const idx = buttons.indexOf(current);
+        if (idx < 0)
+            return;
+        let next = -1;
+        switch (ev.key) {
+            case 'ArrowRight':
+            case 'ArrowDown':
+                next = (idx + 1) % buttons.length;
+                break;
+            case 'ArrowLeft':
+            case 'ArrowUp':
+                next = (idx - 1 + buttons.length) % buttons.length;
+                break;
+            case 'Home':
+                next = 0;
+                break;
+            case 'End':
+                next = buttons.length - 1;
+                break;
+            case 'Enter':
+            case ' ':
+                this._select(current.dataset['value'] ?? null);
+                ev.preventDefault();
+                return;
+            default:
+                return;
+        }
         ev.preventDefault();
-        return;
-      default:
-        return;
+        const target = buttons[next];
+        if (!target)
+            return;
+        target.focus();
+        this._select(target.dataset['value'] ?? null);
     }
-    ev.preventDefault();
-    const target = buttons[next];
-    if (!target) return;
-    target.focus();
-    this._select(target.dataset['value'] ?? null);
-  }
-
-  private _select(value: string | null): void {
-    if (value == null || value === this._value) return;
-    const previousValue = this._value;
-    this._value = value;
-    this._syncSelection();
-    this.dispatchEvent(
-      new CustomEvent('change', {
-        detail: { value, previousValue },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
+    private _select(value: string | null): void {
+        if (value == null || value === this._value)
+            return;
+        const previousValue = this._value;
+        this._value = value;
+        this._syncSelection();
+        this.dispatchEvent(new CustomEvent('change', {
+            detail: { value, previousValue },
+            bubbles: true,
+            composed: true,
+        }));
+    }
 }
-
 AtlasElement.define('atlas-tab-bar', AtlasTabBar);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-tab-bar': AtlasTabBar;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-tab-bar': AtlasTabBar;
+    }
 }

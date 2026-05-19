@@ -35,28 +35,14 @@
  * The browser host is unmodified — Web Workers are a separate, later
  * concern (different lifecycle, different transferable rules).
  */
-
 import { Worker } from 'node:worker_threads';
-import type {
-  WasmHost,
-  WasmInvocation,
-  WasmPluginLoader,
-} from '@atlas/ports';
-import {
-  WasmHostError,
-  DEFAULT_TIMEOUT_MS,
-  DEFAULT_MEMORY_LIMIT_MB,
-} from './errors.ts';
+import type { WasmHost, WasmInvocation, WasmPluginLoader, } from '@atlas/ports';
+import { WasmHostError, DEFAULT_TIMEOUT_MS, DEFAULT_MEMORY_LIMIT_MB, } from './errors.ts';
 import type { WasmHostErrorKind } from './errors.ts';
-import type {
-  WorkerInvocationMessage,
-  WorkerResultMessage,
-} from './worker-entry.ts';
-
+import type { WorkerInvocationMessage, WorkerResultMessage, } from './worker-entry.ts';
 export interface WorkerWasmHostOptions {
-  loader: WasmPluginLoader;
+    loader: WasmPluginLoader;
 }
-
 /**
  * URL passed to `new Worker(...)`. In dev/test we load a tiny `.mjs`
  * shim that pulls in `worker-entry.ts` via tsx's `tsImport` — Node
@@ -68,167 +54,129 @@ export interface WorkerWasmHostOptions {
  * only ergonomics.
  */
 const WORKER_BOOTSTRAP_URL = new URL('./worker-bootstrap.mjs', import.meta.url);
-
 export class WorkerWasmHost implements WasmHost {
-  readonly #loader: WasmPluginLoader;
-
-  constructor(options: WorkerWasmHostOptions) {
-    this.#loader = options.loader;
-  }
-
-  async invoke(invocation: WasmInvocation): Promise<unknown> {
-    const timeoutMs = invocation.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const memoryLimitMb = invocation.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
-
-    // Sub-zero / zero timeouts: bail before touching the loader, same
-    // semantics as the Rust host's `tokio::time::timeout(Duration::ZERO, _)`.
-    if (timeoutMs <= 0) {
-      throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
+    readonly #loader: WasmPluginLoader;
+    constructor(options: WorkerWasmHostOptions) {
+        this.#loader = options.loader;
     }
-
-    const deadline = Date.now() + timeoutMs;
-    const bytes = await this.#loader.load(invocation.pluginRef);
-    if (Date.now() >= deadline) {
-      throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
+    async invoke(invocation: WasmInvocation): Promise<unknown> {
+        const timeoutMs = invocation.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const memoryLimitMb = invocation.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
+        // Sub-zero / zero timeouts: bail before touching the loader, same
+        // semantics as the Rust host's `tokio::time::timeout(Duration::ZERO, _)`.
+        if (timeoutMs <= 0) {
+            throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
+        }
+        const deadline = Date.now() + timeoutMs;
+        const bytes = await this.#loader.load(invocation.pluginRef);
+        if (Date.now() >= deadline) {
+            throw new WasmHostError('Timeout', `execution timed out (${timeoutMs}ms limit)`);
+        }
+        const remaining = Math.max(0, deadline - Date.now());
+        return await runInWorker({
+            pluginRef: invocation.pluginRef,
+            bytes,
+            input: invocation.input,
+            memoryLimitMb,
+            timeoutMs: remaining,
+        });
     }
-
-    const remaining = Math.max(0, deadline - Date.now());
-    return await runInWorker({
-      pluginRef: invocation.pluginRef,
-      bytes,
-      input: invocation.input,
-      memoryLimitMb,
-      timeoutMs: remaining,
-    });
-  }
 }
-
 interface RunInWorkerArgs {
-  readonly pluginRef: string;
-  readonly bytes: Uint8Array;
-  readonly input: unknown;
-  readonly memoryLimitMb: number;
-  readonly timeoutMs: number;
+    readonly pluginRef: string;
+    readonly bytes: Uint8Array;
+    readonly input: unknown;
+    readonly memoryLimitMb: number;
+    readonly timeoutMs: number;
 }
-
 async function runInWorker(args: RunInWorkerArgs): Promise<unknown> {
-  // `eval: false` is the default but state it for clarity — we never
-  // pass arbitrary source. The entry is a fixed file URL.
-  const worker = new Worker(WORKER_BOOTSTRAP_URL, {
-    eval: false,
-    resourceLimits: {
-      // V8 hard cap. When the plugin's allocations push the old-gen
-      // past this, the isolate aborts and we surface the resulting
-      // 'exit' (non-zero code) as ExecutionFailed — same shape as the
-      // Rust StoreLimitsBuilder rejection.
-      maxOldGenerationSizeMb: args.memoryLimitMb,
-    },
-    // We INHERIT `process.env` rather than blanking it: the dev
-    // bootstrap shim uses tsx, which writes its compile cache to
-    // `os.tmpdir()` and resolves it via TEMP / TMPDIR. The
-    // zero-authority guarantee is enforced at the WASM boundary
-    // (`compileAndValidate` rejects modules with imports), so the
-    // host-process env never leaks into the plugin sandbox.
-  });
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let settled = false;
-
-  try {
-    return await new Promise<unknown>((resolve, reject) => {
-      const settle = (
-        fn: typeof resolve | typeof reject,
-        value: unknown,
-      ): void => {
-        if (settled) return;
-        settled = true;
-        (fn as (v: unknown) => void)(value);
-      };
-
-      // 1. Timeout: the only path that can preempt a CPU-bound plugin.
-      //    `terminate()` is async; we don't await it here — the OS will
-      //    reap the worker, the host's promise resolves immediately.
-      timer = setTimeout(() => {
-        void worker.terminate().catch(() => undefined);
-        settle(
-          reject,
-          new WasmHostError(
-            'Timeout',
-            `execution timed out (${args.timeoutMs}ms limit)`,
-          ),
-        );
-      }, args.timeoutMs);
-
-      // 2. Result message from the worker — happy path.
-      worker.once('message', (msg: WorkerResultMessage) => {
-        if (msg.ok) {
-          settle(resolve, msg.output);
-        } else {
-          settle(
-            reject,
-            new WasmHostError(
-              msg.errorKind satisfies WasmHostErrorKind,
-              msg.errorDetail,
-            ),
-          );
-        }
-      });
-
-      // 3. Worker died without posting a result — usually a crash
-      //    (e.g. V8 OOM cap fired). If we already settled this is a
-      //    no-op via `settle`.
-      worker.once('error', (err: Error) => {
-        settle(
-          reject,
-          new WasmHostError(
-            'ExecutionFailed',
-            `worker error: ${err.message}`,
-          ),
-        );
-      });
-      worker.once('exit', (code: number) => {
-        if (code === 0) {
-          // Clean exit — if we hadn't already settled via `'message'`,
-          // the worker exited without posting a result.
-          settle(
-            reject,
-            new WasmHostError(
-              'ExecutionFailed',
-              'worker exited without posting a result',
-            ),
-          );
-        } else {
-          // Non-zero is normally `terminate()` we issued ourselves
-          // (after the timeout) or a V8 OOM kill. The timeout path
-          // already settled with Timeout; the OOM path surfaces here.
-          settle(
-            reject,
-            new WasmHostError(
-              'ExecutionFailed',
-              `worker exited with code ${code} (likely memory cap of ${args.memoryLimitMb} MB hit)`,
-            ),
-          );
-        }
-      });
-
-      // 4. Kick off the work. The worker entry attaches its
-      //    `'message'` listener synchronously at module top-level, but
-      //    the bootstrap shim awaits a dynamic import first; messages
-      //    posted before the listener attaches are buffered by Node,
-      //    so the order is safe.
-      const message: WorkerInvocationMessage = {
-        pluginRef: args.pluginRef,
-        pluginBytes: args.bytes,
-        input: args.input,
-        memoryLimitMb: args.memoryLimitMb,
-      };
-      worker.postMessage(message);
+    // `eval: false` is the default but state it for clarity — we never
+    // pass arbitrary source. The entry is a fixed file URL.
+    const worker = new Worker(WORKER_BOOTSTRAP_URL, {
+        eval: false,
+        resourceLimits: {
+            // V8 hard cap. When the plugin's allocations push the old-gen
+            // past this, the isolate aborts and we surface the resulting
+            // 'exit' (non-zero code) as ExecutionFailed — same shape as the
+            // Rust StoreLimitsBuilder rejection.
+            maxOldGenerationSizeMb: args.memoryLimitMb,
+        },
+        // We INHERIT `process.env` rather than blanking it: the dev
+        // bootstrap shim uses tsx, which writes its compile cache to
+        // `os.tmpdir()` and resolves it via TEMP / TMPDIR. The
+        // zero-authority guarantee is enforced at the WASM boundary
+        // (`compileAndValidate` rejects modules with imports), so the
+        // host-process env never leaks into the plugin sandbox.
     });
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    // Belt-and-braces: ensure the worker is gone on every path so a
-    // leaked worker can't accumulate. `terminate()` on an already-
-    // exited worker is a no-op.
-    void worker.terminate().catch(() => undefined);
-  }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    try {
+        return await new Promise<unknown>(function (resolve, reject) {
+            const settle = function (fn: typeof resolve | typeof reject, value: unknown): void {
+                if (settled)
+                    return;
+                settled = true;
+                (fn as (v: unknown) => void)(value);
+            };
+            // 1. Timeout: the only path that can preempt a CPU-bound plugin.
+            //    `terminate()` is async; we don't await it here — the OS will
+            //    reap the worker, the host's promise resolves immediately.
+            timer = setTimeout(function () {
+                void worker.terminate().catch(function () {
+                    return undefined;
+                });
+                settle(reject, new WasmHostError('Timeout', `execution timed out (${args.timeoutMs}ms limit)`));
+            }, args.timeoutMs);
+            // 2. Result message from the worker — happy path.
+            worker.once('message', function (msg: WorkerResultMessage) {
+                if (msg.ok) {
+                    settle(resolve, msg.output);
+                }
+                else {
+                    settle(reject, new WasmHostError(msg.errorKind satisfies WasmHostErrorKind, msg.errorDetail));
+                }
+            });
+            // 3. Worker died without posting a result — usually a crash
+            //    (e.g. V8 OOM cap fired). If we already settled this is a
+            //    no-op via `settle`.
+            worker.once('error', function (err: Error) {
+                settle(reject, new WasmHostError('ExecutionFailed', `worker error: ${err.message}`));
+            });
+            worker.once('exit', function (code: number) {
+                if (code === 0) {
+                    // Clean exit — if we hadn't already settled via `'message'`,
+                    // the worker exited without posting a result.
+                    settle(reject, new WasmHostError('ExecutionFailed', 'worker exited without posting a result'));
+                }
+                else {
+                    // Non-zero is normally `terminate()` we issued ourselves
+                    // (after the timeout) or a V8 OOM kill. The timeout path
+                    // already settled with Timeout; the OOM path surfaces here.
+                    settle(reject, new WasmHostError('ExecutionFailed', `worker exited with code ${code} (likely memory cap of ${args.memoryLimitMb} MB hit)`));
+                }
+            });
+            // 4. Kick off the work. The worker entry attaches its
+            //    `'message'` listener synchronously at module top-level, but
+            //    the bootstrap shim awaits a dynamic import first; messages
+            //    posted before the listener attaches are buffered by Node,
+            //    so the order is safe.
+            const message: WorkerInvocationMessage = {
+                pluginRef: args.pluginRef,
+                pluginBytes: args.bytes,
+                input: args.input,
+                memoryLimitMb: args.memoryLimitMb,
+            };
+            worker.postMessage(message);
+        });
+    }
+    finally {
+        if (timer !== undefined)
+            clearTimeout(timer);
+        // Belt-and-braces: ensure the worker is gone on every path so a
+        // leaked worker can't accumulate. `terminate()` on an already-
+        // exited worker is a no-op.
+        void worker.terminate().catch(function () {
+            return undefined;
+        });
+    }
 }

@@ -1,7 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { adoptSheet, createSheet, escapeAttr, uid } from './util.ts';
 import { isElement } from './internal/assert.ts';
-
 const radioSheet = createSheet(`
   :host {
     display: inline-flex;
@@ -91,7 +90,6 @@ const radioSheet = createSheet(`
     user-select: none;
   }
 `);
-
 const groupSheet = createSheet(`
   :host {
     display: flex;
@@ -113,7 +111,6 @@ const groupSheet = createSheet(`
   }
   .legend[hidden] { display: none; }
 `);
-
 /**
  * `<atlas-radio>` — single option inside an `<atlas-radio-group>`.
  *
@@ -126,97 +123,89 @@ const groupSheet = createSheet(`
  *   label     - option label (or use slotted text)
  */
 export class AtlasRadio extends AtlasElement {
-  static override get observedAttributes(): readonly string[] {
-    return ['checked', 'disabled', 'label'];
-  }
-
-  declare checked: boolean;
-  declare disabled: boolean;
-
-  static {
-    Object.defineProperty(this.prototype, 'checked', AtlasElement.boolAttr('checked'));
-    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
-  }
-
-  private readonly _inputId = uid('atlas-radio');
-  private _built = false;
-  private _input: HTMLInputElement | null = null;
-  private _labelEl: HTMLLabelElement | null = null;
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-  }
-
-  get value(): string {
-    return this.getAttribute('value') ?? '';
-  }
-  set value(v: string) {
-    this.setAttribute('value', v);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'radio');
-    if (!this._built) this._buildShell();
-    this._syncAll();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    this._sync(name);
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    adoptSheet(root, radioSheet);
-    root.innerHTML = `
+    static override get observedAttributes(): readonly string[] {
+        return ['checked', 'disabled', 'label'];
+    }
+    declare checked: boolean;
+    declare disabled: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'checked', AtlasElement.boolAttr('checked'));
+        Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    }
+    private readonly _inputId = uid('atlas-radio');
+    private _built = false;
+    private _input: HTMLInputElement | null = null;
+    private _labelEl: HTMLLabelElement | null = null;
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+    }
+    get value(): string {
+        return this.getAttribute('value') ?? '';
+    }
+    set value(v: string) {
+        this.setAttribute('value', v);
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'radio');
+        if (!this._built)
+            this._buildShell();
+        this._syncAll();
+    }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        this._sync(name);
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        adoptSheet(root, radioSheet);
+        root.innerHTML = `
       <span class="control">
         <input id="${escapeAttr(this._inputId)}" type="radio" tabindex="-1" />
         <span class="dot" aria-hidden="true"></span>
       </span>
       <label class="label" for="${escapeAttr(this._inputId)}"><span class="label-text"></span><slot></slot></label>
     `;
-    this._input = root.querySelector<HTMLInputElement>('input');
-    this._labelEl = root.querySelector<HTMLLabelElement>('label.label');
-    this._built = true;
-  }
-
-  private _syncAll(): void {
-    this._sync('label');
-    this._sync('checked');
-    this._sync('disabled');
-  }
-
-  private _sync(name: string): void {
-    const input = this._input;
-    if (!input) return;
-    switch (name) {
-      case 'checked':
-        input.checked = this.checked;
-        this.setAttribute('aria-checked', String(this.checked));
-        break;
-      case 'disabled':
-        input.disabled = this.disabled;
-        this.setAttribute('aria-disabled', String(this.disabled));
-        break;
-      case 'label': {
-        const labelText = this._labelEl?.querySelector<HTMLElement>('.label-text');
-        if (labelText) labelText.textContent = this.getAttribute('label') ?? '';
-        break;
-      }
+        this._input = root.querySelector<HTMLInputElement>('input');
+        this._labelEl = root.querySelector<HTMLLabelElement>('label.label');
+        this._built = true;
     }
-  }
+    private _syncAll(): void {
+        this._sync('label');
+        this._sync('checked');
+        this._sync('disabled');
+    }
+    private _sync(name: string): void {
+        const input = this._input;
+        if (!input)
+            return;
+        switch (name) {
+            case 'checked':
+                input.checked = this.checked;
+                this.setAttribute('aria-checked', String(this.checked));
+                break;
+            case 'disabled':
+                input.disabled = this.disabled;
+                this.setAttribute('aria-disabled', String(this.disabled));
+                break;
+            case 'label': {
+                const labelText = this._labelEl?.querySelector<HTMLElement>('.label-text');
+                if (labelText)
+                    labelText.textContent = this.getAttribute('label') ?? '';
+                break;
+            }
+        }
+    }
 }
-
 AtlasElement.define('atlas-radio', AtlasRadio);
-
 export interface AtlasRadioGroupChangeDetail {
-  value: string;
-  previousValue: string | null;
+    value: string;
+    previousValue: string | null;
 }
-
 /**
  * `<atlas-radio-group>` — owns the selection for a set of `<atlas-radio>`
  * children. Implements the WAI-ARIA radiogroup pattern: arrow keys move
@@ -237,232 +226,232 @@ export interface AtlasRadioGroupChangeDetail {
  *   change -> CustomEvent<AtlasRadioGroupChangeDetail>
  */
 export class AtlasRadioGroup extends AtlasElement {
-  static formAssociated = true;
-
-  static override get observedAttributes(): readonly string[] {
-    return ['value', 'disabled', 'label', 'required'];
-  }
-
-  declare disabled: boolean;
-  declare required: boolean;
-
-  static {
-    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
-    Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
-  }
-
-  private readonly _internals: ElementInternals;
-  private _built = false;
-  private _legendEl: HTMLElement | null = null;
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-    this._internals = this.attachInternals();
-  }
-
-  get value(): string | null {
-    return this.getAttribute('value');
-  }
-  set value(v: string | null) {
-    if (v == null) this.removeAttribute('value');
-    else this.setAttribute('value', v);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'radiogroup');
-    if (!this._built) this._buildShell();
-    this.addEventListener('click', this._onClick);
-    this.addEventListener('keydown', this._onKey);
-    this._syncAll();
-  }
-
-  override disconnectedCallback(): void {
-    this.removeEventListener('click', this._onClick);
-    this.removeEventListener('keydown', this._onKey);
-    super.disconnectedCallback();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    this._sync(name);
-  }
-
-  private _buildShell(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    adoptSheet(root, groupSheet);
-    root.innerHTML = `
+    static formAssociated = true;
+    static override get observedAttributes(): readonly string[] {
+        return ['value', 'disabled', 'label', 'required'];
+    }
+    declare disabled: boolean;
+    declare required: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+        Object.defineProperty(this.prototype, 'required', AtlasElement.boolAttr('required'));
+    }
+    private readonly _internals: ElementInternals;
+    private _built = false;
+    private _legendEl: HTMLElement | null = null;
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+        this._internals = this.attachInternals();
+    }
+    get value(): string | null {
+        return this.getAttribute('value');
+    }
+    set value(v: string | null) {
+        if (v == null)
+            this.removeAttribute('value');
+        else
+            this.setAttribute('value', v);
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'radiogroup');
+        if (!this._built)
+            this._buildShell();
+        this.addEventListener('click', this._onClick);
+        this.addEventListener('keydown', this._onKey);
+        this._syncAll();
+    }
+    override disconnectedCallback(): void {
+        this.removeEventListener('click', this._onClick);
+        this.removeEventListener('keydown', this._onKey);
+        super.disconnectedCallback();
+    }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        this._sync(name);
+    }
+    private _buildShell(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        adoptSheet(root, groupSheet);
+        root.innerHTML = `
       <span class="legend" hidden></span>
       <slot></slot>
     `;
-    this._legendEl = root.querySelector<HTMLElement>('.legend');
-    this._built = true;
-  }
-
-  private _syncAll(): void {
-    this._sync('label');
-    this._sync('disabled');
-    this._sync('required');
-    // Value sync updates children; defer one microtask so slotted radios exist.
-    queueMicrotask(() => {
-      this._syncChildren();
-      this._commit();
-    });
-  }
-
-  private _sync(name: string): void {
-    switch (name) {
-      case 'label': {
-        if (!this._legendEl) return;
-        const label = this.getAttribute('label');
-        if (label != null && label !== '') {
-          this._legendEl.textContent = label;
-          this._legendEl.hidden = false;
-        } else {
-          this._legendEl.textContent = '';
-          this._legendEl.hidden = true;
+        this._legendEl = root.querySelector<HTMLElement>('.legend');
+        this._built = true;
+    }
+    private _syncAll(): void {
+        this._sync('label');
+        this._sync('disabled');
+        this._sync('required');
+        // Value sync updates children; defer one microtask so slotted radios exist.
+        queueMicrotask(() => {
+            this._syncChildren();
+            this._commit();
+        });
+    }
+    private _sync(name: string): void {
+        switch (name) {
+            case 'label': {
+                if (!this._legendEl)
+                    return;
+                const label = this.getAttribute('label');
+                if (label != null && label !== '') {
+                    this._legendEl.textContent = label;
+                    this._legendEl.hidden = false;
+                }
+                else {
+                    this._legendEl.textContent = '';
+                    this._legendEl.hidden = true;
+                }
+                break;
+            }
+            case 'value':
+            case 'disabled':
+                this._syncChildren();
+                this._commit();
+                break;
+            case 'required':
+                this._commit();
+                break;
         }
-        break;
-      }
-      case 'value':
-      case 'disabled':
+    }
+    private _items(): AtlasRadio[] {
+        return Array.from(this.querySelectorAll<AtlasRadio>('atlas-radio'));
+    }
+    private _syncChildren(): void {
+        const items = this._items();
+        const value = this.value;
+        const disabled = this.disabled;
+        let hasFocusable = false;
+        for (const item of items) {
+            const isChecked = value != null && item.value === value;
+            if (item.checked !== isChecked)
+                item.checked = isChecked;
+            if (disabled) {
+                if (!item.disabled)
+                    item.disabled = true;
+            }
+            const focusable = isChecked && !item.disabled;
+            if (!hasFocusable && focusable) {
+                item.setAttribute('tabindex', '0');
+                hasFocusable = true;
+            }
+            else {
+                item.setAttribute('tabindex', '-1');
+            }
+        }
+        // If nothing selected yet, the first enabled item becomes the roving
+        // tabstop so keyboard users can enter the group.
+        if (!hasFocusable) {
+            const first = items.find(function (i) {
+                return !i.disabled;
+            });
+            if (first)
+                first.setAttribute('tabindex', '0');
+        }
+    }
+    private _commit(): void {
+        const v = this.value;
+        this._internals.setFormValue(v);
+        if (this.required && (v == null || v === '')) {
+            this._internals.setValidity({ valueMissing: true }, 'Required');
+        }
+        else {
+            this._internals.setValidity({});
+        }
+    }
+    private _onClick = (ev: Event): void => {
+        if (this.disabled)
+            return;
+        const target = closestRadio(ev.target);
+        if (!target || target.disabled)
+            return;
+        this._select(target);
+    };
+    private _onKey = (ev: KeyboardEvent): void => {
+        if (this.disabled)
+            return;
+        const items = this._items().filter(function (i) {
+            return !i.disabled;
+        });
+        if (items.length === 0)
+            return;
+        const active = closestRadio(ev.target);
+        const idx = active ? items.indexOf(active) : -1;
+        let nextIdx = -1;
+        switch (ev.key) {
+            case 'ArrowRight':
+            case 'ArrowDown':
+                nextIdx = idx < 0 ? 0 : (idx + 1) % items.length;
+                break;
+            case 'ArrowLeft':
+            case 'ArrowUp':
+                nextIdx = idx <= 0 ? items.length - 1 : idx - 1;
+                break;
+            case 'Home':
+                nextIdx = 0;
+                break;
+            case 'End':
+                nextIdx = items.length - 1;
+                break;
+            case ' ':
+            case 'Enter':
+                if (active) {
+                    ev.preventDefault();
+                    this._select(active);
+                }
+                return;
+            default:
+                return;
+        }
+        ev.preventDefault();
+        const next = items[nextIdx];
+        if (!next)
+            return;
+        next.focus();
+        this._select(next);
+    };
+    private _select(item: AtlasRadio): void {
+        const previousValue = this.value;
+        if (previousValue === item.value)
+            return;
+        this.value = item.value;
         this._syncChildren();
         this._commit();
-        break;
-      case 'required':
-        this._commit();
-        break;
-    }
-  }
-
-  private _items(): AtlasRadio[] {
-    return Array.from(this.querySelectorAll<AtlasRadio>('atlas-radio'));
-  }
-
-  private _syncChildren(): void {
-    const items = this._items();
-    const value = this.value;
-    const disabled = this.disabled;
-    let hasFocusable = false;
-    for (const item of items) {
-      const isChecked = value != null && item.value === value;
-      if (item.checked !== isChecked) item.checked = isChecked;
-      if (disabled) {
-        if (!item.disabled) item.disabled = true;
-      }
-      const focusable = isChecked && !item.disabled;
-      if (!hasFocusable && focusable) {
-        item.setAttribute('tabindex', '0');
-        hasFocusable = true;
-      } else {
-        item.setAttribute('tabindex', '-1');
-      }
-    }
-    // If nothing selected yet, the first enabled item becomes the roving
-    // tabstop so keyboard users can enter the group.
-    if (!hasFocusable) {
-      const first = items.find((i) => !i.disabled);
-      if (first) first.setAttribute('tabindex', '0');
-    }
-  }
-
-  private _commit(): void {
-    const v = this.value;
-    this._internals.setFormValue(v);
-    if (this.required && (v == null || v === '')) {
-      this._internals.setValidity({ valueMissing: true }, 'Required');
-    } else {
-      this._internals.setValidity({});
-    }
-  }
-
-  private _onClick = (ev: Event): void => {
-    if (this.disabled) return;
-    const target = closestRadio(ev.target);
-    if (!target || target.disabled) return;
-    this._select(target);
-  };
-
-  private _onKey = (ev: KeyboardEvent): void => {
-    if (this.disabled) return;
-    const items = this._items().filter((i) => !i.disabled);
-    if (items.length === 0) return;
-    const active = closestRadio(ev.target);
-    const idx = active ? items.indexOf(active) : -1;
-    let nextIdx = -1;
-    switch (ev.key) {
-      case 'ArrowRight':
-      case 'ArrowDown':
-        nextIdx = idx < 0 ? 0 : (idx + 1) % items.length;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowUp':
-        nextIdx = idx <= 0 ? items.length - 1 : idx - 1;
-        break;
-      case 'Home':
-        nextIdx = 0;
-        break;
-      case 'End':
-        nextIdx = items.length - 1;
-        break;
-      case ' ':
-      case 'Enter':
-        if (active) {
-          ev.preventDefault();
-          this._select(active);
+        this.dispatchEvent(new CustomEvent<AtlasRadioGroupChangeDetail>('change', {
+            detail: { value: item.value, previousValue },
+            bubbles: true,
+            composed: true,
+        }));
+        const name = this.getAttribute('name');
+        if (name && this.surfaceId) {
+            this.emit(`${this.surfaceId}.${name}-changed`, {
+                value: item.value,
+                previousValue,
+            });
         }
-        return;
-      default:
-        return;
     }
-    ev.preventDefault();
-    const next = items[nextIdx];
-    if (!next) return;
-    next.focus();
-    this._select(next);
-  };
-
-  private _select(item: AtlasRadio): void {
-    const previousValue = this.value;
-    if (previousValue === item.value) return;
-    this.value = item.value;
-    this._syncChildren();
-    this._commit();
-    this.dispatchEvent(
-      new CustomEvent<AtlasRadioGroupChangeDetail>('change', {
-        detail: { value: item.value, previousValue },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-    const name = this.getAttribute('name');
-    if (name && this.surfaceId) {
-      this.emit(`${this.surfaceId}.${name}-changed`, {
-        value: item.value,
-        previousValue,
-      });
-    }
-  }
 }
-
 AtlasElement.define('atlas-radio-group', AtlasRadioGroup);
-
 /**
  * Walk up from an `EventTarget` to the enclosing `<atlas-radio>`. Returns
  * `null` if the target isn't an Element or no radio ancestor exists.
  * Replaces a pair of `as Element | null` / `as AtlasRadio | null` casts.
  */
 function closestRadio(target: EventTarget | null): AtlasRadio | null {
-  if (!isElement(target)) return null;
-  const node = target.closest('atlas-radio');
-  return node instanceof AtlasRadio ? node : null;
+    if (!isElement(target))
+        return null;
+    const node = target.closest('atlas-radio');
+    return node instanceof AtlasRadio ? node : null;
 }
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-radio': AtlasRadio;
-    'atlas-radio-group': AtlasRadioGroup;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-radio': AtlasRadio;
+        'atlas-radio-group': AtlasRadioGroup;
+    }
 }

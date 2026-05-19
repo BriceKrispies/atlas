@@ -24,8 +24,11 @@ import type SMTPPool from 'nodemailer/lib/smtp-pool/index.js';
 import type {
   EmailMessage,
   Mailer,
+  MailerSendOptions,
   MailerSendResult,
 } from '@atlas/ports';
+import type { Logger } from '@atlas/platform-core';
+import { toLogError } from '@atlas/platform-core';
 
 export interface SmtpMailerConfig {
   host: string;
@@ -59,6 +62,7 @@ export class SmtpMailer implements Mailer {
   constructor(
     private readonly sql: postgres.Sql,
     config: SmtpMailerConfig,
+    private readonly logger?: Logger,
   ) {
     // Transport is owned by the adapter so apps/server doesn't need a
     // direct dependency on `nodemailer`. Pool=true keeps a small set of
@@ -72,7 +76,7 @@ export class SmtpMailer implements Mailer {
     this.fromAddress = config.from;
   }
 
-  async send(msg: EmailMessage): Promise<MailerSendResult> {
+  async send(msg: EmailMessage, opts?: MailerSendOptions): Promise<MailerSendResult> {
     const tags = msg.tags ?? [];
     const sentAt = new Date().toISOString();
 
@@ -126,21 +130,26 @@ export class SmtpMailer implements Mailer {
       )
     `;
 
-    // 4. One JSON line per send so log-streamers (Loki, in-app log
+    // 4. One log line per send so log-streamers (Loki, in-app log
     //    panel) can correlate by `correlationId`. Mirrors stdout adapter.
-    console.log(
-      JSON.stringify({
-        event: 'mailer.sent',
+    // Prefer the caller-supplied per-request logger so the line's
+    // top-level correlationId matches the request the send is part of.
+    // Falls back to the adapter's boot-time logger when omitted (used
+    // by adapter-internal flows that have no request context).
+    const sendLogger = opts?.logger ?? this.logger;
+    sendLogger?.info('mailer message sent', {
+      event: 'Mailer.Send.Success',
+      properties: {
         driver: 'smtp',
         messageId,
         to: msg.to,
         subject: msg.subject,
         tenantId: msg.tenantId,
-        correlationId: msg.correlationId,
+        mailCorrelationId: msg.correlationId,
         tags,
         sentAt,
-      }),
-    );
+      },
+    });
 
     return { messageId, sentAt };
   }
@@ -153,13 +162,11 @@ export class SmtpMailer implements Mailer {
     try {
       this.transport.close();
     } catch (e) {
-      console.log(
-        JSON.stringify({
-          event: 'mailer.close.error',
-          driver: 'smtp',
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
+      this.logger?.warn('mailer transport close failed', {
+        event: 'Mailer.Close.Failed',
+        error: toLogError(e),
+        properties: { driver: 'smtp' },
+      });
     }
   }
 }

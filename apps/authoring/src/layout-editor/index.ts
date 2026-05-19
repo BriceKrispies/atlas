@@ -1,41 +1,31 @@
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
-import {
-  presetLayouts,
-  emptyLayoutDocument,
-  type LayoutDocument,
-} from '@atlas/page-templates';
+import { presetLayouts, emptyLayoutDocument, type LayoutDocument, } from '@atlas/page-templates';
 import { authoringLayoutRegistry, authoringLayoutStore } from '../shared/stores.ts';
-
 interface LayoutOption {
-  value: string;
-  label: string;
+    value: string;
+    label: string;
 }
-
 interface AtlasSelectLike extends HTMLElement {
-  options: unknown;
-  value: string;
+    options: unknown;
+    value: string;
 }
-
 interface AtlasLayoutEditorLike extends HTMLElement {
-  layout: unknown;
-  onChange: (doc: LayoutDocument) => void;
-  onSave: (doc: LayoutDocument) => Promise<void>;
+    layout: unknown;
+    onChange: (doc: LayoutDocument) => void;
+    onSave: (doc: LayoutDocument) => Promise<void>;
 }
-
 function isAtlasSelect(el: Element | null): el is AtlasSelectLike {
-  return el instanceof HTMLElement && 'value' in el;
+    return el instanceof HTMLElement && 'value' in el;
 }
-
 function readDetailValue(detail: unknown): string | null {
-  if (detail === null || typeof detail !== 'object') return null;
-  const record: Record<string, unknown> = Object.fromEntries(Object.entries(detail));
-  const v = record['value'];
-  return typeof v === 'string' ? v : null;
+    if (detail === null || typeof detail !== 'object')
+        return null;
+    const record: Record<string, unknown> = Object.fromEntries(Object.entries(detail));
+    const v = record['value'];
+    return typeof v === 'string' ? v : null;
 }
-
 const BLANK_VALUE = '__blank__';
-
 const styles = `
   :host {
     display: flex;
@@ -66,38 +56,33 @@ const styles = `
     background: var(--atlas-color-bg);
   }
 `;
-
 export class AuthoringLayoutEditorRoute extends AtlasSurface {
-  static override surfaceId = 'authoring.layout-editor';
-
-  private readonly _root: ShadowRoot;
-  private _activeLayoutId: string | null = null;
-
-  constructor() {
-    super();
-    this._root = this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(this._root);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    queueMicrotask(() => this._render());
-  }
-
-  private _options(): LayoutOption[] {
-    const presets = (presetLayouts as LayoutDocument[]).map((l) => ({
-      value: l.layoutId,
-      label: l.displayName ?? l.layoutId,
-    }));
-    return [{ value: BLANK_VALUE, label: 'Blank canvas' }, ...presets];
-  }
-
-  private _render(): void {
-    const options = this._options();
-    const initial = options[0]?.value ?? BLANK_VALUE;
-    this._activeLayoutId = initial === BLANK_VALUE ? null : initial;
-
-    this._root.innerHTML = `
+    static override surfaceId = 'authoring.layout-editor';
+    private readonly _root: ShadowRoot;
+    private _activeLayoutId: string | null = null;
+    constructor() {
+        super();
+        this._root = this.attachShadow({ mode: 'open' });
+        adoptAtlasStyles(this._root);
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        queueMicrotask(() => this._render());
+    }
+    private _options(): LayoutOption[] {
+        const presets = (presetLayouts as LayoutDocument[]).map(function (l) {
+            return ({
+                value: l.layoutId,
+                label: l.displayName ?? l.layoutId,
+            });
+        });
+        return [{ value: BLANK_VALUE, label: 'Blank canvas' }, ...presets];
+    }
+    private _render(): void {
+        const options = this._options();
+        const initial = options[0]?.value ?? BLANK_VALUE;
+        this._activeLayoutId = initial === BLANK_VALUE ? null : initial;
+        this._root.innerHTML = `
       <style>${styles}</style>
       <atlas-box data-role="picker">
         <atlas-text variant="medium">Layout</atlas-text>
@@ -105,57 +90,52 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
       </atlas-box>
       <atlas-box data-role="canvas"></atlas-box>
     `;
-
-    const selectEl = this._root.querySelector('atlas-select[name="layout-select"]');
-    const select = isAtlasSelect(selectEl) ? selectEl : null;
-    if (select) {
-      select.options = options;
-      select.value = initial;
-      select.addEventListener('change', (ev) => {
-        const detailValue = ev instanceof CustomEvent ? readDetailValue(ev.detail) : null;
-        const next = detailValue ?? select.value;
-        this._activeLayoutId = next === BLANK_VALUE ? null : next;
+        const selectEl = this._root.querySelector('atlas-select[name="layout-select"]');
+        const select = isAtlasSelect(selectEl) ? selectEl : null;
+        if (select) {
+            select.options = options;
+            select.value = initial;
+            select.addEventListener('change', (ev) => {
+                const detailValue = ev instanceof CustomEvent ? readDetailValue(ev.detail) : null;
+                const next = detailValue ?? select.value;
+                this._activeLayoutId = next === BLANK_VALUE ? null : next;
+                void this._mountEditor();
+            });
+        }
         void this._mountEditor();
-      });
     }
-
-    void this._mountEditor();
-  }
-
-  private async _mountEditor(): Promise<void> {
-    const host = this._root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
-    if (!host) return;
-    host.textContent = '';
-
-    const seedId = this._activeLayoutId;
-    const seedDoc = seedId
-      ? null
-      : emptyLayoutDocument({
-          layoutId: `authoring.${Date.now().toString(36)}`,
-          displayName: 'Untitled layout',
-        });
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed API surface is asserted at the construction boundary.
-    const editor = document.createElement('atlas-layout-editor') as AtlasLayoutEditorLike;
-    editor.onChange = () => {};
-    editor.onSave = async (doc: LayoutDocument) => {
-      await authoringLayoutStore.save(doc.layoutId, doc);
-      try {
-        authoringLayoutRegistry.register(doc);
-      } catch {
-        /* duplicate name with different shape — registry throws; ignore */
-      }
-    };
-
-    if (seedId) {
-      const stored = await authoringLayoutStore.get(seedId);
-      editor.layout = stored ?? authoringLayoutRegistry.get(seedId);
-    } else {
-      editor.layout = seedDoc;
+    private async _mountEditor(): Promise<void> {
+        const host = this._root.querySelector('atlas-box[data-role="canvas"]') as HTMLElement | null;
+        if (!host)
+            return;
+        host.textContent = '';
+        const seedId = this._activeLayoutId;
+        const seedDoc = seedId
+            ? null
+            : emptyLayoutDocument({
+                layoutId: `authoring.${Date.now().toString(36)}`,
+                displayName: 'Untitled layout',
+            });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed API surface is asserted at the construction boundary.
+        const editor = document.createElement('atlas-layout-editor') as AtlasLayoutEditorLike;
+        editor.onChange = function () { };
+        editor.onSave = async function (doc: LayoutDocument) {
+            await authoringLayoutStore.save(doc.layoutId, doc);
+            try {
+                authoringLayoutRegistry.register(doc);
+            }
+            catch {
+                /* duplicate name with different shape — registry throws; ignore */
+            }
+        };
+        if (seedId) {
+            const stored = await authoringLayoutStore.get(seedId);
+            editor.layout = stored ?? authoringLayoutRegistry.get(seedId);
+        }
+        else {
+            editor.layout = seedDoc;
+        }
+        host.appendChild(editor);
     }
-
-    host.appendChild(editor);
-  }
 }
-
 AtlasElement.define('authoring-layout-editor-route', AuthoringLayoutEditorRoute);

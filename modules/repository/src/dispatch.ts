@@ -14,7 +14,7 @@
  * asserting the resulting state matches the in-line dispatch path.
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
 import type {
   Cache,
   EventDispatcher,
@@ -42,6 +42,13 @@ export interface RepositoryDispatchContext {
    * `cache` directly.
    */
   cache?: Cache;
+  /**
+   * Optional logger for per-event debug breadcrumbs. Wired by
+   * `apps/server` (and the projection worker) so flipping the
+   * repository module to debug surfaces every projection rebuild.
+   * Tests / sim pass nothing and stay silent.
+   */
+  logger?: Logger;
 }
 
 export async function dispatchRepositoryEvent(
@@ -49,6 +56,13 @@ export async function dispatchRepositoryEvent(
   ctx: RepositoryDispatchContext,
 ): Promise<void> {
   if (!HANDLED_EVENT_TYPES.has(envelope.eventType)) return;
+  ctx.logger?.debug('repository dispatcher ran', {
+    event: 'Repository.Dispatch.Ran',
+    properties: {
+      eventType: envelope.eventType,
+      eventId: envelope.eventId,
+    },
+  });
   await applyRepositorySummary(envelope, ctx.repositories);
   await applyRevisionList(envelope, ctx.revisions);
 }
@@ -60,5 +74,5 @@ export async function dispatchRepositoryEvent(
 export function repositoryDispatcher(
   ctx: RepositoryDispatchContext,
 ): EventDispatcher {
-  return (envelope) => dispatchRepositoryEvent(envelope, ctx);
+  return function (envelope) { return dispatchRepositoryEvent(envelope, ctx); };
 }

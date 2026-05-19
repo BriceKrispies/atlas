@@ -13,22 +13,10 @@
  * The crypto branches are listed as `it.todo` so the e2e gap is
  * visible in test reports.
  */
-
 import { describe, it, expect } from 'vitest';
-import type {
-  AuthenticationResponseJSON,
-  RegistrationResponseJSON,
-} from '@simplewebauthn/server';
-import {
-  handleWebAuthnRegisterBegin,
-  handleWebAuthnRegisterFinish,
-  handleWebAuthnAssertBegin,
-  handleWebAuthnAssertFinish,
-  IdentityError,
-  identityErrorCodes,
-} from '../../src/index.ts';
+import type { AuthenticationResponseJSON, RegistrationResponseJSON, } from '@simplewebauthn/server';
+import { handleWebAuthnRegisterBegin, handleWebAuthnRegisterFinish, handleWebAuthnAssertBegin, handleWebAuthnAssertFinish, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
-
 /**
  * Build a `RegistrationResponseJSON` with empty attestation bytes.
  * The non-crypto branches under test (unknown-challenge rejection)
@@ -37,125 +25,96 @@ import { newFixture } from '../lib/fixtures.ts';
  * once the challenge row resolves.
  */
 function emptyRegistrationResponse(): RegistrationResponseJSON {
-  return {
-    id: 'cred-1',
-    rawId: 'cred-1',
-    response: {
-      clientDataJSON: '',
-      attestationObject: '',
-    },
-    type: 'public-key',
-    clientExtensionResults: {},
-  };
+    return {
+        id: 'cred-1',
+        rawId: 'cred-1',
+        response: {
+            clientDataJSON: '',
+            attestationObject: '',
+        },
+        type: 'public-key',
+        clientExtensionResults: {},
+    };
 }
-
 /** Mirror of {@link emptyRegistrationResponse} for assertion flows. */
 function emptyAssertionResponse(): AuthenticationResponseJSON {
-  return {
-    id: 'cred-1',
-    rawId: 'cred-1',
-    response: {
-      clientDataJSON: '',
-      authenticatorData: '',
-      signature: '',
-    },
-    type: 'public-key',
-    clientExtensionResults: {},
-  };
-}
-
-describe('handleWebAuthnRegisterBegin', () => {
-  it('returns challengeId + PublicKeyCredentialCreationOptions and persists a challenge', async () => {
-    const fx = newFixture();
-    const result = await handleWebAuthnRegisterBegin(
-      {
-        tenantId: fx.tenantId,
-        correlationId: 'c',
-        userId: 'user-1',
-        userName: 'user@example.com',
-        rpId: 'atlas.example.com',
-        rpName: 'Atlas',
-        factorKind: 'webauthn_mfa',
-      },
-      fx.entities,
-    );
-    expect(result.challengeId).toMatch(/^wac-/);
-    expect(result.options.rp.id).toBe('atlas.example.com');
-    expect(result.options.rp.name).toBe('Atlas');
-    // The challenge entity was persisted.
-    const stored = await fx.entities.get(
-      fx.tenantId,
-      'WebAuthnChallenge',
-      result.challengeId,
-    );
-    expect(stored).toBeDefined();
-  });
-
-  it('factorKind=passkey enables resident keys (discoverable credentials)', async () => {
-    const fx = newFixture();
-    const result = await handleWebAuthnRegisterBegin(
-      {
-        tenantId: fx.tenantId,
-        correlationId: 'c',
-        userId: 'user-2',
-        userName: 'user@example.com',
-        rpId: 'atlas.example.com',
-        factorKind: 'passkey',
-      },
-      fx.entities,
-    );
-    expect(
-      result.options.authenticatorSelection?.residentKey,
-    ).toBe('required');
-  });
-
-  it('factorKind=webauthn_mfa uses non-discoverable (server-side) credentials', async () => {
-    const fx = newFixture();
-    const result = await handleWebAuthnRegisterBegin(
-      {
-        tenantId: fx.tenantId,
-        correlationId: 'c',
-        userId: 'user-3',
-        userName: 'user@example.com',
-        rpId: 'atlas.example.com',
-        factorKind: 'webauthn_mfa',
-      },
-      fx.entities,
-    );
-    // 2FA factors are non-discoverable.
-    expect(
-      result.options.authenticatorSelection?.residentKey,
-    ).not.toBe('required');
-  });
-});
-
-describe('handleWebAuthnRegisterFinish — non-crypto branches', () => {
-  it('rejects an unknown challengeId with WEBAUTHN_CHALLENGE_NOT_FOUND', async () => {
-    const fx = newFixture();
-    await expect(
-      handleWebAuthnRegisterFinish(
-        {
-          tenantId: fx.tenantId,
-          correlationId: 'c',
-          principalId: 'user-1',
-          userId: 'user-1',
-          challengeId: 'wac-fake',
-          response: emptyRegistrationResponse(),
-          expectedOrigin: 'https://atlas.example.com',
-          rpId: 'atlas.example.com',
-          factorKind: 'webauthn_mfa',
-          factorName: 'security key',
+    return {
+        id: 'cred-1',
+        rawId: 'cred-1',
+        response: {
+            clientDataJSON: '',
+            authenticatorData: '',
+            signature: '',
         },
-        fx.events,
-        fx.entities,
-      ),
-    ).rejects.toMatchObject({
-      code: identityErrorCodes.WEBAUTHN_VERIFICATION_FAILED,
+        type: 'public-key',
+        clientExtensionResults: {},
+    };
+}
+describe('handleWebAuthnRegisterBegin', function () {
+    it('returns challengeId + PublicKeyCredentialCreationOptions and persists a challenge', async function () {
+        const fx = newFixture();
+        const result = await handleWebAuthnRegisterBegin({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            userId: 'user-1',
+            userName: 'user@example.com',
+            rpId: 'atlas.example.com',
+            rpName: 'Atlas',
+            factorKind: 'webauthn_mfa',
+        }, fx.entities);
+        expect(result.challengeId).toMatch(/^wac-/);
+        expect(result.options.rp.id).toBe('atlas.example.com');
+        expect(result.options.rp.name).toBe('Atlas');
+        // The challenge entity was persisted.
+        const stored = await fx.entities.get(fx.tenantId, 'WebAuthnChallenge', result.challengeId);
+        expect(stored).toBeDefined();
     });
-    expect(fx.events.events).toHaveLength(0);
-  });
+    it('factorKind=passkey enables resident keys (discoverable credentials)', async function () {
+        const fx = newFixture();
+        const result = await handleWebAuthnRegisterBegin({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            userId: 'user-2',
+            userName: 'user@example.com',
+            rpId: 'atlas.example.com',
+            factorKind: 'passkey',
+        }, fx.entities);
+        expect(result.options.authenticatorSelection?.residentKey).toBe('required');
+    });
+    it('factorKind=webauthn_mfa uses non-discoverable (server-side) credentials', async function () {
+        const fx = newFixture();
+        const result = await handleWebAuthnRegisterBegin({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            userId: 'user-3',
+            userName: 'user@example.com',
+            rpId: 'atlas.example.com',
+            factorKind: 'webauthn_mfa',
+        }, fx.entities);
+        // 2FA factors are non-discoverable.
+        expect(result.options.authenticatorSelection?.residentKey).not.toBe('required');
+    });
 });
-
+describe('handleWebAuthnRegisterFinish — non-crypto branches', function () {
+    it('rejects an unknown challengeId with WEBAUTHN_CHALLENGE_NOT_FOUND', async function () {
+        const fx = newFixture();
+        await expect(handleWebAuthnRegisterFinish({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            principalId: 'user-1',
+            userId: 'user-1',
+            challengeId: 'wac-fake',
+            response: emptyRegistrationResponse(),
+            expectedOrigin: 'https://atlas.example.com',
+            rpId: 'atlas.example.com',
+            factorKind: 'webauthn_mfa',
+            factorName: 'security key',
+        }, fx.events, fx.entities)).rejects.toMatchObject({
+            code: identityErrorCodes.WEBAUTHN_VERIFICATION_FAILED,
+        });
+        expect(fx.events.events).toHaveLength(0);
+    });
+});
 // I10 contract for the WebAuthn emit-sites. The crypto-bearing branches
 // (RegisterFinish success → `Identity.AuthFactorEnrolled`; AssertFinish
 // success → `Identity.MfaChallengeSucceeded`) are gated by real
@@ -167,90 +126,66 @@ describe('handleWebAuthnRegisterFinish — non-crypto branches', () => {
 // e2e wiring just imports it once it has an emitted envelope to
 // inspect. See modules/CLAUDE.md cache-invalidation contract for
 // rationale.
-describe.skip('handleWebAuthnRegisterFinish — I10 cache-tag contract (e2e gap)', () => {
-  it.todo(
-    'on success, AuthFactorEnrolled envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>, AuthFactor:<f>]',
-  );
+describe.skip('handleWebAuthnRegisterFinish — I10 cache-tag contract (e2e gap)', function () {
+    it.todo('on success, AuthFactorEnrolled envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>, AuthFactor:<f>]');
 });
-
-describe.skip('handleWebAuthnAssertFinish — I10 cache-tag contract (e2e gap)', () => {
-  it.todo(
-    'on success, MfaChallengeSucceeded envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>]',
-  );
+describe.skip('handleWebAuthnAssertFinish — I10 cache-tag contract (e2e gap)', function () {
+    it.todo('on success, MfaChallengeSucceeded envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>]');
 });
-
-describe('handleWebAuthnAssertBegin', () => {
-  it('returns challengeId + PublicKeyCredentialRequestOptions', async () => {
-    const fx = newFixture();
-    const result = await handleWebAuthnAssertBegin(
-      {
-        tenantId: fx.tenantId,
-        correlationId: 'c',
-        rpId: 'atlas.example.com',
-        factorKind: 'passkey',
-        // No userId — the authenticator picks any valid passkey via
-        // discoverable-credential flow.
-      },
-      fx.entities,
-    );
-    expect(result.challengeId).toMatch(/^wac-/);
-    expect(result.options.rpId).toBe('atlas.example.com');
-  });
-});
-
-describe('handleWebAuthnAssertFinish — non-crypto branches', () => {
-  it('rejects an unknown challengeId with WEBAUTHN_CHALLENGE_NOT_FOUND', async () => {
-    const fx = newFixture();
-    await expect(
-      handleWebAuthnAssertFinish(
-        {
-          tenantId: fx.tenantId,
-          correlationId: 'c',
-          principalId: 'user-1',
-          challengeId: 'wac-fake',
-          response: emptyAssertionResponse(),
-          expectedOrigin: 'https://atlas.example.com',
-          rpId: 'atlas.example.com',
-          factorKind: 'webauthn_mfa',
-        },
-        fx.events,
-        fx.entities,
-      ),
-    ).rejects.toMatchObject({
-      code: identityErrorCodes.WEBAUTHN_VERIFICATION_FAILED,
+describe('handleWebAuthnAssertBegin', function () {
+    it('returns challengeId + PublicKeyCredentialRequestOptions', async function () {
+        const fx = newFixture();
+        const result = await handleWebAuthnAssertBegin({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            rpId: 'atlas.example.com',
+            factorKind: 'passkey',
+            // No userId — the authenticator picks any valid passkey via
+            // discoverable-credential flow.
+        }, fx.entities);
+        expect(result.challengeId).toMatch(/^wac-/);
+        expect(result.options.rpId).toBe('atlas.example.com');
     });
-  });
-
-  it('throws IdentityError instances', async () => {
-    const fx = newFixture();
-    await expect(
-      handleWebAuthnAssertFinish(
-        {
-          tenantId: fx.tenantId,
-          correlationId: 'c',
-          principalId: 'user-1',
-          challengeId: 'wac-fake',
-          response: emptyAssertionResponse(),
-          expectedOrigin: 'https://atlas.example.com',
-          rpId: 'atlas.example.com',
-          factorKind: 'webauthn_mfa',
-        },
-        fx.events,
-        fx.entities,
-      ),
-    ).rejects.toBeInstanceOf(IdentityError);
-  });
 });
-
-describe.skip('WebAuthn — crypto-bearing branches (covered by a5-acceptance + Layer 3 e2e)', () => {
-  // These branches require real CBOR-encoded attestation / assertion
-  // responses — the @simplewebauthn/server library validates them
-  // against real ES256/RS256/EdDSA signatures. Mocking that here
-  // would defeat the purpose of the test.
-  it.todo('RegisterFinish: valid attestation creates AuthFactor and emits AuthFactorEnrolled');
-  it.todo('RegisterFinish: factor cap enforcement (max factors per user)');
-  it.todo('AssertFinish: valid assertion advances signCount and emits MfaChallengeSucceeded');
-  it.todo('AssertFinish: signCount regression triggers anomaly (cloned authenticator detection)');
-  it.todo('AssertFinish: rpId / origin mismatch rejects the assertion');
-  it.todo('Challenge expiry: challenge older than 5 min is treated as not-found');
+describe('handleWebAuthnAssertFinish — non-crypto branches', function () {
+    it('rejects an unknown challengeId with WEBAUTHN_CHALLENGE_NOT_FOUND', async function () {
+        const fx = newFixture();
+        await expect(handleWebAuthnAssertFinish({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            principalId: 'user-1',
+            challengeId: 'wac-fake',
+            response: emptyAssertionResponse(),
+            expectedOrigin: 'https://atlas.example.com',
+            rpId: 'atlas.example.com',
+            factorKind: 'webauthn_mfa',
+        }, fx.events, fx.entities)).rejects.toMatchObject({
+            code: identityErrorCodes.WEBAUTHN_VERIFICATION_FAILED,
+        });
+    });
+    it('throws IdentityError instances', async function () {
+        const fx = newFixture();
+        await expect(handleWebAuthnAssertFinish({
+            tenantId: fx.tenantId,
+            correlationId: 'c',
+            principalId: 'user-1',
+            challengeId: 'wac-fake',
+            response: emptyAssertionResponse(),
+            expectedOrigin: 'https://atlas.example.com',
+            rpId: 'atlas.example.com',
+            factorKind: 'webauthn_mfa',
+        }, fx.events, fx.entities)).rejects.toBeInstanceOf(IdentityError);
+    });
+});
+describe.skip('WebAuthn — crypto-bearing branches (covered by a5-acceptance + Layer 3 e2e)', function () {
+    // These branches require real CBOR-encoded attestation / assertion
+    // responses — the @simplewebauthn/server library validates them
+    // against real ES256/RS256/EdDSA signatures. Mocking that here
+    // would defeat the purpose of the test.
+    it.todo('RegisterFinish: valid attestation creates AuthFactor and emits AuthFactorEnrolled');
+    it.todo('RegisterFinish: factor cap enforcement (max factors per user)');
+    it.todo('AssertFinish: valid assertion advances signCount and emits MfaChallengeSucceeded');
+    it.todo('AssertFinish: signCount regression triggers anomaly (cloned authenticator detection)');
+    it.todo('AssertFinish: rpId / origin mismatch rejects the assertion');
+    it.todo('Challenge expiry: challenge older than 5 min is treated as not-found');
 });

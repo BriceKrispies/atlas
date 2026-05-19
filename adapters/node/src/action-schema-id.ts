@@ -11,22 +11,20 @@
  * fixed `.v1` suffix is appended (the manifest version field is the
  * runtime override; today every shipped action is v1).
  */
-
 export interface ActionSchemaRef {
-  schemaId: string;
-  schemaVersion: number;
+    schemaId: string;
+    schemaVersion: number;
 }
-
 const PASCAL_BOUNDARY = /(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g;
-
 function toSnake(segment: string): string {
-  return segment.replace(PASCAL_BOUNDARY, '_').toLowerCase();
+    return segment.replace(PASCAL_BOUNDARY, '_').toLowerCase();
 }
-
 export function actionIdToSchemaId(actionId: string): ActionSchemaRef {
-  const segments = actionId.split('.').map(toSnake).filter((s) => s.length > 0);
-  return {
-    schemaId: `${segments.join('.')}.v1`,
-    schemaVersion: 1,
-  };
+    const segments = actionId.split('.').map(toSnake).filter(function (s) {
+        return s.length > 0;
+    });
+    return {
+        schemaId: `${segments.join('.')}.v1`,
+        schemaVersion: 1,
+    };
 }

@@ -7,92 +7,76 @@
  * to the shadow root via the returned unmount closure. External callers
  * cannot traverse into the widget's DOM via `querySelector`.
  */
-
 import { emitTelemetry } from '@atlas/core';
-
-import type {
-  HostMountArgs,
-  WidgetElementInstance,
-} from '../types.ts';
-
-export async function mount({
-  manifest,
-  config,
-  context,
-  instanceId,
-  hostContainer,
-  ElementClass,
-  onError,
-}: HostMountArgs): Promise<() => void> {
-  let host: HTMLElement | null = null;
-  let shadow: ShadowRoot | null = null;
-  let element: WidgetElementInstance | null = null;
-
-  try {
-    if (!ElementClass) {
-      throw new Error(
-        `shadow isolation requires an ElementClass for '${manifest.widgetId}'`,
-      );
-    }
-    host = document.createElement('div');
-    host.setAttribute('data-widget-shell', '');
-    host.setAttribute('data-widget-id', manifest.widgetId);
-    host.setAttribute('data-widget-instance-id', instanceId);
-    hostContainer.appendChild(host);
-
-    // Some headless DOMs (linkedom) do not implement attachShadow; fall
-    // back to the inline path in that case so dry-run tests still work.
-    if (typeof host.attachShadow === 'function') {
-      shadow = host.attachShadow({ mode: 'closed' });
-    }
-
-    element = new ElementClass();
-    element.config = config;
-    element.context = context;
-    element.instanceId = instanceId;
-
-    if (shadow) {
-      shadow.appendChild(element);
-    } else {
-      host.appendChild(element);
-    }
-  } catch (err) {
+import type { HostMountArgs, WidgetElementInstance, } from '../types.ts';
+export async function mount({ manifest, config, context, instanceId, hostContainer, ElementClass, onError, }: HostMountArgs): Promise<() => void> {
+    let host: HTMLElement | null = null;
+    let shadow: ShadowRoot | null = null;
+    let element: WidgetElementInstance | null = null;
     try {
-      onError(err);
-    } catch {
-      /* swallow */
+        if (!ElementClass) {
+            throw new Error(`shadow isolation requires an ElementClass for '${manifest.widgetId}'`);
+        }
+        host = document.createElement('div');
+        host.setAttribute('data-widget-shell', '');
+        host.setAttribute('data-widget-id', manifest.widgetId);
+        host.setAttribute('data-widget-instance-id', instanceId);
+        hostContainer.appendChild(host);
+        // Some headless DOMs (linkedom) do not implement attachShadow; fall
+        // back to the inline path in that case so dry-run tests still work.
+        if (typeof host.attachShadow === 'function') {
+            shadow = host.attachShadow({ mode: 'closed' });
+        }
+        element = new ElementClass();
+        element.config = config;
+        element.context = context;
+        element.instanceId = instanceId;
+        if (shadow) {
+            shadow.appendChild(element);
+        }
+        else {
+            host.appendChild(element);
+        }
     }
-    return (): void => {
-      try {
-        host?.remove();
-      } catch {
-        /* already detached */
-      }
+    catch (err) {
+        try {
+            onError(err);
+        }
+        catch {
+            /* swallow */
+        }
+        return function (): void {
+            try {
+                host?.remove();
+            }
+            catch {
+                /* already detached */
+            }
+        };
+    }
+    return function (): void {
+        try {
+            element?.onUnmount?.();
+        }
+        catch (err) {
+            emitTelemetry({
+                eventName: 'atlas.widget.shadow.onUnmount.threw',
+                level: 'error',
+                source: 'widget-host.shadow-host',
+                widgetId: manifest.widgetId,
+                instanceId,
+                'error.message': err instanceof Error ? err.message : String(err),
+            });
+        }
+        try {
+            host?.remove();
+        }
+        catch {
+            /* detached */
+        }
+        element = null;
+        shadow = null;
+        host = null;
     };
-  }
-
-  return (): void => {
-    try {
-      element?.onUnmount?.();
-    } catch (err) {
-      emitTelemetry({
-        eventName: 'atlas.widget.shadow.onUnmount.threw',
-        level: 'error',
-        source: 'widget-host.shadow-host',
-        widgetId: manifest.widgetId,
-        instanceId,
-        'error.message': err instanceof Error ? err.message : String(err),
-      });
-    }
-    try {
-      host?.remove();
-    } catch {
-      /* detached */
-    }
-    element = null;
-    shadow = null;
-    host = null;
-  };
 }
-
 export default { mount };

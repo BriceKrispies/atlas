@@ -14,6 +14,7 @@ Pick the closest match and read its CLAUDE.md before working in that area.
 
 | Your task involves... | Read this |
 |-----------------------|-----------|
+| Kernel, runtime instructions, tenant declarations, FunctionRuntime, capability manifests, hot reload, Atlas-on-Atlas, or code-as-data | [`specs/crosscut/atlas-runtime.md`](specs/crosscut/atlas-runtime.md) + [`runtime-instruction-set.md`](specs/crosscut/runtime-instruction-set.md) + [`kernel-vs-data.md`](specs/crosscut/kernel-vs-data.md) |
 | Implementing or wiring port interfaces (DBs, caches, search, policy) | [`adapters/CLAUDE.md`](adapters/CLAUDE.md) |
 | Defining or changing a port (the abstraction itself) | [`ports/CLAUDE.md`](ports/CLAUDE.md) |
 | Domain logic — handlers, projections, queries, events | [`modules/CLAUDE.md`](modules/CLAUDE.md) |
@@ -35,8 +36,10 @@ Project agents live in [`.claude/agents/`](.claude/agents/) and are invoked via 
 | Agent | When to delegate |
 |-------|------------------|
 | [`architect`](.claude/agents/architect.md) | Design reviews; any change touching I1–I12, P1–P6, hexagonal layering, ingress, authz precedence, cache invalidation, or tenant scoping |
+| [`overseer`](.claude/agents/overseer.md) | Periodic chokepoint sweep. Runs `pnpm overseer:check` over the fixed I1–I18 file:line surface (ingress, dispatcher mirror, cache-tag contract, AtlasElement-only, surface state) and reasons about ordering / threading invariants the script can't cover. Read-only; files drift tickets. Default cadence: weekly. |
 | [`spec-keeper`](.claude/agents/spec-keeper.md) | Scoping new capabilities, adding normative rules, lexicon changes, migrating legacy spec content into `specs/domains/<x>/` |
 | [`vision-keeper`](.claude/agents/vision-keeper.md) | CTO-altitude monthly drift audit. Read-only; finds capability scopes that don't trace to vision tenets, code rebuilding what should be wrapped, agentic-first violations, missing ADRs for directional changes. Findings cite `specs/vision.md` / ADRs. Default cadence: monthly, last 30 days. |
+| [`anti-sycophant`](.claude/agents/anti-sycophant.md) | Read-only meta-reviewer. Manual invocation only. Calls out **agent sycophancy** (other reviewers softening), **user self-contradiction** (plans vs stated principles, ADR walk-backs without an ADR), **scope-vs-velocity dishonesty** (vision says X, git velocity says Y), and **vision-vs-architecture drift** (code becoming something different from what was promised). Advisory; user holds the pen. Maintains calibration ledger at `.claude/anti-sycophant/ledger.md`. |
 
 **Platform owners (one per platform — spec/design authority, not implementer)**
 
@@ -236,7 +239,6 @@ before writing code. The whole stack converges on this list.
 | Workspace version drift | `pnpm lint:syncpack` |
 | Markdown style | `pnpm lint:markdown` |
 | JSON schema contracts (Spectral) | `pnpm lint:spectral` |
-| Postgres migration safety (Squawk) | `pnpm lint:sql` |
 | Markdown link integrity (Lychee) | `pnpm lint:links` |
 | Atlas invariant rules (Semgrep) | `pnpm lint:semgrep` |
 | Format (write) | `pnpm format` |
@@ -248,7 +250,7 @@ before writing code. The whole stack converges on this list.
 | Invariant scan (overseer) | `pnpm overseer:check` |
 | DB up (Postgres) | `make db-up` |
 
-> The full quality battery — knip, syncpack, gitleaks, osv-scanner, lychee, markdownlint, squawk, spectral, vitest coverage — runs on every PR via [`.github/workflows/quality.yml`](.github/workflows/quality.yml). Pre-commit hooks (lefthook) run the fast subset locally; install with `pnpm exec lefthook install` after `pnpm install`.
+> The full quality battery — knip, syncpack, gitleaks, osv-scanner, lychee, markdownlint, spectral, vitest coverage — runs on every PR via [`.github/workflows/quality.yml`](.github/workflows/quality.yml). Pre-commit hooks (lefthook) run the fast subset locally; install with `pnpm exec lefthook install` after `pnpm install`.
 
 ## Non-Negotiable Invariants
 

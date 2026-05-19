@@ -18,62 +18,64 @@
  * to a `@atlas/widget-harness` package without code changes — it only
  * depends on public widget-host exports.
  */
-
 import { AtlasElement } from '@atlas/core';
 import { moduleDefaultRegistry } from '@atlas/widget-host';
 import { buildMockCapabilities, type MockCapabilitySpec } from './mock-capabilities.ts';
-
 const HARNESS_SYNTHETIC_ID = 'harness:synthetic';
-
 export interface HarnessConfigVariant {
-  name: string;
-  config?: Record<string, unknown>;
-  isolation?: string;
+    name: string;
+    config?: Record<string, unknown>;
+    isolation?: string;
 }
-
 export interface HarnessSyntheticPublish {
-  name?: string;
-  topic: string;
-  payload?: unknown;
+    name?: string;
+    topic: string;
+    payload?: unknown;
 }
-
 export interface HarnessSpec {
-  widgetId?: string;
-  displayName?: string;
-  configVariants?: HarnessConfigVariant[];
-  capabilities?: MockCapabilitySpec;
-  synthetic?: { publishes?: HarnessSyntheticPublish[] };
+    widgetId?: string;
+    displayName?: string;
+    configVariants?: HarnessConfigVariant[];
+    capabilities?: MockCapabilitySpec;
+    synthetic?: {
+        publishes?: HarnessSyntheticPublish[];
+    };
 }
-
-export type ResolveWidgetModuleUrlFn = (
-  widgetId: string,
-) => string | { url: string; supportUrls?: string[] } | null;
-
+export type ResolveWidgetModuleUrlFn = (widgetId: string) => string | {
+    url: string;
+    supportUrls?: string[];
+} | null;
 interface WidgetManifest {
-  widgetId?: string;
-  isolation?: string;
-  provides?: { topics?: string[] };
-  consumes?: { topics?: string[] };
+    widgetId?: string;
+    isolation?: string;
+    provides?: {
+        topics?: string[];
+    };
+    consumes?: {
+        topics?: string[];
+    };
 }
-
 interface WidgetHostElement extends HTMLElement {
-  correlationId?: string;
-  principal?: unknown;
-  tenantId?: string;
-  locale?: string;
-  theme?: string;
-  resolveWidgetModuleUrl?: ResolveWidgetModuleUrlFn;
-  onMediatorTrace?: (ev: { kind: string } & Record<string, unknown>) => void;
-  onCapabilityTrace?: (ev: { kind: string } & Record<string, unknown>) => void;
-  capabilities?: Record<string, (args: unknown) => Promise<unknown>>;
-  layout?: unknown;
-  mediator?: {
-    registerInstance: (id: string, info: unknown) => void;
-    revokeInstance: (id: string) => void;
-    publish: (id: string, topic: string, payload: unknown) => void;
-  };
+    correlationId?: string;
+    principal?: unknown;
+    tenantId?: string;
+    locale?: string;
+    theme?: string;
+    resolveWidgetModuleUrl?: ResolveWidgetModuleUrlFn;
+    onMediatorTrace?: (ev: {
+        kind: string;
+    } & Record<string, unknown>) => void;
+    onCapabilityTrace?: (ev: {
+        kind: string;
+    } & Record<string, unknown>) => void;
+    capabilities?: Record<string, (args: unknown) => Promise<unknown>>;
+    layout?: unknown;
+    mediator?: {
+        registerInstance: (id: string, info: unknown) => void;
+        revokeInstance: (id: string) => void;
+        publish: (id: string, topic: string, payload: unknown) => void;
+    };
 }
-
 const styles = `
   :host {
     display: block;
@@ -179,68 +181,69 @@ const styles = `
   }
   .no-topics { color: var(--atlas-color-text-muted); font-style: italic; }
 `;
-
 export class WidgetHarnessElement extends AtlasElement {
-  spec: HarnessSpec | null = null;
-  widgetId = '';
-  resolveWidgetModuleUrl: ResolveWidgetModuleUrlFn | null = null;
-
-  private _host: WidgetHostElement | null = null;
-  private _cleanups: Array<() => void> = [];
-  private _mediatorLogEl: HTMLElement | null = null;
-  private _capabilityLogEl: HTMLElement | null = null;
-  private _activeVariant: string | null = null;
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    queueMicrotask(() => this._render());
-  }
-
-  override disconnectedCallback(): void {
-    this._teardown();
-  }
-
-  private _teardown(): void {
-    for (const fn of this._cleanups) {
-      try { fn(); } catch { /* ignore */ }
+    spec: HarnessSpec | null = null;
+    widgetId = '';
+    resolveWidgetModuleUrl: ResolveWidgetModuleUrlFn | null = null;
+    private _host: WidgetHostElement | null = null;
+    private _cleanups: Array<() => void> = [];
+    private _mediatorLogEl: HTMLElement | null = null;
+    private _capabilityLogEl: HTMLElement | null = null;
+    private _activeVariant: string | null = null;
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
     }
-    this._cleanups = [];
-    if (this._host) {
-      try { this._host.remove(); } catch { /* ignore */ }
-      this._host = null;
+    override connectedCallback(): void {
+        super.connectedCallback();
+        queueMicrotask(() => this._render());
     }
-  }
-
-  private _render(): void {
-    const spec: HarnessSpec =
-      this.spec ?? { configVariants: [], capabilities: {}, synthetic: { publishes: [] } };
-    const widgetId = this.widgetId || spec.widgetId || '';
-    const registration = widgetId
-      ? (moduleDefaultRegistry.get(widgetId) as { manifest?: WidgetManifest } | null)
-      : null;
-    const manifest: WidgetManifest | null = registration?.manifest ?? null;
-
-    const DEFAULT_VARIANT: HarnessConfigVariant = { name: 'default', config: {} };
-    const configured: HarnessConfigVariant[] = Array.isArray(spec.configVariants)
-      ? spec.configVariants
-      : [];
-    const variants: [HarnessConfigVariant, ...HarnessConfigVariant[]] =
-      configured.length > 0
-        ? [configured[0] ?? DEFAULT_VARIANT, ...configured.slice(1)]
-        : [DEFAULT_VARIANT];
-    const active: HarnessConfigVariant = this._activeVariant
-      ? (variants.find((v) => v.name === this._activeVariant) ?? variants[0])
-      : variants[0];
-    this._activeVariant = active.name;
-
-    const root = this.shadowRoot;
-    if (!root) return;
-    root.innerHTML = `
+    override disconnectedCallback(): void {
+        this._teardown();
+    }
+    private _teardown(): void {
+        for (const fn of this._cleanups) {
+            try {
+                fn();
+            }
+            catch { /* ignore */ }
+        }
+        this._cleanups = [];
+        if (this._host) {
+            try {
+                this._host.remove();
+            }
+            catch { /* ignore */ }
+            this._host = null;
+        }
+    }
+    private _render(): void {
+        const spec: HarnessSpec = this.spec ?? { configVariants: [], capabilities: {}, synthetic: { publishes: [] } };
+        const widgetId = this.widgetId || spec.widgetId || '';
+        const registration = widgetId
+            ? (moduleDefaultRegistry.get(widgetId) as {
+                manifest?: WidgetManifest;
+            } | null)
+            : null;
+        const manifest: WidgetManifest | null = registration?.manifest ?? null;
+        const DEFAULT_VARIANT: HarnessConfigVariant = { name: 'default', config: {} };
+        const configured: HarnessConfigVariant[] = Array.isArray(spec.configVariants)
+            ? spec.configVariants
+            : [];
+        const variants: [
+            HarnessConfigVariant,
+            ...HarnessConfigVariant[]
+        ] = configured.length > 0
+            ? [configured[0] ?? DEFAULT_VARIANT, ...configured.slice(1)]
+            : [DEFAULT_VARIANT];
+        const active: HarnessConfigVariant = this._activeVariant
+            ? (variants.find((v) => v.name === this._activeVariant) ?? variants[0])
+            : variants[0];
+        this._activeVariant = active.name;
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        root.innerHTML = `
       <style>${styles}</style>
       <div class="meta">
         <strong>${spec.displayName ?? widgetId ?? '(no widget)'}</strong>
@@ -270,181 +273,171 @@ export class WidgetHarnessElement extends AtlasElement {
         </div>
       </div>
     `;
-
-    const variantBar = root.querySelector('[data-role="variants"]') as HTMLElement | null;
-    if (variantBar) {
-      for (const v of variants) {
-        const btn = document.createElement('button');
-        btn.className = 'variant-btn';
-        btn.textContent = v.name;
-        btn.setAttribute('aria-pressed', v.name === active.name ? 'true' : 'false');
-        btn.addEventListener('click', () => {
-          this._activeVariant = v.name;
-          this._render();
-        });
-        variantBar.appendChild(btn);
-      }
-    }
-
-    const publishesEl = root.querySelector('[data-role="publishes"]') as HTMLElement | null;
-    const widgetConsumes: string[] = manifest?.consumes?.topics ?? [];
-    const syntheticPublishes: HarnessSyntheticPublish[] = Array.isArray(spec.synthetic?.publishes)
-      ? spec.synthetic.publishes
-      : [];
-    const rows: HarnessSyntheticPublish[] =
-      syntheticPublishes.length > 0
-        ? syntheticPublishes
-        : widgetConsumes.map((t) => ({ name: t, topic: t, payload: {} }));
-    if (publishesEl) {
-      if (rows.length === 0) {
-        publishesEl.innerHTML = `<div class="no-topics">Widget declares no consumed topics.</div>`;
-      } else {
-        publishesEl.innerHTML = '';
-        for (const row of rows) {
-          const line = document.createElement('div');
-          line.className = 'publish-row';
-          line.innerHTML = `
+        const variantBar = root.querySelector('[data-role="variants"]') as HTMLElement | null;
+        if (variantBar) {
+            for (const v of variants) {
+                const btn = document.createElement('button');
+                btn.className = 'variant-btn';
+                btn.textContent = v.name;
+                btn.setAttribute('aria-pressed', v.name === active.name ? 'true' : 'false');
+                btn.addEventListener('click', () => {
+                    this._activeVariant = v.name;
+                    this._render();
+                });
+                variantBar.appendChild(btn);
+            }
+        }
+        const publishesEl = root.querySelector('[data-role="publishes"]') as HTMLElement | null;
+        const widgetConsumes: string[] = manifest?.consumes?.topics ?? [];
+        const syntheticPublishes: HarnessSyntheticPublish[] = Array.isArray(spec.synthetic?.publishes)
+            ? spec.synthetic.publishes
+            : [];
+        const rows: HarnessSyntheticPublish[] = syntheticPublishes.length > 0
+            ? syntheticPublishes
+            : widgetConsumes.map(function (t) {
+                return ({ name: t, topic: t, payload: {} });
+            });
+        if (publishesEl) {
+            if (rows.length === 0) {
+                publishesEl.innerHTML = `<div class="no-topics">Widget declares no consumed topics.</div>`;
+            }
+            else {
+                publishesEl.innerHTML = '';
+                for (const row of rows) {
+                    const line = document.createElement('div');
+                    line.className = 'publish-row';
+                    line.innerHTML = `
             <button type="button">publish</button>
             <code>${row.topic}</code>
           `;
-          line.querySelector('button')?.addEventListener('click', () => {
-            this._publishSynthetic(row.topic, row.payload ?? {});
-          });
-          publishesEl.appendChild(line);
+                    line.querySelector('button')?.addEventListener('click', () => {
+                        this._publishSynthetic(row.topic, row.payload ?? {});
+                    });
+                    publishesEl.appendChild(line);
+                }
+            }
         }
-      }
+        this._mediatorLogEl = root.querySelector('[data-role="mediator-log"]') as HTMLElement | null;
+        this._capabilityLogEl = root.querySelector('[data-role="capability-log"]') as HTMLElement | null;
+        const mountEl = root.querySelector('[data-role="mount"]') as HTMLElement | null;
+        if (mountEl)
+            this._mountWidget(mountEl, widgetId, active, manifest);
     }
-
-    this._mediatorLogEl = root.querySelector('[data-role="mediator-log"]') as HTMLElement | null;
-    this._capabilityLogEl = root.querySelector('[data-role="capability-log"]') as HTMLElement | null;
-
-    const mountEl = root.querySelector('[data-role="mount"]') as HTMLElement | null;
-    if (mountEl) this._mountWidget(mountEl, widgetId, active, manifest);
-  }
-
-  private _mountWidget(
-    container: HTMLElement,
-    widgetId: string,
-    variant: HarnessConfigVariant,
-    manifest: WidgetManifest | null,
-  ): void {
-    this._teardown();
-
-    const host = document.createElement('widget-host') as WidgetHostElement;
-    host.correlationId = `harness-${Math.random().toString(36).slice(2, 10)}`;
-    host.principal = { id: 'harness-user', roles: ['tenant-admin'], permissions: [] };
-    host.tenantId = 'harness';
-    host.locale = 'en';
-    host.theme = 'default';
-
-    if (typeof this.resolveWidgetModuleUrl === 'function') {
-      host.resolveWidgetModuleUrl = this.resolveWidgetModuleUrl;
-    }
-
-    host.onMediatorTrace = (ev) => this._appendLog(this._mediatorLogEl, ev.kind, ev);
-    host.onCapabilityTrace = (ev) => this._appendLog(this._capabilityLogEl, ev.kind, ev);
-
-    host.capabilities = buildMockCapabilities(this.spec?.capabilities ?? {});
-
-    // instanceId must match the layout schema pattern ^[a-zA-Z0-9_-]+$,
-    // so dots in the widgetId (e.g. "content.announcements") can't pass
-    // through — substitute a safe separator.
-    const safeWidgetId = String(widgetId).replace(/[^a-zA-Z0-9_-]/g, '_');
-    const instanceId = `harness-${safeWidgetId}-1`;
-    host.layout = {
-      version: 1,
-      slots: {
-        main: [
-          {
-            widgetId,
-            instanceId,
-            config: variant.config ?? {},
-            ...(variant.isolation ? { isolationOverride: variant.isolation } : {}),
-          },
-        ],
-      },
-    };
-
-    container.appendChild(host);
-    this._host = host;
-
-    // Register a synthetic harness instance so the rig can publish inbound
-    // events into the real mediator. The synthetic instance's "provides"
-    // mirrors the widget's "consumes", and vice-versa for symmetry.
-    // Must happen AFTER host is in the DOM because mediator is created
-    // during _mountAll, triggered by layout assignment + connection.
-    queueMicrotask(() => {
-      const mediator = host.mediator;
-      if (!mediator) return;
-      const provides = manifest?.consumes?.topics ?? [];
-      const consumes = manifest?.provides?.topics ?? [];
-      try {
-        mediator.registerInstance(HARNESS_SYNTHETIC_ID, {
-          provides: { topics: provides },
-          consumes: { topics: consumes },
+    private _mountWidget(container: HTMLElement, widgetId: string, variant: HarnessConfigVariant, manifest: WidgetManifest | null): void {
+        this._teardown();
+        const host = document.createElement('widget-host') as WidgetHostElement;
+        host.correlationId = `harness-${Math.random().toString(36).slice(2, 10)}`;
+        host.principal = { id: 'harness-user', roles: ['tenant-admin'], permissions: [] };
+        host.tenantId = 'harness';
+        host.locale = 'en';
+        host.theme = 'default';
+        if (typeof this.resolveWidgetModuleUrl === 'function') {
+            host.resolveWidgetModuleUrl = this.resolveWidgetModuleUrl;
+        }
+        host.onMediatorTrace = (ev) => this._appendLog(this._mediatorLogEl, ev.kind, ev);
+        host.onCapabilityTrace = (ev) => this._appendLog(this._capabilityLogEl, ev.kind, ev);
+        host.capabilities = buildMockCapabilities(this.spec?.capabilities ?? {});
+        // instanceId must match the layout schema pattern ^[a-zA-Z0-9_-]+$,
+        // so dots in the widgetId (e.g. "content.announcements") can't pass
+        // through — substitute a safe separator.
+        const safeWidgetId = String(widgetId).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const instanceId = `harness-${safeWidgetId}-1`;
+        host.layout = {
+            version: 1,
+            slots: {
+                main: [
+                    {
+                        widgetId,
+                        instanceId,
+                        config: variant.config ?? {},
+                        ...(variant.isolation ? { isolationOverride: variant.isolation } : {}),
+                    },
+                ],
+            },
+        };
+        container.appendChild(host);
+        this._host = host;
+        // Register a synthetic harness instance so the rig can publish inbound
+        // events into the real mediator. The synthetic instance's "provides"
+        // mirrors the widget's "consumes", and vice-versa for symmetry.
+        // Must happen AFTER host is in the DOM because mediator is created
+        // during _mountAll, triggered by layout assignment + connection.
+        queueMicrotask(() => {
+            const mediator = host.mediator;
+            if (!mediator)
+                return;
+            const provides = manifest?.consumes?.topics ?? [];
+            const consumes = manifest?.provides?.topics ?? [];
+            try {
+                mediator.registerInstance(HARNESS_SYNTHETIC_ID, {
+                    provides: { topics: provides },
+                    consumes: { topics: consumes },
+                });
+            }
+            catch (err) {
+                this._appendLog(this._mediatorLogEl, 'harness-register-failed', {
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
         });
-      } catch (err) {
-        this._appendLog(this._mediatorLogEl, 'harness-register-failed', {
-          error: err instanceof Error ? err.message : String(err),
+        this._cleanups.push(function () {
+            try {
+                host.mediator?.revokeInstance(HARNESS_SYNTHETIC_ID);
+            }
+            catch { /* ignore */ }
         });
-      }
-    });
-
-    this._cleanups.push(() => {
-      try { host.mediator?.revokeInstance(HARNESS_SYNTHETIC_ID); } catch { /* ignore */ }
-    });
-  }
-
-  private _publishSynthetic(topic: string, payload: unknown): void {
-    const mediator = this._host?.mediator;
-    if (!mediator) {
-      this._appendLog(this._mediatorLogEl, 'harness-publish-failed', {
-        topic,
-        error: 'no mediator (widget not mounted yet)',
-      });
-      return;
     }
-    try {
-      mediator.publish(HARNESS_SYNTHETIC_ID, topic, payload);
-    } catch (err) {
-      this._appendLog(this._mediatorLogEl, 'harness-publish-failed', {
-        topic,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    private _publishSynthetic(topic: string, payload: unknown): void {
+        const mediator = this._host?.mediator;
+        if (!mediator) {
+            this._appendLog(this._mediatorLogEl, 'harness-publish-failed', {
+                topic,
+                error: 'no mediator (widget not mounted yet)',
+            });
+            return;
+        }
+        try {
+            mediator.publish(HARNESS_SYNTHETIC_ID, topic, payload);
+        }
+        catch (err) {
+            this._appendLog(this._mediatorLogEl, 'harness-publish-failed', {
+                topic,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
     }
-  }
-
-  private _appendLog(logEl: HTMLElement | null, kind: string, payload: unknown): void {
-    if (!logEl) return;
-    const empty = logEl.querySelector('.log-empty');
-    if (empty) empty.remove();
-    const line = document.createElement('div');
-    line.className = 'log-line';
-    const k = document.createElement('span');
-    k.className = 'log-kind';
-    k.textContent = kind;
-    line.appendChild(k);
-    let text: string;
-    try {
-      text = JSON.stringify(payload, replaceErrors);
-    } catch {
-      text = String(payload);
+    private _appendLog(logEl: HTMLElement | null, kind: string, payload: unknown): void {
+        if (!logEl)
+            return;
+        const empty = logEl.querySelector('.log-empty');
+        if (empty)
+            empty.remove();
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        const k = document.createElement('span');
+        k.className = 'log-kind';
+        k.textContent = kind;
+        line.appendChild(k);
+        let text: string;
+        try {
+            text = JSON.stringify(payload, replaceErrors);
+        }
+        catch {
+            text = String(payload);
+        }
+        line.appendChild(document.createTextNode(' ' + text));
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
     }
-    line.appendChild(document.createTextNode(' ' + text));
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
 }
-
 function replaceErrors(_key: string, value: unknown): unknown {
-  if (value instanceof Error) return { error: value.message };
-  return value;
+    if (value instanceof Error)
+        return { error: value.message };
+    return value;
 }
-
 AtlasElement.define('widget-harness', WidgetHarnessElement);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'widget-harness': WidgetHarnessElement;
-  }
+    interface HTMLElementTagNameMap {
+        'widget-harness': WidgetHarnessElement;
+    }
 }

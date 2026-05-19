@@ -14,73 +14,61 @@
  * with a known-bad fixture inline. That gives the same coverage with
  * less surface area.
  */
-
 import { describe, expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import {
-  CedarPolicyEngine,
-  BundledFixtureLoader,
-  generateCedarSchema,
-} from '../src/index.ts';
+import { CedarPolicyEngine, BundledFixtureLoader, generateCedarSchema, } from '../src/index.ts';
 import type { ModuleManifest } from '../src/index.ts';
-
 const here = dirname(fileURLToPath(import.meta.url));
 // test/ → package root → workspace root
 const repoRoot = join(here, '..', '..', '..');
 const cliPath = join(repoRoot, 'adapters', 'policy-cedar', 'bin', 'cedar-check.ts');
-
-describe('cedar:check CLI — happy path', () => {
-  // 30s timeout: tsx + Cedar WASM init alone can run 4-6s on a cold cache,
-  // and the default 5s testTimeout flakes on Windows when the suite is
-  // running under load. Cedar evaluation itself is fast — the bound is
-  // dominated by subprocess spawn + module resolution.
-  test('exits 0 against the bundled fixtures', { timeout: 30_000 }, () => {
-    // Use shell: true so Windows .cmd shims (tsx.cmd) resolve. spawnSync
-    // surfaces non-zero exits via `.status` rather than throwing, so we
-    // assert directly. Skipped when the workspace tsx isn't installed
-    // (e.g. someone deleted node_modules between install + test).
-    const isWin = process.platform === 'win32';
-    const tsxBin = join(
-      repoRoot,
-      'node_modules',
-      '.bin',
-      isWin ? 'tsx.cmd' : 'tsx',
-    );
-    const result = spawnSync(tsxBin, [cliPath], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      shell: isWin, // .cmd needs cmd.exe to resolve
-      stdio: ['ignore', 'pipe', 'pipe'],
+describe('cedar:check CLI — happy path', function () {
+    // 30s timeout: tsx + Cedar WASM init alone can run 4-6s on a cold cache,
+    // and the default 5s testTimeout flakes on Windows when the suite is
+    // running under load. Cedar evaluation itself is fast — the bound is
+    // dominated by subprocess spawn + module resolution.
+    test('exits 0 against the bundled fixtures', { timeout: 30000 }, function () {
+        // Use shell: true so Windows .cmd shims (tsx.cmd) resolve. spawnSync
+        // surfaces non-zero exits via `.status` rather than throwing, so we
+        // assert directly. Skipped when the workspace tsx isn't installed
+        // (e.g. someone deleted node_modules between install + test).
+        const isWin = process.platform === 'win32';
+        const tsxBin = join(repoRoot, 'node_modules', '.bin', isWin ? 'tsx.cmd' : 'tsx');
+        const result = spawnSync(tsxBin, [cliPath], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            shell: isWin, // .cmd needs cmd.exe to resolve
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        if (result.error) {
+            throw new Error(`spawnSync failed: ${result.error.message}`);
+        }
+        expect(result.status).toBe(0);
+        expect(result.stdout).toMatch(/cedar:check: \d+\/\d+ fixtures ok/);
     });
-    if (result.error) {
-      throw new Error(`spawnSync failed: ${result.error.message}`);
-    }
-    expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/cedar:check: \d+\/\d+ fixtures ok/);
-  });
 });
-
-describe('cedar:check — deliberately-broken policy fails validate()', () => {
-  // Inline coverage of the "broken fixture should fail" gauntlet without
-  // needing to fork a process — exercises the same engine.validate path
-  // the CLI uses, which is what actually decides pass/fail.
-  test('engine.validate flags a policy that references a non-existent action', async () => {
-    const manifest: ModuleManifest = {
-      resources: [{ resourceType: 'Family' }],
-      actions: [{ actionId: 'Catalog.Family.Publish', resourceType: 'Family' }],
-    };
-    const schema = generateCedarSchema([manifest]);
-    const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
-      schema,
+describe('cedar:check — deliberately-broken policy fails validate()', function () {
+    // Inline coverage of the "broken fixture should fail" gauntlet without
+    // needing to fork a process — exercises the same engine.validate path
+    // the CLI uses, which is what actually decides pass/fail.
+    test('engine.validate flags a policy that references a non-existent action', async function () {
+        const manifest: ModuleManifest = {
+            resources: [{ resourceType: 'Family' }],
+            actions: [{ actionId: 'Catalog.Family.Publish', resourceType: 'Family' }],
+        };
+        const schema = generateCedarSchema([manifest]);
+        const engine = new CedarPolicyEngine(new BundledFixtureLoader(new Map()), {
+            schema,
+        });
+        const broken = `permit (principal, action == Action::"Does.Not.Exist", resource is Family);`;
+        const answer = await engine.validate(broken);
+        if (answer.type === 'success') {
+            expect(answer.validationErrors.length).toBeGreaterThan(0);
+        }
+        else {
+            expect(answer.errors.length).toBeGreaterThan(0);
+        }
     });
-    const broken = `permit (principal, action == Action::"Does.Not.Exist", resource is Family);`;
-    const answer = await engine.validate(broken);
-    if (answer.type === 'success') {
-      expect(answer.validationErrors.length).toBeGreaterThan(0);
-    } else {
-      expect(answer.errors.length).toBeGreaterThan(0);
-    }
-  });
 });

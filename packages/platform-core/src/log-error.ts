@@ -2,17 +2,22 @@
  * Convert an arbitrary thrown value into the `LogEventError` shape the
  * structured logger expects on the top-level `error` field.
  *
- * The ingress chokepoint catches errors from metrics counters, the entity
- * store, and the audit-emit hook. Any of those can throw a plain string,
- * a non-Error object, or an `Error` subclass — `toLogError` normalises
- * the three so the log line always carries `{ code, message, stack? }`.
+ * Lives in platform-core (not @atlas/ingress) so adapters and modules
+ * can normalise caught errors without taking a dep on ingress. Callers
+ * pass the raw catch-bound value:
+ *
+ *     this.logger?.error('worker drain failed', {
+ *       event: 'Worker.Source.DrainFailed',
+ *       error: toLogError(err),
+ *       properties: { tenantId, moduleId },
+ *     });
  *
  * `code` defaults to `'Error'` (matches the JS `Error.name` default) so
  * downstream log queries can group by code without special-casing
  * non-Error throws.
  */
 
-import type { LogEventError } from '@atlas/platform-core';
+import type { LogEventError } from './log-event.ts';
 
 export function toLogError(cause: unknown): LogEventError {
   if (cause instanceof Error) {

@@ -1,30 +1,26 @@
 import { test as base, expect as baseExpect } from '@playwright/test';
-
 /**
  * Shape of a telemetry event emitted via `console.debug('[telemetry]', …)`.
  */
 export interface TelemetryEvent {
-  eventName: string;
-  surfaceId?: string;
-  [key: string]: unknown;
+    eventName: string;
+    surfaceId?: string;
+    [key: string]: unknown;
 }
-
 /**
  * Spy returned by the `telemetrySpy` fixture — captures telemetry events
  * forwarded through `console.debug`.
  */
 export interface TelemetrySpy {
-  events: TelemetryEvent[];
-  clear(): void;
+    events: TelemetryEvent[];
+    clear(): void;
 }
-
 /**
  * Atlas-specific Playwright fixtures.
  */
 export interface AtlasFixtures {
-  telemetrySpy: TelemetrySpy;
+    telemetrySpy: TelemetrySpy;
 }
-
 /**
  * Extended Playwright test with Atlas-specific fixtures.
  *
@@ -32,73 +28,67 @@ export interface AtlasFixtures {
  * - telemetrySpy: captures console.debug('[telemetry]', ...) from AtlasElement.emit()
  */
 export const test = base.extend<AtlasFixtures>({
-  telemetrySpy: async ({ page }, use) => {
-    const events: TelemetryEvent[] = [];
-
-    page.on('console', (msg) => {
-      if (msg.type() === 'debug') {
-        const text = msg.text();
-        if (text.startsWith('[telemetry]')) {
-          // Second arg to console.debug is the telemetry object
-          const argHandle = msg.args()[1];
-          if (argHandle) {
-            argHandle
-              .jsonValue()
-              .then((val: unknown) => {
-                if (val && typeof val === 'object' && !Array.isArray(val)) {
-                  // Boundary: console.debug telemetry arg is structured by
-                  // the producer (atlas-metrics). Tests pin the contract.
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test boundary: console.debug arg shape pinned by atlas-metrics emitter
-                  events.push(val as TelemetryEvent);
+    telemetrySpy: async function ({ page }, use) {
+        const events: TelemetryEvent[] = [];
+        page.on('console', function (msg) {
+            if (msg.type() === 'debug') {
+                const text = msg.text();
+                if (text.startsWith('[telemetry]')) {
+                    // Second arg to console.debug is the telemetry object
+                    const argHandle = msg.args()[1];
+                    if (argHandle) {
+                        argHandle
+                            .jsonValue()
+                            .then(function (val: unknown) {
+                            if (val && typeof val === 'object' && !Array.isArray(val)) {
+                                // Boundary: console.debug telemetry arg is structured by
+                                // the producer (atlas-metrics). Tests pin the contract.
+                                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test boundary: console.debug arg shape pinned by atlas-metrics emitter
+                                events.push(val as TelemetryEvent);
+                            }
+                        })
+                            .catch(function () {
+                            // Browser context may be gone — ignore
+                        });
+                    }
                 }
-              })
-              .catch(() => {
-                // Browser context may be gone — ignore
-              });
-          }
-        }
-      }
-    });
-
-    const spy: TelemetrySpy = {
-      events,
-      clear() {
-        events.length = 0;
-      },
-    };
-
-    await use(spy);
-  },
+            }
+        });
+        const spy: TelemetrySpy = {
+            events,
+            clear() {
+                events.length = 0;
+            },
+        };
+        await use(spy);
+    },
 });
-
 /**
  * Shape accepted by the `toHaveEmitted` matcher.
  */
 export interface ToHaveEmittedShape {
-  eventName: string;
-  surfaceId?: string;
+    eventName: string;
+    surfaceId?: string;
 }
-
 /**
  * Extended expect with Atlas-specific matchers.
  */
 export const expect = baseExpect.extend({
-  toHaveEmitted(spy: TelemetrySpy, expected: ToHaveEmittedShape) {
-    const match = spy.events.find(
-      (e) =>
-        e.eventName === expected.eventName &&
-        (expected.surfaceId === undefined || e.surfaceId === expected.surfaceId),
-    );
-
-    return {
-      pass: !!match,
-      message: () =>
-        match
-          ? `Expected telemetry NOT to have emitted ${JSON.stringify(expected)}`
-          : `Expected telemetry to have emitted ${JSON.stringify(expected)} but received:\n${
-              spy.events.map((e) => `  - ${e.eventName}`).join('\n') || '  (none)'
-            }`,
-      name: 'toHaveEmitted',
-    };
-  },
+    toHaveEmitted(spy: TelemetrySpy, expected: ToHaveEmittedShape) {
+        const match = spy.events.find(function (e) {
+            return e.eventName === expected.eventName &&
+                (expected.surfaceId === undefined || e.surfaceId === expected.surfaceId);
+        });
+        return {
+            pass: !!match,
+            message: function () {
+                return match
+                    ? `Expected telemetry NOT to have emitted ${JSON.stringify(expected)}`
+                    : `Expected telemetry to have emitted ${JSON.stringify(expected)} but received:\n${spy.events.map(function (e) {
+                        return `  - ${e.eventName}`;
+                    }).join('\n') || '  (none)'}`;
+            },
+            name: 'toHaveEmitted',
+        };
+    },
 });

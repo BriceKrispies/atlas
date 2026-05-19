@@ -1,4 +1,4 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope, Logger } from '@atlas/platform-core';
 import type {
   CatalogStateStore,
   ProjectionStore,
@@ -29,6 +29,13 @@ export interface CatalogDispatchContext {
    * today.
    */
   cache?: Cache;
+  /**
+   * Optional logger for per-event debug breadcrumbs. Wired by
+   * `apps/server` (and the projection worker) so flipping the catalog
+   * module to debug surfaces every projection rebuild. Tests / sim
+   * pass nothing and stay silent.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -43,6 +50,13 @@ export async function dispatchCatalogEvent(
   ctx: CatalogDispatchContext,
 ): Promise<void> {
   if (!CATALOG_EVENT_TYPES.has(envelope.eventType)) return;
+  ctx.logger?.debug('catalog dispatcher ran', {
+    event: 'Catalog.Dispatch.Ran',
+    properties: {
+      eventType: envelope.eventType,
+      eventId: envelope.eventId,
+    },
+  });
   await rebuildTaxonomyNavigation(envelope.tenantId, ctx.catalogState, ctx.projections);
   await rebuildFamilyDetail(envelope.tenantId, ctx.catalogState, ctx.projections);
   await rebuildVariantMatrix(envelope.tenantId, ctx.catalogState, ctx.projections);
@@ -63,5 +77,5 @@ export async function dispatchCatalogEvent(
  * dispatcher rather than piggy-backing on this one.
  */
 export function catalogDispatcher(ctx: CatalogDispatchContext): EventDispatcher {
-  return (envelope) => dispatchCatalogEvent(envelope, ctx);
+  return function (envelope) { return dispatchCatalogEvent(envelope, ctx); };
 }

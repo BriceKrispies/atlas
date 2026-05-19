@@ -1,7 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { must } from './internal/assert.ts';
 import { adoptSheet, createSheet, escapeAttr, escapeText } from './util.ts';
-
 /**
  * <atlas-segmented-control> — compact "pick-one-of-N" form control.
  *
@@ -28,7 +27,6 @@ import { adoptSheet, createSheet, escapeAttr, escapeText } from './util.ts';
  *   disabled   — disables the whole control
  *   aria-label — accessible label for the radiogroup
  */
-
 const sheet = createSheet(`
   :host {
     display: inline-flex;
@@ -90,203 +88,196 @@ const sheet = createSheet(`
     }
   }
 `);
-
 export interface SegmentOption {
-  value: string;
-  label: string;
-  disabled?: boolean;
+    value: string;
+    label: string;
+    disabled?: boolean;
 }
-
 interface RawSegmentInput {
-  value: unknown;
-  label?: unknown;
-  disabled?: unknown;
+    value: unknown;
+    label?: unknown;
+    disabled?: unknown;
 }
-
 export class AtlasSegmentedControl extends AtlasElement {
-  declare size: string;
-  declare stretch: boolean;
-  declare disabled: boolean;
-
-  static {
-    Object.defineProperty(this.prototype, 'size', AtlasElement.strAttr('size', ''));
-    Object.defineProperty(this.prototype, 'stretch', AtlasElement.boolAttr('stretch'));
-    Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
-  }
-
-  private _options: SegmentOption[] = [];
-  private _value: string | null = null;
-  private _built = false;
-
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-  }
-
-  get options(): SegmentOption[] {
-    return this._options;
-  }
-  set options(next: readonly RawSegmentInput[] | null | undefined) {
-    // `Array.isArray` widens to `any[]`; iterate over the typed input
-    // directly so each `o` retains the `RawSegmentInput` type and its
-    // `unknown` field types survive into the body.
-    const out: SegmentOption[] = [];
-    if (next != null) {
-      for (const o of next) {
-        out.push({
-          value: String(o.value),
-          label: String(o.label ?? o.value),
-          disabled: o.disabled === true,
+    declare size: string;
+    declare stretch: boolean;
+    declare disabled: boolean;
+    static {
+        Object.defineProperty(this.prototype, 'size', AtlasElement.strAttr('size', ''));
+        Object.defineProperty(this.prototype, 'stretch', AtlasElement.boolAttr('stretch'));
+        Object.defineProperty(this.prototype, 'disabled', AtlasElement.boolAttr('disabled'));
+    }
+    private _options: SegmentOption[] = [];
+    private _value: string | null = null;
+    private _built = false;
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+    }
+    get options(): SegmentOption[] {
+        return this._options;
+    }
+    set options(next: readonly RawSegmentInput[] | null | undefined) {
+        // `Array.isArray` widens to `any[]`; iterate over the typed input
+        // directly so each `o` retains the `RawSegmentInput` type and its
+        // `unknown` field types survive into the body.
+        const out: SegmentOption[] = [];
+        if (next != null) {
+            for (const o of next) {
+                out.push({
+                    value: String(o.value),
+                    label: String(o.label ?? o.value),
+                    disabled: o.disabled === true,
+                });
+            }
+        }
+        this._options = out;
+        if (this._value && !this._options.some((o) => o.value === this._value)) {
+            this._value = null;
+        }
+        if (this._built)
+            this._renderOptions();
+    }
+    get value(): string | null {
+        return this._value;
+    }
+    set value(next: string | null | undefined) {
+        const v = next == null ? null : String(next);
+        if (v === this._value)
+            return;
+        this._value = v;
+        if (this._built)
+            this._syncSelection();
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'radiogroup');
+        if (!this._built) {
+            // Constructor attached the shadow root unconditionally, so it
+            // exists by the time `connectedCallback` runs. `must` carries the
+            // invariant instead of a cast.
+            adoptSheet(must(this.shadowRoot, 'segmented-control: shadowRoot attached in constructor'), sheet);
+            this._built = true;
+        }
+        this._renderOptions();
+    }
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        if (name === 'name')
+            this._renderOptions();
+    }
+    static override get observedAttributes(): readonly string[] {
+        return ['name'];
+    }
+    private _testIdFor(value: string): string | null {
+        const sid = this.surfaceId;
+        const name = this.getAttribute('name');
+        if (!sid || !name)
+            return null;
+        return `${sid}.${name}.${value}`;
+    }
+    private _renderOptions(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const selected = this._value;
+        root.innerHTML = this._options
+            .map((o) => {
+            const isSel = o.value === selected;
+            const testId = this._testIdFor(o.value);
+            const testIdAttr = testId ? ` data-testid="${escapeAttr(testId)}"` : '';
+            const disabled = o.disabled ? ' disabled' : '';
+            return `<button type="button" role="radio" data-value="${escapeAttr(o.value)}" aria-checked="${isSel ? 'true' : 'false'}" tabindex="${isSel ? '0' : '-1'}"${disabled}${testIdAttr}>${escapeText(o.label)}</button>`;
+        })
+            .join('');
+        this._wire();
+    }
+    private _syncSelection(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const selected = this._value;
+        const buttons = root.querySelectorAll<HTMLButtonElement>('button[role="radio"]');
+        for (const btn of buttons) {
+            const isSel = (btn.dataset['value'] ?? null) === selected;
+            btn.setAttribute('aria-checked', isSel ? 'true' : 'false');
+            btn.setAttribute('tabindex', isSel ? '0' : '-1');
+        }
+    }
+    private _wire(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button[role="radio"]'));
+        for (const btn of buttons) {
+            btn.addEventListener('click', () => {
+                if (btn.hasAttribute('disabled'))
+                    return;
+                this._select(btn.dataset['value'] ?? null);
+            });
+            btn.addEventListener('keydown', (ev) => this._onKey(ev, buttons));
+        }
+    }
+    private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
+        // The listener is attached to each `HTMLButtonElement` in `_wire`,
+        // so `currentTarget` is one of those buttons — narrow without a
+        // bare cast.
+        const current = ev.currentTarget;
+        if (!(current instanceof HTMLButtonElement))
+            return;
+        const enabled = buttons.filter(function (b) {
+            return !b.hasAttribute('disabled');
         });
-      }
-    }
-    this._options = out;
-    if (this._value && !this._options.some((o) => o.value === this._value)) {
-      this._value = null;
-    }
-    if (this._built) this._renderOptions();
-  }
-
-  get value(): string | null {
-    return this._value;
-  }
-  set value(next: string | null | undefined) {
-    const v = next == null ? null : String(next);
-    if (v === this._value) return;
-    this._value = v;
-    if (this._built) this._syncSelection();
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'radiogroup');
-    if (!this._built) {
-      // Constructor attached the shadow root unconditionally, so it
-      // exists by the time `connectedCallback` runs. `must` carries the
-      // invariant instead of a cast.
-      adoptSheet(must(this.shadowRoot, 'segmented-control: shadowRoot attached in constructor'), sheet);
-      this._built = true;
-    }
-    this._renderOptions();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    if (name === 'name') this._renderOptions();
-  }
-
-  static override get observedAttributes(): readonly string[] {
-    return ['name'];
-  }
-
-  private _testIdFor(value: string): string | null {
-    const sid = this.surfaceId;
-    const name = this.getAttribute('name');
-    if (!sid || !name) return null;
-    return `${sid}.${name}.${value}`;
-  }
-
-  private _renderOptions(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const selected = this._value;
-    root.innerHTML = this._options
-      .map((o) => {
-        const isSel = o.value === selected;
-        const testId = this._testIdFor(o.value);
-        const testIdAttr = testId ? ` data-testid="${escapeAttr(testId)}"` : '';
-        const disabled = o.disabled ? ' disabled' : '';
-        return `<button type="button" role="radio" data-value="${escapeAttr(
-          o.value,
-        )}" aria-checked="${isSel ? 'true' : 'false'}" tabindex="${
-          isSel ? '0' : '-1'
-        }"${disabled}${testIdAttr}>${escapeText(o.label)}</button>`;
-      })
-      .join('');
-    this._wire();
-  }
-
-  private _syncSelection(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const selected = this._value;
-    const buttons = root.querySelectorAll<HTMLButtonElement>('button[role="radio"]');
-    for (const btn of buttons) {
-      const isSel = (btn.dataset['value'] ?? null) === selected;
-      btn.setAttribute('aria-checked', isSel ? 'true' : 'false');
-      btn.setAttribute('tabindex', isSel ? '0' : '-1');
-    }
-  }
-
-  private _wire(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const buttons = Array.from(
-      root.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
-    );
-    for (const btn of buttons) {
-      btn.addEventListener('click', () => {
-        if (btn.hasAttribute('disabled')) return;
-        this._select(btn.dataset['value'] ?? null);
-      });
-      btn.addEventListener('keydown', (ev) => this._onKey(ev, buttons));
-    }
-  }
-
-  private _onKey(ev: KeyboardEvent, buttons: HTMLButtonElement[]): void {
-    // The listener is attached to each `HTMLButtonElement` in `_wire`,
-    // so `currentTarget` is one of those buttons — narrow without a
-    // bare cast.
-    const current = ev.currentTarget;
-    if (!(current instanceof HTMLButtonElement)) return;
-    const enabled = buttons.filter((b) => !b.hasAttribute('disabled'));
-    const idx = enabled.indexOf(current);
-    if (idx < 0) return;
-    let next = -1;
-    switch (ev.key) {
-      case 'ArrowRight':
-      case 'ArrowDown':
-        next = (idx + 1) % enabled.length;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowUp':
-        next = (idx - 1 + enabled.length) % enabled.length;
-        break;
-      case 'Home': next = 0; break;
-      case 'End':  next = enabled.length - 1; break;
-      case 'Enter':
-      case ' ':
-        this._select(current.dataset['value'] ?? null);
+        const idx = enabled.indexOf(current);
+        if (idx < 0)
+            return;
+        let next = -1;
+        switch (ev.key) {
+            case 'ArrowRight':
+            case 'ArrowDown':
+                next = (idx + 1) % enabled.length;
+                break;
+            case 'ArrowLeft':
+            case 'ArrowUp':
+                next = (idx - 1 + enabled.length) % enabled.length;
+                break;
+            case 'Home':
+                next = 0;
+                break;
+            case 'End':
+                next = enabled.length - 1;
+                break;
+            case 'Enter':
+            case ' ':
+                this._select(current.dataset['value'] ?? null);
+                ev.preventDefault();
+                return;
+            default: return;
+        }
         ev.preventDefault();
-        return;
-      default: return;
+        const target = enabled[next];
+        if (!target)
+            return;
+        target.focus();
+        this._select(target.dataset['value'] ?? null);
     }
-    ev.preventDefault();
-    const target = enabled[next];
-    if (!target) return;
-    target.focus();
-    this._select(target.dataset['value'] ?? null);
-  }
-
-  private _select(value: string | null): void {
-    if (value == null || value === this._value) return;
-    const previousValue = this._value;
-    this._value = value;
-    this._syncSelection();
-    this.dispatchEvent(
-      new CustomEvent('change', {
-        detail: { value, previousValue },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
+    private _select(value: string | null): void {
+        if (value == null || value === this._value)
+            return;
+        const previousValue = this._value;
+        this._value = value;
+        this._syncSelection();
+        this.dispatchEvent(new CustomEvent('change', {
+            detail: { value, previousValue },
+            bubbles: true,
+            composed: true,
+        }));
+    }
 }
-
 AtlasElement.define('atlas-segmented-control', AtlasSegmentedControl);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-segmented-control': AtlasSegmentedControl;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-segmented-control': AtlasSegmentedControl;
+    }
 }

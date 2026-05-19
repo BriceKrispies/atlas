@@ -2,24 +2,21 @@ import { AtlasSurface } from '@atlas/core';
 import '@atlas/design';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { registerTestState } from '@atlas/test-state';
-
 interface ShellModule {
-  readonly id: string;
-  readonly label: string;
+    readonly id: string;
+    readonly label: string;
 }
-
 const MODULES: readonly ShellModule[] = [
-  { id: 'content', label: 'Content' },
-  { id: 'authz/policies', label: 'Authorization' },
-  { id: 'badges', label: 'Badges' },
-  { id: 'points', label: 'Points' },
-  { id: 'org', label: 'Org' },
-  { id: 'comms', label: 'Comms' },
-  { id: 'tokens', label: 'Tokens' },
-  { id: 'import', label: 'Import' },
-  { id: 'audit', label: 'Audit' },
+    { id: 'content', label: 'Content' },
+    { id: 'authz/policies', label: 'Authorization' },
+    { id: 'badges', label: 'Badges' },
+    { id: 'points', label: 'Points' },
+    { id: 'org', label: 'Org' },
+    { id: 'comms', label: 'Comms' },
+    { id: 'tokens', label: 'Tokens' },
+    { id: 'import', label: 'Import' },
+    { id: 'audit', label: 'Audit' },
 ];
-
 /**
  * Mobile-first layout: single column with a top header that contains a
  * hamburger toggle and an off-canvas drawer for the nav. At >=900px
@@ -140,19 +137,16 @@ const styles = `
     .scrim { display: none; }
   }
 `;
-
 class AdminShell extends AtlasSurface {
-  static override surfaceId = 'admin.shell';
-
-  private _onKey: ((e: KeyboardEvent) => void) | null = null;
-  private _onHashChange: (() => void) | null = null;
-  private _disposeTestState: (() => void) | null = null;
-
-  constructor() {
-    super();
-    const root = this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(root);
-    root.innerHTML = `
+    static override surfaceId = 'admin.shell';
+    private _onKey: ((e: KeyboardEvent) => void) | null = null;
+    private _onHashChange: (() => void) | null = null;
+    private _disposeTestState: (() => void) | null = null;
+    constructor() {
+        super();
+        const root = this.attachShadow({ mode: 'open' });
+        adoptAtlasStyles(root);
+        root.innerHTML = `
       <style>${styles}</style>
       <atlas-box class="header">
         <button
@@ -174,7 +168,9 @@ class AdminShell extends AtlasSurface {
       <atlas-box class="sidebar" id="admin-shell-sidebar">
         <atlas-nav label="Admin navigation">
           <atlas-heading level="3">Modules</atlas-heading>
-          ${MODULES.map((m) => `<atlas-nav-item href="#/${m.id}">${m.label}</atlas-nav-item>`).join('\n          ')}
+          ${MODULES.map(function (m) {
+            return `<atlas-nav-item href="#/${m.id}">${m.label}</atlas-nav-item>`;
+        }).join('\n          ')}
         </atlas-nav>
       </atlas-box>
       <div class="scrim" data-testid="admin.shell.nav-scrim"></div>
@@ -182,151 +178,143 @@ class AdminShell extends AtlasSurface {
         <slot></slot>
       </atlas-box>
     `;
-  }
-
-  private get _shadow(): ShadowRoot {
-    const root = this.shadowRoot;
-    if (!root) throw new Error('AdminShell: shadowRoot missing');
-    return root;
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-
-    const shadow = this._shadow;
-
-    const nav = shadow.querySelector('atlas-nav');
-    nav?.addEventListener('click', (e: Event) => {
-      const target = e.target;
-      const item = target instanceof Element
-        ? target.closest('atlas-nav-item')
-        : null;
-      if (!item) return;
-      const href = item.getAttribute('href');
-      if (href) {
-        window.location.hash = href.substring(1);
-      }
-      this._closeNav();
-    });
-
-    const toggle = shadow.querySelector<HTMLButtonElement>('.nav-toggle');
-    toggle?.addEventListener('click', () => {
-      if (this.hasAttribute('data-nav-open')) this._closeNav();
-      else this._openNav();
-    });
-
-    shadow.querySelector('.scrim')?.addEventListener('click', () => this._closeNav());
-
-    this._onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && this.hasAttribute('data-nav-open')) {
-        this._closeNav();
-        toggle?.focus();
-      }
-    };
-    document.addEventListener('keydown', this._onKey);
-
-    this._onHashChange = (): void => this._route();
-    window.addEventListener('hashchange', this._onHashChange);
-    this._route();
-  }
-
-  override disconnectedCallback(): void {
-    if (this._onHashChange) {
-      window.removeEventListener('hashchange', this._onHashChange);
-      this._onHashChange = null;
     }
-    if (this._onKey) {
-      document.removeEventListener('keydown', this._onKey);
-      this._onKey = null;
+    private get _shadow(): ShadowRoot {
+        const root = this.shadowRoot;
+        if (!root)
+            throw new Error('AdminShell: shadowRoot missing');
+        return root;
     }
-    if (this._disposeTestState) {
-      this._disposeTestState();
-      this._disposeTestState = null;
+    override connectedCallback(): void {
+        super.connectedCallback();
+        const shadow = this._shadow;
+        const nav = shadow.querySelector('atlas-nav');
+        nav?.addEventListener('click', (e: Event) => {
+            const target = e.target;
+            const item = target instanceof Element
+                ? target.closest('atlas-nav-item')
+                : null;
+            if (!item)
+                return;
+            const href = item.getAttribute('href');
+            if (href) {
+                window.location.hash = href.substring(1);
+            }
+            this._closeNav();
+        });
+        const toggle = shadow.querySelector<HTMLButtonElement>('.nav-toggle');
+        toggle?.addEventListener('click', () => {
+            if (this.hasAttribute('data-nav-open'))
+                this._closeNav();
+            else
+                this._openNav();
+        });
+        shadow.querySelector('.scrim')?.addEventListener('click', () => this._closeNav());
+        this._onKey = (e: KeyboardEvent): void => {
+            if (e.key === 'Escape' && this.hasAttribute('data-nav-open')) {
+                this._closeNav();
+                toggle?.focus();
+            }
+        };
+        document.addEventListener('keydown', this._onKey);
+        this._onHashChange = (): void => this._route();
+        window.addEventListener('hashchange', this._onHashChange);
+        this._route();
     }
-    super.disconnectedCallback();
-  }
-
-  private _openNav(): void {
-    this.setAttribute('data-nav-open', '');
-    const toggle = this._shadow.querySelector<HTMLButtonElement>('.nav-toggle');
-    toggle?.setAttribute('aria-expanded', 'true');
-    toggle?.setAttribute('aria-label', 'Close navigation');
-    const firstItem = this._shadow.querySelector<HTMLElement>('atlas-nav-item');
-    firstItem?.focus();
-  }
-
-  private _closeNav(): void {
-    if (!this.hasAttribute('data-nav-open')) return;
-    this.removeAttribute('data-nav-open');
-    const toggle = this._shadow.querySelector<HTMLButtonElement>('.nav-toggle');
-    toggle?.setAttribute('aria-expanded', 'false');
-    toggle?.setAttribute('aria-label', 'Open navigation');
-  }
-
-  /**
-   * Match a child's `data-route` against the current hash. The match is
-   * a *prefix* match against the leading hash segment so nested routes
-   * (e.g. `#/authz/policies/123`) still display the same surface.
-   * `data-route="authz/policies"` matches both `authz/policies` and
-   * `authz/policies/123`.
-   */
-  private _matchesRoute(routeAttr: string, hash: string): boolean {
-    if (routeAttr === hash) return true;
-    return hash.startsWith(`${routeAttr}/`);
-  }
-
-  private _route(): void {
-    const hash = window.location.hash.replace('#/', '') || 'content';
-
-    for (const item of this._shadow.querySelectorAll('atlas-nav-item')) {
-      const href = item.getAttribute('href') ?? '';
-      const itemRoute = href.replace('#/', '');
-      if (this._matchesRoute(itemRoute, hash)) {
-        item.setAttribute('active', '');
-        item.setAttribute('aria-current', 'page');
-      } else {
-        item.removeAttribute('active');
-        item.removeAttribute('aria-current');
-      }
+    override disconnectedCallback(): void {
+        if (this._onHashChange) {
+            window.removeEventListener('hashchange', this._onHashChange);
+            this._onHashChange = null;
+        }
+        if (this._onKey) {
+            document.removeEventListener('keydown', this._onKey);
+            this._onKey = null;
+        }
+        if (this._disposeTestState) {
+            this._disposeTestState();
+            this._disposeTestState = null;
+        }
+        super.disconnectedCallback();
     }
-
-    // Longest-prefix-match wins: pick the *most specific* matching child
-    // route so nested routes (e.g. `authz/policies/new`) display the
-    // editor instead of the list. Children without `data-route` are
-    // chrome (dialogs etc.) — always shown.
-    let best: HTMLElement | null = null;
-    let bestLen = -1;
-    const children = Array.from(this.children).filter((c): c is HTMLElement => c instanceof HTMLElement);
-    for (const child of children) {
-      const route = child.getAttribute('data-route');
-      if (route !== null && this._matchesRoute(route, hash) && route.length > bestLen) {
-        best = child;
-        bestLen = route.length;
-      }
+    private _openNav(): void {
+        this.setAttribute('data-nav-open', '');
+        const toggle = this._shadow.querySelector<HTMLButtonElement>('.nav-toggle');
+        toggle?.setAttribute('aria-expanded', 'true');
+        toggle?.setAttribute('aria-label', 'Close navigation');
+        const firstItem = this._shadow.querySelector<HTMLElement>('atlas-nav-item');
+        firstItem?.focus();
     }
-
-    for (const child of children) {
-      const route = child.getAttribute('data-route');
-      if (route === null) {
-        child.style.display = '';
-      } else if (child === best) {
-        child.style.display = '';
-      } else {
-        child.style.display = 'none';
-      }
+    private _closeNav(): void {
+        if (!this.hasAttribute('data-nav-open'))
+            return;
+        this.removeAttribute('data-nav-open');
+        const toggle = this._shadow.querySelector<HTMLButtonElement>('.nav-toggle');
+        toggle?.setAttribute('aria-expanded', 'false');
+        toggle?.setAttribute('aria-label', 'Open navigation');
     }
-  }
-
-  override onMount(): void {
-    this.emit('admin.shell.page-viewed');
-
-    // Expose surface state to Playwright via `window.__atlasTest`.
-    this._disposeTestState = registerTestState(this.surfaceId, () => ({
-      state: this.getAttribute('data-state') ?? 'unknown',
-      route: window.location.hash || '',
-      navOpen: this.hasAttribute('data-nav-open'),
-    }));
-  }
+    /**
+     * Match a child's `data-route` against the current hash. The match is
+     * a *prefix* match against the leading hash segment so nested routes
+     * (e.g. `#/authz/policies/123`) still display the same surface.
+     * `data-route="authz/policies"` matches both `authz/policies` and
+     * `authz/policies/123`.
+     */
+    private _matchesRoute(routeAttr: string, hash: string): boolean {
+        if (routeAttr === hash)
+            return true;
+        return hash.startsWith(`${routeAttr}/`);
+    }
+    private _route(): void {
+        const hash = window.location.hash.replace('#/', '') || 'content';
+        for (const item of this._shadow.querySelectorAll('atlas-nav-item')) {
+            const href = item.getAttribute('href') ?? '';
+            const itemRoute = href.replace('#/', '');
+            if (this._matchesRoute(itemRoute, hash)) {
+                item.setAttribute('active', '');
+                item.setAttribute('aria-current', 'page');
+            }
+            else {
+                item.removeAttribute('active');
+                item.removeAttribute('aria-current');
+            }
+        }
+        // Longest-prefix-match wins: pick the *most specific* matching child
+        // route so nested routes (e.g. `authz/policies/new`) display the
+        // editor instead of the list. Children without `data-route` are
+        // chrome (dialogs etc.) — always shown.
+        let best: HTMLElement | null = null;
+        let bestLen = -1;
+        const children = Array.from(this.children).filter(function (c): c is HTMLElement {
+            return c instanceof HTMLElement;
+        });
+        for (const child of children) {
+            const route = child.getAttribute('data-route');
+            if (route !== null && this._matchesRoute(route, hash) && route.length > bestLen) {
+                best = child;
+                bestLen = route.length;
+            }
+        }
+        for (const child of children) {
+            const route = child.getAttribute('data-route');
+            if (route === null) {
+                child.style.display = '';
+            }
+            else if (child === best) {
+                child.style.display = '';
+            }
+            else {
+                child.style.display = 'none';
+            }
+        }
+    }
+    override onMount(): void {
+        this.emit('admin.shell.page-viewed');
+        // Expose surface state to Playwright via `window.__atlasTest`.
+        this._disposeTestState = registerTestState(this.surfaceId, () => ({
+            state: this.getAttribute('data-state') ?? 'unknown',
+            route: window.location.hash || '',
+            navOpen: this.hasAttribute('data-nav-open'),
+        }));
+    }
 }
-
 AtlasSurface.define('admin-shell', AdminShell);

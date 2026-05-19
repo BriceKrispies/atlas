@@ -2,25 +2,9 @@ import { AtlasElement, AtlasSurface, emitTelemetry } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import '@atlas/design';
-import {
-  resolveTaxonomy,
-  CATEGORIES,
-  type Category,
-  type Status,
-} from './registry/index.ts';
-import type {
-  Specimen,
-  ResolvedSpecimen,
-  SpecimenVariant,
-  SpecimenConfigVariant,
-} from './specimen-types.ts';
-export type {
-  Specimen,
-  ResolvedSpecimen,
-  SpecimenVariant,
-  SpecimenConfigVariant,
-  SpecimenMountFn,
-} from './specimen-types.ts';
+import { resolveTaxonomy, CATEGORIES, type Category, type Status, } from './registry/index.ts';
+import type { Specimen, ResolvedSpecimen, SpecimenVariant, SpecimenConfigVariant, } from './specimen-types.ts';
+export type { Specimen, ResolvedSpecimen, SpecimenVariant, SpecimenConfigVariant, SpecimenMountFn, } from './specimen-types.ts';
 import './sidebar.ts';
 import type { AtlasSandboxSidebar } from './sidebar.ts';
 import { must, customDetail, isValueDetail, isIdDetail } from './internal/assert.ts';
@@ -35,53 +19,55 @@ import type { AtlasTabBar } from '@atlas/design/atlas-tab-bar.ts';
 // root ourselves. Without this, every page template renders as a plain
 // stacked block instead of its intended grid.
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
-
 type PreviewTab = 'preview' | 'props' | 'source' | 'notes';
-
-const PREVIEW_TABS: ReadonlyArray<{ value: PreviewTab; label: string }> = [
-  { value: 'preview', label: 'Preview' },
-  { value: 'props',   label: 'Props' },
-  { value: 'source',  label: 'Source' },
-  { value: 'notes',   label: 'Notes' },
+const PREVIEW_TABS: ReadonlyArray<{
+    value: PreviewTab;
+    label: string;
+}> = [
+    { value: 'preview', label: 'Preview' },
+    { value: 'props', label: 'Props' },
+    { value: 'source', label: 'Source' },
+    { value: 'notes', label: 'Notes' },
 ];
-
 const BADGE_STATUS_MAP: Record<Status, string> = {
-  stable: 'published',
-  wip: 'draft',
-  review: 'archived',
+    stable: 'published',
+    wip: 'draft',
+    review: 'archived',
 };
-
 function escapeHtml(input: string): string {
-  return input
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+    return input
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }
-
 function matchesSearch(spec: ResolvedSpecimen, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  if (spec.name.toLowerCase().includes(needle)) return true;
-  if (spec.id.toLowerCase().includes(needle)) return true;
-  if (spec.tag.toLowerCase().includes(needle)) return true;
-  for (const tag of spec.tags) if (tag.toLowerCase().includes(needle)) return true;
-  return false;
+    if (!q)
+        return true;
+    const needle = q.toLowerCase();
+    if (spec.name.toLowerCase().includes(needle))
+        return true;
+    if (spec.id.toLowerCase().includes(needle))
+        return true;
+    if (spec.tag.toLowerCase().includes(needle))
+        return true;
+    for (const tag of spec.tags)
+        if (tag.toLowerCase().includes(needle))
+            return true;
+    return false;
 }
-
 function resolve(spec: Specimen): ResolvedSpecimen {
-  const tax = resolveTaxonomy(spec.id);
-  const subcategory = spec.subcategory ?? tax.subcategory;
-  return {
-    ...spec,
-    category: spec.category ?? tax.category,
-    ...(subcategory !== undefined ? { subcategory } : {}),
-    status: spec.status ?? tax.status ?? 'stable',
-    tags: spec.tags ?? tax.tags ?? [],
-  };
+    const tax = resolveTaxonomy(spec.id);
+    const subcategory = spec.subcategory ?? tax.subcategory;
+    return {
+        ...spec,
+        category: spec.category ?? tax.category,
+        ...(subcategory !== undefined ? { subcategory } : {}),
+        status: spec.status ?? tax.status ?? 'stable',
+        tags: spec.tags ?? tax.tags ?? [],
+    };
 }
-
 /**
  * Sandbox shell, composed entirely from atlas primitives:
  *   <atlas-box>      — topbar / sidebar / preview containers
@@ -297,95 +283,92 @@ const styles = `
     .scrim { display: none; }
   }
 `;
-
 export class AtlasSandbox extends AtlasSurface {
-  static override surfaceId = 'sandbox';
-
-  private _activeCleanups: Array<() => void> = [];
-  private _activeSpec: ResolvedSpecimen | null = null;
-  private _activeCategory: Category = 'foundations';
-  private _activeSearch = '';
-  private _activeTab: PreviewTab = 'preview';
-  private _onKey: ((e: KeyboardEvent) => void) | null = null;
-  /** Non-null view of the shadow root, captured right after
-   *  attachShadow(). Avoids repeated null checks and avoids
-   *  `as unknown as ShadowRoot` casts elsewhere. */
-  private readonly _root: ShadowRoot;
-
-  constructor() {
-    super();
-    // attachShadow({mode:'open'}) both sets this.shadowRoot and returns
-    // it; capture the return value so we have a typed, non-null handle.
-    this._root = this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(this._root);
-    adoptAtlasWidgetStyles(this._root);
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this._activeCleanups = [];
-    queueMicrotask(() => {
-      const params = new URLSearchParams(location.search);
-      const requestedId = params.get('specimen');
-      const rawCat = params.get('category');
-      // Narrow the raw query-string value to Category by looking it up in
-      // the typed CATEGORIES registry — no `as Category` cast required.
-      const matchedCat = rawCat === null ? undefined : CATEGORIES.find((c) => c.id === rawCat);
-      const requestedCat: Category | null = matchedCat ? matchedCat.id : null;
-      const resolvedSpec =
-        (requestedId && AtlasSandbox.specimens.find((s) => s.id === requestedId)) || null;
-
-      // Seed the active category BEFORE the shell renders so the sidebar
-      // and category switcher mount already showing the right bucket.
-      if (resolvedSpec) {
-        this._activeCategory = resolvedSpec.category;
-      } else if (requestedCat) {
-        this._activeCategory = requestedCat;
-      } else {
-        this._activeCategory = AtlasSandbox.specimens[0]?.category ?? 'foundations';
-      }
-
-      this._render();
-
-      const initial =
-        resolvedSpec?.id ??
-        AtlasSandbox.specimens.find((s) => s.category === this._activeCategory)?.id ??
-        AtlasSandbox.specimens[0]?.id;
-      if (initial) this._select(initial);
-    });
-  }
-
-  private _runActiveCleanups(): void {
-    for (const fn of this._activeCleanups) {
-      try {
-        fn();
-      } catch (err) {
-        // Structured failure event (replaces console.error). `err` is
-        // `unknown`; pull code/message via runtime guards so there's no
-        // `as` cast.
-        let errCode = 'unknown';
-        if (typeof err === 'object' && err !== null && 'code' in err) {
-          const code: unknown = err.code;
-          if (typeof code === 'string') errCode = code;
-        }
-        const errMessage = err instanceof Error ? err.message : String(err);
-        emitTelemetry({
-          eventName: 'Atlas.Listener.Threw',
-          surfaceId: 'sandbox',
-          source: 'sandbox.specimen-cleanup',
-          'error.code': errCode,
-          'error.message': errMessage,
-        });
-      }
+    static override surfaceId = 'sandbox';
+    private _activeCleanups: Array<() => void> = [];
+    private _activeSpec: ResolvedSpecimen | null = null;
+    private _activeCategory: Category = 'foundations';
+    private _activeSearch = '';
+    private _activeTab: PreviewTab = 'preview';
+    private _onKey: ((e: KeyboardEvent) => void) | null = null;
+    /** Non-null view of the shadow root, captured right after
+     *  attachShadow(). Avoids repeated null checks and avoids
+     *  `as unknown as ShadowRoot` casts elsewhere. */
+    private readonly _root: ShadowRoot;
+    constructor() {
+        super();
+        // attachShadow({mode:'open'}) both sets this.shadowRoot and returns
+        // it; capture the return value so we have a typed, non-null handle.
+        this._root = this.attachShadow({ mode: 'open' });
+        adoptAtlasStyles(this._root);
+        adoptAtlasWidgetStyles(this._root);
     }
-    this._activeCleanups = [];
-  }
-
-  private _render(): void {
-    const count = AtlasSandbox.specimens.length;
-    const root = this._root;
-
-    root.innerHTML = `
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this._activeCleanups = [];
+        queueMicrotask(() => {
+            const params = new URLSearchParams(location.search);
+            const requestedId = params.get('specimen');
+            const rawCat = params.get('category');
+            // Narrow the raw query-string value to Category by looking it up in
+            // the typed CATEGORIES registry — no `as Category` cast required.
+            const matchedCat = rawCat === null ? undefined : CATEGORIES.find(function (c) {
+                return c.id === rawCat;
+            });
+            const requestedCat: Category | null = matchedCat ? matchedCat.id : null;
+            const resolvedSpec = (requestedId && AtlasSandbox.specimens.find(function (s) {
+                return s.id === requestedId;
+            })) || null;
+            // Seed the active category BEFORE the shell renders so the sidebar
+            // and category switcher mount already showing the right bucket.
+            if (resolvedSpec) {
+                this._activeCategory = resolvedSpec.category;
+            }
+            else if (requestedCat) {
+                this._activeCategory = requestedCat;
+            }
+            else {
+                this._activeCategory = AtlasSandbox.specimens[0]?.category ?? 'foundations';
+            }
+            this._render();
+            const initial = resolvedSpec?.id ??
+                AtlasSandbox.specimens.find((s) => s.category === this._activeCategory)?.id ??
+                AtlasSandbox.specimens[0]?.id;
+            if (initial)
+                this._select(initial);
+        });
+    }
+    private _runActiveCleanups(): void {
+        for (const fn of this._activeCleanups) {
+            try {
+                fn();
+            }
+            catch (err) {
+                // Structured failure event (replaces console.error). `err` is
+                // `unknown`; pull code/message via runtime guards so there's no
+                // `as` cast.
+                let errCode = 'unknown';
+                if (typeof err === 'object' && err !== null && 'code' in err) {
+                    const code: unknown = err.code;
+                    if (typeof code === 'string')
+                        errCode = code;
+                }
+                const errMessage = err instanceof Error ? err.message : String(err);
+                emitTelemetry({
+                    eventName: 'Atlas.Listener.Threw',
+                    surfaceId: 'sandbox',
+                    source: 'sandbox.specimen-cleanup',
+                    'error.code': errCode,
+                    'error.message': errMessage,
+                });
+            }
+        }
+        this._activeCleanups = [];
+    }
+    private _render(): void {
+        const count = AtlasSandbox.specimens.length;
+        const root = this._root;
+        root.innerHTML = `
       <style>${styles}\n${templatesCssText}</style>
       <atlas-box data-role="topbar">
         <button
@@ -420,406 +403,381 @@ export class AtlasSandbox extends AtlasSurface {
         <atlas-box data-role="preview-body"></atlas-box>
       </atlas-box>
     `;
-
-    // Sidebar — driven by properties, events out. The
-    // HTMLElementTagNameMap augmentation in `sidebar.ts` makes
-    // querySelector return AtlasSandboxSidebar directly; no cast needed.
-    const sidebar = must(
-      root.querySelector('atlas-sandbox-sidebar'),
-      'sandbox: <atlas-sandbox-sidebar> just rendered into shadow root',
-    );
-    sidebar.specimens = AtlasSandbox.specimens;
-    sidebar.activeCategory = this._activeCategory;
-    sidebar.searchValue = this._activeSearch;
-    sidebar.activeSpecimenId = this._activeSpec?.id ?? null;
-    sidebar.addEventListener('category-change', (ev: Event) => {
-      const detail = customDetail(
-        ev,
-        (d): d is { category: Category } => {
-          if (typeof d !== 'object' || d === null || !('category' in d)) return false;
-          const cat: unknown = d.category;
-          return typeof cat === 'string' && CATEGORIES.some((c) => c.id === cat);
-        },
-        'sandbox.category-change',
-      );
-      if (detail.category === this._activeCategory) return;
-      this._activeCategory = detail.category;
-      const first = AtlasSandbox.specimens.find(
-        (s) => s.category === detail.category && matchesSearch(s, this._activeSearch),
-      );
-      if (first) this._select(first.id);
-      else {
-        this._activeSpec = null;
-        sidebar.activeSpecimenId = null;
-        this._writeUrlState(null);
-      }
-    });
-    sidebar.addEventListener('search-change', (ev: Event) => {
-      const detail = customDetail(ev, isValueDetail, 'sandbox.search-change');
-      this._activeSearch = detail.value;
-    });
-    sidebar.addEventListener('specimen-select', (ev: Event) => {
-      const detail = customDetail(ev, isIdDetail, 'sandbox.specimen-select');
-      this._select(detail.id);
-      this._closeNav();
-    });
-
-    // Preview tabs. `atlas-tab-bar`'s class is augmented onto
-    // HTMLElementTagNameMap so querySelector returns AtlasTabBar without
-    // a structural cast.
-    const prevBar = root.querySelector<AtlasTabBar>(
-      'atlas-tab-bar[data-role="preview-tabs"]',
-    );
-    if (prevBar) {
-      prevBar.tabs = PREVIEW_TABS.map((t) => ({ value: t.value, label: t.label }));
-      prevBar.value = this._activeTab;
-      prevBar.addEventListener('change', (ev: Event) => {
-        const detail = customDetail(ev, isValueDetail, 'sandbox.preview-tab-change');
-        const next = PREVIEW_TABS.find((t) => t.value === detail.value)?.value;
-        if (!next || next === this._activeTab) return;
-        this._activeTab = next;
-        this._renderPreviewBody();
-      });
+        // Sidebar — driven by properties, events out. The
+        // HTMLElementTagNameMap augmentation in `sidebar.ts` makes
+        // querySelector return AtlasSandboxSidebar directly; no cast needed.
+        const sidebar = must(root.querySelector('atlas-sandbox-sidebar'), 'sandbox: <atlas-sandbox-sidebar> just rendered into shadow root');
+        sidebar.specimens = AtlasSandbox.specimens;
+        sidebar.activeCategory = this._activeCategory;
+        sidebar.searchValue = this._activeSearch;
+        sidebar.activeSpecimenId = this._activeSpec?.id ?? null;
+        sidebar.addEventListener('category-change', (ev: Event) => {
+            const detail = customDetail(ev, function (d): d is {
+                category: Category;
+            } {
+                if (typeof d !== 'object' || d === null || !('category' in d))
+                    return false;
+                const cat: unknown = d.category;
+                return typeof cat === 'string' && CATEGORIES.some(function (c) {
+                    return c.id === cat;
+                });
+            }, 'sandbox.category-change');
+            if (detail.category === this._activeCategory)
+                return;
+            this._activeCategory = detail.category;
+            const first = AtlasSandbox.specimens.find((s) => s.category === detail.category && matchesSearch(s, this._activeSearch));
+            if (first)
+                this._select(first.id);
+            else {
+                this._activeSpec = null;
+                sidebar.activeSpecimenId = null;
+                this._writeUrlState(null);
+            }
+        });
+        sidebar.addEventListener('search-change', (ev: Event) => {
+            const detail = customDetail(ev, isValueDetail, 'sandbox.search-change');
+            this._activeSearch = detail.value;
+        });
+        sidebar.addEventListener('specimen-select', (ev: Event) => {
+            const detail = customDetail(ev, isIdDetail, 'sandbox.specimen-select');
+            this._select(detail.id);
+            this._closeNav();
+        });
+        // Preview tabs. `atlas-tab-bar`'s class is augmented onto
+        // HTMLElementTagNameMap so querySelector returns AtlasTabBar without
+        // a structural cast.
+        const prevBar = root.querySelector<AtlasTabBar>('atlas-tab-bar[data-role="preview-tabs"]');
+        if (prevBar) {
+            prevBar.tabs = PREVIEW_TABS.map(function (t) {
+                return ({ value: t.value, label: t.label });
+            });
+            prevBar.value = this._activeTab;
+            prevBar.addEventListener('change', (ev: Event) => {
+                const detail = customDetail(ev, isValueDetail, 'sandbox.preview-tab-change');
+                const next = PREVIEW_TABS.find(function (t) {
+                    return t.value === detail.value;
+                })?.value;
+                if (!next || next === this._activeTab)
+                    return;
+                this._activeTab = next;
+                this._renderPreviewBody();
+            });
+        }
+        const toggle = root.querySelector<HTMLButtonElement>('button.nav-toggle');
+        toggle?.addEventListener('click', () => {
+            if (this.hasAttribute('data-nav-open'))
+                this._closeNav();
+            else
+                this._openNav();
+        });
+        root.querySelector('.scrim')?.addEventListener('click', () => this._closeNav());
+        this._onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && this.hasAttribute('data-nav-open')) {
+                this._closeNav();
+                toggle?.focus();
+            }
+        };
+        document.addEventListener('keydown', this._onKey);
     }
-
-    const toggle = root.querySelector<HTMLButtonElement>('button.nav-toggle');
-    toggle?.addEventListener('click', () => {
-      if (this.hasAttribute('data-nav-open')) this._closeNav();
-      else this._openNav();
-    });
-    root.querySelector('.scrim')?.addEventListener('click', () => this._closeNav());
-
-    this._onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && this.hasAttribute('data-nav-open')) {
-        this._closeNav();
-        toggle?.focus();
-      }
-    };
-    document.addEventListener('keydown', this._onKey);
-  }
-
-  private get _sidebar(): AtlasSandboxSidebar | null {
-    // HTMLElementTagNameMap in sidebar.ts augments the tag → class
-    // mapping, so this query is typed without a cast.
-    return this.shadowRoot?.querySelector('atlas-sandbox-sidebar') ?? null;
-  }
-
-  private _writeUrlState(id: string | null): void {
-    const url = new URL(location.href);
-    if (id) url.searchParams.set('specimen', id);
-    else url.searchParams.delete('specimen');
-    url.searchParams.set('category', this._activeCategory);
-    history.replaceState(null, '', url);
-  }
-
-  override disconnectedCallback(): void {
-    if (this._onKey) document.removeEventListener('keydown', this._onKey);
-    super.disconnectedCallback?.();
-  }
-
-  private _openNav(): void {
-    this.setAttribute('data-nav-open', '');
-    const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
-    toggle?.setAttribute('aria-expanded', 'true');
-    toggle?.setAttribute('aria-label', 'Close specimen list');
-  }
-
-  private _closeNav(): void {
-    if (!this.hasAttribute('data-nav-open')) return;
-    this.removeAttribute('data-nav-open');
-    const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
-    toggle?.setAttribute('aria-expanded', 'false');
-    toggle?.setAttribute('aria-label', 'Open specimen list');
-  }
-
-  private _select(id: string): void {
-    const spec = AtlasSandbox.specimens.find((s) => s.id === id);
-    if (!spec) return;
-
-    this._activeSpec = spec;
-    // Changing selection resets the preview tab so switching specimens
-    // doesn't strand the user on, say, Source view.
-    this._activeTab = 'preview';
-
-    this._activeCategory = spec.category;
-    this._writeUrlState(id);
-
-    const root = this._root;
-
-    // Keep the sidebar in sync with the new selection + category. The
-    // sidebar element handles internal re-rendering + tab-bar value
-    // updates when its properties change.
-    const sidebar = this._sidebar;
-    if (sidebar) {
-      sidebar.activeCategory = spec.category;
-      sidebar.activeSpecimenId = id;
+    private get _sidebar(): AtlasSandboxSidebar | null {
+        // HTMLElementTagNameMap in sidebar.ts augments the tag → class
+        // mapping, so this query is typed without a cast.
+        return this.shadowRoot?.querySelector('atlas-sandbox-sidebar') ?? null;
     }
-
-    const titleRow = root.querySelector(
-      'atlas-stack[data-role="preview-title-row"]',
-    ) as HTMLElement | null;
-    if (titleRow) {
-      const badgeStatus = BADGE_STATUS_MAP[spec.status];
-      titleRow.innerHTML = `
+    private _writeUrlState(id: string | null): void {
+        const url = new URL(location.href);
+        if (id)
+            url.searchParams.set('specimen', id);
+        else
+            url.searchParams.delete('specimen');
+        url.searchParams.set('category', this._activeCategory);
+        history.replaceState(null, '', url);
+    }
+    override disconnectedCallback(): void {
+        if (this._onKey)
+            document.removeEventListener('keydown', this._onKey);
+        super.disconnectedCallback?.();
+    }
+    private _openNav(): void {
+        this.setAttribute('data-nav-open', '');
+        const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
+        toggle?.setAttribute('aria-expanded', 'true');
+        toggle?.setAttribute('aria-label', 'Close specimen list');
+    }
+    private _closeNav(): void {
+        if (!this.hasAttribute('data-nav-open'))
+            return;
+        this.removeAttribute('data-nav-open');
+        const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('button.nav-toggle');
+        toggle?.setAttribute('aria-expanded', 'false');
+        toggle?.setAttribute('aria-label', 'Open specimen list');
+    }
+    private _select(id: string): void {
+        const spec = AtlasSandbox.specimens.find(function (s) {
+            return s.id === id;
+        });
+        if (!spec)
+            return;
+        this._activeSpec = spec;
+        // Changing selection resets the preview tab so switching specimens
+        // doesn't strand the user on, say, Source view.
+        this._activeTab = 'preview';
+        this._activeCategory = spec.category;
+        this._writeUrlState(id);
+        const root = this._root;
+        // Keep the sidebar in sync with the new selection + category. The
+        // sidebar element handles internal re-rendering + tab-bar value
+        // updates when its properties change.
+        const sidebar = this._sidebar;
+        if (sidebar) {
+            sidebar.activeCategory = spec.category;
+            sidebar.activeSpecimenId = id;
+        }
+        const titleRow = root.querySelector('atlas-stack[data-role="preview-title-row"]') as HTMLElement | null;
+        if (titleRow) {
+            const badgeStatus = BADGE_STATUS_MAP[spec.status];
+            titleRow.innerHTML = `
         <atlas-heading level="2">${escapeHtml(spec.name)}</atlas-heading>
         <atlas-text variant="mono">&lt;${escapeHtml(spec.tag)}&gt;</atlas-text>
         <atlas-badge status="${badgeStatus}" title="${spec.status}" data-testid="sandbox.specimen-status">${spec.status}</atlas-badge>
       `;
+        }
+        const prevBar = root.querySelector<AtlasTabBar>('atlas-tab-bar[data-role="preview-tabs"]');
+        if (prevBar)
+            prevBar.value = this._activeTab;
+        this._renderPreviewBody();
     }
-
-    const prevBar = root.querySelector<AtlasTabBar>(
-      'atlas-tab-bar[data-role="preview-tabs"]',
-    );
-    if (prevBar) prevBar.value = this._activeTab;
-
-    this._renderPreviewBody();
-  }
-
-  private _renderPreviewBody(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const body = root.querySelector(
-      'atlas-box[data-role="preview-body"]',
-    ) as HTMLElement | null;
-    if (!body) return;
-
-    // Any previously mounted live widgets must be unmounted before the
-    // DOM is replaced — their cleanup functions handle teardown side
-    // effects (mediator unsubscribes, iframe disposal, etc.).
-    this._runActiveCleanups();
-    body.innerHTML = '';
-    body.setAttribute('data-tab', this._activeTab);
-
-    const spec = this._activeSpec;
-    if (!spec) return;
-
-    switch (this._activeTab) {
-      case 'preview':
-        this._renderPreviewTab(body, spec);
-        return;
-      case 'source':
-        this._renderSourceTab(body, spec);
-        return;
-      case 'props':
-        this._renderPlaceholderTab(
-          body,
-          'Props introspection is not yet available for this specimen.',
-        );
-        return;
-      case 'notes':
-        this._renderPlaceholderTab(body, 'No notes authored for this specimen yet.');
-        return;
+    private _renderPreviewBody(): void {
+        const root = this.shadowRoot;
+        if (!root)
+            return;
+        const body = root.querySelector('atlas-box[data-role="preview-body"]') as HTMLElement | null;
+        if (!body)
+            return;
+        // Any previously mounted live widgets must be unmounted before the
+        // DOM is replaced — their cleanup functions handle teardown side
+        // effects (mediator unsubscribes, iframe disposal, etc.).
+        this._runActiveCleanups();
+        body.innerHTML = '';
+        body.setAttribute('data-tab', this._activeTab);
+        const spec = this._activeSpec;
+        if (!spec)
+            return;
+        switch (this._activeTab) {
+            case 'preview':
+                this._renderPreviewTab(body, spec);
+                return;
+            case 'source':
+                this._renderSourceTab(body, spec);
+                return;
+            case 'props':
+                this._renderPlaceholderTab(body, 'Props introspection is not yet available for this specimen.');
+                return;
+            case 'notes':
+                this._renderPlaceholderTab(body, 'No notes authored for this specimen yet.');
+                return;
+        }
     }
-  }
-
-  private _renderPreviewTab(body: HTMLElement, spec: ResolvedSpecimen): void {
-    if (typeof spec.mount === 'function') {
-      const variants =
-        Array.isArray(spec.configVariants) && spec.configVariants.length > 0
-          ? spec.configVariants
-          : [{ name: 'default', config: {} } satisfies SpecimenConfigVariant];
-      const first = variants[0];
-      if (!first) return;
-      this._renderMountStateful(body, spec, variants, first.name);
-    } else if (spec.states) {
-      const stateKeys = Object.keys(spec.states);
-      const initial = stateKeys.includes('success') ? 'success' : stateKeys[0];
-      if (initial) this._renderStateful(body, spec, initial);
-    } else if (spec.variants) {
-      for (const variant of spec.variants) {
-        this._renderVariant(body, variant);
-      }
+    private _renderPreviewTab(body: HTMLElement, spec: ResolvedSpecimen): void {
+        if (typeof spec.mount === 'function') {
+            const variants = Array.isArray(spec.configVariants) && spec.configVariants.length > 0
+                ? spec.configVariants
+                : [{ name: 'default', config: {} } satisfies SpecimenConfigVariant];
+            const first = variants[0];
+            if (!first)
+                return;
+            this._renderMountStateful(body, spec, variants, first.name);
+        }
+        else if (spec.states) {
+            const stateKeys = Object.keys(spec.states);
+            const initial = stateKeys.includes('success') ? 'success' : stateKeys[0];
+            if (initial)
+                this._renderStateful(body, spec, initial);
+        }
+        else if (spec.variants) {
+            for (const variant of spec.variants) {
+                this._renderVariant(body, variant);
+            }
+        }
     }
-  }
-
-  private _renderSourceTab(body: HTMLElement, spec: ResolvedSpecimen): void {
-    const blocks: string[] = [];
-    if (spec.variants) {
-      for (const v of spec.variants) {
-        blocks.push(`/* ${v.name} */\n${v.html.trim()}`);
-      }
+    private _renderSourceTab(body: HTMLElement, spec: ResolvedSpecimen): void {
+        const blocks: string[] = [];
+        if (spec.variants) {
+            for (const v of spec.variants) {
+                blocks.push(`/* ${v.name} */\n${v.html.trim()}`);
+            }
+        }
+        if (spec.states) {
+            for (const [k, html] of Object.entries(spec.states)) {
+                blocks.push(`/* state: ${k} */\n${html.trim()}`);
+            }
+        }
+        if (spec.configVariants) {
+            for (const cv of spec.configVariants) {
+                blocks.push(`/* config: ${cv.name} */\n${JSON.stringify(cv.config, null, 2)}`);
+            }
+        }
+        if (blocks.length === 0) {
+            blocks.push(`<${spec.tag}></${spec.tag}>`);
+        }
+        const section = document.createElement('atlas-stack');
+        section.setAttribute('gap', 'md');
+        section.innerHTML = blocks
+            .map(function (b) {
+            return `<pre data-testid="sandbox.source-block">${escapeHtml(b)}</pre>`;
+        })
+            .join('');
+        body.appendChild(section);
     }
-    if (spec.states) {
-      for (const [k, html] of Object.entries(spec.states)) {
-        blocks.push(`/* state: ${k} */\n${html.trim()}`);
-      }
+    private _renderPlaceholderTab(body: HTMLElement, message: string): void {
+        const wrap = document.createElement('atlas-box');
+        wrap.setAttribute('padding', 'lg');
+        wrap.innerHTML = `<atlas-text variant="muted">${escapeHtml(message)}</atlas-text>`;
+        body.appendChild(wrap);
     }
-    if (spec.configVariants) {
-      for (const cv of spec.configVariants) {
-        blocks.push(
-          `/* config: ${cv.name} */\n${JSON.stringify(cv.config, null, 2)}`,
-        );
-      }
+    private _renderMountStateful(container: HTMLElement, spec: Specimen, variants: SpecimenConfigVariant[], activeName: string): void {
+        // Bind spec.mount to a local so TS keeps the narrowing across the
+        // closure in the try/catch below. Without this the type inside
+        // `spec.mount!(...)` relies on the non-null assertion.
+        const mount = spec.mount;
+        if (typeof mount !== 'function')
+            return;
+        this._runActiveCleanups();
+        container.innerHTML = '';
+        if (variants.length > 1) {
+            const bar = document.createElement('atlas-tab-bar');
+            bar.setAttribute('name', 'variant-switcher');
+            bar.setAttribute('size', 'sm');
+            bar.setAttribute('aria-label', 'Config variants');
+            bar.tabs = variants.map(function (v) {
+                return ({ value: variantSlug(v.name), label: v.name });
+            });
+            bar.value = variantSlug(activeName);
+            bar.addEventListener('change', (ev: Event) => {
+                const detail = customDetail(ev, isValueDetail, 'sandbox.variant-switch');
+                const picked = variants.find(function (v) {
+                    return variantSlug(v.name) === detail.value;
+                });
+                if (picked)
+                    this._renderMountStateful(container, spec, variants, picked.name);
+            });
+            container.appendChild(bar);
+        }
+        const active = variants.find(function (v) {
+            return v.name === activeName;
+        }) ?? variants[0];
+        if (!active)
+            return;
+        const demo = document.createElement('atlas-box');
+        demo.setAttribute('data-role', 'variant-demo');
+        demo.setAttribute('padding', 'lg');
+        container.appendChild(demo);
+        const log = document.createElement('atlas-box');
+        log.setAttribute('data-role', 'mount-log');
+        const placeholder = document.createElement('atlas-text');
+        placeholder.setAttribute('variant', 'small');
+        placeholder.className = 'empty';
+        placeholder.textContent = '(no activity yet)';
+        log.appendChild(placeholder);
+        container.appendChild(log);
+        const onLog = function (kind: string, payload: unknown): void {
+            const empty = log.querySelector('.empty');
+            if (empty)
+                empty.remove();
+            const line = document.createElement('div');
+            line.className = 'line';
+            const k = document.createElement('span');
+            k.className = 'kind';
+            k.textContent = kind;
+            line.appendChild(k);
+            const body = document.createTextNode(typeof payload === 'string' ? payload : JSON.stringify(payload));
+            line.appendChild(body);
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        };
+        let cleanup: (() => void) | void;
+        try {
+            cleanup = mount(demo, {
+                config: active.config ?? {},
+                ...(active.isolation !== undefined ? { isolation: active.isolation } : {}),
+                onLog,
+            });
+        }
+        catch (err) {
+            onLog('mount-error', err instanceof Error ? err.message : String(err));
+            cleanup = function () { };
+        }
+        const finalCleanup: () => void = typeof cleanup === 'function' ? cleanup : function () { };
+        this._activeCleanups.push(finalCleanup);
     }
-    if (blocks.length === 0) {
-      blocks.push(`<${spec.tag}></${spec.tag}>`);
+    private _renderStateful(container: HTMLElement, spec: Specimen, activeState: string): void {
+        container.innerHTML = '';
+        const states = spec.states ?? {};
+        const stateKeys = Object.keys(states);
+        const bar = document.createElement('atlas-tab-bar');
+        bar.setAttribute('name', 'state-switcher');
+        bar.setAttribute('size', 'sm');
+        bar.setAttribute('aria-label', 'States');
+        bar.tabs = stateKeys.map(function (k) {
+            return ({ value: variantSlug(k), label: k });
+        });
+        bar.value = variantSlug(activeState);
+        bar.addEventListener('change', (ev: Event) => {
+            const detail = customDetail(ev, isValueDetail, 'sandbox.state-switch');
+            const key = stateKeys.find(function (k) {
+                return variantSlug(k) === detail.value;
+            });
+            if (key)
+                this._renderStateful(container, spec, key);
+        });
+        container.appendChild(bar);
+        const demo = document.createElement('atlas-box');
+        demo.setAttribute('data-role', 'variant-demo');
+        demo.setAttribute('padding', 'lg');
+        demo.innerHTML = states[activeState] ?? '';
+        container.appendChild(demo);
+        if (spec.variants) {
+            for (const variant of spec.variants) {
+                this._renderVariant(container, variant);
+            }
+        }
     }
-    const section = document.createElement('atlas-stack');
-    section.setAttribute('gap', 'md');
-    section.innerHTML = blocks
-      .map((b) => `<pre data-testid="sandbox.source-block">${escapeHtml(b)}</pre>`)
-      .join('');
-    body.appendChild(section);
-  }
-
-  private _renderPlaceholderTab(body: HTMLElement, message: string): void {
-    const wrap = document.createElement('atlas-box');
-    wrap.setAttribute('padding', 'lg');
-    wrap.innerHTML = `<atlas-text variant="muted">${escapeHtml(message)}</atlas-text>`;
-    body.appendChild(wrap);
-  }
-
-  private _renderMountStateful(
-    container: HTMLElement,
-    spec: Specimen,
-    variants: SpecimenConfigVariant[],
-    activeName: string,
-  ): void {
-    // Bind spec.mount to a local so TS keeps the narrowing across the
-    // closure in the try/catch below. Without this the type inside
-    // `spec.mount!(...)` relies on the non-null assertion.
-    const mount = spec.mount;
-    if (typeof mount !== 'function') return;
-
-    this._runActiveCleanups();
-    container.innerHTML = '';
-
-    if (variants.length > 1) {
-      const bar = document.createElement('atlas-tab-bar');
-      bar.setAttribute('name', 'variant-switcher');
-      bar.setAttribute('size', 'sm');
-      bar.setAttribute('aria-label', 'Config variants');
-      bar.tabs = variants.map((v) => ({ value: variantSlug(v.name), label: v.name }));
-      bar.value = variantSlug(activeName);
-      bar.addEventListener('change', (ev: Event) => {
-        const detail = customDetail(ev, isValueDetail, 'sandbox.variant-switch');
-        const picked = variants.find((v) => variantSlug(v.name) === detail.value);
-        if (picked) this._renderMountStateful(container, spec, variants, picked.name);
-      });
-      container.appendChild(bar);
+    private _renderVariant(container: HTMLElement, variant: SpecimenVariant): void {
+        const section = document.createElement('atlas-stack');
+        section.setAttribute('data-role', 'variant');
+        section.setAttribute('gap', 'sm');
+        const label = document.createElement('atlas-heading');
+        label.setAttribute('level', '3');
+        label.textContent = variant.name;
+        section.appendChild(label);
+        const demo = document.createElement('atlas-box');
+        demo.setAttribute('data-role', 'variant-demo');
+        demo.setAttribute('padding', 'lg');
+        if (variant.dark)
+            demo.setAttribute('data-dark', '');
+        demo.innerHTML = variant.html;
+        section.appendChild(demo);
+        container.appendChild(section);
     }
-
-    const active = variants.find((v) => v.name === activeName) ?? variants[0];
-    if (!active) return;
-
-    const demo = document.createElement('atlas-box');
-    demo.setAttribute('data-role', 'variant-demo');
-    demo.setAttribute('padding', 'lg');
-    container.appendChild(demo);
-
-    const log = document.createElement('atlas-box');
-    log.setAttribute('data-role', 'mount-log');
-    const placeholder = document.createElement('atlas-text');
-    placeholder.setAttribute('variant', 'small');
-    placeholder.className = 'empty';
-    placeholder.textContent = '(no activity yet)';
-    log.appendChild(placeholder);
-    container.appendChild(log);
-
-    const onLog = (kind: string, payload: unknown): void => {
-      const empty = log.querySelector('.empty');
-      if (empty) empty.remove();
-      const line = document.createElement('div');
-      line.className = 'line';
-      const k = document.createElement('span');
-      k.className = 'kind';
-      k.textContent = kind;
-      line.appendChild(k);
-      const body = document.createTextNode(
-        typeof payload === 'string' ? payload : JSON.stringify(payload),
-      );
-      line.appendChild(body);
-      log.appendChild(line);
-      log.scrollTop = log.scrollHeight;
-    };
-
-    let cleanup: (() => void) | void;
-    try {
-      cleanup = mount(demo, {
-        config: active.config ?? {},
-        ...(active.isolation !== undefined ? { isolation: active.isolation } : {}),
-        onLog,
-      });
-    } catch (err) {
-      onLog('mount-error', err instanceof Error ? err.message : String(err));
-      cleanup = () => {};
+    static specimens: ResolvedSpecimen[] = [];
+    static register(spec: Specimen): void {
+        // Dev hot-reload can cause the same file to execute twice; warn
+        // instead of throwing so the second registration is ignored but
+        // doesn't break the page.
+        if (AtlasSandbox.specimens.some(function (s) {
+            return s.id === spec.id;
+        })) {
+            emitTelemetry({
+                eventName: 'Atlas.Sandbox.DuplicateSpecimen',
+                source: 'sandbox.register',
+                specimenId: spec.id,
+            });
+            return;
+        }
+        AtlasSandbox.specimens.push(resolve(spec));
     }
-    const finalCleanup: () => void = typeof cleanup === 'function' ? cleanup : () => {};
-    this._activeCleanups.push(finalCleanup);
-  }
-
-  private _renderStateful(container: HTMLElement, spec: Specimen, activeState: string): void {
-    container.innerHTML = '';
-
-    const states = spec.states ?? {};
-    const stateKeys = Object.keys(states);
-
-    const bar = document.createElement('atlas-tab-bar');
-    bar.setAttribute('name', 'state-switcher');
-    bar.setAttribute('size', 'sm');
-    bar.setAttribute('aria-label', 'States');
-    bar.tabs = stateKeys.map((k) => ({ value: variantSlug(k), label: k }));
-    bar.value = variantSlug(activeState);
-    bar.addEventListener('change', (ev: Event) => {
-      const detail = customDetail(ev, isValueDetail, 'sandbox.state-switch');
-      const key = stateKeys.find((k) => variantSlug(k) === detail.value);
-      if (key) this._renderStateful(container, spec, key);
-    });
-    container.appendChild(bar);
-
-    const demo = document.createElement('atlas-box');
-    demo.setAttribute('data-role', 'variant-demo');
-    demo.setAttribute('padding', 'lg');
-    demo.innerHTML = states[activeState] ?? '';
-    container.appendChild(demo);
-
-    if (spec.variants) {
-      for (const variant of spec.variants) {
-        this._renderVariant(container, variant);
-      }
-    }
-  }
-
-  private _renderVariant(container: HTMLElement, variant: SpecimenVariant): void {
-    const section = document.createElement('atlas-stack');
-    section.setAttribute('data-role', 'variant');
-    section.setAttribute('gap', 'sm');
-
-    const label = document.createElement('atlas-heading');
-    label.setAttribute('level', '3');
-    label.textContent = variant.name;
-    section.appendChild(label);
-
-    const demo = document.createElement('atlas-box');
-    demo.setAttribute('data-role', 'variant-demo');
-    demo.setAttribute('padding', 'lg');
-    if (variant.dark) demo.setAttribute('data-dark', '');
-    demo.innerHTML = variant.html;
-    section.appendChild(demo);
-
-    container.appendChild(section);
-  }
-
-  static specimens: ResolvedSpecimen[] = [];
-
-  static register(spec: Specimen): void {
-    // Dev hot-reload can cause the same file to execute twice; warn
-    // instead of throwing so the second registration is ignored but
-    // doesn't break the page.
-    if (AtlasSandbox.specimens.some((s) => s.id === spec.id)) {
-      emitTelemetry({
-        eventName: 'Atlas.Sandbox.DuplicateSpecimen',
-        source: 'sandbox.register',
-        specimenId: spec.id,
-      });
-      return;
-    }
-    AtlasSandbox.specimens.push(resolve(spec));
-  }
 }
-
 AtlasElement.define('atlas-sandbox', AtlasSandbox);
-
 function variantSlug(name: string): string {
-  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

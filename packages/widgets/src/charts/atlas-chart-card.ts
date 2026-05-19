@@ -1,7 +1,6 @@
 import { AtlasElement, effect, type EffectCleanup } from '@atlas/core';
 import { registerTestState } from '@atlas/test-state';
 import { ChartStateStore, type ChartConfig, type ChartDataSet } from './chart-state.ts';
-
 /**
  * <atlas-chart-card chart-id="sales" type="line">
  *   <atlas-chart-config-panel>...</atlas-chart-config-panel>
@@ -18,138 +17,135 @@ import { ChartStateStore, type ChartConfig, type ChartDataSet } from './chart-st
  * `store.commit(intent, patch)` for every user action.
  */
 class AtlasChartCard extends AtlasElement {
-  store: ChartStateStore | null = null;
-  _disposeTest: (() => void) | null = null;
-  _disposeBridge: EffectCleanup | null = null;
-
-  static override get observedAttributes(): string[] {
-    return ['chart-id'];
-  }
-
-  get chartId(): string {
-    return this.getAttribute('chart-id') ?? 'chart';
-  }
-
-  set data(next: ChartDataSet | null) {
-    this._ensureStore();
-    this.store?.setRawData(next);
-  }
-  get data(): ChartDataSet | null {
-    return this.store?.rawData ?? null;
-  }
-
-  set initialConfig(cfg: ChartConfig | null | undefined) {
-    this._ensureStore();
-    if (!this.store || !cfg) return;
-    for (const [field, value] of Object.entries(cfg)) {
-      this.store._config.set({ ...this.store._config.value, [field]: value });
+    store: ChartStateStore | null = null;
+    _disposeTest: (() => void) | null = null;
+    _disposeBridge: EffectCleanup | null = null;
+    static override get observedAttributes(): string[] {
+        return ['chart-id'];
     }
-  }
-
-  set drilldowns(map: Record<string, ChartDataSet> | null | undefined) {
-    this._ensureStore();
-    if (this.store) this.store._drilldowns = map ?? {};
-  }
-
-  _ensureStore(): void {
-    if (this.store) return;
-    this.store = new ChartStateStore(this.chartId, {});
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this._ensureStore();
-    this._disposeTest = registerTestState(
-      `chart:${this.chartId}`,
-      () => this.store?.snapshot() ?? null,
-    );
-
-    // Bridge store → nested <atlas-chart>.
-    // Effect reads are reactive; DOM writes are deferred to a microtask
-    // so the chart's internal signal reads (e.g. `_sizeSignal.value` in
-    // its `data` setter) don't accidentally subscribe this effect.
-    this._disposeBridge = effect(() => {
-      if (!this.store) return;
-      const data = this.store.data;
-      const hidden = new Set(this.store.hiddenSeries);
-      const cfgType = this.store.config['type'];
-      const visible = data?.series
-        ? { ...data, series: data.series.filter((s) => !hidden.has((s.id ?? s.name) as string)) }
-        : data;
-      queueMicrotask(() => {
-        const chart = this.querySelector('atlas-chart') as (HTMLElement & { data?: unknown }) | null;
-        if (!chart) return;
-        chart.data = visible;
-        if (cfgType && chart.getAttribute('type') !== cfgType) {
-          chart.setAttribute('type', String(cfgType));
+    get chartId(): string {
+        return this.getAttribute('chart-id') ?? 'chart';
+    }
+    set data(next: ChartDataSet | null) {
+        this._ensureStore();
+        this.store?.setRawData(next);
+    }
+    get data(): ChartDataSet | null {
+        return this.store?.rawData ?? null;
+    }
+    set initialConfig(cfg: ChartConfig | null | undefined) {
+        this._ensureStore();
+        if (!this.store || !cfg)
+            return;
+        for (const [field, value] of Object.entries(cfg)) {
+            this.store._config.set({ ...this.store._config.value, [field]: value });
         }
-      });
-    });
-
-    // Listen for chart point-click to commit selection or drilldown.
-    this.addEventListener('point-click', (ev: Event) => {
-      const detail = readPointClickDetail(ev);
-      const seriesId = detail.seriesId ?? this._seriesIdFor(detail.seriesIdx);
-      if (seriesId == null) return;
-      // If we have a drilldown dataset for this series, drill in.
-      if (this.store?._drilldowns && this.store._drilldowns[seriesId]) {
-        this.store.commit({
-          kind: 'pushDrilldown',
-          level: this.store.drilldownStack.length,
-          label: seriesId,
-          value: seriesId,
+    }
+    set drilldowns(map: Record<string, ChartDataSet> | null | undefined) {
+        this._ensureStore();
+        if (this.store)
+            this.store._drilldowns = map ?? {};
+    }
+    _ensureStore(): void {
+        if (this.store)
+            return;
+        this.store = new ChartStateStore(this.chartId, {});
+    }
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this._ensureStore();
+        this._disposeTest = registerTestState(`chart:${this.chartId}`, () => this.store?.snapshot() ?? null);
+        // Bridge store → nested <atlas-chart>.
+        // Effect reads are reactive; DOM writes are deferred to a microtask
+        // so the chart's internal signal reads (e.g. `_sizeSignal.value` in
+        // its `data` setter) don't accidentally subscribe this effect.
+        this._disposeBridge = effect(() => {
+            if (!this.store)
+                return;
+            const data = this.store.data;
+            const hidden = new Set(this.store.hiddenSeries);
+            const cfgType = this.store.config['type'];
+            const visible = data?.series
+                ? { ...data, series: data.series.filter(function (s) {
+                        return !hidden.has((s.id ?? s.name) as string);
+                    }) }
+                : data;
+            queueMicrotask(() => {
+                const chart = this.querySelector('atlas-chart') as (HTMLElement & {
+                    data?: unknown;
+                }) | null;
+                if (!chart)
+                    return;
+                chart.data = visible;
+                if (cfgType && chart.getAttribute('type') !== cfgType) {
+                    chart.setAttribute('type', String(cfgType));
+                }
+            });
         });
-      } else {
-        this.store?.commit({
-          kind: 'selectSeries',
-          seriesId,
-          pointIndex: Number.isFinite(detail.index) ? (detail.index ?? null) : null,
+        // Listen for chart point-click to commit selection or drilldown.
+        this.addEventListener('point-click', (ev: Event) => {
+            const detail = readPointClickDetail(ev);
+            const seriesId = detail.seriesId ?? this._seriesIdFor(detail.seriesIdx);
+            if (seriesId == null)
+                return;
+            // If we have a drilldown dataset for this series, drill in.
+            if (this.store?._drilldowns && this.store._drilldowns[seriesId]) {
+                this.store.commit({
+                    kind: 'pushDrilldown',
+                    level: this.store.drilldownStack.length,
+                    label: seriesId,
+                    value: seriesId,
+                });
+            }
+            else {
+                this.store?.commit({
+                    kind: 'selectSeries',
+                    seriesId,
+                    pointIndex: Number.isFinite(detail.index) ? (detail.index ?? null) : null,
+                });
+            }
         });
-      }
-    });
-  }
-
-  override disconnectedCallback(): void {
-    this._disposeTest?.();
-    this._disposeTest = null;
-    this._disposeBridge?.();
-    this._disposeBridge = null;
-    this.store?.dispose();
-    super.disconnectedCallback?.();
-  }
-
-  _seriesIdFor(idx: number | undefined): string | null {
-    const data = this.store?.data;
-    if (!data?.series || idx === undefined || !Number.isFinite(idx)) return null;
-    const s = data.series[idx];
-    if (!s) return null;
-    return (s.id ?? s.name) as string;
-  }
+    }
+    override disconnectedCallback(): void {
+        this._disposeTest?.();
+        this._disposeTest = null;
+        this._disposeBridge?.();
+        this._disposeBridge = null;
+        this.store?.dispose();
+        super.disconnectedCallback?.();
+    }
+    _seriesIdFor(idx: number | undefined): string | null {
+        const data = this.store?.data;
+        if (!data?.series || idx === undefined || !Number.isFinite(idx))
+            return null;
+        const s = data.series[idx];
+        if (!s)
+            return null;
+        return (s.id ?? s.name) as string;
+    }
 }
-
 interface PointClickDetail {
-  seriesId?: string;
-  seriesIdx?: number;
-  index?: number;
+    seriesId?: string;
+    seriesIdx?: number;
+    index?: number;
 }
-
 function readPointClickDetail(ev: Event): PointClickDetail {
-  if (!(ev instanceof CustomEvent)) return {};
-  const detail: unknown = ev.detail;
-  if (typeof detail !== 'object' || detail === null) return {};
-  const out: PointClickDetail = {};
-  if ('seriesId' in detail && typeof detail.seriesId === 'string') {
-    out.seriesId = detail.seriesId;
-  }
-  if ('seriesIdx' in detail && typeof detail.seriesIdx === 'number') {
-    out.seriesIdx = detail.seriesIdx;
-  }
-  if ('index' in detail && typeof detail.index === 'number') {
-    out.index = detail.index;
-  }
-  return out;
+    if (!(ev instanceof CustomEvent))
+        return {};
+    const detail: unknown = ev.detail;
+    if (typeof detail !== 'object' || detail === null)
+        return {};
+    const out: PointClickDetail = {};
+    if ('seriesId' in detail && typeof detail.seriesId === 'string') {
+        out.seriesId = detail.seriesId;
+    }
+    if ('seriesIdx' in detail && typeof detail.seriesIdx === 'number') {
+        out.seriesIdx = detail.seriesIdx;
+    }
+    if ('index' in detail && typeof detail.index === 'number') {
+        out.index = detail.index;
+    }
+    return out;
 }
-
 AtlasElement.define('atlas-chart-card', AtlasChartCard);
-
 export { AtlasChartCard };

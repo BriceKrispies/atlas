@@ -35,6 +35,7 @@ import type {
   CatalogStateStore,
   SearchEngine,
 } from '@atlas/ports';
+import type { Logger } from '@atlas/platform-core';
 import type { WorkerConfig } from './config.ts';
 
 export interface PerTenantAdapters {
@@ -62,7 +63,10 @@ export interface WorkerAppState {
   adaptersForTenant(tenantId: string): Promise<PerTenantAdapters>;
 }
 
-export async function bootstrap(config: WorkerConfig): Promise<WorkerAppState> {
+export async function bootstrap(
+  config: WorkerConfig,
+  logger?: Logger,
+): Promise<WorkerAppState> {
   const controlPlaneSql = postgres(config.controlPlaneDbUrl, {
     // Worker is long-running — let the pool size itself.
     max: 10,
@@ -83,7 +87,7 @@ export async function bootstrap(config: WorkerConfig): Promise<WorkerAppState> {
         relations: new PostgresRelationStore(sql),
         projections: new PostgresProjectionStore(sql),
         cache: new PostgresCache(sql),
-        workerSource: new PostgresWorkerSource(sql, config.moduleId),
+        workerSource: new PostgresWorkerSource(sql, config.moduleId, logger),
         catalogState: new PostgresCatalogStateStore(sql),
         search: new PostgresSearchEngine(sql),
         repositories: new PostgresRepositoryStore(sql),

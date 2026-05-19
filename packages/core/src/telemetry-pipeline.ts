@@ -14,36 +14,32 @@
  * `setTelemetrySink(...)`. There's no DI here on purpose: AtlasElement.emit
  * has 140+ call sites and we will not thread a context through every one.
  */
-
 export interface TelemetryEvent {
-  /** Dotted event name, e.g. `Surface.State.loading.success`. */
-  eventName: string;
-  /** ISO-8601 timestamp the pipeline stamped on accept. */
-  timestamp: string;
-  /** Surface id when an AtlasSurface ancestor is in scope. */
-  surfaceId?: string;
-  /** Optional correlation id; surfaces can set this on themselves. */
-  correlationId?: string;
-  /** Optional tenant id; not yet plumbed end-to-end on the FE. */
-  tenantId?: string;
-  /**
-   * Anything else the caller passed to emit() or the framework added. Typed
-   * as `unknown` because telemetry payloads are heterogeneous; sinks treat
-   * extra fields as opaque JSON.
-   */
-  [key: string]: unknown;
+    /** Dotted event name, e.g. `Surface.State.loading.success`. */
+    eventName: string;
+    /** ISO-8601 timestamp the pipeline stamped on accept. */
+    timestamp: string;
+    /** Surface id when an AtlasSurface ancestor is in scope. */
+    surfaceId?: string;
+    /** Optional correlation id; surfaces can set this on themselves. */
+    correlationId?: string;
+    /** Optional tenant id; not yet plumbed end-to-end on the FE. */
+    tenantId?: string;
+    /**
+     * Anything else the caller passed to emit() or the framework added. Typed
+     * as `unknown` because telemetry payloads are heterogeneous; sinks treat
+     * extra fields as opaque JSON.
+     */
+    [key: string]: unknown;
 }
-
 export interface TelemetrySink {
-  write(event: TelemetryEvent): void;
-  /** Synchronous best-effort flush. Called on pagehide / beforeunload. */
-  flushSync?(): void;
+    write(event: TelemetryEvent): void;
+    /** Synchronous best-effort flush. Called on pagehide / beforeunload. */
+    flushSync?(): void;
 }
-
 class NullSink implements TelemetrySink {
-  write(): void {}
+    write(): void { }
 }
-
 /**
  * Dev-only sink that mirrors the legacy `console.debug('[telemetry]', obj)`
  * shape so existing Playwright `telemetrySpy` fixtures keep working.
@@ -52,22 +48,21 @@ class NullSink implements TelemetrySink {
  * and not shipped anywhere.
  */
 export class ConsoleJsonSink implements TelemetrySink {
-  write(event: TelemetryEvent): void {
-    console.debug('[telemetry]', event);
-  }
+    write(event: TelemetryEvent): void {
+        // eslint-disable-next-line no-console -- contract-exempt: this sink's contract IS to write telemetry events to the browser dev console (legacy `console.debug('[telemetry]', obj)` shape that telemetrySpy Playwright fixtures match against); see specs/frontend/observability.md
+        console.debug('[telemetry]', event);
+    }
 }
-
 export interface BeaconHttpSinkOptions {
-  /** POST target. Typically `/atlas/telemetry` on apps/server. */
-  endpoint: string;
-  /** Max events buffered before forced flush. Default 32. */
-  maxBatch?: number;
-  /** Max ms an event sits in the buffer before flush. Default 2000. */
-  flushIntervalMs?: number;
-  /** Override fetch (tests). Defaults to globalThis.fetch. */
-  fetch?: typeof fetch;
+    /** POST target. Typically `/atlas/telemetry` on apps/server. */
+    endpoint: string;
+    /** Max events buffered before forced flush. Default 32. */
+    maxBatch?: number;
+    /** Max ms an event sits in the buffer before flush. Default 2000. */
+    flushIntervalMs?: number;
+    /** Override fetch (tests). Defaults to globalThis.fetch. */
+    fetch?: typeof fetch;
 }
-
 /**
  * Production sink: buffers events and POSTs them in batches. Falls back to
  * `navigator.sendBeacon` on pagehide so the last batch survives a tab close.
@@ -76,147 +71,146 @@ export interface BeaconHttpSinkOptions {
  *   setTelemetrySink(new BeaconHttpSink({ endpoint: '/atlas/telemetry' }));
  */
 export class BeaconHttpSink implements TelemetrySink {
-  private readonly endpoint: string;
-  private readonly maxBatch: number;
-  private readonly flushIntervalMs: number;
-  private readonly fetchImpl: typeof fetch;
-  private buffer: TelemetryEvent[] = [];
-  private flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-  constructor(opts: BeaconHttpSinkOptions) {
-    this.endpoint = opts.endpoint;
-    this.maxBatch = opts.maxBatch ?? 32;
-    this.flushIntervalMs = opts.flushIntervalMs ?? 2000;
-    // Fall back to a `fetch`-shaped function that throws on use, rather
-    // than `as unknown as typeof fetch`. The signature matches `fetch`
-    // structurally so no cast is required.
-    const noFetch: typeof fetch = (
-      _input: URL | RequestInfo,
-      _init?: RequestInit,
-    ): Promise<Response> => {
-      throw new Error('BeaconHttpSink: no fetch available');
-    };
-    this.fetchImpl =
-      opts.fetch ??
-      (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : noFetch);
-
-    if (typeof window !== 'undefined') {
-      // pagehide is the reliable terminal event on mobile + desktop.
-      window.addEventListener('pagehide', () => this.flushSync());
+    private readonly endpoint: string;
+    private readonly maxBatch: number;
+    private readonly flushIntervalMs: number;
+    private readonly fetchImpl: typeof fetch;
+    private buffer: TelemetryEvent[] = [];
+    private flushTimer: ReturnType<typeof setTimeout> | null = null;
+    constructor(opts: BeaconHttpSinkOptions) {
+        this.endpoint = opts.endpoint;
+        this.maxBatch = opts.maxBatch ?? 32;
+        this.flushIntervalMs = opts.flushIntervalMs ?? 2000;
+        // Fall back to a `fetch`-shaped function that throws on use, rather
+        // than `as unknown as typeof fetch`. The signature matches `fetch`
+        // structurally so no cast is required.
+        const noFetch: typeof fetch = function (_input: URL | RequestInfo, _init?: RequestInit): Promise<Response> {
+            throw new Error('BeaconHttpSink: no fetch available');
+        };
+        this.fetchImpl =
+            opts.fetch ??
+                (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : noFetch);
+        if (typeof window !== 'undefined') {
+            // pagehide is the reliable terminal event on mobile + desktop.
+            window.addEventListener('pagehide', () => this.flushSync());
+        }
     }
-  }
-
-  write(event: TelemetryEvent): void {
-    this.buffer.push(event);
-    if (this.buffer.length >= this.maxBatch) {
-      this.flushAsync();
-      return;
+    write(event: TelemetryEvent): void {
+        this.buffer.push(event);
+        if (this.buffer.length >= this.maxBatch) {
+            this.flushAsync();
+            return;
+        }
+        if (this.flushTimer === null) {
+            this.flushTimer = setTimeout(() => this.flushAsync(), this.flushIntervalMs);
+        }
     }
-    if (this.flushTimer === null) {
-      this.flushTimer = setTimeout(() => this.flushAsync(), this.flushIntervalMs);
+    flushSync(): void {
+        if (this.buffer.length === 0)
+            return;
+        const batch = this.buffer;
+        this.buffer = [];
+        this.clearTimer();
+        const body = JSON.stringify({ events: batch });
+        // sendBeacon is the only way to reliably ship on pagehide.
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+            try {
+                const blob = new Blob([body], { type: 'application/json' });
+                navigator.sendBeacon(this.endpoint, blob);
+                return;
+            }
+            catch {
+                // fall through to fetch
+            }
+        }
+        // Best-effort fetch; we can't await on a sync flush path.
+        try {
+            void this.fetchImpl(this.endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                keepalive: true,
+            });
+        }
+        catch {
+            // swallow — we cannot let telemetry break the page.
+        }
     }
-  }
-
-  flushSync(): void {
-    if (this.buffer.length === 0) return;
-    const batch = this.buffer;
-    this.buffer = [];
-    this.clearTimer();
-
-    const body = JSON.stringify({ events: batch });
-    // sendBeacon is the only way to reliably ship on pagehide.
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      try {
-        const blob = new Blob([body], { type: 'application/json' });
-        navigator.sendBeacon(this.endpoint, blob);
-        return;
-      } catch {
-        // fall through to fetch
-      }
+    private flushAsync(): void {
+        if (this.buffer.length === 0) {
+            this.clearTimer();
+            return;
+        }
+        const batch = this.buffer;
+        this.buffer = [];
+        this.clearTimer();
+        void this.fetchImpl(this.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ events: batch }),
+            keepalive: true,
+        }).catch(function () {
+            // swallow — telemetry must never throw on the hot path.
+        });
     }
-    // Best-effort fetch; we can't await on a sync flush path.
-    try {
-      void this.fetchImpl(this.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        keepalive: true,
-      });
-    } catch {
-      // swallow — we cannot let telemetry break the page.
+    private clearTimer(): void {
+        if (this.flushTimer !== null) {
+            clearTimeout(this.flushTimer);
+            this.flushTimer = null;
+        }
     }
-  }
-
-  private flushAsync(): void {
-    if (this.buffer.length === 0) {
-      this.clearTimer();
-      return;
-    }
-    const batch = this.buffer;
-    this.buffer = [];
-    this.clearTimer();
-
-    void this.fetchImpl(this.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events: batch }),
-      keepalive: true,
-    }).catch(() => {
-      // swallow — telemetry must never throw on the hot path.
-    });
-  }
-
-  private clearTimer(): void {
-    if (this.flushTimer !== null) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-  }
 }
-
 // Vite folds `import.meta.env.DEV` to a boolean literal; this expression
 // becomes `false` in prod bundles. The outer guard keeps the module
 // importable from plain Node tools where `import.meta.env` is undefined.
-const metaEnv: ImportMetaEnv | undefined = (import.meta as { env?: ImportMetaEnv }).env;
+const metaEnv: ImportMetaEnv | undefined = (import.meta as {
+    env?: ImportMetaEnv;
+}).env;
 const DEV_MODE: boolean = !!(metaEnv && metaEnv.DEV === true);
-
 let _sink: TelemetrySink = DEV_MODE ? new ConsoleJsonSink() : new NullSink();
-
 /**
  * Replace the active telemetry sink. Call once at app boot.
  * Pass `null` to reset to the no-op sink.
  */
 export function setTelemetrySink(sink: TelemetrySink | null): void {
-  _sink = sink ?? new NullSink();
+    _sink = sink ?? new NullSink();
 }
-
 /** Current sink — exposed mainly for tests. */
 export function getTelemetrySink(): TelemetrySink {
-  return _sink;
+    return _sink;
 }
-
 /**
  * Emit a telemetry event. Stamps `timestamp` if missing and forwards to the
  * active sink. Never throws — telemetry must not break the page.
  */
-export function emitTelemetry(event: Omit<TelemetryEvent, 'timestamp'> & { timestamp?: string }): void {
-  // Build the stamped event field-by-field so the result satisfies
-  // `TelemetryEvent` structurally without going through `unknown`. The
-  // index signature on `TelemetryEvent` (`[key: string]: unknown`) used
-  // to defeat spread-based typing; constructing explicitly avoids that.
-  const stamped: TelemetryEvent = {
-    ...event,
-    eventName: event.eventName,
-    timestamp: event.timestamp ?? new Date().toISOString(),
-  };
-  try {
-    _sink.write(stamped);
-  } catch {
-    // A broken sink must not crash the caller.
-  }
+export function emitTelemetry(event: Omit<TelemetryEvent, 'timestamp'> & {
+    timestamp?: string;
+}): void {
+    // Build the stamped event field-by-field so the result satisfies
+    // `TelemetryEvent` structurally without going through `unknown`. The
+    // index signature on `TelemetryEvent` (`[key: string]: unknown`) means
+    // `Omit` widens `eventName` to `unknown` — read it through the bracket
+    // form (per noPropertyAccessFromIndexSignature) and narrow at runtime
+    // rather than asserting through `as`.
+    const rawName = event['eventName'];
+    if (typeof rawName !== 'string') {
+        // Caller-side type makes this unreachable, but the runtime check
+        // satisfies strict typing without an unsafe cast.
+        throw new TypeError('emitTelemetry: eventName must be a string');
+    }
+    const stamped: TelemetryEvent = {
+        ...event,
+        eventName: rawName,
+        timestamp: event.timestamp ?? new Date().toISOString(),
+    };
+    try {
+        _sink.write(stamped);
+    }
+    catch {
+        // A broken sink must not crash the caller.
+    }
 }
-
 /** True iff running in a Vite dev build. Used to decide rethrow vs. swallow. */
 export function isDevMode(): boolean {
-  return DEV_MODE;
+    return DEV_MODE;
 }

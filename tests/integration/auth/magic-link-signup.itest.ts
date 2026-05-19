@@ -13,22 +13,19 @@
  * `tests/integration/auth/magic-link-signup.itest.ts` hit when
  * filtering by the auth path.
  */
-
 import { test } from '@playwright/test';
-
-test.describe('e2e — magic-link signup (canonical)', () => {
-  test('the public-signup loop is covered by `tests/integration/public-signup.itest.ts`', () => {
-    test.info().annotations.push({
-      type: 'pointer',
-      description:
-        'The full magic-link signup flow (form → smtp4dev → magic-link → ' +
-        'tenant home) is in tests/integration/public-signup.itest.ts. ' +
-        'Add new scenarios there.',
+test.describe('e2e — magic-link signup (canonical)', function () {
+    test('the public-signup loop is covered by `tests/integration/public-signup.itest.ts`', function () {
+        test.info().annotations.push({
+            type: 'pointer',
+            description: 'The full magic-link signup flow (form → smtp4dev → magic-link → ' +
+                'tenant home) is in tests/integration/public-signup.itest.ts. ' +
+                'Add new scenarios there.',
+        });
+        // Intentional no-op test body: the assertion is the annotation.
+        // Removing this file would leave a hole in the auth-suite directory
+        // structure; consolidating into public-signup.itest.ts requires a
+        // separate decision on whether public-signup is auth-shaped enough
+        // to live under auth/ vs at tests/integration/ root.
     });
-    // Intentional no-op test body: the assertion is the annotation.
-    // Removing this file would leave a hole in the auth-suite directory
-    // structure; consolidating into public-signup.itest.ts requires a
-    // separate decision on whether public-signup is auth-shaped enough
-    // to live under auth/ vs at tests/integration/ root.
-  });
 });

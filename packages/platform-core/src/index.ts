@@ -53,6 +53,8 @@ export type { PrimaryCustomDomainLookup } from './tenant-urls.ts';
 export {
   PLATFORM_TENANT_ID,
   PLATFORM_ROBOT_PRINCIPAL_ID,
+  PLATFORM_ADMIN_PRINCIPAL_ID,
+  PLATFORM_ADMIN_EMAIL,
   bootstrapPlatformRobot,
 } from './platform-tenant.ts';
 export type { PlatformRobotPrincipal } from './platform-tenant.ts';
@@ -80,6 +82,7 @@ export {
 // implementation lives in @atlas/logging. Per specs/crosscut/logging.md.
 export type { LogLevel, LogEvent, LogEventError } from './log-event.ts';
 export type { Logger, LogFields } from './logger.ts';
+export { toLogError } from './log-error.ts';
 export type {
   AtlasEnvironment,
   AtlasExecutionContext,

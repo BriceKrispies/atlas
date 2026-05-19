@@ -24,54 +24,40 @@
  * canonical extracted helper, so the two tests pin the same surface
  * from both sides.
  */
-
 import { describe, expect, it } from 'vitest';
 import { hashSecret, lookupOf } from '../../src/index.ts';
-
-describe('hashSecret — pinned SHA-256 test vectors (security-critical)', () => {
-  it('hashes the empty string to the FIPS 180-4 zero-length digest', () => {
-    // SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
-    expect(hashSecret('')).toBe(
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    );
-  });
-
-  it('hashes "abc" to the FIPS 180-4 §B.1 digest', () => {
-    // SHA-256("abc") = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.
-    expect(hashSecret('abc')).toBe(
-      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-    );
-  });
-
-  it('produces lowercase 64-char hex (no uppercase drift, no leading-zero pruning)', () => {
-    // The inline impl previously used `.toString(16).padStart(2, '0')` which
-    // is lowercase. The extracted impl must match. Pin the shape.
-    const hex = hashSecret('regression-pin');
-    expect(hex).toMatch(/^[0-9a-f]{64}$/);
-    expect(hex).toBe(hex.toLowerCase());
-  });
-
-  it('is deterministic — identical input always yields identical hex', () => {
-    const a = hashSecret('a-particular-secret-value-here');
-    const b = hashSecret('a-particular-secret-value-here');
-    expect(a).toBe(b);
-  });
+describe('hashSecret — pinned SHA-256 test vectors (security-critical)', function () {
+    it('hashes the empty string to the FIPS 180-4 zero-length digest', function () {
+        // SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
+        expect(hashSecret('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    });
+    it('hashes "abc" to the FIPS 180-4 §B.1 digest', function () {
+        // SHA-256("abc") = ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.
+        expect(hashSecret('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    });
+    it('produces lowercase 64-char hex (no uppercase drift, no leading-zero pruning)', function () {
+        // The inline impl previously used `.toString(16).padStart(2, '0')` which
+        // is lowercase. The extracted impl must match. Pin the shape.
+        const hex = hashSecret('regression-pin');
+        expect(hex).toMatch(/^[0-9a-f]{64}$/);
+        expect(hex).toBe(hex.toLowerCase());
+    });
+    it('is deterministic — identical input always yields identical hex', function () {
+        const a = hashSecret('a-particular-secret-value-here');
+        const b = hashSecret('a-particular-secret-value-here');
+        expect(a).toBe(b);
+    });
 });
-
-describe('lookupOf — first-8-hex-char prefix invariant', () => {
-  it('returns the first 8 chars of hashSecret(input)', () => {
-    // SHA-256("abc") starts with ba7816bf, so lookupOf("abc") = "ba7816bf".
-    expect(lookupOf('abc')).toBe('ba7816bf');
-  });
-
-  it('is exactly 8 lowercase hex chars', () => {
-    const prefix = lookupOf('any-secret');
-    expect(prefix).toMatch(/^[0-9a-f]{8}$/);
-  });
-
-  it('stays stable across calls — invite-accept lookups depend on this', () => {
-    expect(lookupOf('invite-token-fixture')).toBe(
-      lookupOf('invite-token-fixture'),
-    );
-  });
+describe('lookupOf — first-8-hex-char prefix invariant', function () {
+    it('returns the first 8 chars of hashSecret(input)', function () {
+        // SHA-256("abc") starts with ba7816bf, so lookupOf("abc") = "ba7816bf".
+        expect(lookupOf('abc')).toBe('ba7816bf');
+    });
+    it('is exactly 8 lowercase hex chars', function () {
+        const prefix = lookupOf('any-secret');
+        expect(prefix).toMatch(/^[0-9a-f]{8}$/);
+    });
+    it('stays stable across calls — invite-accept lookups depend on this', function () {
+        expect(lookupOf('invite-token-fixture')).toBe(lookupOf('invite-token-fixture'));
+    });
 });

@@ -1,129 +1,88 @@
-import {
-  mkdirSync,
-  copyFileSync,
-  readdirSync,
-  writeFileSync,
-  statSync,
-} from 'node:fs';
+import { mkdirSync, copyFileSync, readdirSync, writeFileSync, statSync, } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
 const repoRoot = resolve(__dirname, '..', '..', '..');
 const contracts = join(repoRoot, 'specs', 'schemas', 'contracts');
 const events = join(repoRoot, 'specs', 'schemas', 'events');
 const domainsDir = join(repoRoot, 'specs', 'domains');
-
 const outDir = resolve(__dirname, '..', 'src', 'generated');
 const manifestsOutDir = join(outDir, 'manifests');
 mkdirSync(outDir, { recursive: true });
 mkdirSync(manifestsOutDir, { recursive: true });
-
 const copied: string[] = [];
-
 // Copy module-domain schemas (`catalog.*`, `authz.*`, `content_pages.*`),
 // platform-emitted ones (`platform.*` — e.g. StructuredAuthz.PolicyEvaluated
 // audit events), and the seeder-corpus contracts (`seed.*` — Scenario,
 // Fixture, Template, AxisDefinition; see specs/crosscut/seed-corpus.md).
-const isPicked = (n: string): boolean =>
-  (n.startsWith('catalog.') ||
-    n.startsWith('platform.') ||
-    n.startsWith('authz.') ||
-    n.startsWith('content_pages.') ||
-    n.startsWith('seed.')) &&
-  n.endsWith('.schema.json');
-
+const isPicked = function (n: string): boolean {
+    return (n.startsWith('catalog.') ||
+        n.startsWith('platform.') ||
+        n.startsWith('authz.') ||
+        n.startsWith('content_pages.') ||
+        n.startsWith('seed.')) &&
+        n.endsWith('.schema.json');
+};
 for (const dir of [contracts, events]) {
-  for (const f of readdirSync(dir)) {
-    if (isPicked(f)) {
-      copyFileSync(join(dir, f), join(outDir, f));
-      copied.push(f);
+    for (const f of readdirSync(dir)) {
+        if (isPicked(f)) {
+            copyFileSync(join(dir, f), join(outDir, f));
+            copied.push(f);
+        }
     }
-  }
 }
-
 // The seed.* schemas $ref event-envelope.v1; copy that contract too so the
 // loader can register it and the refs resolve.
 const eventEnvelopeSrc = join(contracts, 'event_envelope.schema.json');
 const eventEnvelopeDest = join(outDir, 'event_envelope.schema.json');
 copyFileSync(eventEnvelopeSrc, eventEnvelopeDest);
 copied.push('event_envelope.schema.json');
-
 // Module-manifest sources after the 2026-05 spec migration. Legacy modules
 // previously lived under `specs/modules/<id>/module.manifest.json`; the
 // canonical home is now `specs/domains/<domain>/<legacy-folder>/module.manifest.json`.
 // Output filenames preserve the legacy module ids so the loader's static
 // imports continue to resolve.
-const moduleManifests: ReadonlyArray<{ outName: string; sourcePath: string }> = [
-  {
-    outName: 'structured-catalog.manifest.json',
-    sourcePath: join(
-      domainsDir,
-      'catalog',
-      'structured-catalog',
-      'module.manifest.json',
-    ),
-  },
-  {
-    outName: 'authz.manifest.json',
-    sourcePath: join(
-      domainsDir,
-      'authorization',
-      'authz-module',
-      'module.manifest.json',
-    ),
-  },
-  {
-    outName: 'content-pages.manifest.json',
-    sourcePath: join(
-      domainsDir,
-      'authoring',
-      'content-pages',
-      'module.manifest.json',
-    ),
-  },
+const moduleManifests: ReadonlyArray<{
+    outName: string;
+    sourcePath: string;
+}> = [
+    {
+        outName: 'structured-catalog.manifest.json',
+        sourcePath: join(domainsDir, 'catalog', 'structured-catalog', 'module.manifest.json'),
+    },
+    {
+        outName: 'authz.manifest.json',
+        sourcePath: join(domainsDir, 'authorization', 'authz-module', 'module.manifest.json'),
+    },
+    {
+        outName: 'content-pages.manifest.json',
+        sourcePath: join(domainsDir, 'authoring', 'content-pages', 'module.manifest.json'),
+    },
 ];
-
-const badgeFamilySeed = join(
-  domainsDir,
-  'catalog',
-  'structured-catalog',
-  'seed-packages',
-  'badge-family.json',
-);
+const badgeFamilySeed = join(domainsDir, 'catalog', 'structured-catalog', 'seed-packages', 'badge-family.json');
 copyFileSync(badgeFamilySeed, join(outDir, 'badge-family.json'));
 copied.push('badge-family.json');
-
 const manifestFiles: string[] = [];
 for (const m of moduleManifests) {
-  let exists = false;
-  try {
-    exists = statSync(m.sourcePath).isFile();
-  } catch {
-    exists = false;
-  }
-  if (!exists) {
-    throw new Error(
-      `module manifest source not found: ${m.sourcePath} (expected for ${m.outName})`,
-    );
-  }
-  copyFileSync(m.sourcePath, join(manifestsOutDir, m.outName));
-  manifestFiles.push(m.outName);
-  copied.push(`manifests/${m.outName}`);
+    let exists = false;
+    try {
+        exists = statSync(m.sourcePath).isFile();
+    }
+    catch {
+        exists = false;
+    }
+    if (!exists) {
+        throw new Error(`module manifest source not found: ${m.sourcePath} (expected for ${m.outName})`);
+    }
+    copyFileSync(m.sourcePath, join(manifestsOutDir, m.outName));
+    manifestFiles.push(m.outName);
+    copied.push(`manifests/${m.outName}`);
 }
 manifestFiles.sort();
-
 const indexLines = ['// Auto-generated by scripts/sync-schemas.ts. Do not edit.'];
-indexLines.push(
-  `export const generatedFiles: ReadonlyArray<string> = ${JSON.stringify(copied.sort(), null, 2)};`,
-);
-indexLines.push(
-  `export const moduleManifestFiles: ReadonlyArray<string> = ${JSON.stringify(manifestFiles, null, 2)};`,
-);
+indexLines.push(`export const generatedFiles: ReadonlyArray<string> = ${JSON.stringify(copied.sort(), null, 2)};`);
+indexLines.push(`export const moduleManifestFiles: ReadonlyArray<string> = ${JSON.stringify(manifestFiles, null, 2)};`);
 writeFileSync(join(outDir, 'index.ts'), indexLines.join('\n') + '\n');
-
-console.log(
-  `Copied ${copied.length} files to ${outDir} (${manifestFiles.length} module manifests)`,
-);
+// eslint-disable-next-line no-console -- cli-stdout: build-time sync script's user-visible progress line; no structured logger available at the script tier
+console.log(`Copied ${copied.length} files to ${outDir} (${manifestFiles.length} module manifests)`);

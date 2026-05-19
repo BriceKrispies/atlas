@@ -18,20 +18,16 @@
  * not just on whatever sample of behavior a runtime test happened to
  * exercise.
  */
-
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashPassword, validatePasswordComplexity } from '../../src/index.ts';
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../..');
-
 function readSrc(rel: string): string {
-  return readFileSync(resolve(REPO_ROOT, rel), 'utf8');
+    return readFileSync(resolve(REPO_ROOT, rel), 'utf8');
 }
-
 /* -------------------------------------------------------------------------- */
 /* F-CRYPTO-3  scrypt params below OWASP floor                                */
 /*                                                                            */
@@ -44,33 +40,32 @@ function readSrc(rel: string): string {
 /* Expected: produced PHC envelope encodes N >= 131072.                       */
 /* Today:    encodes N=16384 — RED.                                          */
 /* -------------------------------------------------------------------------- */
-
-describe('F-CRYPTO-3 scrypt parameters', () => {
-  it('uses N >= 2^17 (131072) per OWASP 2024 guidance', async () => {
-    const phc = await hashPassword('correct-horse-Battery-staple');
-    const match = /\$scrypt\$N=(\d+),r=(\d+),p=(\d+)\$/.exec(phc);
-    if (match === null) {
-      throw new Error(`unexpected PHC envelope: ${phc}`);
-    }
-    const N = Number(match[1]);
-    const r = Number(match[2]);
-    const p = Number(match[3]);
-    // Sanity: r and p match the OWASP shape (r=8 is fixed; p is the
-    // tunable that compensates when N is dialed down, so we want either
-    // N≥2^17 with p=1, or a documented N/p combination from the OWASP
-    // table). Anything outside that envelope is below floor.
-    expect(r).toBe(8);
-    if (p === 1) {
-      expect(N, 'with p=1 the OWASP minimum is N=2^17 (131072)').toBeGreaterThanOrEqual(131072);
-    } else {
-      // If somebody bumps p instead, the work-factor still has to land
-      // near OWASP's recommended product. A loose lower bound covers
-      // all rows on the OWASP table.
-      expect(N * p, 'N * p below OWASP work-factor floor').toBeGreaterThanOrEqual(131072);
-    }
-  });
+describe('F-CRYPTO-3 scrypt parameters', function () {
+    it('uses N >= 2^17 (131072) per OWASP 2024 guidance', async function () {
+        const phc = await hashPassword('correct-horse-Battery-staple');
+        const match = /\$scrypt\$N=(\d+),r=(\d+),p=(\d+)\$/.exec(phc);
+        if (match === null) {
+            throw new Error(`unexpected PHC envelope: ${phc}`);
+        }
+        const N = Number(match[1]);
+        const r = Number(match[2]);
+        const p = Number(match[3]);
+        // Sanity: r and p match the OWASP shape (r=8 is fixed; p is the
+        // tunable that compensates when N is dialed down, so we want either
+        // N≥2^17 with p=1, or a documented N/p combination from the OWASP
+        // table). Anything outside that envelope is below floor.
+        expect(r).toBe(8);
+        if (p === 1) {
+            expect(N, 'with p=1 the OWASP minimum is N=2^17 (131072)').toBeGreaterThanOrEqual(131072);
+        }
+        else {
+            // If somebody bumps p instead, the work-factor still has to land
+            // near OWASP's recommended product. A loose lower bound covers
+            // all rows on the OWASP table.
+            expect(N * p, 'N * p below OWASP work-factor floor').toBeGreaterThanOrEqual(131072);
+        }
+    });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-CRYPTO-4  Password complexity allows trivially-weak shapes              */
 /*                                                                            */
@@ -83,17 +78,18 @@ describe('F-CRYPTO-3 scrypt parameters', () => {
 /*           top-N breached-passwords check, or both).                        */
 /* Today:    accepted — RED.                                                 */
 /* -------------------------------------------------------------------------- */
-
-describe('F-CRYPTO-4 password complexity', () => {
-  it('rejects "Password1234" — common breached pattern', () => {
-    expect(() => validatePasswordComplexity('Password1234')).toThrow();
-  });
-
-  it('rejects "Aaaaaaaa1111" — pattern matches policy but is trivially guessable', () => {
-    expect(() => validatePasswordComplexity('Aaaaaaaa1111')).toThrow();
-  });
+describe('F-CRYPTO-4 password complexity', function () {
+    it('rejects "Password1234" — common breached pattern', function () {
+        expect(function () {
+            return validatePasswordComplexity('Password1234');
+        }).toThrow();
+    });
+    it('rejects "Aaaaaaaa1111" — pattern matches policy but is trivially guessable', function () {
+        expect(function () {
+            return validatePasswordComplexity('Aaaaaaaa1111');
+        }).toThrow();
+    });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-CRYPTO-2  Math.random() in security-relevant ID generation              */
 /*                                                                            */
@@ -108,29 +104,23 @@ describe('F-CRYPTO-4 password complexity', () => {
 /* Expected: every call site uses `crypto.randomBytes(...)`.                  */
 /* Today:    all four still call Math.random — RED.                          */
 /* -------------------------------------------------------------------------- */
-
-describe('F-CRYPTO-2 randomness sources in identity', () => {
-  const SECURITY_PATHS = [
-    'modules/identity/src/saml/sp-key.ts',
-    'modules/identity/src/saml/authn-request.ts',
-    'modules/identity/src/handlers/webauthn-register.ts',
-    'modules/identity/src/handlers/webauthn-assert.ts',
-  ];
-
-  for (const rel of SECURITY_PATHS) {
-    it(`${rel} uses no Math.random`, () => {
-      const src = readSrc(rel);
-      // Strip line-comments so accidental "// don't use Math.random" notes
-      // don't trip the check.
-      const stripped = src.replace(/\/\/.*$/gm, '');
-      expect(
-        stripped.includes('Math.random'),
-        `Math.random found in ${rel} — replace with crypto.randomBytes`,
-      ).toBe(false);
-    });
-  }
+describe('F-CRYPTO-2 randomness sources in identity', function () {
+    const SECURITY_PATHS = [
+        'modules/identity/src/saml/sp-key.ts',
+        'modules/identity/src/saml/authn-request.ts',
+        'modules/identity/src/handlers/webauthn-register.ts',
+        'modules/identity/src/handlers/webauthn-assert.ts',
+    ];
+    for (const rel of SECURITY_PATHS) {
+        it(`${rel} uses no Math.random`, function () {
+            const src = readSrc(rel);
+            // Strip line-comments so accidental "// don't use Math.random" notes
+            // don't trip the check.
+            const stripped = src.replace(/\/\/.*$/gm, '');
+            expect(stripped.includes('Math.random'), `Math.random found in ${rel} — replace with crypto.randomBytes`).toBe(false);
+        });
+    }
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-CRYPTO-1  CSRF middleware defined but never mounted                     */
 /*                                                                            */
@@ -144,23 +134,20 @@ describe('F-CRYPTO-2 randomness sources in identity', () => {
 /*           `csrfMiddleware` onto authed routes.                             */
 /* Today:    no caller — RED.                                                */
 /* -------------------------------------------------------------------------- */
-
-describe('F-CRYPTO-1 CSRF middleware mounting', () => {
-  it('csrfMiddleware is wired into the server bootstrap', () => {
-    // The `csrfMiddleware` symbol is exported from csrf.ts and should be
-    // referenced by main.ts (or wherever route groups are composed).
-    const candidates = [
-      'apps/server/src/main.ts',
-      'apps/server/src/bootstrap.ts',
-    ];
-    const found = candidates.some((p) => readSrc(p).includes('csrfMiddleware'));
-    expect(
-      found,
-      'csrfMiddleware is exported but never imported by main.ts/bootstrap.ts',
-    ).toBe(true);
-  });
+describe('F-CRYPTO-1 CSRF middleware mounting', function () {
+    it('csrfMiddleware is wired into the server bootstrap', function () {
+        // The `csrfMiddleware` symbol is exported from csrf.ts and should be
+        // referenced by main.ts (or wherever route groups are composed).
+        const candidates = [
+            'apps/server/src/main.ts',
+            'apps/server/src/bootstrap.ts',
+        ];
+        const found = candidates.some(function (p) {
+            return readSrc(p).includes('csrfMiddleware');
+        });
+        expect(found, 'csrfMiddleware is exported but never imported by main.ts/bootstrap.ts').toBe(true);
+    });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-CRYPTO-9  Spec/comment drift                                             */
 /*                                                                            */
@@ -174,24 +161,19 @@ describe('F-CRYPTO-1 CSRF middleware mounting', () => {
 /*           current behavior.                                                */
 /* Today:    multiple still say Argon2id — RED.                             */
 /* -------------------------------------------------------------------------- */
-
-describe('F-CRYPTO-9 stale Argon2 references', () => {
-  const PATHS = [
-    'specs/domains/identity/authn.md',
-    'modules/identity/src/handlers/password-set.ts',
-    'modules/identity/src/handlers/password-login.ts',
-    'modules/identity/src/handlers/recovery-code.ts',
-  ];
-
-  for (const rel of PATHS) {
-    it(`${rel} does not falsely claim Argon2`, () => {
-      const src = readSrc(rel);
-      // Match `Argon2`, `argon2id`, etc. — case-insensitive.
-      const m = /argon[\s-]?2/i.exec(src);
-      expect(
-        m === null,
-        `${rel} mentions "${m?.[0]}" — code uses scrypt; update the doc/comment`,
-      ).toBe(true);
-    });
-  }
+describe('F-CRYPTO-9 stale Argon2 references', function () {
+    const PATHS = [
+        'specs/domains/identity/authn.md',
+        'modules/identity/src/handlers/password-set.ts',
+        'modules/identity/src/handlers/password-login.ts',
+        'modules/identity/src/handlers/recovery-code.ts',
+    ];
+    for (const rel of PATHS) {
+        it(`${rel} does not falsely claim Argon2`, function () {
+            const src = readSrc(rel);
+            // Match `Argon2`, `argon2id`, etc. — case-insensitive.
+            const m = /argon[\s-]?2/i.exec(src);
+            expect(m === null, `${rel} mentions "${m?.[0]}" — code uses scrypt; update the doc/comment`).toBe(true);
+        });
+    }
 });

@@ -21,20 +21,11 @@
  * belongs in a follow-up slice once the architectural rewrite (extract
  * claims from canonicalized signed bytes) is scoped.
  */
-
 import { describe, it, expect, beforeAll } from 'vitest';
 import { verifySamlResponse, type VerifyOptions } from '../../src/index.ts';
-import {
-  buildSamlResponseXml,
-  generateTestIdpKey,
-  newReplayChecker,
-  signResponse,
-  type TestKeyPair,
-} from './helpers.ts';
-
+import { buildSamlResponseXml, generateTestIdpKey, newReplayChecker, signResponse, type TestKeyPair, } from './helpers.ts';
 const IDP_ISSUER = 'https://idp.example.com';
 const SP_ENTITY_ID = 'https://atlas.example.com/sp';
-
 /**
  * Vitest's asymmetric matchers (`expect.stringMatching`, etc.) are
  * declared as `any` on the runtime type. Hoisting the matcher behind a
@@ -43,49 +34,42 @@ const SP_ENTITY_ID = 'https://atlas.example.com/sp';
  * `toMatchObject` shape literal.
  */
 function samlErrorCodeMatcher(): unknown {
-  return expect.stringMatching(/^SAML_/);
+    return expect.stringMatching(/^SAML_/);
 }
-
 // One keypair per suite — gen is ~1s; reusing keeps the suite under a few sec.
 let idp: TestKeyPair;
-beforeAll(() => {
-  idp = generateTestIdpKey('test-idp');
+beforeAll(function () {
+    idp = generateTestIdpKey('test-idp');
 });
-
-function baseVerifyOpts(
-  overrides: Partial<VerifyOptions> = {},
-): VerifyOptions {
-  return {
-    idpCertPem: idp.certPem,
-    spEntityId: SP_ENTITY_ID,
-    expectedIdpIssuer: IDP_ISSUER,
-    recordSeenAssertion: newReplayChecker().check,
-    ...overrides,
-  };
+function baseVerifyOpts(overrides: Partial<VerifyOptions> = {}): VerifyOptions {
+    return {
+        idpCertPem: idp.certPem,
+        spEntityId: SP_ENTITY_ID,
+        expectedIdpIssuer: IDP_ISSUER,
+        recordSeenAssertion: newReplayChecker().check,
+        ...overrides,
+    };
 }
-
 /* -------------------------------------------------------------------------- */
 /* Sanity: a legitimate signed Response verifies cleanly.                     */
 /* This test SHOULD pass today. If it fails, the helper is broken — fix it    */
 /* before reading anything into the failing-by-design tests below.            */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — sanity (must pass)', () => {
-  it('accepts a properly-signed Response from the pinned IdP', async () => {
-    const xml = buildSamlResponseXml({
-      idpIssuer: IDP_ISSUER,
-      spEntityId: SP_ENTITY_ID,
-      nameId: 'alice@example.com',
+describe('SAML verifier — sanity (must pass)', function () {
+    it('accepts a properly-signed Response from the pinned IdP', async function () {
+        const xml = buildSamlResponseXml({
+            idpIssuer: IDP_ISSUER,
+            spEntityId: SP_ENTITY_ID,
+            nameId: 'alice@example.com',
+        });
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+        });
+        const result = await verifySamlResponse(signedXml, baseVerifyOpts());
+        expect(result.nameId).toBe('alice@example.com');
     });
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
-    });
-    const result = await verifySamlResponse(signedXml, baseVerifyOpts());
-    expect(result.nameId).toBe('alice@example.com');
-  });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-SAML-2  No signature-algorithm whitelist                                 */
 /*                                                                            */
@@ -96,26 +80,22 @@ describe('SAML verifier — sanity (must pass)', () => {
 /* Expected: verifier rejects SHA-1-signed payloads.                          */
 /* Today:    verifier accepts them — this test is RED.                       */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — F-SAML-2 algorithm whitelist', () => {
-  it('rejects a Response signed with rsa-sha1', async () => {
-    const xml = buildSamlResponseXml();
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
-      signatureAlgorithm: 'sha1',
-      digestAlgorithm: 'sha1',
+describe('SAML verifier — F-SAML-2 algorithm whitelist', function () {
+    it('rejects a Response signed with rsa-sha1', async function () {
+        const xml = buildSamlResponseXml();
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+            signatureAlgorithm: 'sha1',
+            digestAlgorithm: 'sha1',
+        });
+        await expect(verifySamlResponse(signedXml, baseVerifyOpts())).rejects.toMatchObject({
+            // Either SAML_SIGNATURE_INVALID or a new SAML_ALGORITHM_DISALLOWED
+            // is acceptable — what's NOT acceptable is success.
+            code: samlErrorCodeMatcher(),
+        });
     });
-    await expect(
-      verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({
-      // Either SAML_SIGNATURE_INVALID or a new SAML_ALGORITHM_DISALLOWED
-      // is acceptable — what's NOT acceptable is success.
-      code: samlErrorCodeMatcher(),
-    });
-  });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-SAML-5  Top-level Issuer pin is bypassed when <Issuer> is absent        */
 /*                                                                            */
@@ -126,20 +106,16 @@ describe('SAML verifier — F-SAML-2 algorithm whitelist', () => {
 /* Expected: missing top-level Issuer is rejected.                            */
 /* Today:    silently passes — RED.                                          */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — F-SAML-5 issuer pin', () => {
-  it('rejects a Response with no top-level <Issuer> element', async () => {
-    const xml = buildSamlResponseXml({ omitTopLevelIssuer: true });
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
+describe('SAML verifier — F-SAML-5 issuer pin', function () {
+    it('rejects a Response with no top-level <Issuer> element', async function () {
+        const xml = buildSamlResponseXml({ omitTopLevelIssuer: true });
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+        });
+        await expect(verifySamlResponse(signedXml, baseVerifyOpts())).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
     });
-    await expect(
-      verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
-  });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-SAML-11 Audience check is skipped when AudienceRestriction is absent    */
 /*                                                                            */
@@ -151,20 +127,16 @@ describe('SAML verifier — F-SAML-5 issuer pin', () => {
 /* Expected: missing AudienceRestriction is rejected.                         */
 /* Today:    silently passes — RED.                                          */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — F-SAML-11 audience pin', () => {
-  it('rejects an assertion with no <AudienceRestriction>', async () => {
-    const xml = buildSamlResponseXml({ omitAudienceRestriction: true });
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
+describe('SAML verifier — F-SAML-11 audience pin', function () {
+    it('rejects an assertion with no <AudienceRestriction>', async function () {
+        const xml = buildSamlResponseXml({ omitAudienceRestriction: true });
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+        });
+        await expect(verifySamlResponse(signedXml, baseVerifyOpts())).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
     });
-    await expect(
-      verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
-  });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-SAML-12 SubjectConfirmationData/@Recipient is never validated           */
 /*                                                                            */
@@ -177,26 +149,22 @@ describe('SAML verifier — F-SAML-11 audience pin', () => {
 /* Expected: Recipient mismatch is rejected.                                  */
 /* Today:    accepted — RED.                                                 */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — F-SAML-12 SubjectConfirmation Recipient', () => {
-  it('rejects an assertion whose SubjectConfirmationData/@Recipient is wrong', async () => {
-    const xml = buildSamlResponseXml({
-      subjectConfirmationRecipient: 'https://attacker.example.com/saml/acs',
+describe('SAML verifier — F-SAML-12 SubjectConfirmation Recipient', function () {
+    it('rejects an assertion whose SubjectConfirmationData/@Recipient is wrong', async function () {
+        const xml = buildSamlResponseXml({
+            subjectConfirmationRecipient: 'https://attacker.example.com/saml/acs',
+        });
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+        });
+        // Caller-supplied SP ACS URL — the verifier needs a way to know what
+        // its own ACS is. Until that arg is added, this test stays RED on
+        // the missing check. (After the fix the verifier MUST accept some
+        // form of `expectedAcsUrl` and assert against Recipient.)
+        await expect(verifySamlResponse(signedXml, baseVerifyOpts())).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
     });
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
-    });
-    // Caller-supplied SP ACS URL — the verifier needs a way to know what
-    // its own ACS is. Until that arg is added, this test stays RED on
-    // the missing check. (After the fix the verifier MUST accept some
-    // form of `expectedAcsUrl` and assert against Recipient.)
-    await expect(
-      verifySamlResponse(signedXml, baseVerifyOpts()),
-    ).rejects.toMatchObject({ code: samlErrorCodeMatcher() });
-  });
 });
-
 /* -------------------------------------------------------------------------- */
 /* F-SAML-6  Replay record is non-atomic (TOCTOU race)                       */
 /*                                                                            */
@@ -214,39 +182,38 @@ describe('SAML verifier — F-SAML-12 SubjectConfirmation Recipient', () => {
 /* verifier itself. It documents the race the production replay store        */
 /* must close.                                                                */
 /* -------------------------------------------------------------------------- */
-
-describe('SAML verifier — F-SAML-6 replay atomicity', () => {
-  it('rejects the second of two parallel verifies of the same assertion', async () => {
-    const xml = buildSamlResponseXml({ assertionId: '_replay-target' });
-    const signedXml = signResponse(xml, {
-      privateKeyPem: idp.privateKeyPem,
-      certPem: idp.certPem,
+describe('SAML verifier — F-SAML-6 replay atomicity', function () {
+    it('rejects the second of two parallel verifies of the same assertion', async function () {
+        const xml = buildSamlResponseXml({ assertionId: '_replay-target' });
+        const signedXml = signResponse(xml, {
+            privateKeyPem: idp.privateKeyPem,
+            certPem: idp.certPem,
+        });
+        // Race-prone replay checker that mirrors the current
+        // get-then-put pattern WITHOUT atomicity. A real Postgres-backed
+        // implementation needs a unique index on (tenantId, assertionId)
+        // and treat duplicate-key-violation as alreadySeen=true.
+        const seen = new Set<string>();
+        const racingChecker = async function (id: string, _expiresAt: string): Promise<{
+            alreadySeen: boolean;
+        }> {
+            const exists = seen.has(id);
+            // Yield to the event loop — simulates DB round-trip between
+            // `get` and `put`. Both fibers see exists=false and proceed.
+            await Promise.resolve();
+            if (exists)
+                return { alreadySeen: true };
+            seen.add(id);
+            return { alreadySeen: false };
+        };
+        const opts = baseVerifyOpts({ recordSeenAssertion: racingChecker });
+        const [a, b] = await Promise.allSettled([
+            verifySamlResponse(signedXml, opts),
+            verifySamlResponse(signedXml, opts),
+        ]);
+        const fulfilled = [a, b].filter(function (r) {
+            return r.status === 'fulfilled';
+        });
+        expect(fulfilled.length).toBe(1);
     });
-
-    // Race-prone replay checker that mirrors the current
-    // get-then-put pattern WITHOUT atomicity. A real Postgres-backed
-    // implementation needs a unique index on (tenantId, assertionId)
-    // and treat duplicate-key-violation as alreadySeen=true.
-    const seen = new Set<string>();
-    const racingChecker = async (
-      id: string,
-      _expiresAt: string,
-    ): Promise<{ alreadySeen: boolean }> => {
-      const exists = seen.has(id);
-      // Yield to the event loop — simulates DB round-trip between
-      // `get` and `put`. Both fibers see exists=false and proceed.
-      await Promise.resolve();
-      if (exists) return { alreadySeen: true };
-      seen.add(id);
-      return { alreadySeen: false };
-    };
-
-    const opts = baseVerifyOpts({ recordSeenAssertion: racingChecker });
-    const [a, b] = await Promise.allSettled([
-      verifySamlResponse(signedXml, opts),
-      verifySamlResponse(signedXml, opts),
-    ]);
-    const fulfilled = [a, b].filter((r) => r.status === 'fulfilled');
-    expect(fulfilled.length).toBe(1);
-  });
 });

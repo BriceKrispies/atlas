@@ -22,6 +22,21 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [auth-itest-preflight](identity/auth-itest-preflight.md) — test — scoped — → sdet
 - [security-fixes](identity/security-fixes.md) — refactor — open — → spine-owner — blocked_by: identity/auth-itest-preflight
 
+## spec/
+
+- [runtime-reanchor](spec/runtime-reanchor.md) — spec — scoped — → spec-keeper — HIGH (docs-only re-anchor of Atlas around "Atlas Runtime" concept; preserves I1-I18 verbatim)
+
+## tenancy/
+
+- [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — review — → architect — HIGH (5/5 slices landed; pending invariant gate + live `pnpm bdd:server` run)
+
+## load-testing/
+
+- [multi-tenant-seeding](load-testing/multi-tenant-seeding.md) — test — open — → port-adapter-dev — MEDIUM (unlocks multi-tenant scenarios)
+- [write-mix-scenarios](load-testing/write-mix-scenarios.md) — test — open — → module-dev — MEDIUM
+- [soak-scenario](load-testing/soak-scenario.md) — test — open — → module-dev — LOW
+- [remote-load-gen](load-testing/remote-load-gen.md) — test — open — → user — LOW — blocked_by: load-testing/multi-tenant-seeding
+
 ---
 
 Done and dropped tickets live in [`archive/`](archive/), preserving the same set structure. They are not listed here.

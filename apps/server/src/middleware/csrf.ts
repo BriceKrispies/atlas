@@ -13,50 +13,36 @@
  *
  * On miss/mismatch: 403 with `CSRF_FAILED`.
  */
-
 import type { Context, Next } from 'hono';
-import {
-  CSRF_REQUEST_HEADER,
-  parseSessionCookie,
-  readCsrfCookie,
-} from './cookie.ts';
+import { CSRF_REQUEST_HEADER, parseSessionCookie, readCsrfCookie, } from './cookie.ts';
 import { errorResponse } from './errors.ts';
 import { correlationIdFor } from './correlation.ts';
 import type { ServerVariables } from './principal.ts';
-
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE']);
-
 export function csrfMiddleware() {
-  return async (
-    c: Context<{ Variables: ServerVariables }>,
-    next: Next,
-  ): Promise<Response | void> => {
-    const method = c.req.method.toUpperCase();
-    if (SAFE_METHODS.has(method)) {
-      await next();
-      return;
-    }
-    const cookie = c.req.header('cookie');
-    const session = parseSessionCookie(cookie);
-    if (!session) {
-      // No session cookie → not a cookie-driven request. Bearer-auth
-      // paths fall through here.
-      await next();
-      return;
-    }
-    const csrfCookie = readCsrfCookie(cookie);
-    const csrfHeader = c.req.header(CSRF_REQUEST_HEADER);
-    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
-      const correlationId = correlationIdFor(c);
-      return errorResponse(
-        c,
-        'CSRF_FAILED',
-        'CSRF token missing or mismatched',
-        403,
-        correlationId,
-      );
-    }
-    await next();
-    return;
-  };
+    return async function (c: Context<{
+        Variables: ServerVariables;
+    }>, next: Next): Promise<Response | void> {
+        const method = c.req.method.toUpperCase();
+        if (SAFE_METHODS.has(method)) {
+            await next();
+            return;
+        }
+        const cookie = c.req.header('cookie');
+        const session = parseSessionCookie(cookie);
+        if (!session) {
+            // No session cookie → not a cookie-driven request. Bearer-auth
+            // paths fall through here.
+            await next();
+            return;
+        }
+        const csrfCookie = readCsrfCookie(cookie);
+        const csrfHeader = c.req.header(CSRF_REQUEST_HEADER);
+        if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+            const correlationId = correlationIdFor(c);
+            return errorResponse(c, 'CSRF_FAILED', 'CSRF token missing or mismatched', 403, correlationId);
+        }
+        await next();
+        return;
+    };
 }

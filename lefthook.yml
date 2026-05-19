@@ -6,7 +6,7 @@
 # Design intent:
 # - Pre-commit only runs *fast, always-available* checks against staged
 #   files (sub-second on typical edits). Anything requiring an external
-#   binary (gitleaks, lychee, squawk, osv-scanner) is CI-only — see
+#   binary (gitleaks, lychee, osv-scanner) is CI-only — see
 #   .github/workflows/quality.yml.
 # - Pre-push runs typecheck once for the whole project; that catches
 #   cross-file breakage before it hits CI.

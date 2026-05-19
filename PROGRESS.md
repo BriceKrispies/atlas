@@ -143,13 +143,12 @@ are the source of truth until they land here.
 | `overseer:check` (custom) | Mechanical scan of 9 invariants (I1, I7, I9, I10, I12, I18, UI bar, dispatcher parity) | `scripts/overseer-check.ts` |
 | Semgrep (atlas-invariants ruleset) | Pattern-based checks for I1 (single ingress, modules-no-http) + UI bar; runs alongside `overseer:check` until parity is verified | `.semgrep/atlas-invariants.yml`, `pnpm lint:semgrep` |
 | `@atlas/chaos` | Adapter-layer fault injection (`withChaos(adapter, profile)`) for integration tests — error injection, latency spikes, dropped writes, deterministic via seed | `packages/chaos/` |
-| `@atlas/arch-tests` (tsarch) | Architecture rules expressed as Vitest tests; complements dep-cruiser. Initial set: ADR-0008 leak-regression nets + ports/ runtime-purity | `packages/arch-tests/test/` |
+| `@atlas/arch-tests` | Architecture rules expressed as Vitest tests; complements dep-cruiser. Each test scans a folder with an in-house typed import-scanner (`test/_dependency-scan.ts`) — no third-party arch lib. Initial set: ADR-0008 leak-regression nets + ports/ runtime-purity | `packages/arch-tests/test/` |
 | Biome (formatter only) | Auto-format TS/JS/JSON; ESLint stays as the linter | `biome.json`, `pnpm format` / `pnpm format:check` |
 | knip | Dead exports, unused deps, missing deps across the workspace | `.knip.json`, `pnpm lint:knip` |
 | syncpack | Workspace version drift across `package.json` files | `.syncpackrc.json`, `pnpm lint:syncpack` |
 | markdownlint-cli2 | Markdown style + structural issues | `.markdownlint-cli2.jsonc`, `pnpm lint:markdown` |
 | Spectral | JSON Schema contracts under `specs/schemas/contracts/` | `.spectral.yaml`, `pnpm lint:spectral` |
-| Squawk | Postgres migration safety (locks, NOT NULL adds, CONCURRENTLY) | `squawk.toml`, `pnpm lint:sql` |
 | Lychee | Broken markdown links across specs / ADRs / READMEs | `lychee.toml`, `pnpm lint:links` |
 | Gitleaks | Committed secrets | `.gitleaks.toml`, `pnpm secrets:scan` |
 | osv-scanner | Known CVEs in dependencies | `osv-scanner.toml`, `pnpm vuln:scan` |

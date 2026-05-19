@@ -35,27 +35,21 @@
  *
  * Spec: specs/domains/identity (Phase A6 — SAML).
  */
-
 import { test, expect } from '@playwright/test';
-import {
-  isKeycloakReachable,
-  keycloakConfig,
-} from '../helpers/keycloak.ts';
-
+import { isKeycloakReachable, keycloakConfig, } from '../helpers/keycloak.ts';
 const INGRESS = process.env['INGRESS_BASE_URL'] ?? 'http://localhost:3000';
 const TENANT = process.env['TENANT_ID'] ?? 'dev-tenant';
-
 async function ingressUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${INGRESS}/healthz`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+    try {
+        const res = await fetch(`${INGRESS}/healthz`, {
+            signal: AbortSignal.timeout(2000),
+        });
+        return res.ok;
+    }
+    catch {
+        return false;
+    }
 }
-
 /**
  * Probe whether the realm carries a SAML SP entry. Keycloak exposes
  * `/realms/<realm>/clients` for admin callers, but for a non-admin
@@ -67,74 +61,61 @@ async function ingressUp(): Promise<boolean> {
  * registered, 404 means not.
  */
 async function realmHasSamlSp(): Promise<boolean> {
-  // Keycloak's /protocol/saml/clients/<id> endpoint is permissive — it
-  // returns metadata for any clientId shape, even when the SP isn't
-  // registered. The reliable check is the admin clients API. We probe
-  // it without auth; a 401 / 403 means we can't tell from outside, so
-  // we treat it as "SP not present" and skip the test (the README is
-  // explicit: the realm has OIDC clients only).
-  // Override with `KEYCLOAK_SAML_SP_PRESENT=1` after refreshing the
-  // realm export to enable the test.
-  if (process.env['KEYCLOAK_SAML_SP_PRESENT'] === '1') return true;
-  return false;
+    // Keycloak's /protocol/saml/clients/<id> endpoint is permissive — it
+    // returns metadata for any clientId shape, even when the SP isn't
+    // registered. The reliable check is the admin clients API. We probe
+    // it without auth; a 401 / 403 means we can't tell from outside, so
+    // we treat it as "SP not present" and skip the test (the README is
+    // explicit: the realm has OIDC clients only).
+    // Override with `KEYCLOAK_SAML_SP_PRESENT=1` after refreshing the
+    // realm export to enable the test.
+    if (process.env['KEYCLOAK_SAML_SP_PRESENT'] === '1')
+        return true;
+    return false;
 }
-
-test.describe('e2e — SAML 2.0 SSO (designed; skipped pending realm refresh)', () => {
-  test.beforeAll(async () => {
-    if (!(await ingressUp())) {
-      test.skip(true, `apps/server not reachable at ${INGRESS}`);
-    }
-    if (!(await isKeycloakReachable())) {
-      test.skip(true, 'Keycloak not reachable; itest infra likely down');
-    }
-    if (!(await realmHasSamlSp())) {
-      test.skip(
-        true,
-        'Realm export does not include atlas-platform-sp SAML client; ' +
-          'refresh per infra/compose/keycloak/README.md to enable',
-      );
-    }
-  });
-
-  test('SP-initiated flow: initiate → Keycloak login → ACS POST → session cookie', async ({
-    page,
-  }) => {
-    // 1. Hit the SP-initiated endpoint. Atlas builds an AuthnRequest
-    //    and 302s to Keycloak with SAMLRequest in the URL.
-    await page.goto(
-      `${INGRESS}/sso/saml/${TENANT}/initiate?idp=atlas-saml-itest`,
-    );
-    // The URL should now be on Keycloak's SAML SSO endpoint.
-    expect(page.url()).toContain(keycloakConfig.baseUrl);
-
-    // 2. Authenticate at Keycloak with the seeded test user.
-    await page.fill('input[name="username"]', keycloakConfig.testUser);
-    await page.fill('input[name="password"]', keycloakConfig.testPassword);
-    await page.click('input[type="submit"], button[type="submit"]');
-
-    // 3. Keycloak auto-POSTs the SAML Response to Atlas's ACS
-    //    endpoint via a self-submitting form. Wait for the redirect
-    //    to land back on apps/server.
-    await page.waitForURL(
-      (url) => url.toString().startsWith(INGRESS),
-      { timeout: 10_000 },
-    );
-
-    // 4. The ACS handler set a session cookie. Assert one is present.
-    const cookies = await page.context().cookies();
-    const sessionCookie = cookies.find((c) =>
-      c.name.toLowerCase().includes('session'),
-    );
-    expect(sessionCookie).toBeDefined();
-  });
-
-  test('replay protection: same SAML Response twice → second is rejected', async () => {
-    // This branch requires capturing a real SAML Response from the
-    // first flow and replaying it. Implementation deferred until the
-    // realm SP is in place — the unit-level handler test covers the
-    // logical branch in `modules/identity/test/unit/saml-acs.test.ts`
-    // (under the `describe.skip` block of crypto-bound branches that
-    // this e2e test would unblock).
-    test.skip(true, 'requires captured Response; deferred');
-  });
+test.describe('e2e — SAML 2.0 SSO (designed; skipped pending realm refresh)', function () {
+    test.beforeAll(async function () {
+        if (!(await ingressUp())) {
+            test.skip(true, `apps/server not reachable at ${INGRESS}`);
+        }
+        if (!(await isKeycloakReachable())) {
+            test.skip(true, 'Keycloak not reachable; itest infra likely down');
+        }
+        if (!(await realmHasSamlSp())) {
+            test.skip(true, 'Realm export does not include atlas-platform-sp SAML client; ' +
+                'refresh per infra/compose/keycloak/README.md to enable');
+        }
+    });
+    test('SP-initiated flow: initiate → Keycloak login → ACS POST → session cookie', async function ({ page, }) {
+        // 1. Hit the SP-initiated endpoint. Atlas builds an AuthnRequest
+        //    and 302s to Keycloak with SAMLRequest in the URL.
+        await page.goto(`${INGRESS}/sso/saml/${TENANT}/initiate?idp=atlas-saml-itest`);
+        // The URL should now be on Keycloak's SAML SSO endpoint.
+        expect(page.url()).toContain(keycloakConfig.baseUrl);
+        // 2. Authenticate at Keycloak with the seeded test user.
+        await page.fill('input[name="username"]', keycloakConfig.testUser);
+        await page.fill('input[name="password"]', keycloakConfig.testPassword);
+        await page.click('input[type="submit"], button[type="submit"]');
+        // 3. Keycloak auto-POSTs the SAML Response to Atlas's ACS
+        //    endpoint via a self-submitting form. Wait for the redirect
+        //    to land back on apps/server.
+        await page.waitForURL(function (url) {
+            return url.toString().startsWith(INGRESS);
+        }, { timeout: 10000 });
+        // 4. The ACS handler set a session cookie. Assert one is present.
+        const cookies = await page.context().cookies();
+        const sessionCookie = cookies.find(function (c) {
+            return c.name.toLowerCase().includes('session');
+        });
+        expect(sessionCookie).toBeDefined();
+    });
+    test('replay protection: same SAML Response twice → second is rejected', async function () {
+        // This branch requires capturing a real SAML Response from the
+        // first flow and replaying it. Implementation deferred until the
+        // realm SP is in place — the unit-level handler test covers the
+        // logical branch in `modules/identity/test/unit/saml-acs.test.ts`
+        // (under the `describe.skip` block of crypto-bound branches that
+        // this e2e test would unblock).
+        test.skip(true, 'requires captured Response; deferred');
+    });
 });

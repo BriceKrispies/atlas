@@ -54,10 +54,12 @@ import type {
 } from '@atlas/ports';
 import { setIdentityCrypto } from '@atlas/identity';
 import {
+  PLATFORM_ADMIN_PRINCIPAL_ID,
   PLATFORM_TENANT_ID,
   reconcileEntityIndexes,
   UpcasterRegistry,
 } from '@atlas/platform-core';
+import { seedPlatformAdmin } from './bootstrap-platform-admin.ts';
 import { TenantHostCache } from './middleware/tenant-resolution.ts';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
 import {
@@ -73,6 +75,7 @@ import {
 import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
+import { PrincipalCache } from '@atlas/platform-core';
 import type {
   LevelController,
   LogPipeline,
@@ -115,6 +118,14 @@ export interface AppState {
    */
   readonly customDomains: CustomDomainStore;
   readonly customDomainCache: TenantHostCache;
+  /**
+   * Per-request principal enrichment cache. `enrichPrincipal` in
+   * `middleware/state.ts` reads through this before falling back to
+   * the three tenant-pool reads (User by IDP subject, optional User by
+   * id, Membership). Tag-driven invalidation runs in
+   * `principalCacheDispatcher`; TTL is a safety net only.
+   */
+  readonly principalCache: PrincipalCache;
   /**
    * L3 substrate: read-side metadata + the generic entity store. The
    * registry resolves "tenant override > platform default" when a
@@ -252,9 +263,13 @@ export async function bootstrap(
   const tenantDb = new PostgresTenantDbProvider(controlPlaneSql, {
     defaultConnectionInfo: parseTenantConnectionUrl(config.controlPlaneDbUrl),
   });
-  const controlPlaneRegistry = new PostgresControlPlaneRegistry(controlPlaneSql);
+  const controlPlaneRegistry = new PostgresControlPlaneRegistry(
+    controlPlaneSql,
+    deps.bootCtx.logger,
+  );
   const customDomains = new PostgresCustomDomainStore(controlPlaneSql);
   const customDomainCache = new TenantHostCache();
+  const principalCache = new PrincipalCache();
   const entityTypeRegistry = new PostgresEntityTypeRegistry(controlPlaneSql);
   const upcasterRegistry = new UpcasterRegistry();
 
@@ -318,10 +333,10 @@ export async function bootstrap(
   switch (config.mailerMode) {
     case 'noop':
       mailer = {
-        send: async () => ({
+        send: async function () { return ({
           messageId: 'noop',
           sentAt: new Date().toISOString(),
-        }),
+        }); },
       };
       break;
     case 'smtp': {
@@ -333,7 +348,7 @@ export async function bootstrap(
           'mailerMode=smtp but no smtp config — config loader contract broken',
         );
       }
-      mailer = new SmtpMailer(controlPlaneSql, smtp);
+      mailer = new SmtpMailer(controlPlaneSql, smtp, deps.bootCtx.logger);
       break;
     }
     case 'stdout':
@@ -359,7 +374,7 @@ export async function bootstrap(
   const crypto = new NodeCrypto();
   setIdentityCrypto(crypto);
 
-  return {
+  const state: AppState = {
     config,
     logPipeline: deps.logPipeline,
     levelController: deps.levelController,
@@ -369,6 +384,7 @@ export async function bootstrap(
     controlPlaneRegistry,
     customDomains,
     customDomainCache,
+    principalCache,
     entityTypeRegistry,
     upcasterRegistry,
     jwks,
@@ -384,6 +400,31 @@ export async function bootstrap(
     compression,
     crypto,
   };
+
+  // Seed the canonical platform-admin User + Membership in `_platform`.
+  // Idempotent: returns `{ created: false }` when the User entity already
+  // exists. This gives test/itest/BDD code a real principal row to point
+  // `X-Debug-Principal: user:platform-admin:_platform:admin` at, rather
+  // than relying on synthesized role hydration alone.
+  //
+  // Runs AFTER `state` is built so `ensureTenantMigrated` (which uses
+  // `state.migratedTenants` and `state.entityTypeRegistry`) is callable.
+  // Mirrors the `Server.Boot.PlatformTenantSeeded` log pattern above —
+  // single info line on the run that inserts, zero on subsequent boots.
+  const platformSql = await ensureTenantMigrated(state, PLATFORM_TENANT_ID);
+  const platformEntities = entityStoreFor(platformSql, state);
+  const seedResult = await seedPlatformAdmin(platformEntities);
+  if (seedResult.created) {
+    deps.bootCtx.logger.info('platform-admin seeded', {
+      event: 'Tenancy.PlatformAdmin.Seeded',
+      properties: {
+        userId: PLATFORM_ADMIN_PRINCIPAL_ID,
+        tenantId: PLATFORM_TENANT_ID,
+      },
+    });
+  }
+
+  return state;
 }
 
 /**
@@ -450,7 +491,7 @@ export async function reconcileTenantIndexes(
     FROM pg_indexes
     WHERE schemaname = 'public' AND tablename = 'entities'
   `;
-  const live = new Set(liveRows.map((r) => r.indexname));
+  const live = new Set(liveRows.map(function (r) { return r.indexname; }));
   const { create, drop } = reconcileEntityIndexes(declared, live);
   for (const stmt of drop) {
     await sql.unsafe(stmt);

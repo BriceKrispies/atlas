@@ -110,3 +110,57 @@ rules:
               class $X extends HTMLElement { ... }
           - pattern: |
               class $X extends LitElement { ... }
+
+  # --- Logging contract: no raw console.* in server-side production -------
+  #
+  # Mirrors eslint.config.ts ▸ no-console rule (server-side production
+  # paths only). Forbids `console.log` / `error` / `warn` / `info` /
+  # `debug` in apps/server, apps/projection-worker, modules, adapters,
+  # and the server-side packages. The structured logger
+  # (`ctx.logger.*`, per `@atlas/logging`) is the only sanctioned emit
+  # path — see `specs/crosscut/logging.md`.
+  #
+  # Frontend packages (`packages/core`, `packages/design`, …) are
+  # deliberately excluded; the FE telemetry pipeline lives in
+  # `packages/core/src/telemetry-pipeline.ts` and is governed by
+  # `specs/frontend/observability.md`. Test code, scripts, and CLI
+  # bins are exempt — they're allowed `console.*` per the contract.
+
+  - id: atlas-logging-no-console
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Logging contract violation — raw `console.*` is forbidden in
+      server-side production paths.
+
+      Use `ctx.logger.<level>(message, fields?)` instead. The active
+      context carries correlationId / tenantId / principalId / moduleId
+      automatically; callers do not pass these on every log call.
+
+      If you genuinely have no `ctx` available (boot/lifecycle code),
+      thread a `Logger` through the constructor (see `SmtpMailer`,
+      `PostgresControlPlaneRegistry` for the pattern) or use the
+      process-wide `setGuardrailLogger` registry.
+
+      See `specs/crosscut/logging.md` ▸ Forbidden and ▸ Tooling.
+    paths:
+      include:
+        - "apps/server/src/"
+        - "apps/projection-worker/src/"
+        - "modules/"
+        - "adapters/"
+        - "packages/platform-core/src/"
+        - "packages/logging/src/"
+        - "packages/ingress/src/"
+        - "packages/metrics/src/"
+        - "packages/wasm-host/src/"
+        - "packages/schemas/src/"
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+        - "**/scripts/"
+        - "adapters/policy-cedar/bin/"
+    pattern-regex: |
+      \bconsole\.(log|error|warn|info|debug)\(

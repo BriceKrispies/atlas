@@ -24,6 +24,7 @@
 import { moduleManifests, getSchemaValidator } from '@atlas/schemas';
 import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { ActionEntry, ControlPlaneRegistry } from '@atlas/ports';
+import type { Logger } from '@atlas/platform-core';
 import type postgres from 'postgres';
 import { actionIdToSchemaId } from './action-schema-id.ts';
 
@@ -51,8 +52,14 @@ export class PostgresControlPlaneRegistry implements ControlPlaneRegistry {
 
   /**
    * @param controlPlane Held for future expansion. Not consulted today.
+   * @param logger       Optional boot-context logger; absent in tests.
+   *                     Manifest dup warnings (an architectural smell)
+   *                     are emitted through it when wired.
    */
-  constructor(private readonly controlPlane?: postgres.Sql) {
+  constructor(
+    private readonly controlPlane?: postgres.Sql,
+    logger?: Logger,
+  ) {
     void this.controlPlane;
     this.actions = new Map();
     const manifests = moduleManifests() as ReadonlyArray<ManifestLike>;
@@ -72,11 +79,15 @@ export class PostgresControlPlaneRegistry implements ControlPlaneRegistry {
           // smell (two modules claiming the same action). We don't throw
           // because the bundle ships in production and we'd rather degrade
           // than crash boot.
-          console.warn(
-            `[control-plane-registry] duplicate actionId "${a.actionId}": ` +
-              `previously declared by "${ownerByAction.get(a.actionId) ?? '<unknown>'}", ` +
-              `now overwritten by "${ownerId}" (last-wins)`,
-          );
+          logger?.warn('duplicate actionId in module manifest', {
+            event: 'ControlPlaneRegistry.DuplicateAction',
+            properties: {
+              cause: 'two modules claim the same actionId — last-wins',
+              actionId: a.actionId,
+              previousOwner: ownerByAction.get(a.actionId) ?? '<unknown>',
+              newOwner: ownerId,
+            },
+          });
         }
         ownerByAction.set(a.actionId, ownerId);
         this.actions.set(a.actionId, {

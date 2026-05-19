@@ -13,58 +13,60 @@
  *
  * The returned capability object plugs directly into `<widget-host>.capabilities`.
  */
-
 export type MockBehavior = 'fixture' | 'delay' | 'reject' | 'hang';
-
 export interface MockCapabilityRule {
-  match?: Record<string, unknown>;
-  behavior?: MockBehavior;
-  response?: unknown;
-  error?: string;
-  delayMs?: number;
+    match?: Record<string, unknown>;
+    behavior?: MockBehavior;
+    response?: unknown;
+    error?: string;
+    delayMs?: number;
 }
-
 export type MockCapabilitySpec = Record<string, MockCapabilityRule[]>;
-
 export type CapabilityFn = (args: unknown) => Promise<unknown>;
-
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+    return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
-
 function argsMatch(match: Record<string, unknown> | undefined, args: unknown): boolean {
-  if (!match || typeof match !== 'object') return true;
-  if (!isRecord(args)) return false;
-  for (const [k, v] of Object.entries(match)) {
-    if (args[k] !== v) return false;
-  }
-  return true;
+    if (!match || typeof match !== 'object')
+        return true;
+    if (!isRecord(args))
+        return false;
+    for (const [k, v] of Object.entries(match)) {
+        if (args[k] !== v)
+            return false;
+    }
+    return true;
 }
-
 function runRule(rule: MockCapabilityRule): Promise<unknown> {
-  const behavior: MockBehavior = rule.behavior ?? 'fixture';
-  if (behavior === 'fixture') return Promise.resolve(rule.response);
-  if (behavior === 'reject') return Promise.reject(new Error(rule.error ?? 'mock rejection'));
-  if (behavior === 'delay') {
-    const ms = typeof rule.delayMs === 'number' ? rule.delayMs : 500;
-    return new Promise((resolve) => setTimeout(() => resolve(rule.response), ms));
-  }
-  if (behavior === 'hang') return new Promise(() => {});
-  return Promise.reject(new Error(`unknown mock behavior '${behavior as string}'`));
+    const behavior: MockBehavior = rule.behavior ?? 'fixture';
+    if (behavior === 'fixture')
+        return Promise.resolve(rule.response);
+    if (behavior === 'reject')
+        return Promise.reject(new Error(rule.error ?? 'mock rejection'));
+    if (behavior === 'delay') {
+        const ms = typeof rule.delayMs === 'number' ? rule.delayMs : 500;
+        return new Promise(function (resolve) {
+            return setTimeout(function () {
+                return resolve(rule.response);
+            }, ms);
+        });
+    }
+    if (behavior === 'hang')
+        return new Promise(function () { });
+    return Promise.reject(new Error(`unknown mock behavior '${behavior as string}'`));
 }
-
-export function buildMockCapabilities(
-  spec: MockCapabilitySpec | null | undefined,
-): Record<string, CapabilityFn> {
-  const out: Record<string, CapabilityFn> = {};
-  for (const [name, rules] of Object.entries(spec ?? {})) {
-    if (!Array.isArray(rules)) continue;
-    out[name] = async (args: unknown) => {
-      for (const rule of rules) {
-        if (argsMatch(rule.match, args)) return runRule(rule);
-      }
-      throw new Error(`no mock rule matched capability '${name}'`);
-    };
-  }
-  return out;
+export function buildMockCapabilities(spec: MockCapabilitySpec | null | undefined): Record<string, CapabilityFn> {
+    const out: Record<string, CapabilityFn> = {};
+    for (const [name, rules] of Object.entries(spec ?? {})) {
+        if (!Array.isArray(rules))
+            continue;
+        out[name] = async function (args: unknown) {
+            for (const rule of rules) {
+                if (argsMatch(rule.match, args))
+                    return runRule(rule);
+            }
+            throw new Error(`no mock rule matched capability '${name}'`);
+        };
+    }
+    return out;
 }

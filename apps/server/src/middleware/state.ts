@@ -49,7 +49,7 @@ import type {
 } from '@atlas/ingress';
 import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import type { PolicyEngine } from '@atlas/ports';
-import type { Principal } from '@atlas/platform-core';
+import type { Principal, PrincipalCache } from '@atlas/platform-core';
 import { createSystemContext } from '@atlas/logging';
 import {
   ensureTenantMigrated,
@@ -60,6 +60,7 @@ import {
   type AppState,
 } from '../bootstrap.ts';
 import { serverEventDispatcher } from '../events/dispatcher.ts';
+import { principalCacheDispatcher } from '../events/principal-cache-dispatcher.ts';
 import { errorMessage } from './errors.ts';
 
 function newAuditId(): string {
@@ -87,7 +88,7 @@ function instrumentDispatcher(
   correlationId: string,
   d: EventDispatcher,
 ): EventDispatcher {
-  return async (envelope) => {
+  return async function (envelope) {
     const ctx = createSystemContext({
       pipeline: state.logPipeline,
       environment: state.config.environment,
@@ -134,7 +135,7 @@ function buildAsyncNoopDispatch(
   tenantId: string,
   correlationId: string,
 ): EventDispatcher {
-  return async (envelope) => {
+  return async function (envelope) {
     if (!asyncDispatchSkipLogged) {
       asyncDispatchSkipLogged = true;
       const ctx = createSystemContext({
@@ -210,6 +211,7 @@ export const REQUEST_DISPATCHER_CHAIN_NAMES: ReadonlyArray<string> = [
   'identity',
   'repository',
   'cache-tag',
+  'principal-cache',
   'policy-cache',
   'server-events',
 ];
@@ -248,7 +250,7 @@ export async function buildRequestBundle(
   // principals (no Identity records), and operator principals all hit
   // null. Authz layer denies actions that require RBAC; allowlist
   // routes (health probes, SSE re-auth) check the absence explicitly.
-  const enrichedPrincipal = await enrichPrincipal(principal, entities);
+  const enrichedPrincipal = await enrichPrincipal(principal, entities, state.principalCache);
 
   const policyStore = new PostgresPolicyStore(state.controlPlaneSql);
   const baseHandlers = composeRegistries(
@@ -314,24 +316,63 @@ export async function buildRequestBundle(
   // We still build `inlineDispatch` first because the call sites
   // (submitIntent, the audit hook below) expect an `EventDispatcher`
   // shape regardless of mode; in async mode we just don't invoke it.
-  const wrap = (name: string, d: EventDispatcher | null): EventDispatcher | null =>
-    d === null ? null : instrumentDispatcher(name, state, principal.tenantId, correlationId, d);
+  const wrap = function (name: string, d: EventDispatcher | null): EventDispatcher | null { return d === null ? null : instrumentDispatcher(name, state, principal.tenantId, correlationId, d); };
+
+  // Per-module loggers so flipping a single module to debug surfaces its
+  // dispatcher breadcrumbs without spamming the others. Each is built
+  // from the same pipeline + tenant/correlation envelope; `moduleId`
+  // is what the LevelController consults when resolving per-module
+  // overrides set via `atlasctl logging set --module <id> debug`.
+  const dispatchCtx = function (moduleId: string) { return createSystemContext({
+      pipeline: state.logPipeline,
+      environment: state.config.environment,
+      tenantId: principal.tenantId,
+      moduleId,
+      correlationId,
+    }); };
 
   const inlineDispatch: EventDispatcher = composeDispatchers(
-    wrap('catalog', catalogDispatcher({ catalogState, projections, search, cache })),
+    wrap(
+      'catalog',
+      catalogDispatcher({
+        catalogState,
+        projections,
+        search,
+        cache,
+        logger: dispatchCtx('@atlas/catalog').logger,
+      }),
+    ),
     wrap('content-pages', contentPagesDispatcher({
       entities,
       relations,
       cache,
+      logger: dispatchCtx('@atlas/content-pages').logger,
       ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
     })),
-    wrap('identity', identityDispatcher({ entities, relations, cache })),
+    wrap(
+      'identity',
+      identityDispatcher({
+        entities,
+        relations,
+        cache,
+        logger: dispatchCtx('@atlas/identity').logger,
+      }),
+    ),
     // Code / repository — projection rebuilds for `Repository.Created`
     // and `Repository.Uploaded`. Runs after identity (per-domain
     // ordering) and BEFORE `cacheTagDispatcher` so the cache-tag
     // dispatcher can pick up tags emitted by repository projections.
-    wrap('repository', repositoryDispatcher({ repositories, revisions, cache })),
+    wrap(
+      'repository',
+      repositoryDispatcher({
+        repositories,
+        revisions,
+        cache,
+        logger: dispatchCtx('@atlas/repository').logger,
+      }),
+    ),
     wrap('cache-tag', cacheTagDispatcher(cache)),
+    wrap('principal-cache', principalCacheDispatcher(state.principalCache)),
     wrap('policy-cache', policyBundle ? policyCacheDispatcher(policyBundle) : null),
     // Fan freshly-dispatched events out to SSE/WS subscribers. Runs
     // last so subscribers only see events whose projections have been
@@ -392,7 +433,7 @@ export async function buildRequestBundle(
     // calls the hook unconditionally; the hook itself decides whether
     // to emit by consulting `shouldEmitPolicyEvaluated`. This keeps
     // `AUDIT_EMIT_PERMITS` reads in one place.
-    auditPolicyEvaluated: async (request, decision, ctx) => {
+    auditPolicyEvaluated: async function (request, decision, ctx) {
       if (!shouldEmitPolicyEvaluated(decision, process.env)) return;
       const envelope = policyEvaluatedEvent(request, decision, {
         correlationId: ctx.correlationId,
@@ -462,7 +503,11 @@ export async function buildRequestBundle(
 async function enrichPrincipal(
   principal: Principal,
   entities: import('@atlas/ports').EntityStore,
+  cache: PrincipalCache,
 ): Promise<Principal> {
+  const cached = cache.get(principal.tenantId, principal.principalId);
+  if (cached !== undefined) return cached;
+
   // Lookup-by-IDP-subject first (the JWT path); fall back to direct
   // User-id lookup if the principalId happens to match a User entity_id
   // (debug-principal path).
@@ -472,25 +517,26 @@ async function enrichPrincipal(
     principal.principalId,
   );
   if (!user) {
-    const direct = await import('@atlas/identity').then((m) =>
-      m.getUserEntity(entities, principal.tenantId, principal.principalId),
+    const direct = await import('@atlas/identity').then(function (m) { return m.getUserEntity(entities, principal.tenantId, principal.principalId); },
     );
     user = direct;
   }
   if (!user) {
-    return {
+    const enriched: Principal = {
       ...principal,
       userId: null,
       roles: [],
       attributes: {},
     };
+    cache.set(principal.tenantId, principal.principalId, enriched);
+    return enriched;
   }
   const membership = await getMembershipEntity(
     entities,
     principal.tenantId,
     user.userId,
   );
-  return {
+  const enriched: Principal = {
     ...principal,
     userId: user.userId,
     roles: membership?.status === 'active' ? [...membership.roles] : [],
@@ -507,4 +553,6 @@ async function enrichPrincipal(
         : {}),
     },
   };
+  cache.set(principal.tenantId, principal.principalId, enriched);
+  return enriched;
 }

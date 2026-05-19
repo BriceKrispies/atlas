@@ -156,6 +156,7 @@ export function resolveTaxonomy(id: string): TaxonomyEntry {
   // taxonomy is visible rather than silent.
   if (!warnedUnknownIds.has(id)) {
     warnedUnknownIds.add(id);
+    // eslint-disable-next-line no-console -- dev-only: sandbox specimen-gallery diagnostic; sandbox is a dev-only app (not shipped to tenants) and the warning's audience is the developer browsing the gallery
     console.warn(
       '[sandbox] specimen id "%s" has no taxonomy entry; using Unsorted fallback',
       id,

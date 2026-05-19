@@ -83,3 +83,20 @@ export function bootstrapPlatformRobot(
     tenantId,
   };
 }
+
+/**
+ * Stable principal-id for the canonical platform administrator. Auto-seeded
+ * at first boot of `apps/server` as a `User` entity in {@link PLATFORM_TENANT_ID},
+ * with a `Membership` granting `roles=['admin']`. This is the bootstrap
+ * operator identity — production deployments override the email and rotate
+ * credentials after the seed lands.
+ *
+ * Distinct from {@link PLATFORM_ROBOT_PRINCIPAL_ID}: the robot is a process
+ * identity for unauthenticated system events; this is a human/operator
+ * identity that can drive admin-only endpoints (signup approval, policy
+ * management) via test-auth or a real session.
+ */
+export const PLATFORM_ADMIN_PRINCIPAL_ID = 'platform-admin';
+
+/** Default email for the seeded {@link PLATFORM_ADMIN_PRINCIPAL_ID} User. */
+export const PLATFORM_ADMIN_EMAIL = 'platform-admin@atlas.local';

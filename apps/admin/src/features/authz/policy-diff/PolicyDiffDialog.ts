@@ -3,145 +3,135 @@
  * versions' raw Cedar text. Mounted by the shell on the
  * `authz-open-diff` custom event.
  */
-
 import { AtlasSurface, html } from '@atlas/core';
 import { getPolicy, listPolicies, type PolicySummary } from '@atlas/api-client';
 import { registerTestState } from '@atlas/test-state';
 import '@atlas/design';
-
 /** Extract the message string from an unknown thrown value. */
 function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+    return e instanceof Error ? e.message : String(e);
 }
-
 /**
  * Read a finite `rightVersion` number out of a CustomEvent detail, or
  * return null if the event isn't a CustomEvent / the field is missing
  * or non-numeric. Used at the `authz-open-diff` event boundary.
  */
 function readRightVersion(ev: Event): number | null {
-  if (!(ev instanceof CustomEvent)) return null;
-  const detail: unknown = ev.detail;
-  if (detail === null || typeof detail !== 'object' || !('rightVersion' in detail)) {
-    return null;
-  }
-  const v: unknown = detail.rightVersion;
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    if (!(ev instanceof CustomEvent))
+        return null;
+    const detail: unknown = ev.detail;
+    if (detail === null || typeof detail !== 'object' || !('rightVersion' in detail)) {
+        return null;
+    }
+    const v: unknown = detail.rightVersion;
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
-
 interface DiffState {
-  open: boolean;
-  versions: readonly PolicySummary[];
-  leftVersion: number | null;
-  rightVersion: number | null;
-  leftText: string;
-  rightText: string;
-  loading: boolean;
-  loadError: string | null;
+    open: boolean;
+    versions: readonly PolicySummary[];
+    leftVersion: number | null;
+    rightVersion: number | null;
+    leftText: string;
+    rightText: string;
+    loading: boolean;
+    loadError: string | null;
 }
-
 class PolicyDiffDialog extends AtlasSurface {
-  static override surfaceId = 'admin.authz.policy-diff';
-
-  private _state: DiffState = {
-    open: false,
-    versions: [],
-    leftVersion: null,
-    rightVersion: null,
-    leftText: '',
-    rightText: '',
-    loading: false,
-    loadError: null,
-  };
-
-  override async load(): Promise<DiffState> {
-    return this._state;
-  }
-
-  /** Imperative re-render. See `PolicyEditorPage._rerender` for rationale. */
-  private _rerender(): void {
-    const fragment = this.render();
-    this.textContent = '';
-    this.appendChild(fragment);
-  }
-
-  private _disposeTestState: (() => void) | null = null;
-
-  override onMount(): void {
-    document.addEventListener('authz-open-diff', this._onOpen as EventListener);
-
-    // Expose surface state to Playwright via `window.__atlasTest`.
-    this._disposeTestState = registerTestState(this.surfaceId, () => ({
-      state: this.getAttribute('data-state') ?? 'unknown',
-      open: this._state.open,
-      loading: this._state.loading,
-      leftVersion: this._state.leftVersion,
-      rightVersion: this._state.rightVersion,
-      hasLoadError: this._state.loadError !== null,
-    }));
-  }
-
-  override onUnmount(): void {
-    document.removeEventListener('authz-open-diff', this._onOpen as EventListener);
-    if (this._disposeTestState) {
-      this._disposeTestState();
-      this._disposeTestState = null;
-    }
-  }
-
-  private _onOpen = (e: Event): void => {
-    void this._open(readRightVersion(e));
-  };
-
-  private async _open(rightVersion: number | null): Promise<void> {
-    this._state = { ...this._state, open: true, loading: true, loadError: null };
-    this._rerender();
-    try {
-      const versions = await listPolicies();
-      // Pick a sensible default for "left" — the active version, falling
-      // back to the next-newest entry that isn't the right one.
-      const active = versions.find((v) => v.status === 'active');
-      const leftVersion =
-        rightVersion !== null && active && active.version !== rightVersion
-          ? active.version
-          : versions.find((v) => v.version !== rightVersion)?.version ?? null;
-      const [leftDetail, rightDetail] = await Promise.all([
-        leftVersion !== null ? getPolicy(leftVersion) : Promise.resolve(null),
-        rightVersion !== null ? getPolicy(rightVersion) : Promise.resolve(null),
-      ]);
-      this._state = {
-        ...this._state,
-        versions,
-        leftVersion,
-        rightVersion,
-        leftText: leftDetail?.cedarText ?? '',
-        rightText: rightDetail?.cedarText ?? '',
+    static override surfaceId = 'admin.authz.policy-diff';
+    private _state: DiffState = {
+        open: false,
+        versions: [],
+        leftVersion: null,
+        rightVersion: null,
+        leftText: '',
+        rightText: '',
         loading: false,
-      };
-      this.emit('admin.authz.policy-diff.opened', {
-        leftVersion: String(leftVersion),
-        rightVersion: String(rightVersion),
-      });
-    } catch (e) {
-      this._state = {
-        ...this._state,
-        loading: false,
-        loadError: errorMessage(e),
-      };
+        loadError: null,
+    };
+    override async load(): Promise<DiffState> {
+        return this._state;
     }
-    this._rerender();
-  }
-
-  private _close = (): void => {
-    this._state = { ...this._state, open: false };
-    this._rerender();
-    this.emit('admin.authz.policy-diff.closed');
-  };
-
-  override render(): DocumentFragment {
-    if (!this._state.open) return html``;
-    const s = this._state;
-    return html`
+    /** Imperative re-render. See `PolicyEditorPage._rerender` for rationale. */
+    private _rerender(): void {
+        const fragment = this.render();
+        this.textContent = '';
+        this.appendChild(fragment);
+    }
+    private _disposeTestState: (() => void) | null = null;
+    override onMount(): void {
+        document.addEventListener('authz-open-diff', this._onOpen as EventListener);
+        // Expose surface state to Playwright via `window.__atlasTest`.
+        this._disposeTestState = registerTestState(this.surfaceId, () => ({
+            state: this.getAttribute('data-state') ?? 'unknown',
+            open: this._state.open,
+            loading: this._state.loading,
+            leftVersion: this._state.leftVersion,
+            rightVersion: this._state.rightVersion,
+            hasLoadError: this._state.loadError !== null,
+        }));
+    }
+    override onUnmount(): void {
+        document.removeEventListener('authz-open-diff', this._onOpen as EventListener);
+        if (this._disposeTestState) {
+            this._disposeTestState();
+            this._disposeTestState = null;
+        }
+    }
+    private _onOpen = (e: Event): void => {
+        void this._open(readRightVersion(e));
+    };
+    private async _open(rightVersion: number | null): Promise<void> {
+        this._state = { ...this._state, open: true, loading: true, loadError: null };
+        this._rerender();
+        try {
+            const versions = await listPolicies();
+            // Pick a sensible default for "left" — the active version, falling
+            // back to the next-newest entry that isn't the right one.
+            const active = versions.find(function (v) {
+                return v.status === 'active';
+            });
+            const leftVersion = rightVersion !== null && active && active.version !== rightVersion
+                ? active.version
+                : versions.find(function (v) {
+                    return v.version !== rightVersion;
+                })?.version ?? null;
+            const [leftDetail, rightDetail] = await Promise.all([
+                leftVersion !== null ? getPolicy(leftVersion) : Promise.resolve(null),
+                rightVersion !== null ? getPolicy(rightVersion) : Promise.resolve(null),
+            ]);
+            this._state = {
+                ...this._state,
+                versions,
+                leftVersion,
+                rightVersion,
+                leftText: leftDetail?.cedarText ?? '',
+                rightText: rightDetail?.cedarText ?? '',
+                loading: false,
+            };
+            this.emit('admin.authz.policy-diff.opened', {
+                leftVersion: String(leftVersion),
+                rightVersion: String(rightVersion),
+            });
+        }
+        catch (e) {
+            this._state = {
+                ...this._state,
+                loading: false,
+                loadError: errorMessage(e),
+            };
+        }
+        this._rerender();
+    }
+    private _close = (): void => {
+        this._state = { ...this._state, open: false };
+        this._rerender();
+        this.emit('admin.authz.policy-diff.closed');
+    };
+    override render(): DocumentFragment {
+        if (!this._state.open)
+            return html ``;
+        const s = this._state;
+        return html `
       <atlas-dialog
         name="dialog"
         open
@@ -151,14 +141,14 @@ class PolicyDiffDialog extends AtlasSurface {
         <atlas-stack gap="md">
           <atlas-stack direction="row" gap="md">
             ${this._renderPicker('left-version', 'Left', s.leftVersion, (v) => {
-              void this._setSide('left', v);
-            })}
+            void this._setSide('left', v);
+        })}
             ${this._renderPicker('right-version', 'Right', s.rightVersion, (v) => {
-              void this._setSide('right', v);
-            })}
+            void this._setSide('right', v);
+        })}
           </atlas-stack>
           ${s.loadError !== null
-            ? html`<atlas-alert variant="error">${s.loadError}</atlas-alert>`
+            ? html `<atlas-alert variant="error">${s.loadError}</atlas-alert>`
             : ''}
           ${this._renderDiff()}
           <atlas-stack direction="row" justify="flex-end">
@@ -169,58 +159,53 @@ class PolicyDiffDialog extends AtlasSurface {
         </atlas-stack>
       </atlas-dialog>
     `;
-  }
-
-  private _renderDiff(): HTMLElement {
-    // <atlas-diff> reads its two sides from the `before` / `after`
-    // attributes — see packages/design/src/atlas-diff.ts. The prior
-    // `.left` / `.right` property assignment was a typo against a
-    // non-existent API, which silently dropped both texts on the floor;
-    // the diff rendered empty regardless of which versions were picked.
-    const diff = document.createElement('atlas-diff');
-    diff.setAttribute('name', 'diff');
-    diff.setAttribute('before', this._state.leftText);
-    diff.setAttribute('after', this._state.rightText);
-    return diff;
-  }
-
-  private _renderPicker(
-    name: string,
-    label: string,
-    value: number | null,
-    onChange: (v: number) => void,
-  ): HTMLElement {
-    const input = document.createElement('atlas-input');
-    input.setAttribute('name', name);
-    input.setAttribute('label', label);
-    input.setAttribute('type', 'number');
-    if (value !== null) input.setAttribute('value', String(value));
-    input.addEventListener('change', () => {
-      // Read the value off the captured `input` reference rather than
-      // `e.target` — `input` is already typed as AtlasInput via the
-      // HTMLElementTagNameMap augmentation in @atlas/design, so no
-      // narrowing of the event target is required.
-      const n = Number(input.value);
-      if (Number.isFinite(n)) onChange(n);
-    });
-    return input;
-  }
-
-  private async _setSide(side: 'left' | 'right', version: number): Promise<void> {
-    try {
-      const detail = await getPolicy(version);
-      const text = detail?.cedarText ?? '';
-      if (side === 'left') {
-        this._state = { ...this._state, leftVersion: version, leftText: text };
-      } else {
-        this._state = { ...this._state, rightVersion: version, rightText: text };
-      }
-      this._rerender();
-    } catch (e) {
-      this._state = { ...this._state, loadError: errorMessage(e) };
-      this._rerender();
     }
-  }
+    private _renderDiff(): HTMLElement {
+        // <atlas-diff> reads its two sides from the `before` / `after`
+        // attributes — see packages/design/src/atlas-diff.ts. The prior
+        // `.left` / `.right` property assignment was a typo against a
+        // non-existent API, which silently dropped both texts on the floor;
+        // the diff rendered empty regardless of which versions were picked.
+        const diff = document.createElement('atlas-diff');
+        diff.setAttribute('name', 'diff');
+        diff.setAttribute('before', this._state.leftText);
+        diff.setAttribute('after', this._state.rightText);
+        return diff;
+    }
+    private _renderPicker(name: string, label: string, value: number | null, onChange: (v: number) => void): HTMLElement {
+        const input = document.createElement('atlas-input');
+        input.setAttribute('name', name);
+        input.setAttribute('label', label);
+        input.setAttribute('type', 'number');
+        if (value !== null)
+            input.setAttribute('value', String(value));
+        input.addEventListener('change', function () {
+            // Read the value off the captured `input` reference rather than
+            // `e.target` — `input` is already typed as AtlasInput via the
+            // HTMLElementTagNameMap augmentation in @atlas/design, so no
+            // narrowing of the event target is required.
+            const n = Number(input.value);
+            if (Number.isFinite(n))
+                onChange(n);
+        });
+        return input;
+    }
+    private async _setSide(side: 'left' | 'right', version: number): Promise<void> {
+        try {
+            const detail = await getPolicy(version);
+            const text = detail?.cedarText ?? '';
+            if (side === 'left') {
+                this._state = { ...this._state, leftVersion: version, leftText: text };
+            }
+            else {
+                this._state = { ...this._state, rightVersion: version, rightText: text };
+            }
+            this._rerender();
+        }
+        catch (e) {
+            this._state = { ...this._state, loadError: errorMessage(e) };
+            this._rerender();
+        }
+    }
 }
-
 AtlasSurface.define('policy-diff-dialog', PolicyDiffDialog);

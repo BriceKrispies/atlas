@@ -82,9 +82,18 @@ export class StdoutEventMailer implements Mailer {
     // magic-link tokens land in body and tokens are credentials per
     // specs/crosscut/logging.md. The full body is in email_log above for
     // the in-app mailbox panel.
+    //
+    // Direct `console.log` here is the PRODUCT BEHAVIOR of this adapter:
+    // `StdoutEventMailer` is the noop/dev mailer driver whose job is to
+    // emit the message envelope to stdout for harness inspection. The
+    // SMTP adapter routes its equivalent line through `ctx.logger.info`.
+    // eslint-disable-next-line no-console -- contract-exempt: stdout mailer's stdout emission IS the side effect (see file header + mailer-stdout.test.ts spies).
     console.log(
       JSON.stringify({
-        event: 'mailer.sent',
+        // Canonical Domain.Verb.Outcome event name per
+        // specs/crosscut/logging.md. SmtpMailer emits the same event name
+        // through ctx.logger.info — both adapters are now grep-able as one.
+        event: 'Mailer.Send.Success',
         messageId,
         to: msg.to,
         subject: msg.subject,

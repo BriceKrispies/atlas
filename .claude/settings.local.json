@@ -208,7 +208,26 @@
       "Bash(PGPASSWORD=local_dev_password psql -h localhost -p 15433 -U atlas_platform -d control_plane -c \"SELECT tenant_id, slug FROM tenants ORDER BY created_at;\")",
       "Bash(podman exec *)",
       "Bash(podman stop *)",
-      "Bash(cmd *)"
+      "Bash(cmd *)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=90000 pnpm safe --filter '@atlas/platform-core' test -- --run principal-cache)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=60000 npx vitest run src/principal-cache.test.ts)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=120000 npx vitest run packages/platform-core/src/principal-cache.test.ts apps/server/src/events/principal-cache-dispatcher.test.ts apps/server/src/middleware/state.test.ts)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=180000 pnpm safe --filter '@atlas/platform-core' --filter '@atlas/server' typecheck)",
+      "Bash(npx tsx *)",
+      "Bash(SAFE_PNPM_TIMEOUT_MS=90000 pnpm safe --filter '@atlas/server' typecheck)",
+      "Bash(TEST_AUTH_ENABLED=true CONTROL_PLANE_DB_URL=postgres://atlas_platform:local_dev_password@localhost:15433/control_plane pnpm --filter '@atlas/server' dev)",
+      "Bash(tee /tmp/atlas-server-step1.log)",
+      "Bash(pnpm tsx *)",
+      "Bash(tee .claude/gambler/bets/runs/2026-05-12-after-step-1.txt)",
+      "Bash(tee /tmp/atlas-server-scenario.log)",
+      "Bash(tee .claude/gambler/bets/runs/2026-05-12-steady-state.txt)",
+      "Bash(grep -v \"^$\")",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(sed -n '40,80p' tests/integration/public-signup.itest.ts)",
+      "Bash(sed -n '140,200p' tests/integration/public-signup.itest.ts)",
+      "Bash(podman network *)",
+      "Bash(pnpm bdd:server)",
+      "Bash(echo \"exit=$? lines=$\\(wc -l < /tmp/lint.log\\)\")"
     ]
   }
 }

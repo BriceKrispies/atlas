@@ -1,7 +1,6 @@
 import { AtlasElement } from '@atlas/core';
 import { isElement, isHtmlElement } from './internal/assert.ts';
 import { adoptSheet, createSheet } from './util.ts';
-
 /**
  * <atlas-json-view> — read-only, expandable JSON tree.
  *
@@ -30,9 +29,7 @@ import { adoptSheet, createSheet } from './util.ts';
  *
  * Shadow DOM, encapsulated styles via adoptSheet().
  */
-
 const STRING_TRUNCATE = 120;
-
 const sheet = createSheet(`
   :host {
     display: block;
@@ -127,355 +124,358 @@ const sheet = createSheet(`
     text-align: center;
   }
 `);
-
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [k: string]: JsonValue };
-
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [k: string]: JsonValue;
+};
 interface NodeState {
-  expanded: boolean;
-  expandedStrings: Set<string>; // path keys whose long strings have been expanded
+    expanded: boolean;
+    expandedStrings: Set<string>; // path keys whose long strings have been expanded
 }
-
 export class AtlasJsonView extends AtlasElement {
-  static override get observedAttributes(): readonly string[] {
-    return ['data-json'];
-  }
-
-  declare _data: JsonValue | undefined;
-  private _state: NodeState = { expanded: true, expandedStrings: new Set() };
-  private _expandedPaths = new Set<string>([':root']);
-  private _root: ShadowRoot | null = null;
-  private _list: HTMLUListElement | null = null;
-  private _built = false;
-
-  constructor() {
-    super();
-    this._root = this.attachShadow({ mode: 'open' });
-    adoptSheet(this._root, sheet);
-  }
-
-  /** Set the JS-native data to render. Triggers a re-render. */
-  set data(value: JsonValue | undefined) {
-    this._data = value;
-    this._render();
-  }
-  get data(): JsonValue | undefined {
-    return this._data;
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    if (!this._built) this._buildShell();
-    this.setAttribute('role', 'tree');
-    if (!this.hasAttribute('aria-label')) this.setAttribute('aria-label', 'JSON tree');
-    if (this._data === undefined) this._loadFromAttr();
-    this._render();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (!this._built) return;
-    if (name === 'data-json') {
-      this._loadFromAttr();
-      this._render();
+    static override get observedAttributes(): readonly string[] {
+        return ['data-json'];
     }
-  }
-
-  private _loadFromAttr(): void {
-    const raw = this.getAttribute('data-json');
-    if (raw == null || raw === '') {
-      if (this._data === undefined) this._data = null;
-      return;
+    declare _data: JsonValue | undefined;
+    private _state: NodeState = { expanded: true, expandedStrings: new Set() };
+    private _expandedPaths = new Set<string>([':root']);
+    private _root: ShadowRoot | null = null;
+    private _list: HTMLUListElement | null = null;
+    private _built = false;
+    constructor() {
+        super();
+        this._root = this.attachShadow({ mode: 'open' });
+        adoptSheet(this._root, sheet);
     }
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      // `JsonValue` is the structural shape of any JSON-parseable value;
-      // `JSON.parse` returns exactly that at runtime. The renderer
-      // (`_renderNode`) defends against any concrete shape (arrays vs
-      // objects vs primitives), so the cast captures truth.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON.parse returns the structural JsonValue shape by definition; renderer handles every branch defensively
-      this._data = parsed as JsonValue;
-    } catch {
-      this._data = null;
+    /** Set the JS-native data to render. Triggers a re-render. */
+    set data(value: JsonValue | undefined) {
+        this._data = value;
+        this._render();
     }
-  }
-
-  private _buildShell(): void {
-    if (!this._root) return;
-    const ul = document.createElement('ul');
-    this._root.appendChild(ul);
-    this._list = ul;
-    ul.addEventListener('click', (ev) => this._onClick(ev));
-    ul.addEventListener('keydown', (ev) => this._onKey(ev));
-    this._built = true;
-  }
-
-  private _render(): void {
-    if (!this._list) return;
-    this._list.innerHTML = '';
-    if (this._data === undefined) {
-      const empty = document.createElement('li');
-      empty.className = 'empty';
-      empty.textContent = 'No data.';
-      this._list.appendChild(empty);
-      return;
+    get data(): JsonValue | undefined {
+        return this._data;
     }
-    this._renderNode(this._list, this._data, ':root', null, 0);
-  }
-
-  private _renderNode(
-    parentList: HTMLUListElement,
-    value: JsonValue,
-    path: string,
-    keyLabel: string | null,
-    depth: number,
-  ): void {
-    const li = document.createElement('li');
-    li.setAttribute('role', 'treeitem');
-    li.setAttribute('aria-level', String(depth + 1));
-    li.tabIndex = depth === 0 ? 0 : -1;
-    li.dataset['path'] = path;
-
-    const row = document.createElement('div');
-    row.className = 'row';
-    li.appendChild(row);
-
-    const isObject = value !== null && typeof value === 'object';
-    const isArray = Array.isArray(value);
-
-    const toggle = document.createElement('span');
-    toggle.className = 'toggle';
-    if (isObject) {
-      const expanded = this._expandedPaths.has(path);
-      li.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      row.classList.add('toggleable');
-      toggle.textContent = expanded ? '▾' : '▸';
-    } else {
-      toggle.classList.add('placeholder');
-      toggle.textContent = '·';
+    override connectedCallback(): void {
+        super.connectedCallback();
+        if (!this._built)
+            this._buildShell();
+        this.setAttribute('role', 'tree');
+        if (!this.hasAttribute('aria-label'))
+            this.setAttribute('aria-label', 'JSON tree');
+        if (this._data === undefined)
+            this._loadFromAttr();
+        this._render();
     }
-    row.appendChild(toggle);
-
-    if (keyLabel !== null) {
-      const k = document.createElement('span');
-      k.className = 'key';
-      k.textContent = keyLabel;
-      row.appendChild(k);
-      const colon = document.createElement('span');
-      colon.className = 'colon';
-      colon.textContent = ': ';
-      row.appendChild(colon);
-    }
-
-    const tag = document.createElement('span');
-    tag.className = 'type-tag';
-    tag.setAttribute('aria-hidden', 'true');
-    if (isArray) tag.textContent = '[]';
-    else if (isObject) tag.textContent = '{}';
-    else if (value === null) tag.textContent = 'null';
-    else if (typeof value === 'string') tag.textContent = 'str';
-    else if (typeof value === 'number') tag.textContent = 'num';
-    else if (typeof value === 'boolean') tag.textContent = 'bool';
-    row.appendChild(tag);
-
-    if (isArray) {
-      const arr = value;
-      const summary = document.createElement('span');
-      summary.className = 'v-summary';
-      summary.textContent = `Array(${arr.length})`;
-      row.appendChild(summary);
-    } else if (isObject) {
-      const obj = value;
-      const keys = Object.keys(obj as Record<string, unknown>);
-      const summary = document.createElement('span');
-      summary.className = 'v-summary';
-      summary.textContent = `Object{${keys.length}}`;
-      row.appendChild(summary);
-    } else if (typeof value === 'string') {
-      this._renderString(row, value, path);
-    } else if (typeof value === 'number') {
-      const v = document.createElement('span');
-      v.className = 'v-number';
-      v.textContent = String(value);
-      row.appendChild(v);
-    } else if (typeof value === 'boolean') {
-      const v = document.createElement('span');
-      v.className = 'v-boolean';
-      v.textContent = String(value);
-      row.appendChild(v);
-    } else if (value === null) {
-      const v = document.createElement('span');
-      v.className = 'v-null';
-      v.textContent = 'null';
-      row.appendChild(v);
-    }
-
-    parentList.appendChild(li);
-
-    if (isObject && this._expandedPaths.has(path)) {
-      const childUl = document.createElement('ul');
-      childUl.className = 'children';
-      li.appendChild(childUl);
-      if (Array.isArray(value)) {
-        // Re-test inline so TS narrows `value`'s element type to
-        // `JsonValue` (the union member that's an array). The
-        // const-bound `isArray` above doesn't reach into the type
-        // checker as a narrower.
-        for (let i = 0; i < value.length; i++) {
-          const item = value[i];
-          if (item === undefined) continue;
-          this._renderNode(childUl, item, `${path}.${i}`, String(i), depth + 1);
+    override attributeChangedCallback(name: string): void {
+        if (!this._built)
+            return;
+        if (name === 'data-json') {
+            this._loadFromAttr();
+            this._render();
         }
-      } else if (value !== null && typeof value === 'object') {
-        // Same re-test pattern: narrow to the object branch of the
-        // JsonValue union without a cast.
-        for (const k of Object.keys(value)) {
-          const v = value[k];
-          if (v === undefined) continue;
-          this._renderNode(childUl, v, `${path}.${k}`, k, depth + 1);
+    }
+    private _loadFromAttr(): void {
+        const raw = this.getAttribute('data-json');
+        if (raw == null || raw === '') {
+            if (this._data === undefined)
+                this._data = null;
+            return;
         }
-      }
-    }
-  }
-
-  private _renderString(row: HTMLElement, value: string, path: string): void {
-    const v = document.createElement('span');
-    v.className = 'v-string';
-    const expanded = this._state.expandedStrings.has(path);
-    if (value.length <= STRING_TRUNCATE || expanded) {
-      v.textContent = JSON.stringify(value);
-      row.appendChild(v);
-      if (value.length > STRING_TRUNCATE) {
-        const less = document.createElement('button');
-        less.type = 'button';
-        less.className = 'more';
-        less.textContent = 'show less';
-        less.dataset['action'] = 'string-toggle';
-        less.dataset['path'] = path;
-        row.appendChild(less);
-      }
-    } else {
-      v.textContent = JSON.stringify(value.slice(0, STRING_TRUNCATE)) + '…';
-      row.appendChild(v);
-      const more = document.createElement('button');
-      more.type = 'button';
-      more.className = 'more';
-      more.textContent = `show more (${value.length - STRING_TRUNCATE} chars)`;
-      more.dataset['action'] = 'string-toggle';
-      more.dataset['path'] = path;
-      row.appendChild(more);
-    }
-  }
-
-  private _onClick(ev: Event): void {
-    if (!isElement(ev.target)) return;
-    const target = ev.target;
-    const moreBtn = target.closest('button.more');
-    if (moreBtn instanceof HTMLButtonElement && moreBtn.dataset['action'] === 'string-toggle') {
-      const path = moreBtn.dataset['path'] ?? '';
-      if (this._state.expandedStrings.has(path)) this._state.expandedStrings.delete(path);
-      else this._state.expandedStrings.add(path);
-      this._render();
-      return;
-    }
-    const row = target.closest('.row.toggleable');
-    if (!isHtmlElement(row)) return;
-    const li = row.parentElement;
-    if (!(li instanceof HTMLLIElement)) return;
-    const path = li.dataset['path'] ?? '';
-    this._togglePath(path);
-    li.focus();
-  }
-
-  private _onKey(ev: KeyboardEvent): void {
-    if (!isHtmlElement(ev.target)) return;
-    const target = ev.target;
-    if (target.getAttribute('role') !== 'treeitem') return;
-    const path = target.dataset['path'] ?? '';
-    const expandable = target.hasAttribute('aria-expanded');
-    const expanded = target.getAttribute('aria-expanded') === 'true';
-
-    if (ev.key === 'ArrowRight') {
-      if (expandable && !expanded) {
-        ev.preventDefault();
-        this._togglePath(path);
-        this._focusByPath(path);
-      } else if (expandable && expanded) {
-        ev.preventDefault();
-        // Move to first child if any.
-        const firstChild = target.querySelector('ul.children > [role="treeitem"]');
-        if (isHtmlElement(firstChild)) firstChild.focus();
-      }
-    } else if (ev.key === 'ArrowLeft') {
-      if (expandable && expanded) {
-        ev.preventDefault();
-        this._togglePath(path);
-        this._focusByPath(path);
-      } else {
-        // Move to parent
-        const parent = target.parentElement?.closest('[role="treeitem"]');
-        if (isHtmlElement(parent)) {
-          ev.preventDefault();
-          parent.focus();
+        try {
+            const parsed: unknown = JSON.parse(raw);
+            // `JsonValue` is the structural shape of any JSON-parseable value;
+            // `JSON.parse` returns exactly that at runtime. The renderer
+            // (`_renderNode`) defends against any concrete shape (arrays vs
+            // objects vs primitives), so the cast captures truth.
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON.parse returns the structural JsonValue shape by definition; renderer handles every branch defensively
+            this._data = parsed as JsonValue;
         }
-      }
-    } else if (ev.key === 'ArrowDown') {
-      ev.preventDefault();
-      this._moveFocus(target, +1);
-    } else if (ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      this._moveFocus(target, -1);
-    } else if (ev.key === 'Enter' || ev.key === ' ') {
-      if (expandable) {
-        ev.preventDefault();
+        catch {
+            this._data = null;
+        }
+    }
+    private _buildShell(): void {
+        if (!this._root)
+            return;
+        const ul = document.createElement('ul');
+        this._root.appendChild(ul);
+        this._list = ul;
+        ul.addEventListener('click', (ev) => this._onClick(ev));
+        ul.addEventListener('keydown', (ev) => this._onKey(ev));
+        this._built = true;
+    }
+    private _render(): void {
+        if (!this._list)
+            return;
+        this._list.innerHTML = '';
+        if (this._data === undefined) {
+            const empty = document.createElement('li');
+            empty.className = 'empty';
+            empty.textContent = 'No data.';
+            this._list.appendChild(empty);
+            return;
+        }
+        this._renderNode(this._list, this._data, ':root', null, 0);
+    }
+    private _renderNode(parentList: HTMLUListElement, value: JsonValue, path: string, keyLabel: string | null, depth: number): void {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'treeitem');
+        li.setAttribute('aria-level', String(depth + 1));
+        li.tabIndex = depth === 0 ? 0 : -1;
+        li.dataset['path'] = path;
+        const row = document.createElement('div');
+        row.className = 'row';
+        li.appendChild(row);
+        const isObject = value !== null && typeof value === 'object';
+        const isArray = Array.isArray(value);
+        const toggle = document.createElement('span');
+        toggle.className = 'toggle';
+        if (isObject) {
+            const expanded = this._expandedPaths.has(path);
+            li.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            row.classList.add('toggleable');
+            toggle.textContent = expanded ? '▾' : '▸';
+        }
+        else {
+            toggle.classList.add('placeholder');
+            toggle.textContent = '·';
+        }
+        row.appendChild(toggle);
+        if (keyLabel !== null) {
+            const k = document.createElement('span');
+            k.className = 'key';
+            k.textContent = keyLabel;
+            row.appendChild(k);
+            const colon = document.createElement('span');
+            colon.className = 'colon';
+            colon.textContent = ': ';
+            row.appendChild(colon);
+        }
+        const tag = document.createElement('span');
+        tag.className = 'type-tag';
+        tag.setAttribute('aria-hidden', 'true');
+        if (isArray)
+            tag.textContent = '[]';
+        else if (isObject)
+            tag.textContent = '{}';
+        else if (value === null)
+            tag.textContent = 'null';
+        else if (typeof value === 'string')
+            tag.textContent = 'str';
+        else if (typeof value === 'number')
+            tag.textContent = 'num';
+        else if (typeof value === 'boolean')
+            tag.textContent = 'bool';
+        row.appendChild(tag);
+        if (isArray) {
+            const arr = value;
+            const summary = document.createElement('span');
+            summary.className = 'v-summary';
+            summary.textContent = `Array(${arr.length})`;
+            row.appendChild(summary);
+        }
+        else if (isObject) {
+            const obj = value;
+            const keys = Object.keys(obj as Record<string, unknown>);
+            const summary = document.createElement('span');
+            summary.className = 'v-summary';
+            summary.textContent = `Object{${keys.length}}`;
+            row.appendChild(summary);
+        }
+        else if (typeof value === 'string') {
+            this._renderString(row, value, path);
+        }
+        else if (typeof value === 'number') {
+            const v = document.createElement('span');
+            v.className = 'v-number';
+            v.textContent = String(value);
+            row.appendChild(v);
+        }
+        else if (typeof value === 'boolean') {
+            const v = document.createElement('span');
+            v.className = 'v-boolean';
+            v.textContent = String(value);
+            row.appendChild(v);
+        }
+        else if (value === null) {
+            const v = document.createElement('span');
+            v.className = 'v-null';
+            v.textContent = 'null';
+            row.appendChild(v);
+        }
+        parentList.appendChild(li);
+        if (isObject && this._expandedPaths.has(path)) {
+            const childUl = document.createElement('ul');
+            childUl.className = 'children';
+            li.appendChild(childUl);
+            if (Array.isArray(value)) {
+                // Re-test inline so TS narrows `value`'s element type to
+                // `JsonValue` (the union member that's an array). The
+                // const-bound `isArray` above doesn't reach into the type
+                // checker as a narrower.
+                for (let i = 0; i < value.length; i++) {
+                    const item = value[i];
+                    if (item === undefined)
+                        continue;
+                    this._renderNode(childUl, item, `${path}.${i}`, String(i), depth + 1);
+                }
+            }
+            else if (value !== null && typeof value === 'object') {
+                // Same re-test pattern: narrow to the object branch of the
+                // JsonValue union without a cast.
+                for (const k of Object.keys(value)) {
+                    const v = value[k];
+                    if (v === undefined)
+                        continue;
+                    this._renderNode(childUl, v, `${path}.${k}`, k, depth + 1);
+                }
+            }
+        }
+    }
+    private _renderString(row: HTMLElement, value: string, path: string): void {
+        const v = document.createElement('span');
+        v.className = 'v-string';
+        const expanded = this._state.expandedStrings.has(path);
+        if (value.length <= STRING_TRUNCATE || expanded) {
+            v.textContent = JSON.stringify(value);
+            row.appendChild(v);
+            if (value.length > STRING_TRUNCATE) {
+                const less = document.createElement('button');
+                less.type = 'button';
+                less.className = 'more';
+                less.textContent = 'show less';
+                less.dataset['action'] = 'string-toggle';
+                less.dataset['path'] = path;
+                row.appendChild(less);
+            }
+        }
+        else {
+            v.textContent = JSON.stringify(value.slice(0, STRING_TRUNCATE)) + '…';
+            row.appendChild(v);
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'more';
+            more.textContent = `show more (${value.length - STRING_TRUNCATE} chars)`;
+            more.dataset['action'] = 'string-toggle';
+            more.dataset['path'] = path;
+            row.appendChild(more);
+        }
+    }
+    private _onClick(ev: Event): void {
+        if (!isElement(ev.target))
+            return;
+        const target = ev.target;
+        const moreBtn = target.closest('button.more');
+        if (moreBtn instanceof HTMLButtonElement && moreBtn.dataset['action'] === 'string-toggle') {
+            const path = moreBtn.dataset['path'] ?? '';
+            if (this._state.expandedStrings.has(path))
+                this._state.expandedStrings.delete(path);
+            else
+                this._state.expandedStrings.add(path);
+            this._render();
+            return;
+        }
+        const row = target.closest('.row.toggleable');
+        if (!isHtmlElement(row))
+            return;
+        const li = row.parentElement;
+        if (!(li instanceof HTMLLIElement))
+            return;
+        const path = li.dataset['path'] ?? '';
         this._togglePath(path);
-        this._focusByPath(path);
-      }
+        li.focus();
     }
-  }
-
-  private _togglePath(path: string): void {
-    if (this._expandedPaths.has(path)) this._expandedPaths.delete(path);
-    else this._expandedPaths.add(path);
-    this._render();
-  }
-
-  private _focusByPath(path: string): void {
-    if (!this._list) return;
-    const el = this._list.querySelector(`[role="treeitem"][data-path="${escapeAttrSelector(path)}"]`) as HTMLElement | null;
-    el?.focus();
-  }
-
-  private _moveFocus(current: HTMLElement, delta: number): void {
-    if (!this._list) return;
-    const all = Array.from(
-      this._list.querySelectorAll('[role="treeitem"]'),
-    ) as HTMLElement[];
-    const visible = all.filter((el) => el.offsetParent !== null || el === current);
-    const idx = visible.indexOf(current);
-    if (idx < 0) return;
-    const next = visible[idx + delta];
-    if (next) {
-      // make current non-tabbable, next tabbable
-      current.tabIndex = -1;
-      next.tabIndex = 0;
-      next.focus();
+    private _onKey(ev: KeyboardEvent): void {
+        if (!isHtmlElement(ev.target))
+            return;
+        const target = ev.target;
+        if (target.getAttribute('role') !== 'treeitem')
+            return;
+        const path = target.dataset['path'] ?? '';
+        const expandable = target.hasAttribute('aria-expanded');
+        const expanded = target.getAttribute('aria-expanded') === 'true';
+        if (ev.key === 'ArrowRight') {
+            if (expandable && !expanded) {
+                ev.preventDefault();
+                this._togglePath(path);
+                this._focusByPath(path);
+            }
+            else if (expandable && expanded) {
+                ev.preventDefault();
+                // Move to first child if any.
+                const firstChild = target.querySelector('ul.children > [role="treeitem"]');
+                if (isHtmlElement(firstChild))
+                    firstChild.focus();
+            }
+        }
+        else if (ev.key === 'ArrowLeft') {
+            if (expandable && expanded) {
+                ev.preventDefault();
+                this._togglePath(path);
+                this._focusByPath(path);
+            }
+            else {
+                // Move to parent
+                const parent = target.parentElement?.closest('[role="treeitem"]');
+                if (isHtmlElement(parent)) {
+                    ev.preventDefault();
+                    parent.focus();
+                }
+            }
+        }
+        else if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            this._moveFocus(target, +1);
+        }
+        else if (ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            this._moveFocus(target, -1);
+        }
+        else if (ev.key === 'Enter' || ev.key === ' ') {
+            if (expandable) {
+                ev.preventDefault();
+                this._togglePath(path);
+                this._focusByPath(path);
+            }
+        }
     }
-  }
+    private _togglePath(path: string): void {
+        if (this._expandedPaths.has(path))
+            this._expandedPaths.delete(path);
+        else
+            this._expandedPaths.add(path);
+        this._render();
+    }
+    private _focusByPath(path: string): void {
+        if (!this._list)
+            return;
+        const el = this._list.querySelector(`[role="treeitem"][data-path="${escapeAttrSelector(path)}"]`) as HTMLElement | null;
+        el?.focus();
+    }
+    private _moveFocus(current: HTMLElement, delta: number): void {
+        if (!this._list)
+            return;
+        const all = Array.from(this._list.querySelectorAll('[role="treeitem"]')) as HTMLElement[];
+        const visible = all.filter(function (el) {
+            return el.offsetParent !== null || el === current;
+        });
+        const idx = visible.indexOf(current);
+        if (idx < 0)
+            return;
+        const next = visible[idx + delta];
+        if (next) {
+            // make current non-tabbable, next tabbable
+            current.tabIndex = -1;
+            next.tabIndex = 0;
+            next.focus();
+        }
+    }
 }
-
 function escapeAttrSelector(s: string): string {
-  return s.replace(/[\\"]/g, '\\$&');
+    return s.replace(/[\\"]/g, '\\$&');
 }
-
 AtlasElement.define('atlas-json-view', AtlasJsonView);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-json-view': AtlasJsonView;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-json-view': AtlasJsonView;
+    }
 }

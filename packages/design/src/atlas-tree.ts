@@ -1,6 +1,5 @@
 import { AtlasElement } from '@atlas/core';
 import { AtlasTreeItem } from './atlas-tree-item.ts';
-
 /**
  * <atlas-tree> — hierarchical tree view (WAI-ARIA tree pattern).
  *
@@ -22,262 +21,275 @@ import { AtlasTreeItem } from './atlas-tree-item.ts';
  *   label     — accessible name applied via aria-label.
  */
 export class AtlasTree extends AtlasElement {
-  static override get observedAttributes(): readonly string[] {
-    return ['selection', 'label'];
-  }
-
-  private _wired = false;
-  private _activeItem: AtlasTreeItem | null = null;
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'tree');
-    const label = this.getAttribute('label');
-    if (label) this.setAttribute('aria-label', label);
-    const sel = this.getAttribute('selection') ?? 'none';
-    if (sel === 'multiple') this.setAttribute('aria-multiselectable', 'true');
-    else this.removeAttribute('aria-multiselectable');
-
-    if (!this._wired) {
-      this.addEventListener('click', this._onClick);
-      this.addEventListener('keydown', this._onKeydown);
-      this.addEventListener('focusin', this._onFocusIn);
-      this._wired = true;
+    static override get observedAttributes(): readonly string[] {
+        return ['selection', 'label'];
     }
-
-    this._initLevels();
-    this._initRovingTabindex();
-  }
-
-  override attributeChangedCallback(name: string): void {
-    if (name === 'label') {
-      const label = this.getAttribute('label');
-      if (label) this.setAttribute('aria-label', label);
-      else this.removeAttribute('aria-label');
-    }
-    if (name === 'selection') {
-      const sel = this.getAttribute('selection') ?? 'none';
-      if (sel === 'multiple') this.setAttribute('aria-multiselectable', 'true');
-      else this.removeAttribute('aria-multiselectable');
-    }
-  }
-
-  // ── Public API ───────────────────────────────────────────────
-
-  /** Get all currently-selected values, in DOM order. */
-  getSelectedValues(): string[] {
-    return this._allItems()
-      .filter((it) => it.hasAttribute('selected'))
-      .map((it) => it.getAttribute('value') ?? '');
-  }
-
-  // ── Internal: roving tabindex ────────────────────────────────
-
-  private _initLevels(): void {
-    const walk = (parent: Element, level: number): void => {
-      const kids = Array.from(
-        parent.querySelectorAll(':scope > atlas-tree-item'),
-      ) as AtlasTreeItem[];
-      for (const kid of kids) {
-        kid.setLevel(level);
-        walk(kid, level + 1);
-      }
-    };
-    walk(this, 1);
-  }
-
-  private _initRovingTabindex(): void {
-    const items = this._visibleItems();
-    if (items.length === 0) return;
-    const selected = items.find((it) => it.hasAttribute('selected'));
-    const initial = selected ?? items[0];
-    if (!initial) return;
-    for (const it of this._allItems()) it.setTabbable(false);
-    initial.setTabbable(true);
-    this._activeItem = initial;
-  }
-
-  // ── Internal: walking ───────────────────────────────────────
-
-  private _allItems(): AtlasTreeItem[] {
-    return Array.from(this.querySelectorAll('atlas-tree-item')) as AtlasTreeItem[];
-  }
-
-  /** Items currently visible (not under a collapsed ancestor). */
-  private _visibleItems(): AtlasTreeItem[] {
-    const out: AtlasTreeItem[] = [];
-    const walk = (parent: Element): void => {
-      const kids = Array.from(
-        parent.querySelectorAll(':scope > atlas-tree-item'),
-      ) as AtlasTreeItem[];
-      for (const kid of kids) {
-        out.push(kid);
-        if (kid.hasAttribute('expanded')) walk(kid);
-      }
-    };
-    walk(this);
-    return out;
-  }
-
-  private _parentItem(item: AtlasTreeItem): AtlasTreeItem | null {
-    const p = item.parentElement;
-    return p instanceof AtlasTreeItem ? p : null;
-  }
-
-  // ── Internal: events ────────────────────────────────────────
-
-  private readonly _onClick = (ev: MouseEvent): void => {
-    const target = ev.target;
-    if (!(target instanceof Element)) return;
-    const closest = target.closest('atlas-tree-item');
-    if (!(closest instanceof AtlasTreeItem) || !this.contains(closest)) return;
-    if (closest.hasAttribute('disabled')) return;
-    // Click toggles expansion if it has children; click also focuses
-    // and (in single/multiple modes) selects.
-    this._setActive(closest);
-    if (closest.hasChildren()) {
-      this._toggle(closest);
-    }
-    this._activate(closest, ev);
-  };
-
-  private readonly _onFocusIn = (ev: FocusEvent): void => {
-    const target = ev.target;
-    if (!(target instanceof Element)) return;
-    const item = target.closest('atlas-tree-item') as AtlasTreeItem | null;
-    if (!item || !this.contains(item)) return;
-    if (item === this._activeItem) return;
-    // Slide the roving tabindex to whichever item just received focus.
-    this._setActive(item);
-  };
-
-  private readonly _onKeydown = (ev: KeyboardEvent): void => {
-    const active = this._activeItem;
-    if (!active || !this.contains(active)) return;
-    const visible = this._visibleItems();
-    const idx = visible.indexOf(active);
-    if (idx < 0) return;
-    let target: AtlasTreeItem | null = null;
-    switch (ev.key) {
-      case 'ArrowDown':
-        target = visible[idx + 1] ?? null;
-        break;
-      case 'ArrowUp':
-        target = visible[idx - 1] ?? null;
-        break;
-      case 'Home':
-        target = visible[0] ?? null;
-        break;
-      case 'End':
-        target = visible[visible.length - 1] ?? null;
-        break;
-      case 'ArrowRight':
-        if (active.hasChildren() && !active.hasAttribute('expanded')) {
-          this._expand(active);
-        } else if (active.hasChildren() && active.hasAttribute('expanded')) {
-          target = visible[idx + 1] ?? null;
+    private _wired = false;
+    private _activeItem: AtlasTreeItem | null = null;
+    override connectedCallback(): void {
+        super.connectedCallback();
+        this.setAttribute('role', 'tree');
+        const label = this.getAttribute('label');
+        if (label)
+            this.setAttribute('aria-label', label);
+        const sel = this.getAttribute('selection') ?? 'none';
+        if (sel === 'multiple')
+            this.setAttribute('aria-multiselectable', 'true');
+        else
+            this.removeAttribute('aria-multiselectable');
+        if (!this._wired) {
+            this.addEventListener('click', this._onClick);
+            this.addEventListener('keydown', this._onKeydown);
+            this.addEventListener('focusin', this._onFocusIn);
+            this._wired = true;
         }
-        break;
-      case 'ArrowLeft':
-        if (active.hasChildren() && active.hasAttribute('expanded')) {
-          this._collapse(active);
-        } else {
-          target = this._parentItem(active);
+        this._initLevels();
+        this._initRovingTabindex();
+    }
+    override attributeChangedCallback(name: string): void {
+        if (name === 'label') {
+            const label = this.getAttribute('label');
+            if (label)
+                this.setAttribute('aria-label', label);
+            else
+                this.removeAttribute('aria-label');
         }
-        break;
-      case 'Enter':
-      case ' ':
+        if (name === 'selection') {
+            const sel = this.getAttribute('selection') ?? 'none';
+            if (sel === 'multiple')
+                this.setAttribute('aria-multiselectable', 'true');
+            else
+                this.removeAttribute('aria-multiselectable');
+        }
+    }
+    // ── Public API ───────────────────────────────────────────────
+    /** Get all currently-selected values, in DOM order. */
+    getSelectedValues(): string[] {
+        return this._allItems()
+            .filter(function (it) {
+            return it.hasAttribute('selected');
+        })
+            .map(function (it) {
+            return it.getAttribute('value') ?? '';
+        });
+    }
+    // ── Internal: roving tabindex ────────────────────────────────
+    private _initLevels(): void {
+        const walk = function (parent: Element, level: number): void {
+            const kids = Array.from(parent.querySelectorAll(':scope > atlas-tree-item')) as AtlasTreeItem[];
+            for (const kid of kids) {
+                kid.setLevel(level);
+                walk(kid, level + 1);
+            }
+        };
+        walk(this, 1);
+    }
+    private _initRovingTabindex(): void {
+        const items = this._visibleItems();
+        if (items.length === 0)
+            return;
+        const selected = items.find(function (it) {
+            return it.hasAttribute('selected');
+        });
+        const initial = selected ?? items[0];
+        if (!initial)
+            return;
+        for (const it of this._allItems())
+            it.setTabbable(false);
+        initial.setTabbable(true);
+        this._activeItem = initial;
+    }
+    // ── Internal: walking ───────────────────────────────────────
+    private _allItems(): AtlasTreeItem[] {
+        return Array.from(this.querySelectorAll('atlas-tree-item')) as AtlasTreeItem[];
+    }
+    /** Items currently visible (not under a collapsed ancestor). */
+    private _visibleItems(): AtlasTreeItem[] {
+        const out: AtlasTreeItem[] = [];
+        const walk = function (parent: Element): void {
+            const kids = Array.from(parent.querySelectorAll(':scope > atlas-tree-item')) as AtlasTreeItem[];
+            for (const kid of kids) {
+                out.push(kid);
+                if (kid.hasAttribute('expanded'))
+                    walk(kid);
+            }
+        };
+        walk(this);
+        return out;
+    }
+    private _parentItem(item: AtlasTreeItem): AtlasTreeItem | null {
+        const p = item.parentElement;
+        return p instanceof AtlasTreeItem ? p : null;
+    }
+    // ── Internal: events ────────────────────────────────────────
+    private readonly _onClick = (ev: MouseEvent): void => {
+        const target = ev.target;
+        if (!(target instanceof Element))
+            return;
+        const closest = target.closest('atlas-tree-item');
+        if (!(closest instanceof AtlasTreeItem) || !this.contains(closest))
+            return;
+        if (closest.hasAttribute('disabled'))
+            return;
+        // Click toggles expansion if it has children; click also focuses
+        // and (in single/multiple modes) selects.
+        this._setActive(closest);
+        if (closest.hasChildren()) {
+            this._toggle(closest);
+        }
+        this._activate(closest, ev);
+    };
+    private readonly _onFocusIn = (ev: FocusEvent): void => {
+        const target = ev.target;
+        if (!(target instanceof Element))
+            return;
+        const item = target.closest('atlas-tree-item') as AtlasTreeItem | null;
+        if (!item || !this.contains(item))
+            return;
+        if (item === this._activeItem)
+            return;
+        // Slide the roving tabindex to whichever item just received focus.
+        this._setActive(item);
+    };
+    private readonly _onKeydown = (ev: KeyboardEvent): void => {
+        const active = this._activeItem;
+        if (!active || !this.contains(active))
+            return;
+        const visible = this._visibleItems();
+        const idx = visible.indexOf(active);
+        if (idx < 0)
+            return;
+        let target: AtlasTreeItem | null = null;
+        switch (ev.key) {
+            case 'ArrowDown':
+                target = visible[idx + 1] ?? null;
+                break;
+            case 'ArrowUp':
+                target = visible[idx - 1] ?? null;
+                break;
+            case 'Home':
+                target = visible[0] ?? null;
+                break;
+            case 'End':
+                target = visible[visible.length - 1] ?? null;
+                break;
+            case 'ArrowRight':
+                if (active.hasChildren() && !active.hasAttribute('expanded')) {
+                    this._expand(active);
+                }
+                else if (active.hasChildren() && active.hasAttribute('expanded')) {
+                    target = visible[idx + 1] ?? null;
+                }
+                break;
+            case 'ArrowLeft':
+                if (active.hasChildren() && active.hasAttribute('expanded')) {
+                    this._collapse(active);
+                }
+                else {
+                    target = this._parentItem(active);
+                }
+                break;
+            case 'Enter':
+            case ' ':
+                ev.preventDefault();
+                this._activate(active, ev);
+                return;
+            default:
+                return;
+        }
         ev.preventDefault();
-        this._activate(active, ev);
-        return;
-      default:
-        return;
+        if (target)
+            this._setActive(target, true);
+    };
+    private _setActive(item: AtlasTreeItem, focus: boolean = false): void {
+        if (this._activeItem && this._activeItem !== item)
+            this._activeItem.setTabbable(false);
+        item.setTabbable(true);
+        this._activeItem = item;
+        if (focus)
+            item.focus();
     }
-    ev.preventDefault();
-    if (target) this._setActive(target, true);
-  };
-
-  private _setActive(item: AtlasTreeItem, focus: boolean = false): void {
-    if (this._activeItem && this._activeItem !== item) this._activeItem.setTabbable(false);
-    item.setTabbable(true);
-    this._activeItem = item;
-    if (focus) item.focus();
-  }
-
-  private _toggle(item: AtlasTreeItem): void {
-    if (item.hasAttribute('expanded')) this._collapse(item);
-    else this._expand(item);
-  }
-
-  private _expand(item: AtlasTreeItem): void {
-    if (!item.hasChildren()) return;
-    if (item.hasAttribute('expanded')) return;
-    item.setExpanded(true);
-    this.dispatchEvent(
-      new CustomEvent<{ value: string }>('expand', {
-        detail: { value: item.getAttribute('value') ?? '' },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private _collapse(item: AtlasTreeItem): void {
-    if (!item.hasChildren()) return;
-    if (!item.hasAttribute('expanded')) return;
-    item.setExpanded(false);
-    this.dispatchEvent(
-      new CustomEvent<{ value: string }>('collapse', {
-        detail: { value: item.getAttribute('value') ?? '' },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private _activate(item: AtlasTreeItem, ev: MouseEvent | KeyboardEvent): void {
-    const mode = this.getAttribute('selection') ?? 'none';
-    if (mode === 'none') return;
-    if (item.hasAttribute('disabled')) return;
-    if (mode === 'single') {
-      for (const it of this._allItems()) {
-        if (it !== item && it.hasAttribute('selected')) it.setSelected(false);
-      }
-      item.setSelected(true);
-    } else {
-      // Multiple: Ctrl/Meta toggles, plain click/Enter selects this
-      // alone if it wasn't already; otherwise toggles.
-      const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
-      if (additive) {
-        item.setSelected(!item.hasAttribute('selected'));
-      } else {
-        for (const it of this._allItems()) {
-          if (it !== item && it.hasAttribute('selected')) it.setSelected(false);
+    private _toggle(item: AtlasTreeItem): void {
+        if (item.hasAttribute('expanded'))
+            this._collapse(item);
+        else
+            this._expand(item);
+    }
+    private _expand(item: AtlasTreeItem): void {
+        if (!item.hasChildren())
+            return;
+        if (item.hasAttribute('expanded'))
+            return;
+        item.setExpanded(true);
+        this.dispatchEvent(new CustomEvent<{
+            value: string;
+        }>('expand', {
+            detail: { value: item.getAttribute('value') ?? '' },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+    private _collapse(item: AtlasTreeItem): void {
+        if (!item.hasChildren())
+            return;
+        if (!item.hasAttribute('expanded'))
+            return;
+        item.setExpanded(false);
+        this.dispatchEvent(new CustomEvent<{
+            value: string;
+        }>('collapse', {
+            detail: { value: item.getAttribute('value') ?? '' },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+    private _activate(item: AtlasTreeItem, ev: MouseEvent | KeyboardEvent): void {
+        const mode = this.getAttribute('selection') ?? 'none';
+        if (mode === 'none')
+            return;
+        if (item.hasAttribute('disabled'))
+            return;
+        if (mode === 'single') {
+            for (const it of this._allItems()) {
+                if (it !== item && it.hasAttribute('selected'))
+                    it.setSelected(false);
+            }
+            item.setSelected(true);
         }
-        item.setSelected(true);
-      }
+        else {
+            // Multiple: Ctrl/Meta toggles, plain click/Enter selects this
+            // alone if it wasn't already; otherwise toggles.
+            const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
+            if (additive) {
+                item.setSelected(!item.hasAttribute('selected'));
+            }
+            else {
+                for (const it of this._allItems()) {
+                    if (it !== item && it.hasAttribute('selected'))
+                        it.setSelected(false);
+                }
+                item.setSelected(true);
+            }
+        }
+        this.dispatchEvent(new CustomEvent<{
+            value: string;
+        }>('select', {
+            detail: { value: item.getAttribute('value') ?? '' },
+            bubbles: true,
+            composed: true,
+        }));
+        const elName = this.getAttribute('name');
+        if (elName && this.surfaceId) {
+            this.emit(`${this.surfaceId}.${elName}-changed`, {
+                value: item.getAttribute('value') ?? '',
+                selected: this.getSelectedValues(),
+            });
+        }
     }
-    this.dispatchEvent(
-      new CustomEvent<{ value: string }>('select', {
-        detail: { value: item.getAttribute('value') ?? '' },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-    const elName = this.getAttribute('name');
-    if (elName && this.surfaceId) {
-      this.emit(`${this.surfaceId}.${elName}-changed`, {
-        value: item.getAttribute('value') ?? '',
-        selected: this.getSelectedValues(),
-      });
-    }
-  }
 }
-
 AtlasElement.define('atlas-tree', AtlasTree);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'atlas-tree': AtlasTree;
-  }
+    interface HTMLElementTagNameMap {
+        'atlas-tree': AtlasTree;
+    }
 }

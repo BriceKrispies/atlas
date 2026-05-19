@@ -60,6 +60,7 @@ export default [
       'test-setup/**',
       '**/vitest.config.ts',
       '**/playwright.bdd.config.ts',
+      '**/playwright.bdd.server.config.ts',
       'adapters/policy-cedar/bin/**',
       'packages/openapi/scripts/**',
       // Per-app `test/` folders are intentionally outside the app's
@@ -168,6 +169,48 @@ export default [
       // sites can suppress per-line with a justification comment OR use
       // a typed `must<T>(v, msg)` / `assertDefined<T>(v, msg)` helper.
       '@typescript-eslint/no-non-null-assertion': 'error',
+
+      // `console.*` is banned platform-wide. The structured logger
+      // (`ctx.logger.*` server-side, telemetry pipeline in
+      // `packages/core/src/telemetry-pipeline.ts` for the frontend) is
+      // the only sanctioned emit path — both per
+      // specs/crosscut/logging.md and specs/frontend/observability.md.
+      //
+      // Legitimate exemption sites (telemetry sink contract, CLI stdout
+      // output, dev mailer's product-behavior stdout JSON, harness
+      // fixture diagnostic output) must carry a per-line
+      // `// eslint-disable-next-line no-console -- <category>: <reason>`
+      // comment. Categories so far in the codebase: `contract-exempt`,
+      // `cli-stdout`, `dev-only`, `harness-diagnostic`. Add new ones
+      // sparingly.
+      //
+      // Mirrored by `.semgrep/atlas-invariants.yml` ▸
+      // `atlas-logging-no-console` for defense in depth (catches dynamic
+      // `console['log']` shapes the AST rule misses on server paths).
+      'no-console': 'error',
+
+      // Arrow functions are banned platform-wide EXCEPT when:
+      //   1. The body references lexical `this` — converting would
+      //      silently rebind `this`, breaking event handlers, lifecycle
+      //      wiring, and timer callbacks in our custom-element code.
+      //   2. The arrow IS a class-field initialiser (`foo = () => …`)
+      //      — class-field arrows auto-bind to the instance; converting
+      //      to `function () {…}` would change binding semantics even
+      //      when the body doesn't use `this` today.
+      //
+      // For everything else, use a named function declaration or a
+      // function expression. TS function-type annotations
+      // (`(x: number) => number`) are unaffected — this bans only the
+      // runtime `ArrowFunctionExpression` AST node.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'ArrowFunctionExpression:not(:has(ThisExpression)):not(PropertyDefinition > ArrowFunctionExpression.value)',
+          message:
+            'Arrow functions are banned (except when they reference lexical `this` or are class-field initialisers). Use a named function declaration (`function foo() {}`) or a function expression (`function () {}`). TS function-type annotations like `(x: number) => number` are fine — only the runtime arrow form is banned.',
+        },
+      ],
     },
   },
 
@@ -283,6 +326,11 @@ export default [
       ],
     },
   },
+  // (Scoped no-console block removed — the rule is now repo-wide in
+  // the type-safety baseline above. Sites that legitimately need
+  // `console.*` carry per-line eslint-disable comments with a
+  // categorised justification — see the `no-console` doc-comment in
+  // the baseline block for the categories taxonomy.)
   {
     // Ports define the seam between domain modules and adapters; they MUST
     // depend only on `@atlas/platform-core` and themselves. Importing a

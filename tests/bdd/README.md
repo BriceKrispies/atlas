@@ -43,6 +43,37 @@ serve. Promote a step to `steps/common/` only when it is genuinely generic.
 | `pnpm bdd:all` | **always** | **always** | Full diagnostics — screenshot per step + IDB dump per scenario |
 | `pnpm bdd:clean` | — | — | Clears `tests/bdd/screenshots` and `tests/bdd/report` |
 | `pnpm bdd:report` | — | — | Opens the last HTML report |
+| `pnpm bdd:server` | on-failure | n/a | `@server`-tagged scenarios against real `apps/server` + Postgres + smtp4dev (see below) |
+| `pnpm bdd:server:report` | — | — | Opens the last server-stack HTML report |
+
+## Two tracks: `@sim` and `@server`
+
+BDD scenarios in this repo run against one of two harnesses, tag-selected:
+
+- **`@sim`** (the default) — boots `apps/sim` (Vite + IndexedDB) via
+  `playwright.bdd.config.ts`. Fast, no infrastructure. Use for any scenario
+  that exercises a tenant-scoped capability whose substrate (events,
+  projections, cache, search) is faithfully mirrored in the IDB adapter.
+  `pnpm bdd` runs these.
+- **`@server`** — boots the real `apps/server` (Hono + Postgres) plus
+  smtp4dev via `playwright.bdd.server.config.ts`. Use for scenarios that
+  touch control-plane state (`signup_requests`, `tenants`, `email_log`),
+  the SMTP path, or anything else the IDB sim can't model. `pnpm bdd:server`
+  runs these. The `@sim` IDB-snapshot hook is gated on the tag so it stays
+  silent for `@server` scenarios.
+
+The `@server` config orchestrates `make db-up` + `pnpm smtp:up` + `pnpm
+--filter @atlas/server dev` as Playwright `webServer` entries with the
+canonical dev env (`TEST_AUTH_ENABLED=true`, `MAILER_MODE=smtp` pointed at
+smtp4dev, `COOKIE_DOMAIN=.localhost`, …). Cleanup runs in an `After('@server', …)`
+hook that wipes the run's signup/tenant/email_log rows from
+`control_plane.*`.
+
+Admin endpoints in `@server` scenarios authenticate as the platform-seeded
+operator: `X-Debug-Principal: user:platform-admin:_platform:admin`. The User
++ Membership entities are seeded on first boot by `seedPlatformAdmin` in
+`apps/server/src/bootstrap-platform-admin.ts` — see
+[`specs/domains/tenancy/capabilities/public-signup/README.md`](../../specs/domains/tenancy/capabilities/public-signup/README.md).
 
 ## Screenshots & report
 

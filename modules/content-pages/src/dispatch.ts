@@ -60,6 +60,14 @@ export async function dispatchContentPagesEvent(
   // Each case arm then reads `document` / `pageId` without a downcast.
   if (!isContentPagesEvent(envelope)) return;
 
+  ctx.logger?.debug('content-pages dispatcher ran', {
+    event: 'ContentPages.Dispatch.Ran',
+    properties: {
+      eventType: envelope.eventType,
+      eventId: envelope.eventId,
+    },
+  });
+
   if (
     envelope.eventType === 'ContentPages.PageCreated' ||
     envelope.eventType === 'ContentPages.PageUpdated'
@@ -92,5 +100,5 @@ export async function dispatchContentPagesEvent(
 export function contentPagesDispatcher(
   ctx: ContentPagesDispatchContext,
 ): EventDispatcher {
-  return (envelope) => dispatchContentPagesEvent(envelope, ctx);
+  return function (envelope) { return dispatchContentPagesEvent(envelope, ctx); };
 }

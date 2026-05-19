@@ -74,6 +74,13 @@ Reuses `SignupRequest`, `MagicLink`, `InviteToken`, `Mailer`
 (all four added to [`specs/LEXICON.md`](../../../../LEXICON.md) as
 part of this slice). Verbs: `approveSignup`, `issueInvite`.
 
+- **platform-admin** — the canonical operator identity in the
+  `_platform` tenant, auto-seeded at first boot. Holds
+  `roles=['admin']`. Used by `atlasctl` and integration / BDD tests
+  to drive admin-only endpoints (signup approval, policy management).
+  Distinct from the `platform-robot` system principal (which is for
+  unauthenticated system events).
+
 ## Surfaces
 
 What this capability changes, by surface:
@@ -90,6 +97,11 @@ What this capability changes, by surface:
   `tenancy.signup.approve.${signupId}`. Payload contains no secrets
   (no token plaintext). `Identity.InviteIssued` and
   `Identity.InviteAccepted` already exist and are unchanged.
+  **NEW** `Tenancy.PlatformAdmin.Seeded` — emitted exactly once, on
+  the first boot of `apps/server` where the platform-admin
+  User+Membership entities are inserted into `_platform`. Carries
+  `correlationId: 'boot'`, `properties: { userId, tenantId }`.
+  Subsequent boots are silent (idempotent).
 - **Projections / Queries** — none new.
 - **Ports** — **CHANGED** `Mailer` (`ports/src/mailer.ts`) gained an
   optional `close?(): Promise<void>` hook so adapters with pooled
@@ -111,6 +123,16 @@ What this capability changes, by surface:
   routes (`/signup`, `/api/v1/signup`,
   `/api/v1/admin/signups/:id/approve`) unchanged in surface, only
   internals.
+- **Admin actor** — the admin actor for the approval endpoints is the
+  platform-seeded operator identity. On first boot of `apps/server`, a
+  `User` entity with `userId=platform-admin` and
+  `email=platform-admin@atlas.local` is inserted into the `_platform`
+  tenant, along with a `Membership` granting it `roles=['admin']`. This
+  is the canonical first administrator — production deployments override
+  the email/password via environment after the seed. The CLI / itest
+  authenticates as this principal via
+  `X-Debug-Principal: user:platform-admin:_platform:admin` when
+  `TEST_AUTH_ENABLED=true`.
 - **Admin route hardening** — `requireAdmin`
   (`apps/server/src/routes/admin-signups.ts`) no longer
   short-circuits on `TEST_AUTH_ENABLED=true`; the principal must

@@ -12,31 +12,28 @@
  */
 import { describe, it } from 'vitest';
 import { runRepositoryStoreContract } from '@atlas/contract-tests';
-import {
-  PostgresRepositoryStore,
-  PostgresRepositoryRevisionStore,
-} from '../src/index.ts';
+import { PostgresRepositoryStore, PostgresRepositoryRevisionStore, } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';
-
 if (HAS_DB) {
-  runRepositoryStoreContract({
-    factory: async () => {
-      const sql = await freshSql();
-      return {
-        store: new PostgresRepositoryStore(sql),
-        revisions: new PostgresRepositoryRevisionStore(sql),
-        // No `freshOtherTenant` — see the suite docblock. The Postgres
-        // adapter binds to a single per-tenant DB at the connection
-        // level, and this harness shares one connection. Cross-tenant
-        // isolation is delivered by the tenant-db provider in
-        // production, not by an in-test assertion here.
-      };
-    },
-  });
-} else {
-  describe('PostgresRepositoryStore (skipped)', () => {
-    it.skip('TEST_TENANT_DB_URL not set — skipping Postgres repository-store contract', () => {
-      // intentionally empty
+    runRepositoryStoreContract({
+        factory: async function () {
+            const sql = await freshSql();
+            return {
+                store: new PostgresRepositoryStore(sql),
+                revisions: new PostgresRepositoryRevisionStore(sql),
+                // No `freshOtherTenant` — see the suite docblock. The Postgres
+                // adapter binds to a single per-tenant DB at the connection
+                // level, and this harness shares one connection. Cross-tenant
+                // isolation is delivered by the tenant-db provider in
+                // production, not by an in-test assertion here.
+            };
+        },
     });
-  });
+}
+else {
+    describe('PostgresRepositoryStore (skipped)', function () {
+        it.skip('TEST_TENANT_DB_URL not set — skipping Postgres repository-store contract', function () {
+            // intentionally empty
+        });
+    });
 }

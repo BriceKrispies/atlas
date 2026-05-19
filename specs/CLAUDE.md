@@ -41,6 +41,9 @@ Any spec content under retired-domain directories should be considered legacy no
 
 ### Remaining crosscut
 
+- `crosscut/atlas-runtime.md` — Atlas-as-runtime concept paper: the runtime model, the tenant program model, the runtime boundary (platform code vs tenant declarations vs tenant code), and the relationship to Atlas-on-Atlas. **Read first** for any task that touches the kernel, the instruction set, tenant programs, or Atlas-on-Atlas framing.
+- `crosscut/runtime-instruction-set.md` — the closed set of ten kernel instructions tenant programs and platform code issue (`submitIntent`, `emitEvent`, `projectEvent`, `materializeQuery`, `evaluatePolicy`, `checkQuota`, `runFunction`, `mutateSchema`, `provisionService`, `renderSurface`). Read for any task that adds an action, a handler, a port, a quota dimension, a `FunctionRuntime` consumer, a capability manifest, or a surface introspection capability.
+- `crosscut/kernel-vs-data.md` — architectural inventory of trusted kernel code vs hot-changeable runtime data, plus the "could this be data?" decision rule. Read for any capability scope that proposes new behavior (the question is always "code or data?"). Distinct from `crosscut/always-on.md`, which names the same split as an *operational* contract for hot-reload mechanics.
 - `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
 - `crosscut/always-on.md` — always-on contract: what's kernel (restart-required) vs. data (hot-changeable), hot-reload lifecycle, operator surface. Sets the bar [ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6 deferred.
 - `crosscut/errors.md` — error taxonomy (referenced by every domain).
@@ -71,6 +74,9 @@ The legacy `specs/modules/` folder is gone — all content has migrated.
 
 | Path | Why it's still here |
 |------|---------------------|
+| `crosscut/atlas-runtime.md` | Atlas-as-runtime framing — read first for kernel / instruction-set / Atlas-on-Atlas / code-as-data work |
+| `crosscut/runtime-instruction-set.md` | The ten kernel instructions tenant programs issue — read when adding actions / ports / quota dimensions / surfaces / FunctionRuntime consumers |
+| `crosscut/kernel-vs-data.md` | Kernel/data inventory + "could this be data?" decision rule — read when scoping any new capability or considering hot-reload extraction |
 | `crosscut/always-on.md` | Always-on contract — kernel/data split, hot-reload rules ([ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6) |
 | `crosscut/atlasctl.md` | Operator CLI — tooling, not a domain |
 | `crosscut/errors.md` | Error taxonomy — referenced by every domain |

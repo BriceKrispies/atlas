@@ -16,29 +16,26 @@
  * previewing.
  */
 import type { PreviewDevice } from '../state.ts';
-
 export interface DeviceFrame {
-  readonly id: PreviewDevice;
-  readonly label: string;
-  readonly width: number;
-  readonly height: number;
+    readonly id: PreviewDevice;
+    readonly label: string;
+    readonly width: number;
+    readonly height: number;
 }
-
 export const DEVICES: ReadonlyArray<DeviceFrame> = [
-  { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
-  { id: 'tablet', label: 'Tablet', width: 820, height: 1180 },
-  { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
+    { id: 'mobile', label: 'Mobile', width: 390, height: 844 },
+    { id: 'tablet', label: 'Tablet', width: 820, height: 1180 },
+    { id: 'desktop', label: 'Desktop', width: 1440, height: 900 },
 ];
-
 const BY_ID: Readonly<Record<PreviewDevice, DeviceFrame>> = Object.freeze(
-  // Object.fromEntries returns `Record<string, DeviceFrame>` — DEVICES is
-  // a closed list keyed by every `PreviewDevice` literal, so the
-  // narrower type holds by construction.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- DEVICES enumerates every PreviewDevice; this is a typed Object.fromEntries
-  Object.fromEntries(DEVICES.map((d) => [d.id, d])) as Record<PreviewDevice, DeviceFrame>,
-);
-
+// Object.fromEntries returns `Record<string, DeviceFrame>` — DEVICES is
+// a closed list keyed by every `PreviewDevice` literal, so the
+// narrower type holds by construction.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- DEVICES enumerates every PreviewDevice; this is a typed Object.fromEntries
+Object.fromEntries(DEVICES.map(function (d) {
+    return [d.id, d];
+})) as Record<PreviewDevice, DeviceFrame>);
 /** Return the frame definition for a given device id. */
 export function deviceFrame(id: PreviewDevice): DeviceFrame {
-  return BY_ID[id];
+    return BY_ID[id];
 }

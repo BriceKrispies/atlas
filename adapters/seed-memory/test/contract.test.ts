@@ -1,20 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  Crypto,
-  Fixture,
-  Scenario,
-} from '@atlas/ports';
+import type { Crypto, Fixture, Scenario, } from '@atlas/ports';
 import { canonicalJsonStringify } from '@atlas/platform-core';
-import {
-  seedCorpusContract,
-  type SeedCorpusFactory,
-  type SeedCorpusFactoryResult,
-} from '@atlas/contract-tests';
-import {
-  InMemorySeedCorpus,
-} from '@atlas/adapter-seed-memory';
-
+import { seedCorpusContract, type SeedCorpusFactory, type SeedCorpusFactoryResult, } from '@atlas/contract-tests';
+import { InMemorySeedCorpus, } from '@atlas/adapter-seed-memory';
 /**
  * Adapter test wiring for `@atlas/adapter-seed-memory`.
  *
@@ -32,33 +21,30 @@ import {
  * same in-memory adapter as a vehicle but the asserted behavior lives
  * in those upstream packages.
  */
-
 const testCrypto: Crypto = {
-  randomBytes(n) {
-    return new Uint8Array(randomBytes(n));
-  },
-  sha256(input) {
-    const data =
-      typeof input === 'string' ? Buffer.from(input, 'utf8') : Buffer.from(input);
-    return new Uint8Array(createHash('sha256').update(data).digest());
-  },
-  hmacSha1() {
-    throw new Error('not used in seed-memory contract');
-  },
-  aesGcmEncrypt() {
-    throw new Error('not used in seed-memory contract');
-  },
-  aesGcmDecrypt() {
-    throw new Error('not used in seed-memory contract');
-  },
-  scrypt() {
-    throw new Error('not used in seed-memory contract');
-  },
-  timingSafeEqual() {
-    throw new Error('not used in seed-memory contract');
-  },
+    randomBytes(n) {
+        return new Uint8Array(randomBytes(n));
+    },
+    sha256(input) {
+        const data = typeof input === 'string' ? Buffer.from(input, 'utf8') : Buffer.from(input);
+        return new Uint8Array(createHash('sha256').update(data).digest());
+    },
+    hmacSha1() {
+        throw new Error('not used in seed-memory contract');
+    },
+    aesGcmEncrypt() {
+        throw new Error('not used in seed-memory contract');
+    },
+    aesGcmDecrypt() {
+        throw new Error('not used in seed-memory contract');
+    },
+    scrypt() {
+        throw new Error('not used in seed-memory contract');
+    },
+    timingSafeEqual() {
+        throw new Error('not used in seed-memory contract');
+    },
 };
-
 /**
  * Factory for the contract suite. Each test gets a fresh corpus +
  * mutation hooks; the hooks operate on the same Maps the corpus
@@ -70,45 +56,45 @@ const testCrypto: Crypto = {
  * `finally` so a failing assertion can't leak the missing-validator
  * state across tests.
  */
-const factory: SeedCorpusFactory = async ({ scenarios, fixtures }): Promise<SeedCorpusFactoryResult> => {
-  const scenarioMap = new Map<string, Scenario>(
-    scenarios.map((s) => [s.scenarioId, s]),
-  );
-  const fixtureMap = new Map<string, Fixture>(
-    fixtures.map((f) => [f.fixtureId, f]),
-  );
-  const corpus = new InMemorySeedCorpus(scenarioMap, fixtureMap, testCrypto);
-  return {
-    corpus,
-    addScenario(scenario: Scenario) {
-      scenarioMap.set(scenario.scenarioId, scenario);
-    },
-    addFixture(fixture: Fixture) {
-      fixtureMap.set(fixture.fixtureId, fixture);
-    },
-    removeScenario(scenarioId: string) {
-      scenarioMap.delete(scenarioId);
-    },
-    async simulateValidatorMissing(schemaId, fn) {
-      const schemasModule = await import('@atlas/schemas');
-      const original = schemasModule.getSchemaValidator;
-      const spy = vi
-        .spyOn(schemasModule, 'getSchemaValidator')
-        .mockImplementation((id, version) => {
-          if (id === schemaId) return null;
-          return original(id, version);
-        });
-      try {
-        await fn();
-      } finally {
-        spy.mockRestore();
-      }
-    },
-  };
+const factory: SeedCorpusFactory = async function ({ scenarios, fixtures }): Promise<SeedCorpusFactoryResult> {
+    const scenarioMap = new Map<string, Scenario>(scenarios.map(function (s) {
+        return [s.scenarioId, s];
+    }));
+    const fixtureMap = new Map<string, Fixture>(fixtures.map(function (f) {
+        return [f.fixtureId, f];
+    }));
+    const corpus = new InMemorySeedCorpus(scenarioMap, fixtureMap, testCrypto);
+    return {
+        corpus,
+        addScenario(scenario: Scenario) {
+            scenarioMap.set(scenario.scenarioId, scenario);
+        },
+        addFixture(fixture: Fixture) {
+            fixtureMap.set(fixture.fixtureId, fixture);
+        },
+        removeScenario(scenarioId: string) {
+            scenarioMap.delete(scenarioId);
+        },
+        async simulateValidatorMissing(schemaId, fn) {
+            const schemasModule = await import('@atlas/schemas');
+            const original = schemasModule.getSchemaValidator;
+            const spy = vi
+                .spyOn(schemasModule, 'getSchemaValidator')
+                .mockImplementation(function (id, version) {
+                if (id === schemaId)
+                    return null;
+                return original(id, version);
+            });
+            try {
+                await fn();
+            }
+            finally {
+                spy.mockRestore();
+            }
+        },
+    };
 };
-
 seedCorpusContract(factory);
-
 // ─── Adapter-local regression pins ─────────────────────────────────
 //
 // These do not belong in the port contract — they pin behavior of
@@ -116,59 +102,57 @@ seedCorpusContract(factory);
 // (event-envelope registration). The in-memory adapter is the
 // convenient vehicle; the assertions are about those upstream
 // packages.
-
-describe('InMemorySeedCorpus — adapter-local regressions', () => {
-  it('canonicalJsonStringify is order-stable across key insertion order', () => {
-    // JSON.stringify preserves insertion order; canonical must not.
-    const a = JSON.stringify({ b: 1, a: 2 });
-    const b = JSON.stringify({ a: 2, b: 1 });
-    expect(a).not.toBe(b);
-    const ca = canonicalJsonStringify({ b: 1, a: 2 });
-    const cb = canonicalJsonStringify({ a: 2, b: 1 });
-    expect(ca).toBe(cb);
-  });
-
-  it('canonicalJsonStringify: Date → ISO string, distinct dates hash distinct', () => {
-    // Two scenarios differing only in a Date value MUST yield distinct
-    // canonical bytes per spec §4.1 determinism contract.
-    const a = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
-    const b = canonicalJsonStringify({ at: new Date('2026-05-11T00:00:00Z') });
-    expect(a).toBe('{"at":"2026-05-10T00:00:00.000Z"}');
-    expect(b).toBe('{"at":"2026-05-11T00:00:00.000Z"}');
-    expect(a).not.toBe(b);
-  });
-
-  it('regression: getSchemaValidator("event-envelope.v1") returns a usable validator (no loader alias needed)', async () => {
-    // The seed.scenario.v1 / seed.fixture.v1 contracts reference the
-    // event envelope by its short `$id` (`$ref: "event-envelope.v1#"`).
-    // The @atlas/schemas loader registers `event_envelope.schema.json`
-    // via `ajv.addSchema(eventEnvelope)` — no alias, no explicit key.
-    //
-    // If anyone re-introduces a long-URL `$id` on
-    // event_envelope.schema.json (and forgets to either restore the
-    // loader alias or rewrite the seed schemas' $refs), this test
-    // fails fast with a focused signal instead of a noisy AJV
-    // "can't resolve reference" deep in the seed-validation path.
-    const { getSchemaValidator } = await import('@atlas/schemas');
-    const validate = getSchemaValidator('event-envelope.v1', 1);
-    expect(validate).not.toBeNull();
-    // Sanity-check the validator with an envelope-shaped intent.
-    const sampleIntent = {
-      eventId: '00000000-0000-4000-8000-000000000001',
-      eventType: 'tenant.create',
-      schemaId: 'tenant.create.v1',
-      schemaVersion: 1,
-      occurredAt: '2026-05-10T00:00:00.000Z',
-      tenantId: 't_seed',
-      correlationId: 'seed:minimal-tenant-bootstrap:0',
-      idempotencyKey: 'seed-minimal-0',
-      payload: {
-        actionId: 'tenant.create',
-        resourceType: 'tenant',
-        handle: 'seed-tenant',
-      },
-    };
-    if (!validate) throw new Error('validator should be non-null');
-    expect(validate(sampleIntent)).toBe(true);
-  });
+describe('InMemorySeedCorpus — adapter-local regressions', function () {
+    it('canonicalJsonStringify is order-stable across key insertion order', function () {
+        // JSON.stringify preserves insertion order; canonical must not.
+        const a = JSON.stringify({ b: 1, a: 2 });
+        const b = JSON.stringify({ a: 2, b: 1 });
+        expect(a).not.toBe(b);
+        const ca = canonicalJsonStringify({ b: 1, a: 2 });
+        const cb = canonicalJsonStringify({ a: 2, b: 1 });
+        expect(ca).toBe(cb);
+    });
+    it('canonicalJsonStringify: Date → ISO string, distinct dates hash distinct', function () {
+        // Two scenarios differing only in a Date value MUST yield distinct
+        // canonical bytes per spec §4.1 determinism contract.
+        const a = canonicalJsonStringify({ at: new Date('2026-05-10T00:00:00Z') });
+        const b = canonicalJsonStringify({ at: new Date('2026-05-11T00:00:00Z') });
+        expect(a).toBe('{"at":"2026-05-10T00:00:00.000Z"}');
+        expect(b).toBe('{"at":"2026-05-11T00:00:00.000Z"}');
+        expect(a).not.toBe(b);
+    });
+    it('regression: getSchemaValidator("event-envelope.v1") returns a usable validator (no loader alias needed)', async function () {
+        // The seed.scenario.v1 / seed.fixture.v1 contracts reference the
+        // event envelope by its short `$id` (`$ref: "event-envelope.v1#"`).
+        // The @atlas/schemas loader registers `event_envelope.schema.json`
+        // via `ajv.addSchema(eventEnvelope)` — no alias, no explicit key.
+        //
+        // If anyone re-introduces a long-URL `$id` on
+        // event_envelope.schema.json (and forgets to either restore the
+        // loader alias or rewrite the seed schemas' $refs), this test
+        // fails fast with a focused signal instead of a noisy AJV
+        // "can't resolve reference" deep in the seed-validation path.
+        const { getSchemaValidator } = await import('@atlas/schemas');
+        const validate = getSchemaValidator('event-envelope.v1', 1);
+        expect(validate).not.toBeNull();
+        // Sanity-check the validator with an envelope-shaped intent.
+        const sampleIntent = {
+            eventId: '00000000-0000-4000-8000-000000000001',
+            eventType: 'tenant.create',
+            schemaId: 'tenant.create.v1',
+            schemaVersion: 1,
+            occurredAt: '2026-05-10T00:00:00.000Z',
+            tenantId: 't_seed',
+            correlationId: 'seed:minimal-tenant-bootstrap:0',
+            idempotencyKey: 'seed-minimal-0',
+            payload: {
+                actionId: 'tenant.create',
+                resourceType: 'tenant',
+                handle: 'seed-tenant',
+            },
+        };
+        if (!validate)
+            throw new Error('validator should be non-null');
+        expect(validate(sampleIntent)).toBe(true);
+    });
 });

@@ -31,380 +31,288 @@
  * `kind` + `detail`, plus a string `invariant` tag (V1..V17) so tests
  * can assert the precise rule that fired.
  */
-
 import { describe, test, expect } from 'vitest';
 // Intentionally unresolvable today — this is the red-phase API target.
 // Both symbols MUST be re-exported from `@atlas/wasm-host`'s root.
-import {
-  validateRenderTree,
-  RenderTreeError,
-  MAX_SERIALIZED_OUTPUT,
-} from '@atlas/wasm-host';
-
+import { validateRenderTree, RenderTreeError, MAX_SERIALIZED_OUTPUT, } from '@atlas/wasm-host';
 /** Minimal valid leaf used as a child in many fixtures. */
-const okText = (content = 'x') => ({
-  type: 'text',
-  props: { content },
-});
-
+const okText = function (content = 'x') {
+    return ({
+        type: 'text',
+        props: { content },
+    });
+};
 /** Wrap a single-node body in a v=1 tree. */
-const wrap = (node: unknown) => ({ version: 1, nodes: [node] });
-
+const wrap = function (node: unknown) {
+    return ({ version: 1, nodes: [node] });
+};
 /** Helper: assert that validate throws RenderTreeError tagged with `invariant`. */
 function expectInvariant(input: unknown, invariant: string): void {
-  let caught: unknown;
-  try {
-    validateRenderTree(input);
-  } catch (e) {
-    caught = e;
-  }
-  expect(caught, `expected ${invariant} rejection but call succeeded`).toBeInstanceOf(
-    RenderTreeError,
-  );
-  if (!(caught instanceof RenderTreeError)) {
-    throw new Error(`expected RenderTreeError, got ${String(caught)}`);
-  }
-  expect(caught.invariant).toBe(invariant);
+    let caught: unknown;
+    try {
+        validateRenderTree(input);
+    }
+    catch (e) {
+        caught = e;
+    }
+    expect(caught, `expected ${invariant} rejection but call succeeded`).toBeInstanceOf(RenderTreeError);
+    if (!(caught instanceof RenderTreeError)) {
+        throw new Error(`expected RenderTreeError, got ${String(caught)}`);
+    }
+    expect(caught.invariant).toBe(invariant);
 }
-
-describe('validateRenderTree (V1-V17)', () => {
-  // ─── Positive baselines ────────────────────────────────────────────
-
-  test('positive: minimal valid heading + paragraph passes', () => {
-    const tree = {
-      version: 1,
-      nodes: [
-        {
-          type: 'heading',
-          props: { level: 1 },
-          children: [okText('Hello')],
-        },
-        {
-          type: 'paragraph',
-          children: [okText('World')],
-        },
-      ],
-    };
-    expect(() => validateRenderTree(tree)).not.toThrow();
-  });
-
-  test('positive: valid extension with fallback passes', () => {
-    const tree = {
-      version: 1,
-      nodes: [
-        {
-          type: 'x-callout',
-          props: { level: 'warning' },
-          children: [{ type: 'paragraph', children: [okText('Watch out!')] }],
-          fallback: [{ type: 'paragraph', children: [okText('Watch out!')] }],
-        },
-      ],
-    };
-    expect(() => validateRenderTree(tree)).not.toThrow();
-  });
-
-  test('positive: list with list_item children + mailto link passes', () => {
-    const tree = {
-      version: 1,
-      nodes: [
-        {
-          type: 'list',
-          props: { ordered: false },
-          children: [
-            {
-              type: 'list_item',
-              children: [
+describe('validateRenderTree (V1-V17)', function () {
+    // ─── Positive baselines ────────────────────────────────────────────
+    test('positive: minimal valid heading + paragraph passes', function () {
+        const tree = {
+            version: 1,
+            nodes: [
                 {
-                  type: 'paragraph',
-                  children: [
-                    {
-                      type: 'link',
-                      props: { href: 'mailto:user@example.com' },
-                      children: [okText('email')],
-                    },
-                  ],
+                    type: 'heading',
+                    props: { level: 1 },
+                    children: [okText('Hello')],
                 },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    expect(() => validateRenderTree(tree)).not.toThrow();
-  });
-
-  // ─── V1: version ───────────────────────────────────────────────────
-
-  test('V1: rejects unsupported version', () => {
-    expectInvariant(
-      { version: 2, nodes: [{ type: 'paragraph', children: [okText()] }] },
-      'V1',
-    );
-  });
-
-  test('V1: rejects missing version', () => {
-    expectInvariant(
-      { nodes: [{ type: 'paragraph', children: [okText()] }] },
-      'V1',
-    );
-  });
-
-  // ─── V2: nodes array ───────────────────────────────────────────────
-
-  test('V2: rejects empty nodes array', () => {
-    expectInvariant({ version: 1, nodes: [] }, 'V2');
-  });
-
-  test('V2: rejects missing nodes field', () => {
-    expectInvariant({ version: 1 }, 'V2');
-  });
-
-  // ─── V3: node.type required string ─────────────────────────────────
-
-  test('V3: rejects node missing type', () => {
-    expectInvariant({ version: 1, nodes: [{ props: {} }] }, 'V3');
-  });
-
-  test('V3: rejects empty-string node type', () => {
-    expectInvariant({ version: 1, nodes: [{ type: '' }] }, 'V3');
-  });
-
-  // ─── V4: type is known primitive or x- ─────────────────────────────
-
-  test('V4: rejects unknown node type "div"', () => {
-    expectInvariant({ version: 1, nodes: [{ type: 'div' }] }, 'V4');
-  });
-
-  // ─── V5: prop values are primitives only ───────────────────────────
-
-  test('V5: rejects nested object in props', () => {
-    expectInvariant(
-      wrap({
-        type: 'heading',
-        props: { level: 1, style: { color: 'red' } },
-        children: [okText()],
-      }),
-      'V5',
-    );
-  });
-
-  test('V5: rejects array in props', () => {
-    expectInvariant(
-      wrap({
-        type: 'heading',
-        props: { level: 1, classes: ['a', 'b'] },
-        children: [okText()],
-      }),
-      'V5',
-    );
-  });
-
-  // ─── V6: required props per node type ──────────────────────────────
-
-  test('V6: rejects heading.level out of 1-6 range', () => {
-    expectInvariant(
-      wrap({
-        type: 'heading',
-        props: { level: 7 },
-        children: [okText()],
-      }),
-      'V6',
-    );
-  });
-
-  test('V6: rejects image missing required src', () => {
-    expectInvariant(wrap({ type: 'image', props: { alt: 'x' } }), 'V6');
-  });
-
-  test('V6: rejects list missing required `ordered` boolean', () => {
-    expectInvariant(
-      wrap({
-        type: 'list',
-        children: [{ type: 'list_item', children: [okText()] }],
-      }),
-      'V6',
-    );
-  });
-
-  // ─── V7: leaf nodes have no children ───────────────────────────────
-
-  test('V7: rejects text node with children (leaf)', () => {
-    expectInvariant(
-      wrap({
-        type: 'paragraph',
-        children: [
-          {
-            type: 'text',
-            props: { content: 'hello' },
-            children: [okText('bad')],
-          },
-        ],
-      }),
-      'V7',
-    );
-  });
-
-  // ─── V8: nesting rules ─────────────────────────────────────────────
-
-  test('V8: rejects block node nested inside inline context', () => {
-    expectInvariant(
-      wrap({
-        type: 'paragraph',
-        children: [
-          {
-            type: 'strong',
-            children: [
-              {
-                type: 'heading',
-                props: { level: 1 },
-                children: [okText('bad')],
-              },
+                {
+                    type: 'paragraph',
+                    children: [okText('World')],
+                },
             ],
-          },
-        ],
-      }),
-      'V8',
-    );
-  });
-
-  test('V8: rejects non-list_item child of list', () => {
-    expectInvariant(
-      wrap({
-        type: 'list',
-        props: { ordered: true },
-        children: [{ type: 'paragraph', children: [okText('bad')] }],
-      }),
-      'V8',
-    );
-  });
-
-  // ─── V9: extension requires fallback ───────────────────────────────
-
-  test('V9: rejects extension node missing fallback', () => {
-    expectInvariant(
-      wrap({
-        type: 'x-widget',
-        children: [{ type: 'paragraph', children: [okText()] }],
-      }),
-      'V9',
-    );
-  });
-
-  // ─── V10: extension forbidden inside fallback ──────────────────────
-
-  test('V10: rejects extension node inside another fallback', () => {
-    expectInvariant(
-      wrap({
-        type: 'x-widget',
-        children: [{ type: 'paragraph', children: [okText()] }],
-        fallback: [
-          {
-            type: 'x-inner',
+        };
+        expect(function () {
+            return validateRenderTree(tree);
+        }).not.toThrow();
+    });
+    test('positive: valid extension with fallback passes', function () {
+        const tree = {
+            version: 1,
+            nodes: [
+                {
+                    type: 'x-callout',
+                    props: { level: 'warning' },
+                    children: [{ type: 'paragraph', children: [okText('Watch out!')] }],
+                    fallback: [{ type: 'paragraph', children: [okText('Watch out!')] }],
+                },
+            ],
+        };
+        expect(function () {
+            return validateRenderTree(tree);
+        }).not.toThrow();
+    });
+    test('positive: list with list_item children + mailto link passes', function () {
+        const tree = {
+            version: 1,
+            nodes: [
+                {
+                    type: 'list',
+                    props: { ordered: false },
+                    children: [
+                        {
+                            type: 'list_item',
+                            children: [
+                                {
+                                    type: 'paragraph',
+                                    children: [
+                                        {
+                                            type: 'link',
+                                            props: { href: 'mailto:user@example.com' },
+                                            children: [okText('email')],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+        expect(function () {
+            return validateRenderTree(tree);
+        }).not.toThrow();
+    });
+    // ─── V1: version ───────────────────────────────────────────────────
+    test('V1: rejects unsupported version', function () {
+        expectInvariant({ version: 2, nodes: [{ type: 'paragraph', children: [okText()] }] }, 'V1');
+    });
+    test('V1: rejects missing version', function () {
+        expectInvariant({ nodes: [{ type: 'paragraph', children: [okText()] }] }, 'V1');
+    });
+    // ─── V2: nodes array ───────────────────────────────────────────────
+    test('V2: rejects empty nodes array', function () {
+        expectInvariant({ version: 1, nodes: [] }, 'V2');
+    });
+    test('V2: rejects missing nodes field', function () {
+        expectInvariant({ version: 1 }, 'V2');
+    });
+    // ─── V3: node.type required string ─────────────────────────────────
+    test('V3: rejects node missing type', function () {
+        expectInvariant({ version: 1, nodes: [{ props: {} }] }, 'V3');
+    });
+    test('V3: rejects empty-string node type', function () {
+        expectInvariant({ version: 1, nodes: [{ type: '' }] }, 'V3');
+    });
+    // ─── V4: type is known primitive or x- ─────────────────────────────
+    test('V4: rejects unknown node type "div"', function () {
+        expectInvariant({ version: 1, nodes: [{ type: 'div' }] }, 'V4');
+    });
+    // ─── V5: prop values are primitives only ───────────────────────────
+    test('V5: rejects nested object in props', function () {
+        expectInvariant(wrap({
+            type: 'heading',
+            props: { level: 1, style: { color: 'red' } },
+            children: [okText()],
+        }), 'V5');
+    });
+    test('V5: rejects array in props', function () {
+        expectInvariant(wrap({
+            type: 'heading',
+            props: { level: 1, classes: ['a', 'b'] },
+            children: [okText()],
+        }), 'V5');
+    });
+    // ─── V6: required props per node type ──────────────────────────────
+    test('V6: rejects heading.level out of 1-6 range', function () {
+        expectInvariant(wrap({
+            type: 'heading',
+            props: { level: 7 },
+            children: [okText()],
+        }), 'V6');
+    });
+    test('V6: rejects image missing required src', function () {
+        expectInvariant(wrap({ type: 'image', props: { alt: 'x' } }), 'V6');
+    });
+    test('V6: rejects list missing required `ordered` boolean', function () {
+        expectInvariant(wrap({
+            type: 'list',
+            children: [{ type: 'list_item', children: [okText()] }],
+        }), 'V6');
+    });
+    // ─── V7: leaf nodes have no children ───────────────────────────────
+    test('V7: rejects text node with children (leaf)', function () {
+        expectInvariant(wrap({
+            type: 'paragraph',
+            children: [
+                {
+                    type: 'text',
+                    props: { content: 'hello' },
+                    children: [okText('bad')],
+                },
+            ],
+        }), 'V7');
+    });
+    // ─── V8: nesting rules ─────────────────────────────────────────────
+    test('V8: rejects block node nested inside inline context', function () {
+        expectInvariant(wrap({
+            type: 'paragraph',
+            children: [
+                {
+                    type: 'strong',
+                    children: [
+                        {
+                            type: 'heading',
+                            props: { level: 1 },
+                            children: [okText('bad')],
+                        },
+                    ],
+                },
+            ],
+        }), 'V8');
+    });
+    test('V8: rejects non-list_item child of list', function () {
+        expectInvariant(wrap({
+            type: 'list',
+            props: { ordered: true },
+            children: [{ type: 'paragraph', children: [okText('bad')] }],
+        }), 'V8');
+    });
+    // ─── V9: extension requires fallback ───────────────────────────────
+    test('V9: rejects extension node missing fallback', function () {
+        expectInvariant(wrap({
+            type: 'x-widget',
             children: [{ type: 'paragraph', children: [okText()] }],
-            fallback: [{ type: 'paragraph', children: [okText()] }],
-          },
-        ],
-      }),
-      'V10',
-    );
-  });
-
-  // ─── V11: link.href scheme ─────────────────────────────────────────
-
-  test('V11: rejects javascript: href on link', () => {
-    expectInvariant(
-      wrap({
-        type: 'paragraph',
-        children: [
-          {
-            type: 'link',
-            props: { href: 'javascript:alert(1)' },
-            children: [okText('click')],
-          },
-        ],
-      }),
-      'V11',
-    );
-  });
-
-  // ─── V12: image.src scheme ─────────────────────────────────────────
-
-  test('V12: rejects data: URI image src', () => {
-    expectInvariant(
-      wrap({
-        type: 'image',
-        props: { src: 'data:image/png;base64,abc', alt: 'img' },
-      }),
-      'V12',
-    );
-  });
-
-  // ─── V13: depth ≤ 64 ───────────────────────────────────────────────
-
-  test('V13: rejects tree exceeding max depth (64)', () => {
-    // Build a 70-deep chain of nested blockquote→…→paragraph→text.
-    // blockquote child context is Block, so blockquote-in-blockquote is legal
-    // until we hit the depth cap.
-    let inner: Record<string, unknown> = {
-      type: 'paragraph',
-      children: [okText('deep')],
-    };
-    for (let i = 0; i < 70; i++) {
-      inner = { type: 'blockquote', children: [inner] };
-    }
-    expectInvariant({ version: 1, nodes: [inner] }, 'V13');
-  });
-
-  // ─── V14: node count ≤ 10_000 ──────────────────────────────────────
-
-  test('V14: rejects tree exceeding max node count (10_000)', () => {
-    // 10_001 sibling paragraphs — still legal nesting, just too many.
-    const nodes: unknown[] = [];
-    for (let i = 0; i < 10_001; i++) {
-      nodes.push({ type: 'paragraph', children: [okText(String(i))] });
-    }
-    expectInvariant({ version: 1, nodes }, 'V14');
-  });
-
-  // ─── V15: serialized size ≤ 1 MB ───────────────────────────────────
-
-  test('V15: rejects render tree whose serialized JSON exceeds 1 MB', () => {
-    // Many small text nodes summing to > 1 MB after JSON.stringify.
-    // Each text node is ~70 bytes serialized; 20_000 nodes ≈ 1.4 MB.
-    // (Will also blow V14, but V15 is the size-side guarantee mirroring
-    // MAX_SERIALIZED_SIZE; the validator is expected to short-circuit on
-    // size before walking node count when input is given as a string,
-    // OR fire size last. Either way, this stresses the 1 MB cap.)
-    const big = 'a'.repeat(MAX_SERIALIZED_OUTPUT + 1024);
-    expectInvariant(
-      wrap({ type: 'paragraph', children: [okText(big)] }),
-      'V15',
-    );
-  });
-
-  // ─── V16: prop string value ≤ 100 KB ───────────────────────────────
-
-  test('V16: rejects single prop string value exceeding 100 KB', () => {
-    // 100 KB + 1 byte. Smaller than V15 cap so V15 doesn't fire first.
-    const big = 'a'.repeat(100 * 1024 + 1);
-    expectInvariant(
-      wrap({
-        type: 'paragraph',
-        children: [okText(big)],
-      }),
-      'V16',
-    );
-  });
-
-  // ─── V17: text.content non-empty ───────────────────────────────────
-
-  test('V17: rejects empty text.content', () => {
-    expectInvariant(
-      wrap({
-        type: 'paragraph',
-        children: [{ type: 'text', props: { content: '' } }],
-      }),
-      'V17',
-    );
-  });
+        }), 'V9');
+    });
+    // ─── V10: extension forbidden inside fallback ──────────────────────
+    test('V10: rejects extension node inside another fallback', function () {
+        expectInvariant(wrap({
+            type: 'x-widget',
+            children: [{ type: 'paragraph', children: [okText()] }],
+            fallback: [
+                {
+                    type: 'x-inner',
+                    children: [{ type: 'paragraph', children: [okText()] }],
+                    fallback: [{ type: 'paragraph', children: [okText()] }],
+                },
+            ],
+        }), 'V10');
+    });
+    // ─── V11: link.href scheme ─────────────────────────────────────────
+    test('V11: rejects javascript: href on link', function () {
+        expectInvariant(wrap({
+            type: 'paragraph',
+            children: [
+                {
+                    type: 'link',
+                    props: { href: 'javascript:alert(1)' },
+                    children: [okText('click')],
+                },
+            ],
+        }), 'V11');
+    });
+    // ─── V12: image.src scheme ─────────────────────────────────────────
+    test('V12: rejects data: URI image src', function () {
+        expectInvariant(wrap({
+            type: 'image',
+            props: { src: 'data:image/png;base64,abc', alt: 'img' },
+        }), 'V12');
+    });
+    // ─── V13: depth ≤ 64 ───────────────────────────────────────────────
+    test('V13: rejects tree exceeding max depth (64)', function () {
+        // Build a 70-deep chain of nested blockquote→…→paragraph→text.
+        // blockquote child context is Block, so blockquote-in-blockquote is legal
+        // until we hit the depth cap.
+        let inner: Record<string, unknown> = {
+            type: 'paragraph',
+            children: [okText('deep')],
+        };
+        for (let i = 0; i < 70; i++) {
+            inner = { type: 'blockquote', children: [inner] };
+        }
+        expectInvariant({ version: 1, nodes: [inner] }, 'V13');
+    });
+    // ─── V14: node count ≤ 10_000 ──────────────────────────────────────
+    test('V14: rejects tree exceeding max node count (10_000)', function () {
+        // 10_001 sibling paragraphs — still legal nesting, just too many.
+        const nodes: unknown[] = [];
+        for (let i = 0; i < 10001; i++) {
+            nodes.push({ type: 'paragraph', children: [okText(String(i))] });
+        }
+        expectInvariant({ version: 1, nodes }, 'V14');
+    });
+    // ─── V15: serialized size ≤ 1 MB ───────────────────────────────────
+    test('V15: rejects render tree whose serialized JSON exceeds 1 MB', function () {
+        // Many small text nodes summing to > 1 MB after JSON.stringify.
+        // Each text node is ~70 bytes serialized; 20_000 nodes ≈ 1.4 MB.
+        // (Will also blow V14, but V15 is the size-side guarantee mirroring
+        // MAX_SERIALIZED_SIZE; the validator is expected to short-circuit on
+        // size before walking node count when input is given as a string,
+        // OR fire size last. Either way, this stresses the 1 MB cap.)
+        const big = 'a'.repeat(MAX_SERIALIZED_OUTPUT + 1024);
+        expectInvariant(wrap({ type: 'paragraph', children: [okText(big)] }), 'V15');
+    });
+    // ─── V16: prop string value ≤ 100 KB ───────────────────────────────
+    test('V16: rejects single prop string value exceeding 100 KB', function () {
+        // 100 KB + 1 byte. Smaller than V15 cap so V15 doesn't fire first.
+        const big = 'a'.repeat(100 * 1024 + 1);
+        expectInvariant(wrap({
+            type: 'paragraph',
+            children: [okText(big)],
+        }), 'V16');
+    });
+    // ─── V17: text.content non-empty ───────────────────────────────────
+    test('V17: rejects empty text.content', function () {
+        expectInvariant(wrap({
+            type: 'paragraph',
+            children: [{ type: 'text', props: { content: '' } }],
+        }), 'V17');
+    });
 });

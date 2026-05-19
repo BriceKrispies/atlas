@@ -27,54 +27,41 @@
  * `breakpointSet` envelope alongside the shell's `deviceChange` so future
  * custom-px breakpoints have a stable assertion point.
  */
-
 import { AtlasElement, AtlasSurface } from '@atlas/core';
 import { adoptAtlasStyles } from '@atlas/design/shared-styles';
 import { readDetailValue } from '@atlas/design/internal/assert.ts';
 import { adoptAtlasWidgetStyles } from '@atlas/widgets/shared-styles';
 import { registerTestState, makeCommit, type CommitRecord } from '@atlas/test-state';
 import templatesCssText from '@atlas/bundle-standard/templates/templates.css?inline';
-import type {
-  EditorAPI,
-  PageDocument,
-  PageStore,
-} from '@atlas/page-templates';
-import type {
-  PageEditorController,
-  PageEditorStateSnapshot,
-  PreviewDevice,
-} from '../state.ts';
+import type { EditorAPI, PageDocument, PageStore, } from '@atlas/page-templates';
+import type { PageEditorController, PageEditorStateSnapshot, PreviewDevice, } from '../state.ts';
 import type { WrappedPageStore } from '../history.ts';
 import { DEVICES, deviceFrame, type DeviceFrame } from './devices.ts';
-
 /** Type-guard for the PreviewDevice union — accepts the segmented-control's raw value. */
 function isPreviewDevice(v: string): v is PreviewDevice {
-  return v === 'mobile' || v === 'tablet' || v === 'desktop';
+    return v === 'mobile' || v === 'tablet' || v === 'desktop';
 }
-
 interface ContentPageElement extends HTMLElement {
-  pageId?: string;
-  pageStore?: PageStore | WrappedPageStore | null;
-  layoutRegistry?: unknown;
-  templateRegistry?: unknown;
-  principal?: unknown;
-  tenantId?: string;
-  correlationId?: string;
-  capabilities?: Record<string, (args: unknown) => Promise<unknown>>;
-  edit?: boolean;
-  editor?: EditorAPI | null;
-  reload?: () => Promise<void>;
-  _currentDoc?: PageDocument | null;
+    pageId?: string;
+    pageStore?: PageStore | WrappedPageStore | null;
+    layoutRegistry?: unknown;
+    templateRegistry?: unknown;
+    principal?: unknown;
+    tenantId?: string;
+    correlationId?: string;
+    capabilities?: Record<string, (args: unknown) => Promise<unknown>>;
+    edit?: boolean;
+    editor?: EditorAPI | null;
+    reload?: () => Promise<void>;
+    _currentDoc?: PageDocument | null;
 }
-
 interface PreviewTestSnapshot {
-  device: PreviewDevice;
-  frameWidth: number;
-  frameHeight: number;
-  contentPageReady: boolean;
-  lastCommit: CommitRecord | null;
+    device: PreviewDevice;
+    frameWidth: number;
+    frameHeight: number;
+    contentPageReady: boolean;
+    lastCommit: CommitRecord | null;
 }
-
 const styles = `
   :host {
     display: block;
@@ -156,124 +143,111 @@ const styles = `
     }
   }
 `;
-
 export class PageEditorPreviewElement extends AtlasSurface {
-  static override surfaceId = 'authoring.page-editor.preview';
-
-  // Mirror of the shell's `<content-page>` prop bag. The shell sets these
-  // before mounting the preview so they propagate to the inner page render.
-  pageId = '';
-  templateRegistry: unknown = null;
-  layoutRegistry: unknown = null;
-  principal: unknown = null;
-  tenantId = '';
-  correlationId = '';
-  capabilities: Record<string, (args: unknown) => Promise<unknown>> = {};
-
-  private _controller: PageEditorController | null = null;
-  private _unsubscribe: (() => void) | null = null;
-  private _disposeTestState: (() => void) | null = null;
-  private _contentPage: ContentPageElement | null = null;
-  private _frameEl: HTMLElement | null = null;
-  private _stageEl: HTMLElement | null = null;
-  private _segmented: HTMLElementTagNameMap['atlas-segmented-control'] | null = null;
-  private _readout: HTMLElement | null = null;
-  private _lastSnapshot: PageEditorStateSnapshot | null = null;
-  private _lastCommit: CommitRecord | null = null;
-  private _emptyHint: HTMLElement | null = null;
-
-  // Surface-local key for the @atlas/test-state reader.
-  private get _testStateKey(): string {
-    return `editor:${this.pageId}:preview`;
-  }
-
-  constructor() {
-    super();
-    // Capture the shadow root from `attachShadow`'s return value so we
-    // don't have to launder `this.shadowRoot` (ShadowRoot | null) through
-    // a double cast.
-    const root = this.attachShadow({ mode: 'open' });
-    adoptAtlasStyles(root);
-    adoptAtlasWidgetStyles(root);
-  }
-
-  /** Setter so the shell can inject the controller imperatively. */
-  set controller(next: PageEditorController | null) {
-    if (this._controller === next) return;
-    this._unsubscribe?.();
-    this._unsubscribe = null;
-    this._controller = next;
-    if (this._controller && this.isConnected) {
-      this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
-      // Fire an initial render with the current snapshot.
-      this._onSnapshot(this._controller.getSnapshot());
+    static override surfaceId = 'authoring.page-editor.preview';
+    // Mirror of the shell's `<content-page>` prop bag. The shell sets these
+    // before mounting the preview so they propagate to the inner page render.
+    pageId = '';
+    templateRegistry: unknown = null;
+    layoutRegistry: unknown = null;
+    principal: unknown = null;
+    tenantId = '';
+    correlationId = '';
+    capabilities: Record<string, (args: unknown) => Promise<unknown>> = {};
+    private _controller: PageEditorController | null = null;
+    private _unsubscribe: (() => void) | null = null;
+    private _disposeTestState: (() => void) | null = null;
+    private _contentPage: ContentPageElement | null = null;
+    private _frameEl: HTMLElement | null = null;
+    private _stageEl: HTMLElement | null = null;
+    private _segmented: HTMLElementTagNameMap['atlas-segmented-control'] | null = null;
+    private _readout: HTMLElement | null = null;
+    private _lastSnapshot: PageEditorStateSnapshot | null = null;
+    private _lastCommit: CommitRecord | null = null;
+    private _emptyHint: HTMLElement | null = null;
+    // Surface-local key for the @atlas/test-state reader.
+    private get _testStateKey(): string {
+        return `editor:${this.pageId}:preview`;
     }
-  }
-  get controller(): PageEditorController | null {
-    return this._controller;
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback?.();
-    this._applyTestId?.();
-    this._renderShell();
-    this._installTestState();
-    if (this._controller && !this._unsubscribe) {
-      this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
-      this._onSnapshot(this._controller.getSnapshot());
+    constructor() {
+        super();
+        // Capture the shadow root from `attachShadow`'s return value so we
+        // don't have to launder `this.shadowRoot` (ShadowRoot | null) through
+        // a double cast.
+        const root = this.attachShadow({ mode: 'open' });
+        adoptAtlasStyles(root);
+        adoptAtlasWidgetStyles(root);
     }
-  }
-
-  override disconnectedCallback(): void {
-    super.disconnectedCallback?.();
-    this._unsubscribe?.();
-    this._unsubscribe = null;
-    this._disposeTestState?.();
-    this._disposeTestState = null;
-    this._contentPage = null;
-    this._frameEl = null;
-    this._stageEl = null;
-    this._segmented = null;
-    this._readout = null;
-    this._emptyHint = null;
-    this._lastSnapshot = null;
-  }
-
-  /** Test-only accessor for the device currently rendered. */
-  getCurrentDevice(): PreviewDevice {
-    return this._controller?.getSnapshot().device ?? 'desktop';
-  }
-
-  // ---- internals ----
-
-  private _installTestState(): void {
-    if (!this.pageId) return;
-    this._disposeTestState?.();
-    this._disposeTestState = registerTestState(this._testStateKey, () =>
-      this._buildTestSnapshot(),
-    );
-  }
-
-  private _buildTestSnapshot(): PreviewTestSnapshot {
-    const device = this._controller?.getSnapshot().device ?? 'desktop';
-    const frame = deviceFrame(device);
-    return {
-      device,
-      frameWidth: frame.width,
-      frameHeight: frame.height,
-      contentPageReady: !!this._contentPage,
-      lastCommit: this._lastCommit,
-    };
-  }
-
-  private _renderShell(): void {
-    // The constructor always attaches an open shadow root; bail loudly if
-    // that invariant is somehow broken instead of laundering through a cast.
-    const root = this.shadowRoot;
-    if (!root) {
-      throw new Error('page-editor-preview: shadowRoot missing after attachShadow');
+    /** Setter so the shell can inject the controller imperatively. */
+    set controller(next: PageEditorController | null) {
+        if (this._controller === next)
+            return;
+        this._unsubscribe?.();
+        this._unsubscribe = null;
+        this._controller = next;
+        if (this._controller && this.isConnected) {
+            this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
+            // Fire an initial render with the current snapshot.
+            this._onSnapshot(this._controller.getSnapshot());
+        }
     }
-    root.innerHTML = `
+    get controller(): PageEditorController | null {
+        return this._controller;
+    }
+    override connectedCallback(): void {
+        super.connectedCallback?.();
+        this._applyTestId?.();
+        this._renderShell();
+        this._installTestState();
+        if (this._controller && !this._unsubscribe) {
+            this._unsubscribe = this._controller.subscribe((snap) => this._onSnapshot(snap));
+            this._onSnapshot(this._controller.getSnapshot());
+        }
+    }
+    override disconnectedCallback(): void {
+        super.disconnectedCallback?.();
+        this._unsubscribe?.();
+        this._unsubscribe = null;
+        this._disposeTestState?.();
+        this._disposeTestState = null;
+        this._contentPage = null;
+        this._frameEl = null;
+        this._stageEl = null;
+        this._segmented = null;
+        this._readout = null;
+        this._emptyHint = null;
+        this._lastSnapshot = null;
+    }
+    /** Test-only accessor for the device currently rendered. */
+    getCurrentDevice(): PreviewDevice {
+        return this._controller?.getSnapshot().device ?? 'desktop';
+    }
+    // ---- internals ----
+    private _installTestState(): void {
+        if (!this.pageId)
+            return;
+        this._disposeTestState?.();
+        this._disposeTestState = registerTestState(this._testStateKey, () => this._buildTestSnapshot());
+    }
+    private _buildTestSnapshot(): PreviewTestSnapshot {
+        const device = this._controller?.getSnapshot().device ?? 'desktop';
+        const frame = deviceFrame(device);
+        return {
+            device,
+            frameWidth: frame.width,
+            frameHeight: frame.height,
+            contentPageReady: !!this._contentPage,
+            lastCommit: this._lastCommit,
+        };
+    }
+    private _renderShell(): void {
+        // The constructor always attaches an open shadow root; bail loudly if
+        // that invariant is somehow broken instead of laundering through a cast.
+        const root = this.shadowRoot;
+        if (!root) {
+            throw new Error('page-editor-preview: shadowRoot missing after attachShadow');
+        }
+        root.innerHTML = `
       <style>${styles}\n${templatesCssText}</style>
       <atlas-box data-role="toolbar" name="toolbar">
         <atlas-segmented-control name="device" aria-label="Preview device" size="sm"></atlas-segmented-control>
@@ -288,136 +262,132 @@ export class PageEditorPreviewElement extends AtlasSurface {
         <atlas-box data-role="frame" name="frame"></atlas-box>
       </atlas-box>
     `;
-
-    // Use the typed generic so the result narrows to AtlasSegmentedControl
-    // (via the HTMLElementTagNameMap augmentation in @atlas/design) —
-    // bracketed attribute selectors lose that mapping otherwise, falling
-    // back to `Element` and requiring an `as` cast for `.value` / `.options`.
-    const segmented = root.querySelector<HTMLElementTagNameMap['atlas-segmented-control']>(
-      'atlas-segmented-control[name="device"]',
-    );
-    if (segmented) {
-      segmented.options = DEVICES.map((d) => ({ value: d.id, label: d.label }));
-      segmented.value = this._controller?.getSnapshot().device ?? 'desktop';
-      segmented.addEventListener('change', (ev) => {
-        const value = readDetailValue(ev);
-        if (value === undefined || !isPreviewDevice(value)) return;
-        this._handleDeviceChange(value);
-      });
+        // Use the typed generic so the result narrows to AtlasSegmentedControl
+        // (via the HTMLElementTagNameMap augmentation in @atlas/design) —
+        // bracketed attribute selectors lose that mapping otherwise, falling
+        // back to `Element` and requiring an `as` cast for `.value` / `.options`.
+        const segmented = root.querySelector<HTMLElementTagNameMap['atlas-segmented-control']>('atlas-segmented-control[name="device"]');
+        if (segmented) {
+            segmented.options = DEVICES.map(function (d) {
+                return ({ value: d.id, label: d.label });
+            });
+            segmented.value = this._controller?.getSnapshot().device ?? 'desktop';
+            segmented.addEventListener('change', (ev) => {
+                const value = readDetailValue(ev);
+                if (value === undefined || !isPreviewDevice(value))
+                    return;
+                this._handleDeviceChange(value);
+            });
+        }
+        this._segmented = segmented;
+        this._readout = root.querySelector<HTMLElement>('atlas-text[name="frame-width-readout"]');
+        this._frameEl = root.querySelector<HTMLElement>('atlas-box[data-role="frame"]');
+        this._stageEl = root.querySelector<HTMLElement>('atlas-box[data-role="stage"]');
+        // Mount the inner content-page once.
+        this._mountContentPage();
+        this._reflectFrame(this._controller?.getSnapshot().device ?? 'desktop');
     }
-    this._segmented = segmented;
-    this._readout = root.querySelector<HTMLElement>('atlas-text[name="frame-width-readout"]');
-    this._frameEl = root.querySelector<HTMLElement>('atlas-box[data-role="frame"]');
-    this._stageEl = root.querySelector<HTMLElement>('atlas-box[data-role="stage"]');
-
-    // Mount the inner content-page once.
-    this._mountContentPage();
-    this._reflectFrame(this._controller?.getSnapshot().device ?? 'desktop');
-  }
-
-  private _mountContentPage(): void {
-    if (!this._frameEl || !this._controller) return;
-    this._frameEl.textContent = '';
-    const page = document.createElement('content-page') as ContentPageElement;
-    page.pageId = this.pageId;
-    page.pageStore = this._controller.wrappedStore;
-    if (this.layoutRegistry) page.layoutRegistry = this.layoutRegistry;
-    if (this.templateRegistry) page.templateRegistry = this.templateRegistry;
-    page.principal = this.principal;
-    page.tenantId = this.tenantId;
-    page.correlationId = this.correlationId;
-    page.capabilities = this.capabilities ?? {};
-    // Preview is read-only.
-    page.edit = false;
-    this._frameEl.appendChild(page);
-    this._contentPage = page;
-  }
-
-  private _onSnapshot(snap: PageEditorStateSnapshot): void {
-    const prev = this._lastSnapshot;
-    this._lastSnapshot = snap;
-
-    if (!prev || prev.device !== snap.device) {
-      this._reflectFrame(snap.device);
-      if (this._segmented && this._segmented.value !== snap.device) {
-        this._segmented.value = snap.device;
-      }
+    private _mountContentPage(): void {
+        if (!this._frameEl || !this._controller)
+            return;
+        this._frameEl.textContent = '';
+        const page = document.createElement('content-page') as ContentPageElement;
+        page.pageId = this.pageId;
+        page.pageStore = this._controller.wrappedStore;
+        if (this.layoutRegistry)
+            page.layoutRegistry = this.layoutRegistry;
+        if (this.templateRegistry)
+            page.templateRegistry = this.templateRegistry;
+        page.principal = this.principal;
+        page.tenantId = this.tenantId;
+        page.correlationId = this.correlationId;
+        page.capabilities = this.capabilities ?? {};
+        // Preview is read-only.
+        page.edit = false;
+        this._frameEl.appendChild(page);
+        this._contentPage = page;
     }
-
-    if (!prev || prev.widgetInstances.length !== snap.widgetInstances.length) {
-      this._reflectEmptyState(snap.widgetInstances.length === 0);
+    private _onSnapshot(snap: PageEditorStateSnapshot): void {
+        const prev = this._lastSnapshot;
+        this._lastSnapshot = snap;
+        if (!prev || prev.device !== snap.device) {
+            this._reflectFrame(snap.device);
+            if (this._segmented && this._segmented.value !== snap.device) {
+                this._segmented.value = snap.device;
+            }
+        }
+        if (!prev || prev.widgetInstances.length !== snap.widgetInstances.length) {
+            this._reflectEmptyState(snap.widgetInstances.length === 0);
+        }
     }
-  }
-
-  private _reflectFrame(device: PreviewDevice): void {
-    const frame = deviceFrame(device);
-    if (this._frameEl) {
-      this._frameEl.style.width = `${frame.width}px`;
-      this._frameEl.style.height = `${frame.height}px`;
+    private _reflectFrame(device: PreviewDevice): void {
+        const frame = deviceFrame(device);
+        if (this._frameEl) {
+            this._frameEl.style.width = `${frame.width}px`;
+            this._frameEl.style.height = `${frame.height}px`;
+        }
+        if (this._readout) {
+            this._readout.textContent = `${frame.width} × ${frame.height}`;
+        }
+        this.setAttribute('data-device', device);
     }
-    if (this._readout) {
-      this._readout.textContent = `${frame.width} × ${frame.height}`;
+    private _reflectEmptyState(isEmpty: boolean): void {
+        if (!this._frameEl)
+            return;
+        // Keep the content-page mounted in either state (the page's own empty
+        // visual is respected). We add a sibling hint stack so the contract's
+        // `empty-hint` element exists when the document has no widgets.
+        if (isEmpty) {
+            if (!this._emptyHint) {
+                const hint = document.createElement('atlas-stack');
+                hint.setAttribute('name', 'empty-hint');
+                hint.setAttribute('gap', 'sm');
+                const heading = document.createElement('atlas-heading');
+                heading.setAttribute('level', '4');
+                heading.textContent = 'Nothing to preview yet';
+                const text = document.createElement('atlas-text');
+                text.setAttribute('variant', 'muted');
+                text.textContent = 'Add widgets in content mode and they will appear here.';
+                hint.appendChild(heading);
+                hint.appendChild(text);
+                this._frameEl.appendChild(hint);
+                this._emptyHint = hint;
+            }
+        }
+        else if (this._emptyHint) {
+            this._emptyHint.remove();
+            this._emptyHint = null;
+        }
     }
-    this.setAttribute('data-device', device);
-  }
-
-  private _reflectEmptyState(isEmpty: boolean): void {
-    if (!this._frameEl) return;
-    // Keep the content-page mounted in either state (the page's own empty
-    // visual is respected). We add a sibling hint stack so the contract's
-    // `empty-hint` element exists when the document has no widgets.
-    if (isEmpty) {
-      if (!this._emptyHint) {
-        const hint = document.createElement('atlas-stack');
-        hint.setAttribute('name', 'empty-hint');
-        hint.setAttribute('gap', 'sm');
-        const heading = document.createElement('atlas-heading');
-        heading.setAttribute('level', '4');
-        heading.textContent = 'Nothing to preview yet';
-        const text = document.createElement('atlas-text');
-        text.setAttribute('variant', 'muted');
-        text.textContent = 'Add widgets in content mode and they will appear here.';
-        hint.appendChild(heading);
-        hint.appendChild(text);
-        this._frameEl.appendChild(hint);
-        this._emptyHint = hint;
-      }
-    } else if (this._emptyHint) {
-      this._emptyHint.remove();
-      this._emptyHint = null;
+    private _handleDeviceChange(nextDevice: PreviewDevice): void {
+        if (!this._controller)
+            return;
+        const snap = this._controller.getSnapshot();
+        if (snap.device === nextDevice)
+            return;
+        const previousFrame = deviceFrame(snap.device);
+        const nextFrame = deviceFrame(nextDevice);
+        // 1) Shell-level deviceChange commit lands via the controller.
+        this._controller.setDevice(nextDevice);
+        // 2) Preview-local breakpointSet commit so callers can assert at the
+        //    preview boundary. Today these are 1:1 with the device defaults; a
+        //    future revision will let users scrub a breakpoint slider and emit
+        //    additional `breakpointSet` envelopes between device picks.
+        this._recordCommit('breakpointSet', {
+            device: nextDevice,
+            width: nextFrame.width,
+            height: nextFrame.height,
+            previousDevice: snap.device,
+            previousWidth: previousFrame.width,
+        });
     }
-  }
-
-  private _handleDeviceChange(nextDevice: PreviewDevice): void {
-    if (!this._controller) return;
-    const snap = this._controller.getSnapshot();
-    if (snap.device === nextDevice) return;
-    const previousFrame = deviceFrame(snap.device);
-    const nextFrame = deviceFrame(nextDevice);
-    // 1) Shell-level deviceChange commit lands via the controller.
-    this._controller.setDevice(nextDevice);
-    // 2) Preview-local breakpointSet commit so callers can assert at the
-    //    preview boundary. Today these are 1:1 with the device defaults; a
-    //    future revision will let users scrub a breakpoint slider and emit
-    //    additional `breakpointSet` envelopes between device picks.
-    this._recordCommit('breakpointSet', {
-      device: nextDevice,
-      width: nextFrame.width,
-      height: nextFrame.height,
-      previousDevice: snap.device,
-      previousWidth: previousFrame.width,
-    });
-  }
-
-  private _recordCommit(intent: string, patch: Record<string, unknown>): void {
-    this._lastCommit = makeCommit(this.surfaceId, intent, patch);
-  }
+    private _recordCommit(intent: string, patch: Record<string, unknown>): void {
+        this._lastCommit = makeCommit(this.surfaceId, intent, patch);
+    }
 }
-
 AtlasElement.define('page-editor-preview', PageEditorPreviewElement);
-
 declare global {
-  interface HTMLElementTagNameMap {
-    'page-editor-preview': PageEditorPreviewElement;
-  }
+    interface HTMLElementTagNameMap {
+        'page-editor-preview': PageEditorPreviewElement;
+    }
 }

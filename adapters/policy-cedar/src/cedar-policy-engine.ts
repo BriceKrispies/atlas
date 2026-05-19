@@ -24,17 +24,10 @@
  * blocks on the import; subsequent calls are synchronous against the
  * cached module handle.
  */
-
-import type {
-  PolicyDecision,
-  PolicyEngine,
-  PolicyEvaluationRequest,
-} from '@atlas/ports';
-
+import type { PolicyDecision, PolicyEngine, PolicyEvaluationRequest, } from '@atlas/ports';
 import { buildCedarRequest } from './entity-store.ts';
 import type { ParsedBundle, PolicyBundleLoader } from './bundle-loader.ts';
 import type { CedarSchemaJson } from './schema-generator.ts';
-
 /**
  * Cedar's `AuthorizationCall` — narrowed to the fields we send. The full
  * shape lives in `cedar-policy/src/ffi/is_authorized.rs::AuthorizationCall`.
@@ -51,416 +44,419 @@ import type { CedarSchemaJson } from './schema-generator.ts';
  * human-named policy ids instead of `policy0`.
  */
 type StaticPolicies = string | Record<string, string>;
-
 /**
  * Cedar's `Schema` type is `string | SchemaJson<string>`. We accept either
  * — string for Cedar-text schemas, JSON for the generator's output. The
  * validator narrows this when it serialises into the FFI call.
  */
 export type CedarSchema = string | CedarSchemaJson;
-
 interface AuthorizationCall {
-  principal: { type: string; id: string };
-  action: { type: string; id: string };
-  resource: { type: string; id: string };
-  context: Record<string, unknown>;
-  /**
-   * Optional schema slot. When present, cedar-wasm runs schema-aware
-   * validation as part of `isAuthorized` and surfaces typing errors via
-   * `diagnostics.errors`. Chunk 6c wires this from
-   * `CedarPolicyEngineOptions.schema`.
-   */
-  schema?: CedarSchema;
-  /** When true, cedar-wasm validates the request shape against the schema. */
-  validateRequest?: boolean;
-  policies: { staticPolicies: StaticPolicies };
-  entities: Array<{
-    uid: { type: string; id: string };
-    attrs: Record<string, unknown>;
-    parents: Array<{ type: string; id: string }>;
-  }>;
+    principal: {
+        type: string;
+        id: string;
+    };
+    action: {
+        type: string;
+        id: string;
+    };
+    resource: {
+        type: string;
+        id: string;
+    };
+    context: Record<string, unknown>;
+    /**
+     * Optional schema slot. When present, cedar-wasm runs schema-aware
+     * validation as part of `isAuthorized` and surfaces typing errors via
+     * `diagnostics.errors`. Chunk 6c wires this from
+     * `CedarPolicyEngineOptions.schema`.
+     */
+    schema?: CedarSchema;
+    /** When true, cedar-wasm validates the request shape against the schema. */
+    validateRequest?: boolean;
+    policies: {
+        staticPolicies: StaticPolicies;
+    };
+    entities: Array<{
+        uid: {
+            type: string;
+            id: string;
+        };
+        attrs: Record<string, unknown>;
+        parents: Array<{
+            type: string;
+            id: string;
+        }>;
+    }>;
 }
-
 /**
  * Cedar's `ValidationCall` — used by `pnpm cedar:check` for static analysis.
  * Mirrors cedar-wasm's `.d.ts` (`mode: 'strict'` is the only supported
  * option today).
  */
 export interface ValidationCall {
-  validationSettings?: { mode: 'strict' };
-  schema: CedarSchema;
-  policies: { staticPolicies: StaticPolicies };
+    validationSettings?: {
+        mode: 'strict';
+    };
+    schema: CedarSchema;
+    policies: {
+        staticPolicies: StaticPolicies;
+    };
 }
-
 interface ValidationError {
-  policyId: string;
-  error: { message: string };
-}
-
-export type ValidationAnswer =
-  | {
-      type: 'success';
-      validationErrors: ValidationError[];
-      validationWarnings: ValidationError[];
-      otherWarnings?: Array<{ message: string }>;
-    }
-  | {
-      type: 'failure';
-      errors: Array<{ message: string }>;
-      warnings?: Array<{ message: string }>;
+    policyId: string;
+    error: {
+        message: string;
     };
-
+}
+export type ValidationAnswer = {
+    type: 'success';
+    validationErrors: ValidationError[];
+    validationWarnings: ValidationError[];
+    otherWarnings?: Array<{
+        message: string;
+    }>;
+} | {
+    type: 'failure';
+    errors: Array<{
+        message: string;
+    }>;
+    warnings?: Array<{
+        message: string;
+    }>;
+};
 interface CedarSuccessResponse {
-  type: 'success';
-  response: {
-    decision: 'allow' | 'deny';
-    diagnostics: {
-      reason: string[];
-      errors: Array<{ policyId: string; error: { message: string } }>;
+    type: 'success';
+    response: {
+        decision: 'allow' | 'deny';
+        diagnostics: {
+            reason: string[];
+            errors: Array<{
+                policyId: string;
+                error: {
+                    message: string;
+                };
+            }>;
+        };
     };
-  };
-  warnings: Array<{ message: string }>;
+    warnings: Array<{
+        message: string;
+    }>;
 }
-
 interface CedarFailureResponse {
-  type: 'failure';
-  errors: Array<{ message: string }>;
-  warnings: Array<{ message: string }>;
+    type: 'failure';
+    errors: Array<{
+        message: string;
+    }>;
+    warnings: Array<{
+        message: string;
+    }>;
 }
-
 type CedarResponse = CedarSuccessResponse | CedarFailureResponse;
-
-type PolicySetTextToPartsAnswer =
-  | { type: 'success'; policies: string[]; policy_templates: string[] }
-  | { type: 'failure'; errors: Array<{ message: string }> };
-
+type PolicySetTextToPartsAnswer = {
+    type: 'success';
+    policies: string[];
+    policy_templates: string[];
+} | {
+    type: 'failure';
+    errors: Array<{
+        message: string;
+    }>;
+};
 /**
  * Subset of `@cedar-policy/cedar-wasm/nodejs` we depend on. Declared
  * explicitly so the rest of the codebase can mock it in tests without
  * pulling in the WASM artefact.
  */
 export interface CedarWasm {
-  isAuthorized(call: AuthorizationCall): CedarResponse;
-  policySetTextToParts(policysetStr: string): PolicySetTextToPartsAnswer;
-  /**
-   * Static-analysis entry point — exposed so `pnpm cedar:check` can
-   * validate fixture / tenant bundles against the generated schema
-   * without going through `isAuthorized`. Optional in the interface
-   * because some test stubs don't need it; the loader resolves it
-   * lazily and throws if the binary doesn't expose `validate` (which
-   * shouldn't happen with cedar-wasm 4.10+).
-   */
-  validate?(call: ValidationCall): ValidationAnswer;
+    isAuthorized(call: AuthorizationCall): CedarResponse;
+    policySetTextToParts(policysetStr: string): PolicySetTextToPartsAnswer;
+    /**
+     * Static-analysis entry point — exposed so `pnpm cedar:check` can
+     * validate fixture / tenant bundles against the generated schema
+     * without going through `isAuthorized`. Optional in the interface
+     * because some test stubs don't need it; the loader resolves it
+     * lazily and throws if the binary doesn't expose `validate` (which
+     * shouldn't happen with cedar-wasm 4.10+).
+     */
+    validate?(call: ValidationCall): ValidationAnswer;
 }
-
 export type CedarWasmLoader = () => Promise<CedarWasm>;
-
 /**
  * Default loader — `import('@cedar-policy/cedar-wasm/nodejs')`. Wrapped in
  * a function so tests can inject a stub (avoids loading the WASM binary
  * in CI environments where it's not needed).
  */
-const defaultLoader: CedarWasmLoader = async () => {
-  // The nodejs subpackage is published as CommonJS but exposes named
-  // exports. The dynamic import returns a namespace whose `default` is
-  // the module record; named exports are also reachable directly.
-  // The single boundary cast lives here, justified once: cedar-wasm
-  // ships no TS types for the dynamic-import shape, so we widen to a
-  // record-of-unknown and re-narrow each entry through a typed reader.
-  // The single boundary cast lives here, justified once: cedar-wasm
-  // ships no TS types for the dynamic-import namespace, so we widen to
-  // `unknown` and re-narrow each function entry through `pickFn` below.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- library: @cedar-policy/cedar-wasm/nodejs ships no TS types for the dynamic-import namespace; entries are narrowed structurally through pickFn
-  const mod = (await import(
-    '@cedar-policy/cedar-wasm/nodejs'
-  )) as unknown as Record<string, unknown> & { default?: Record<string, unknown> };
-  // Pull a function-typed export from either the namespace or its
-  // `default` member. We can verify "is a function" at runtime but
-  // cannot prove the signature matches the Cedar interface — that's
-  // the library boundary. The two `as F` casts are the per-entry
-  // narrowing exception consolidated to this helper.
-  function pickFn<F extends (...a: never[]) => unknown>(name: string): F | undefined {
-    const direct = mod[name];
-    if (typeof direct === 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
-      return direct as F;
+const defaultLoader: CedarWasmLoader = async function () {
+    // The nodejs subpackage is published as CommonJS but exposes named
+    // exports. The dynamic import returns a namespace whose `default` is
+    // the module record; named exports are also reachable directly.
+    // The single boundary cast lives here, justified once: cedar-wasm
+    // ships no TS types for the dynamic-import shape, so we widen to a
+    // record-of-unknown and re-narrow each entry through a typed reader.
+    // The single boundary cast lives here, justified once: cedar-wasm
+    // ships no TS types for the dynamic-import namespace, so we widen to
+    // `unknown` and re-narrow each function entry through `pickFn` below.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- library: @cedar-policy/cedar-wasm/nodejs ships no TS types for the dynamic-import namespace; entries are narrowed structurally through pickFn
+    const mod = (await import('@cedar-policy/cedar-wasm/nodejs')) as unknown as Record<string, unknown> & {
+        default?: Record<string, unknown>;
+    };
+    // Pull a function-typed export from either the namespace or its
+    // `default` member. We can verify "is a function" at runtime but
+    // cannot prove the signature matches the Cedar interface — that's
+    // the library boundary. The two `as F` casts are the per-entry
+    // narrowing exception consolidated to this helper.
+    function pickFn<F extends (...a: never[]) => unknown>(name: string): F | undefined {
+        const direct = mod[name];
+        if (typeof direct === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
+            return direct as F;
+        }
+        const fromDefault = mod.default?.[name];
+        if (typeof fromDefault === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
+            return fromDefault as F;
+        }
+        return undefined;
     }
-    const fromDefault = mod.default?.[name];
-    if (typeof fromDefault === 'function') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
-      return fromDefault as F;
+    const isAuthorized = pickFn<CedarWasm['isAuthorized']>('isAuthorized');
+    const policySetTextToParts = pickFn<CedarWasm['policySetTextToParts']>('policySetTextToParts');
+    const validate = pickFn<NonNullable<CedarWasm['validate']>>('validate');
+    if (typeof isAuthorized !== 'function') {
+        throw new Error('cedar-wasm: failed to resolve isAuthorized from @cedar-policy/cedar-wasm/nodejs');
     }
-    return undefined;
-  }
-  const isAuthorized = pickFn<CedarWasm['isAuthorized']>('isAuthorized');
-  const policySetTextToParts = pickFn<CedarWasm['policySetTextToParts']>('policySetTextToParts');
-  const validate = pickFn<NonNullable<CedarWasm['validate']>>('validate');
-  if (typeof isAuthorized !== 'function') {
-    throw new Error(
-      'cedar-wasm: failed to resolve isAuthorized from @cedar-policy/cedar-wasm/nodejs',
-    );
-  }
-  if (typeof policySetTextToParts !== 'function') {
-    throw new Error(
-      'cedar-wasm: failed to resolve policySetTextToParts from @cedar-policy/cedar-wasm/nodejs',
-    );
-  }
-  // `validate` is optional on the interface but every shipped cedar-wasm
-  // build exposes it. Surface a degraded build (no validate) lazily when
-  // the CLI calls it, not at engine boot.
-  return validate
-    ? { isAuthorized, policySetTextToParts, validate }
-    : { isAuthorized, policySetTextToParts };
+    if (typeof policySetTextToParts !== 'function') {
+        throw new Error('cedar-wasm: failed to resolve policySetTextToParts from @cedar-policy/cedar-wasm/nodejs');
+    }
+    // `validate` is optional on the interface but every shipped cedar-wasm
+    // build exposes it. Surface a degraded build (no validate) lazily when
+    // the CLI calls it, not at engine boot.
+    return validate
+        ? { isAuthorized, policySetTextToParts, validate }
+        : { isAuthorized, policySetTextToParts };
 };
-
 export interface CedarPolicyEngineOptions {
-  /**
-   * Override the WASM loader — primarily for tests that want to inject a
-   * fake `isAuthorized` rather than load the real binary.
-   */
-  cedarLoader?: CedarWasmLoader;
-  /**
-   * Optional Cedar Schema. When supplied, the engine passes it to every
-   * `isAuthorized` call so cedar-wasm can surface schema-aware diagnostics
-   * (e.g. "policy refers to entity type Foo which isn't in the schema").
-   * Generated by `schema-generator.ts::generateCedarSchema` from the
-   * bundled module manifests at boot.
-   *
-   * Shape is Cedar's `Schema = string | SchemaJson<string>` — string for
-   * Cedar-text schemas, JSON for the generator's output.
-   */
-  schema?: CedarSchema;
+    /**
+     * Override the WASM loader — primarily for tests that want to inject a
+     * fake `isAuthorized` rather than load the real binary.
+     */
+    cedarLoader?: CedarWasmLoader;
+    /**
+     * Optional Cedar Schema. When supplied, the engine passes it to every
+     * `isAuthorized` call so cedar-wasm can surface schema-aware diagnostics
+     * (e.g. "policy refers to entity type Foo which isn't in the schema").
+     * Generated by `schema-generator.ts::generateCedarSchema` from the
+     * bundled module manifests at boot.
+     *
+     * Shape is Cedar's `Schema = string | SchemaJson<string>` — string for
+     * Cedar-text schemas, JSON for the generator's output.
+     */
+    schema?: CedarSchema;
 }
-
 export class CedarPolicyEngine implements PolicyEngine {
-  private cedar: CedarWasm | null = null;
-  private cedarLoading: Promise<CedarWasm> | null = null;
-  /** Cache of parsed bundles keyed by `tenantId` (version is part of the
-   * cached value). Invalidation is per-tenant via {@link invalidate}. */
-  private readonly bundleCache: Map<string, ParsedBundle> = new Map();
-  private readonly loader: PolicyBundleLoader;
-  private readonly cedarLoader: CedarWasmLoader;
-  private readonly schema: CedarSchema | undefined;
-
-  constructor(loader: PolicyBundleLoader, opts: CedarPolicyEngineOptions = {}) {
-    this.loader = loader;
-    this.cedarLoader = opts.cedarLoader ?? defaultLoader;
-    this.schema = opts.schema;
-  }
-
-  /**
-   * Drop cached bundles for a single tenant. Wired to be called from the
-   * event pipeline on `Tenant:{tenantId}` / `Policy:{policyId}` cache-tag
-   * events; the wiring itself is deferred to a follow-up.
-   */
-  invalidate(tenantId: string): void {
-    this.bundleCache.delete(tenantId);
-  }
-
-  /** Drop every cached bundle. Useful for tests; not wired to events. */
-  invalidateAll(): void {
-    this.bundleCache.clear();
-  }
-
-  /**
-   * Static-analysis hook: validate a Cedar policy text against the
-   * engine's schema (or an override schema). Used by `pnpm cedar:check`.
-   *
-   * Returns the raw cedar-wasm `ValidationAnswer`. Callers handle the
-   * `success`/`failure` discriminator + walk `validationErrors`.
-   *
-   * Throws if the cedar-wasm build doesn't expose `validate` (rare —
-   * cedar-wasm 4.10+ ships it).
-   */
-  async validate(
-    cedarText: string,
-    schemaOverride?: CedarSchema,
-  ): Promise<ValidationAnswer> {
-    const schema = schemaOverride ?? this.schema;
-    if (schema === undefined) {
-      throw new Error(
-        'CedarPolicyEngine.validate: no schema configured (pass schemaOverride or construct with opts.schema)',
-      );
+    private cedar: CedarWasm | null = null;
+    private cedarLoading: Promise<CedarWasm> | null = null;
+    /** Cache of parsed bundles keyed by `tenantId` (version is part of the
+     * cached value). Invalidation is per-tenant via {@link invalidate}. */
+    private readonly bundleCache: Map<string, ParsedBundle> = new Map();
+    private readonly loader: PolicyBundleLoader;
+    private readonly cedarLoader: CedarWasmLoader;
+    private readonly schema: CedarSchema | undefined;
+    constructor(loader: PolicyBundleLoader, opts: CedarPolicyEngineOptions = {}) {
+        this.loader = loader;
+        this.cedarLoader = opts.cedarLoader ?? defaultLoader;
+        this.schema = opts.schema;
     }
-    const cedar = await this.ensureCedar();
-    if (!cedar.validate) {
-      throw new Error(
-        'cedar-wasm: validate() not available — upgrade @cedar-policy/cedar-wasm to >= 4.10.0',
-      );
+    /**
+     * Drop cached bundles for a single tenant. Wired to be called from the
+     * event pipeline on `Tenant:{tenantId}` / `Policy:{policyId}` cache-tag
+     * events; the wiring itself is deferred to a follow-up.
+     */
+    invalidate(tenantId: string): void {
+        this.bundleCache.delete(tenantId);
     }
-    return cedar.validate({
-      validationSettings: { mode: 'strict' },
-      schema,
-      policies: { staticPolicies: cedarText },
-    });
-  }
-
-  /**
-   * Expose the underlying cedar-wasm bridge for advanced callers (CLI,
-   * admin UI's simulator). The lazy-loader is shared with `evaluate`, so
-   * the WASM only loads once. Returns the same `CedarWasm` interface
-   * `evaluate` uses internally.
-   */
-  async loadCedar(): Promise<CedarWasm> {
-    return this.ensureCedar();
-  }
-
-  async evaluate(request: PolicyEvaluationRequest): Promise<PolicyDecision> {
-    // Shape validation — every adapter is expected to reject malformed
-    // input rather than silently coerce. Mirrors `StubPolicyEngine` so the
-    // contract suite passes both adapters with the same assertions.
-    // Whitespace-only IDs (`"   "`, `"\t"`) are also rejected so they
-    // can't smuggle through as truthy strings.
-    if (request.principal.id.trim().length === 0) {
-      throw new Error('PolicyEngine: principal.id must be non-empty');
+    /** Drop every cached bundle. Useful for tests; not wired to events. */
+    invalidateAll(): void {
+        this.bundleCache.clear();
     }
-    if (request.principal.tenantId.trim().length === 0) {
-      throw new Error('PolicyEngine: principal.tenantId must be non-empty');
+    /**
+     * Static-analysis hook: validate a Cedar policy text against the
+     * engine's schema (or an override schema). Used by `pnpm cedar:check`.
+     *
+     * Returns the raw cedar-wasm `ValidationAnswer`. Callers handle the
+     * `success`/`failure` discriminator + walk `validationErrors`.
+     *
+     * Throws if the cedar-wasm build doesn't expose `validate` (rare —
+     * cedar-wasm 4.10+ ships it).
+     */
+    async validate(cedarText: string, schemaOverride?: CedarSchema): Promise<ValidationAnswer> {
+        const schema = schemaOverride ?? this.schema;
+        if (schema === undefined) {
+            throw new Error('CedarPolicyEngine.validate: no schema configured (pass schemaOverride or construct with opts.schema)');
+        }
+        const cedar = await this.ensureCedar();
+        if (!cedar.validate) {
+            throw new Error('cedar-wasm: validate() not available — upgrade @cedar-policy/cedar-wasm to >= 4.10.0');
+        }
+        return cedar.validate({
+            validationSettings: { mode: 'strict' },
+            schema,
+            policies: { staticPolicies: cedarText },
+        });
     }
-    if (request.resource.tenantId.trim().length === 0) {
-      throw new Error('PolicyEngine: resource.tenantId must be non-empty');
+    /**
+     * Expose the underlying cedar-wasm bridge for advanced callers (CLI,
+     * admin UI's simulator). The lazy-loader is shared with `evaluate`, so
+     * the WASM only loads once. Returns the same `CedarWasm` interface
+     * `evaluate` uses internally.
+     */
+    async loadCedar(): Promise<CedarWasm> {
+        return this.ensureCedar();
     }
-
-    // Defensive cross-tenant deny — the same check ingress's tenant-scope
-    // middleware does at step 2. Mirrored here so the engine is safe to
-    // call directly from tests + future surfaces.
-    if (request.principal.tenantId !== request.resource.tenantId) {
-      return {
-        effect: 'deny',
-        reasons: ['cedar: tenant mismatch'],
-      };
+    async evaluate(request: PolicyEvaluationRequest): Promise<PolicyDecision> {
+        // Shape validation — every adapter is expected to reject malformed
+        // input rather than silently coerce. Mirrors `StubPolicyEngine` so the
+        // contract suite passes both adapters with the same assertions.
+        // Whitespace-only IDs (`"   "`, `"\t"`) are also rejected so they
+        // can't smuggle through as truthy strings.
+        if (request.principal.id.trim().length === 0) {
+            throw new Error('PolicyEngine: principal.id must be non-empty');
+        }
+        if (request.principal.tenantId.trim().length === 0) {
+            throw new Error('PolicyEngine: principal.tenantId must be non-empty');
+        }
+        if (request.resource.tenantId.trim().length === 0) {
+            throw new Error('PolicyEngine: resource.tenantId must be non-empty');
+        }
+        // Defensive cross-tenant deny — the same check ingress's tenant-scope
+        // middleware does at step 2. Mirrored here so the engine is safe to
+        // call directly from tests + future surfaces.
+        if (request.principal.tenantId !== request.resource.tenantId) {
+            return {
+                effect: 'deny',
+                reasons: ['cedar: tenant mismatch'],
+            };
+        }
+        const bundle = await this.loadBundle(request.principal.tenantId);
+        if (!bundle) {
+            // Permissive fallback: a tenant without a bundle gets the same
+            // allow-all-with-tenant-scope semantics as the stub engine.
+            // Document at module-level (file header) — DO NOT change this
+            // without coordinating with platform-ops.
+            return {
+                effect: 'permit',
+                reasons: ['cedar: no policy bundle for tenant — permissive fallback'],
+            };
+        }
+        const cedar = await this.ensureCedar();
+        const staticPolicies = this.staticPoliciesFor(bundle, cedar);
+        const refs = buildCedarRequest(request);
+        const call: AuthorizationCall = {
+            principal: refs.principal,
+            action: refs.action,
+            resource: refs.resource,
+            context: refs.context,
+            policies: { staticPolicies },
+            entities: refs.entities,
+            // Schema is optional — when present, cedar-wasm validates the
+            // policies AND the request shape on every call. `validateRequest`
+            // gates the request-shape check explicitly: without it, a request
+            // whose principal/resource type contradicts the schema would
+            // evaluate normally (probably yielding a default-deny but skipping
+            // the typed-error path). Schema is `undefined` when the engine
+            // was constructed without one (sim mode / pre-Chunk-6c boot).
+            ...(this.schema !== undefined
+                ? { schema: this.schema, validateRequest: true }
+                : {}),
+        };
+        let answer: CedarResponse;
+        try {
+            answer = cedar.isAuthorized(call);
+        }
+        catch (e) {
+            // Cedar throws on internal errors (rare — typically wasm-binding
+            // issues). Surface as deny so a flaky engine doesn't accidentally
+            // permit, but include the error in `reasons` for diagnostics.
+            const message = e instanceof Error ? e.message : String(e);
+            return {
+                effect: 'deny',
+                reasons: [`cedar: evaluator threw: ${message}`],
+            };
+        }
+        if (answer.type === 'failure') {
+            // Parse-level failure (e.g. malformed bundle). Treat as deny — a
+            // tenant whose bundle won't parse is locked down rather than
+            // silently allowed. This matches the principle that broken policy
+            // is more dangerous than no policy.
+            const messages = answer.errors.map(function (e) {
+                return `cedar parse error: ${e.message}`;
+            });
+            return {
+                effect: 'deny',
+                reasons: messages.length > 0 ? messages : ['cedar: bundle failed to parse'],
+            };
+        }
+        const { decision, diagnostics } = answer.response;
+        const reasons: string[] = [];
+        for (const err of diagnostics.errors ?? []) {
+            reasons.push(`policy ${err.policyId}: ${err.error.message}`);
+        }
+        if (reasons.length === 0) {
+            reasons.push(decision === 'allow'
+                ? `cedar: permit by ${diagnostics.reason.length} matching polic${diagnostics.reason.length === 1 ? 'y' : 'ies'}`
+                : 'cedar: deny (no permit, or forbid overrode permit)');
+        }
+        return {
+            effect: decision === 'allow' ? 'permit' : 'deny',
+            reasons,
+            matchedPolicies: [...diagnostics.reason],
+        };
     }
-
-    const bundle = await this.loadBundle(request.principal.tenantId);
-    if (!bundle) {
-      // Permissive fallback: a tenant without a bundle gets the same
-      // allow-all-with-tenant-scope semantics as the stub engine.
-      // Document at module-level (file header) — DO NOT change this
-      // without coordinating with platform-ops.
-      return {
-        effect: 'permit',
-        reasons: ['cedar: no policy bundle for tenant — permissive fallback'],
-      };
+    private async loadBundle(tenantId: string): Promise<ParsedBundle | null> {
+        const cached = this.bundleCache.get(tenantId);
+        if (cached)
+            return cached;
+        const fresh = await this.loader.load(tenantId);
+        if (fresh) {
+            this.bundleCache.set(tenantId, fresh);
+        }
+        return fresh;
     }
-
-    const cedar = await this.ensureCedar();
-    const staticPolicies = this.staticPoliciesFor(bundle, cedar);
-    const refs = buildCedarRequest(request);
-    const call: AuthorizationCall = {
-      principal: refs.principal,
-      action: refs.action,
-      resource: refs.resource,
-      context: refs.context,
-      policies: { staticPolicies },
-      entities: refs.entities,
-      // Schema is optional — when present, cedar-wasm validates the
-      // policies AND the request shape on every call. `validateRequest`
-      // gates the request-shape check explicitly: without it, a request
-      // whose principal/resource type contradicts the schema would
-      // evaluate normally (probably yielding a default-deny but skipping
-      // the typed-error path). Schema is `undefined` when the engine
-      // was constructed without one (sim mode / pre-Chunk-6c boot).
-      ...(this.schema !== undefined
-        ? { schema: this.schema, validateRequest: true }
-        : {}),
-    };
-
-    let answer: CedarResponse;
-    try {
-      answer = cedar.isAuthorized(call);
-    } catch (e) {
-      // Cedar throws on internal errors (rare — typically wasm-binding
-      // issues). Surface as deny so a flaky engine doesn't accidentally
-      // permit, but include the error in `reasons` for diagnostics.
-      const message = e instanceof Error ? e.message : String(e);
-      return {
-        effect: 'deny',
-        reasons: [`cedar: evaluator threw: ${message}`],
-      };
+    /**
+     * Resolve the `staticPolicies` payload for a bundle. If the bundle has
+     * `@id("name")` annotations on its policies, build the map form so
+     * Cedar surfaces the human-named ids in `diagnostics.reason`.
+     * Otherwise fall through to the raw text (positional `policy0`,
+     * `policy1`, ... ids) — matches Cedar's default and stays compatible
+     * with bundles that haven't been annotated yet.
+     *
+     * Result is memoised on the cached `ParsedBundle`. Two concurrent
+     * first-evaluators on the same tenant could each build the map; the
+     * result is deterministic for a given `cedarText` so the second write
+     * overwrites the first with an equivalent value — idempotent, no
+     * lock needed.
+     */
+    private staticPoliciesFor(bundle: ParsedBundle, cedar: CedarWasm): StaticPolicies {
+        if (bundle.staticPolicies !== undefined) {
+            return bundle.staticPolicies;
+        }
+        const map = buildNamedPolicyMap(bundle.cedarText, cedar);
+        bundle.staticPolicies = map ?? bundle.cedarText;
+        return bundle.staticPolicies;
     }
-
-    if (answer.type === 'failure') {
-      // Parse-level failure (e.g. malformed bundle). Treat as deny — a
-      // tenant whose bundle won't parse is locked down rather than
-      // silently allowed. This matches the principle that broken policy
-      // is more dangerous than no policy.
-      const messages = answer.errors.map((e) => `cedar parse error: ${e.message}`);
-      return {
-        effect: 'deny',
-        reasons: messages.length > 0 ? messages : ['cedar: bundle failed to parse'],
-      };
+    private async ensureCedar(): Promise<CedarWasm> {
+        if (this.cedar)
+            return this.cedar;
+        // Coalesce concurrent evaluators on first hit so we never load the
+        // WASM module twice.
+        if (!this.cedarLoading) {
+            this.cedarLoading = this.cedarLoader().then((c) => {
+                this.cedar = c;
+                return c;
+            });
+        }
+        return this.cedarLoading;
     }
-
-    const { decision, diagnostics } = answer.response;
-    const reasons: string[] = [];
-    for (const err of diagnostics.errors ?? []) {
-      reasons.push(`policy ${err.policyId}: ${err.error.message}`);
-    }
-    if (reasons.length === 0) {
-      reasons.push(
-        decision === 'allow'
-          ? `cedar: permit by ${diagnostics.reason.length} matching polic${diagnostics.reason.length === 1 ? 'y' : 'ies'}`
-          : 'cedar: deny (no permit, or forbid overrode permit)',
-      );
-    }
-
-    return {
-      effect: decision === 'allow' ? 'permit' : 'deny',
-      reasons,
-      matchedPolicies: [...diagnostics.reason],
-    };
-  }
-
-  private async loadBundle(tenantId: string): Promise<ParsedBundle | null> {
-    const cached = this.bundleCache.get(tenantId);
-    if (cached) return cached;
-    const fresh = await this.loader.load(tenantId);
-    if (fresh) {
-      this.bundleCache.set(tenantId, fresh);
-    }
-    return fresh;
-  }
-
-  /**
-   * Resolve the `staticPolicies` payload for a bundle. If the bundle has
-   * `@id("name")` annotations on its policies, build the map form so
-   * Cedar surfaces the human-named ids in `diagnostics.reason`.
-   * Otherwise fall through to the raw text (positional `policy0`,
-   * `policy1`, ... ids) — matches Cedar's default and stays compatible
-   * with bundles that haven't been annotated yet.
-   *
-   * Result is memoised on the cached `ParsedBundle`. Two concurrent
-   * first-evaluators on the same tenant could each build the map; the
-   * result is deterministic for a given `cedarText` so the second write
-   * overwrites the first with an equivalent value — idempotent, no
-   * lock needed.
-   */
-  private staticPoliciesFor(
-    bundle: ParsedBundle,
-    cedar: CedarWasm,
-  ): StaticPolicies {
-    if (bundle.staticPolicies !== undefined) {
-      return bundle.staticPolicies;
-    }
-    const map = buildNamedPolicyMap(bundle.cedarText, cedar);
-    bundle.staticPolicies = map ?? bundle.cedarText;
-    return bundle.staticPolicies;
-  }
-
-  private async ensureCedar(): Promise<CedarWasm> {
-    if (this.cedar) return this.cedar;
-    // Coalesce concurrent evaluators on first hit so we never load the
-    // WASM module twice.
-    if (!this.cedarLoading) {
-      this.cedarLoading = this.cedarLoader().then((c) => {
-        this.cedar = c;
-        return c;
-      });
-    }
-    return this.cedarLoading;
-  }
 }
-
 /**
  * Match Cedar's `@id("name")` annotation. The `(?!\w)` lookahead is a
  * word-boundary guard so a future `@idempotency_key("...")` annotation
@@ -470,7 +466,6 @@ export class CedarPolicyEngine implements PolicyEngine {
  * `staticPolicies` map.
  */
 const ID_ANNOTATION = /@id(?!\w)\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
-
 /**
  * Split a Cedar bundle into individual policies and key them by
  * `@id("...")` annotation. Returns `null` (so the caller falls back to
@@ -483,27 +478,29 @@ const ID_ANNOTATION = /@id(?!\w)\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;
  * Templates are not currently supported; if the bundle has any, fall
  * back to the raw-string form.
  */
-function buildNamedPolicyMap(
-  cedarText: string,
-  cedar: CedarWasm,
-): Record<string, string> | null {
-  let parts: PolicySetTextToPartsAnswer;
-  try {
-    parts = cedar.policySetTextToParts(cedarText);
-  } catch {
-    return null;
-  }
-  if (parts.type === 'failure') return null;
-  if (parts.policy_templates.length > 0) return null;
-  if (parts.policies.length === 0) return null;
-
-  const map: Record<string, string> = {};
-  for (const policyText of parts.policies) {
-    const match = ID_ANNOTATION.exec(policyText);
-    if (!match || match[1] === undefined) return null;
-    const id = match[1];
-    if (Object.prototype.hasOwnProperty.call(map, id)) return null;
-    map[id] = policyText;
-  }
-  return map;
+function buildNamedPolicyMap(cedarText: string, cedar: CedarWasm): Record<string, string> | null {
+    let parts: PolicySetTextToPartsAnswer;
+    try {
+        parts = cedar.policySetTextToParts(cedarText);
+    }
+    catch {
+        return null;
+    }
+    if (parts.type === 'failure')
+        return null;
+    if (parts.policy_templates.length > 0)
+        return null;
+    if (parts.policies.length === 0)
+        return null;
+    const map: Record<string, string> = {};
+    for (const policyText of parts.policies) {
+        const match = ID_ANNOTATION.exec(policyText);
+        if (!match || match[1] === undefined)
+            return null;
+        const id = match[1];
+        if (Object.prototype.hasOwnProperty.call(map, id))
+            return null;
+        map[id] = policyText;
+    }
+    return map;
 }

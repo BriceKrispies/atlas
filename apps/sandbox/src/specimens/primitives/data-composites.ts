@@ -1,18 +1,18 @@
 import { S } from '../_register.ts';
-
 // Pre-compute timestamps relative to "now" so the timeline always
 // reads as a recent event log no matter when the sandbox is opened.
 const now = Date.now();
-const iso = (msAgo: number): string => new Date(now - msAgo).toISOString();
-
+const iso = function (msAgo: number): string {
+    return new Date(now - msAgo).toISOString();
+};
 S({
-  id: 'timeline',
-  name: 'Timeline',
-  tag: 'atlas-timeline',
-  variants: [
-    {
-      name: 'Activity log (5 events, mixed variants)',
-      html: `
+    id: 'timeline',
+    name: 'Timeline',
+    tag: 'atlas-timeline',
+    variants: [
+        {
+            name: 'Activity log (5 events, mixed variants)',
+            html: `
         <atlas-timeline>
           <atlas-timeline-item timestamp="${iso(2 * 60 * 1000)}" variant="success">
             <atlas-text variant="medium">Deployment succeeded</atlas-text>
@@ -40,18 +40,17 @@ S({
           </atlas-timeline-item>
         </atlas-timeline>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'stat',
-  name: 'Stat',
-  tag: 'atlas-stat',
-  variants: [
-    {
-      name: '3-up grid (DAU / Error rate / Latency)',
-      html: `
+    id: 'stat',
+    name: 'Stat',
+    tag: 'atlas-stat',
+    variants: [
+        {
+            name: '3-up grid (DAU / Error rate / Latency)',
+            html: `
         <atlas-grid columns="3" gap="md">
           <atlas-stat
             label="Daily active users"
@@ -78,20 +77,20 @@ S({
           ></atlas-stat>
         </atlas-grid>
       `,
-    },
-    {
-      name: 'Sizes (sm / md / lg)',
-      html: `
+        },
+        {
+            name: 'Sizes (sm / md / lg)',
+            html: `
         <atlas-stack gap="md">
           <atlas-stat size="sm" label="Pageviews" value="4.2M" trend="flat" trend-label="No change"></atlas-stat>
           <atlas-stat label="Pageviews" value="4.2M" trend="up" trend-label="+12% w/w"></atlas-stat>
           <atlas-stat size="lg" label="Pageviews" value="4.2M" trend="up" trend-label="+12% w/w" variant="success"></atlas-stat>
         </atlas-stack>
       `,
-    },
-    {
-      name: 'Danger variant',
-      html: `
+        },
+        {
+            name: 'Danger variant',
+            html: `
         <atlas-stat
           label="Failed jobs"
           value="284"
@@ -100,18 +99,17 @@ S({
           variant="danger"
         ></atlas-stat>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'split-button',
-  name: 'Split Button',
-  tag: 'atlas-split-button',
-  variants: [
-    {
-      name: 'Primary (Save / Save and close, Save as draft)',
-      html: `
+    id: 'split-button',
+    name: 'Split Button',
+    tag: 'atlas-split-button',
+    variants: [
+        {
+            name: 'Primary (Save / Save and close, Save as draft)',
+            html: `
         <atlas-split-button variant="primary" name="save">
           Save
           <div slot="menu">
@@ -123,10 +121,10 @@ S({
           </div>
         </atlas-split-button>
       `,
-    },
-    {
-      name: 'Secondary (Export)',
-      html: `
+        },
+        {
+            name: 'Secondary (Export)',
+            html: `
         <atlas-split-button name="export">
           Export
           <div slot="menu">
@@ -138,10 +136,10 @@ S({
           </div>
         </atlas-split-button>
       `,
-    },
-    {
-      name: 'Danger (Delete / Archive / Restore)',
-      html: `
+        },
+        {
+            name: 'Danger (Delete / Archive / Restore)',
+            html: `
         <atlas-split-button variant="danger" name="delete">
           Delete
           <div slot="menu">
@@ -152,10 +150,10 @@ S({
           </div>
         </atlas-split-button>
       `,
-    },
-    {
-      name: 'Disabled',
-      html: `
+        },
+        {
+            name: 'Disabled',
+            html: `
         <atlas-split-button variant="primary" name="save-disabled" disabled>
           Save
           <div slot="menu">
@@ -165,18 +163,17 @@ S({
           </div>
         </atlas-split-button>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'toggle-group',
-  name: 'Toggle Group',
-  tag: 'atlas-toggle-group',
-  variants: [
-    {
-      name: 'Single-select (text alignment)',
-      html: `
+    id: 'toggle-group',
+    name: 'Toggle Group',
+    tag: 'atlas-toggle-group',
+    variants: [
+        {
+            name: 'Single-select (text alignment)',
+            html: `
         <atlas-toggle-group selection="single" name="align" value="left" aria-label="Text alignment">
           <atlas-toggle-group-item value="left" label="Left"></atlas-toggle-group-item>
           <atlas-toggle-group-item value="center" label="Center"></atlas-toggle-group-item>
@@ -184,10 +181,10 @@ S({
           <atlas-toggle-group-item value="justify" label="Justify"></atlas-toggle-group-item>
         </atlas-toggle-group>
       `,
-    },
-    {
-      name: 'Multi-select (text formatting)',
-      html: `
+        },
+        {
+            name: 'Multi-select (text formatting)',
+            html: `
         <atlas-toggle-group selection="multiple" name="format" value="bold,italic" aria-label="Text formatting">
           <atlas-toggle-group-item value="bold" label="Bold"></atlas-toggle-group-item>
           <atlas-toggle-group-item value="italic" label="Italic"></atlas-toggle-group-item>
@@ -195,10 +192,10 @@ S({
           <atlas-toggle-group-item value="strike" label="Strike"></atlas-toggle-group-item>
         </atlas-toggle-group>
       `,
-    },
-    {
-      name: 'Sizes (sm / md) and disabled item',
-      html: `
+        },
+        {
+            name: 'Sizes (sm / md) and disabled item',
+            html: `
         <atlas-stack gap="md">
           <atlas-toggle-group selection="single" size="sm" value="day" aria-label="Range">
             <atlas-toggle-group-item value="day" label="Day"></atlas-toggle-group-item>
@@ -214,6 +211,6 @@ S({
           </atlas-toggle-group>
         </atlas-stack>
       `,
-    },
-  ],
+        },
+    ],
 });

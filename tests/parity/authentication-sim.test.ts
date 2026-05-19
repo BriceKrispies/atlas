@@ -12,19 +12,17 @@
  * `authorization-sim.test.ts`. We keep one smoke test here so the [sim] suite
  * shape mirrors [node] for greppability.
  */
-
 import { describe, test, expect } from 'vitest';
 import { makeSimIngress } from './lib/sim-factory.ts';
-
-describe('[sim] authentication parity', () => {
-  test('sim_principal_is_trusted_no_jwt', async () => {
-    // Documenting the LIES.md-style gap: sim mode has no JWT verification.
-    // A factory invocation with arbitrary principalId / tenantId is accepted.
-    const { ingress, tenantId, principalId } = await makeSimIngress('auth-sim');
-    expect(ingress.tenantId).toBe(tenantId);
-    expect(ingress.principalId).toBe(principalId);
-    const ready = await ingress.ready();
-    expect(ready.body.status).toBe('ok');
-    await ingress.close();
-  });
+describe('[sim] authentication parity', function () {
+    test('sim_principal_is_trusted_no_jwt', async function () {
+        // Documenting the LIES.md-style gap: sim mode has no JWT verification.
+        // A factory invocation with arbitrary principalId / tenantId is accepted.
+        const { ingress, tenantId, principalId } = await makeSimIngress('auth-sim');
+        expect(ingress.tenantId).toBe(tenantId);
+        expect(ingress.principalId).toBe(principalId);
+        const ready = await ingress.ready();
+        expect(ready.body.status).toBe('ok');
+        await ingress.close();
+    });
 });

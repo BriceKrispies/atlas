@@ -10,38 +10,19 @@
  *
  * Reference: ports/CLAUDE.md, .dependency-cruiser.cjs ▸ ports-no-impls
  */
-
-import { filesOfProject } from 'tsarch';
 import { describe, expect, it } from 'vitest';
-
-describe('ports/ purity', () => {
-  it('ports/src does not import node:crypto', async () => {
-    const violations = await filesOfProject()
-      .inFolder('ports/src')
-      .shouldNot()
-      .dependOnFiles()
-      .matchingPattern('node:crypto')
-      .check();
-    expect(violations).toEqual([]);
-  });
-
-  it('ports/src does not import node:fs / node:fs/promises', async () => {
-    const violations = await filesOfProject()
-      .inFolder('ports/src')
-      .shouldNot()
-      .dependOnFiles()
-      .matchingPattern('node:fs')
-      .check();
-    expect(violations).toEqual([]);
-  });
-
-  it('ports/src does not import postgres / pg drivers', async () => {
-    const violations = await filesOfProject()
-      .inFolder('ports/src')
-      .shouldNot()
-      .dependOnFiles()
-      .matchingPattern('^(postgres|pg|@databases)')
-      .check();
-    expect(violations).toEqual([]);
-  });
+import { findImportViolations } from './_dependency-scan.ts';
+describe('ports/ purity', function () {
+    it('ports/src does not import node:crypto', async function () {
+        const violations = await findImportViolations('ports/src', /^node:crypto$/);
+        expect(violations).toEqual([]);
+    });
+    it('ports/src does not import node:fs / node:fs/promises', async function () {
+        const violations = await findImportViolations('ports/src', /^node:fs(?:\/promises)?$/);
+        expect(violations).toEqual([]);
+    });
+    it('ports/src does not import postgres / pg drivers', async function () {
+        const violations = await findImportViolations('ports/src', /^(?:postgres|pg|@databases)(?:\/|$)/);
+        expect(violations).toEqual([]);
+    });
 });

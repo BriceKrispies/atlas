@@ -1,28 +1,26 @@
 import { S } from '../_register.ts';
 import { must } from '../../internal/assert.ts';
-
 /**
  * Mobile nav chrome — top app-bar + thumb-reach bottom-nav.
  * Companion specimens to navigation.ts (which covers <atlas-nav>,
  * <atlas-tabs>, <atlas-tab-bar>, segmented controls, accordions).
  */
-
 S({
-  id: 'app-bar',
-  name: 'App Bar',
-  tag: 'atlas-app-bar',
-  variants: [
-    {
-      name: 'Title only (default)',
-      html: `
+    id: 'app-bar',
+    name: 'App Bar',
+    tag: 'atlas-app-bar',
+    variants: [
+        {
+            name: 'Title only (default)',
+            html: `
         <atlas-app-bar name="topbar">
           <atlas-heading level="3">Inbox</atlas-heading>
         </atlas-app-bar>
       `,
-    },
-    {
-      name: 'Leading + trailing actions',
-      html: `
+        },
+        {
+            name: 'Leading + trailing actions',
+            html: `
         <atlas-app-bar name="topbar">
           <atlas-button slot="leading" variant="ghost" size="sm" name="back" aria-label="Back">
             ←
@@ -38,10 +36,10 @@ S({
           </atlas-stack>
         </atlas-app-bar>
       `,
-    },
-    {
-      name: 'variant="shell" (dark chrome)',
-      html: `
+        },
+        {
+            name: 'variant="shell" (dark chrome)',
+            html: `
         <atlas-app-bar name="topbar" variant="shell">
           <atlas-button slot="leading" variant="ghost" size="sm" name="menu" aria-label="Open menu">
             ☰
@@ -52,10 +50,10 @@ S({
           </atlas-button>
         </atlas-app-bar>
       `,
-    },
-    {
-      name: 'scroll-behavior="elevate"',
-      html: `
+        },
+        {
+            name: 'scroll-behavior="elevate"',
+            html: `
         <atlas-box style="height:240px;overflow:auto;border:1px solid var(--atlas-color-border);border-radius:var(--atlas-radius-md)" data-app-bar-scroll>
           <atlas-app-bar name="topbar" scroll-behavior="elevate">
             <atlas-heading level="3">Scrollable region</atlas-heading>
@@ -74,10 +72,10 @@ S({
           </atlas-box>
         </atlas-box>
       `,
-    },
-    {
-      name: 'scroll-behavior="collapse"',
-      html: `
+        },
+        {
+            name: 'scroll-behavior="collapse"',
+            html: `
         <atlas-box style="height:240px;overflow:auto;border:1px solid var(--atlas-color-border);border-radius:var(--atlas-radius-md)" data-app-bar-scroll>
           <atlas-app-bar name="topbar" scroll-behavior="collapse">
             <atlas-heading level="3">Hides on scroll-down</atlas-heading>
@@ -97,153 +95,123 @@ S({
           </atlas-box>
         </atlas-box>
       `,
-    },
-  ],
+        },
+    ],
 });
-
 S({
-  id: 'bottom-nav',
-  name: 'Bottom Nav',
-  tag: 'atlas-bottom-nav',
-  mount: (demoEl, { onLog }) => {
-    function makeItem(value: string, label: string, glyph: string, badge?: string): HTMLElement {
-      const item = document.createElement('atlas-bottom-nav-item');
-      item.setAttribute('value', value);
-      item.setAttribute('label', label);
-      if (badge) item.setAttribute('badge-count', badge);
-      const icon = document.createElement('span');
-      icon.setAttribute('slot', 'icon');
-      icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = glyph;
-      item.appendChild(icon);
-      return item;
-    }
-
-    function makeBar(items: HTMLElement[], value: string, attrs: Record<string, string> = {}): HTMLElement {
-      const bar = document.createElement('atlas-bottom-nav');
-      bar.setAttribute('name', 'primary');
-      bar.setAttribute('aria-label', 'Primary');
-      bar.setAttribute('value', value);
-      for (const [k, v] of Object.entries(attrs)) bar.setAttribute(k, v);
-      items.forEach((it) => bar.appendChild(it));
-      bar.addEventListener('change', (ev) => {
-        // Bottom-nav `change` events carry an unknown-shaped detail; the
-        // log handler accepts arbitrary JSON, so no validation needed —
-        // just unwrap the CustomEvent.detail without a structural cast.
-        const detail: unknown = ev instanceof CustomEvent ? ev.detail : null;
-        onLog('change', detail);
-      });
-      return bar;
-    }
-
-    const stack = document.createElement('atlas-stack');
-    stack.setAttribute('gap', 'lg');
-
-    // 3 items
-    const sec3 = document.createElement('atlas-stack');
-    sec3.setAttribute('gap', 'xs');
-    const lbl3 = document.createElement('atlas-label');
-    lbl3.textContent = '3 items';
-    sec3.appendChild(lbl3);
-    sec3.appendChild(
-      makeBar(
-        [
-          makeItem('home', 'Home', '⌂'),
-          makeItem('search', 'Search', '⌕'),
-          makeItem('me', 'Me', '◉'),
-        ],
-        'home',
-      ),
-    );
-
-    // 4 items, with one badge
-    const sec4 = document.createElement('atlas-stack');
-    sec4.setAttribute('gap', 'xs');
-    const lbl4 = document.createElement('atlas-label');
-    lbl4.textContent = '4 items + badge';
-    sec4.appendChild(lbl4);
-    sec4.appendChild(
-      makeBar(
-        [
-          makeItem('home', 'Home', '⌂'),
-          makeItem('inbox', 'Inbox', '✉', '3'),
-          makeItem('library', 'Library', '☰'),
-          makeItem('me', 'Me', '◉'),
-        ],
-        'inbox',
-      ),
-    );
-
-    // 5 items, capped badge
-    const sec5 = document.createElement('atlas-stack');
-    sec5.setAttribute('gap', 'xs');
-    const lbl5 = document.createElement('atlas-label');
-    lbl5.textContent = '5 items + capped badge (>99)';
-    sec5.appendChild(lbl5);
-    sec5.appendChild(
-      makeBar(
-        [
-          makeItem('home', 'Home', '⌂'),
-          makeItem('search', 'Search', '⌕'),
-          makeItem('add', 'New', '＋'),
-          makeItem('inbox', 'Inbox', '✉', '128'),
-          makeItem('me', 'Me', '◉'),
-        ],
-        'home',
-      ),
-    );
-
-    // hide-above="md" demo
-    const secHide = document.createElement('atlas-stack');
-    secHide.setAttribute('gap', 'xs');
-    const lblH = document.createElement('atlas-label');
-    lblH.textContent = 'hide-above="md" — vanishes ≥900px';
-    secHide.appendChild(lblH);
-    secHide.appendChild(
-      makeBar(
-        [
-          makeItem('home', 'Home', '⌂'),
-          makeItem('inbox', 'Inbox', '✉'),
-          makeItem('me', 'Me', '◉'),
-        ],
-        'home',
-        { 'hide-above': 'md' },
-      ),
-    );
-
-    // Auto-cycle demo — programmatic value changes prove the controlled
-    // model works without a click. Stops on unmount.
-    const secAuto = document.createElement('atlas-stack');
-    secAuto.setAttribute('gap', 'xs');
-    const lblA = document.createElement('atlas-label');
-    lblA.textContent = 'Programmatic cycle (every 1.5s)';
-    secAuto.appendChild(lblA);
-    const autoBar = makeBar(
-      [
-        makeItem('a', 'Alpha', 'α'),
-        makeItem('b', 'Bravo', 'β'),
-        makeItem('c', 'Charlie', 'γ'),
-        makeItem('d', 'Delta', 'δ'),
-      ],
-      'a',
-    );
-    secAuto.appendChild(autoBar);
-    const order = ['a', 'b', 'c', 'd'];
-    let i = 0;
-    const timer = setInterval(() => {
-      i = (i + 1) % order.length;
-      const next = must(order[i], 'cycle index modulo order.length is always in-bounds');
-      autoBar.setAttribute('value', next);
-      onLog('cycled', { value: next });
-    }, 1500);
-
-    stack.append(sec3, sec4, sec5, secHide, secAuto);
-    demoEl.appendChild(stack);
-
-    return () => {
-      clearInterval(timer);
-      stack.remove();
-    };
-  },
-  configVariants: [{ name: 'default', config: {} }],
+    id: 'bottom-nav',
+    name: 'Bottom Nav',
+    tag: 'atlas-bottom-nav',
+    mount: function (demoEl, { onLog }) {
+        function makeItem(value: string, label: string, glyph: string, badge?: string): HTMLElement {
+            const item = document.createElement('atlas-bottom-nav-item');
+            item.setAttribute('value', value);
+            item.setAttribute('label', label);
+            if (badge)
+                item.setAttribute('badge-count', badge);
+            const icon = document.createElement('span');
+            icon.setAttribute('slot', 'icon');
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = glyph;
+            item.appendChild(icon);
+            return item;
+        }
+        function makeBar(items: HTMLElement[], value: string, attrs: Record<string, string> = {}): HTMLElement {
+            const bar = document.createElement('atlas-bottom-nav');
+            bar.setAttribute('name', 'primary');
+            bar.setAttribute('aria-label', 'Primary');
+            bar.setAttribute('value', value);
+            for (const [k, v] of Object.entries(attrs))
+                bar.setAttribute(k, v);
+            items.forEach(function (it) {
+                return bar.appendChild(it);
+            });
+            bar.addEventListener('change', function (ev) {
+                // Bottom-nav `change` events carry an unknown-shaped detail; the
+                // log handler accepts arbitrary JSON, so no validation needed —
+                // just unwrap the CustomEvent.detail without a structural cast.
+                const detail: unknown = ev instanceof CustomEvent ? ev.detail : null;
+                onLog('change', detail);
+            });
+            return bar;
+        }
+        const stack = document.createElement('atlas-stack');
+        stack.setAttribute('gap', 'lg');
+        // 3 items
+        const sec3 = document.createElement('atlas-stack');
+        sec3.setAttribute('gap', 'xs');
+        const lbl3 = document.createElement('atlas-label');
+        lbl3.textContent = '3 items';
+        sec3.appendChild(lbl3);
+        sec3.appendChild(makeBar([
+            makeItem('home', 'Home', '⌂'),
+            makeItem('search', 'Search', '⌕'),
+            makeItem('me', 'Me', '◉'),
+        ], 'home'));
+        // 4 items, with one badge
+        const sec4 = document.createElement('atlas-stack');
+        sec4.setAttribute('gap', 'xs');
+        const lbl4 = document.createElement('atlas-label');
+        lbl4.textContent = '4 items + badge';
+        sec4.appendChild(lbl4);
+        sec4.appendChild(makeBar([
+            makeItem('home', 'Home', '⌂'),
+            makeItem('inbox', 'Inbox', '✉', '3'),
+            makeItem('library', 'Library', '☰'),
+            makeItem('me', 'Me', '◉'),
+        ], 'inbox'));
+        // 5 items, capped badge
+        const sec5 = document.createElement('atlas-stack');
+        sec5.setAttribute('gap', 'xs');
+        const lbl5 = document.createElement('atlas-label');
+        lbl5.textContent = '5 items + capped badge (>99)';
+        sec5.appendChild(lbl5);
+        sec5.appendChild(makeBar([
+            makeItem('home', 'Home', '⌂'),
+            makeItem('search', 'Search', '⌕'),
+            makeItem('add', 'New', '＋'),
+            makeItem('inbox', 'Inbox', '✉', '128'),
+            makeItem('me', 'Me', '◉'),
+        ], 'home'));
+        // hide-above="md" demo
+        const secHide = document.createElement('atlas-stack');
+        secHide.setAttribute('gap', 'xs');
+        const lblH = document.createElement('atlas-label');
+        lblH.textContent = 'hide-above="md" — vanishes ≥900px';
+        secHide.appendChild(lblH);
+        secHide.appendChild(makeBar([
+            makeItem('home', 'Home', '⌂'),
+            makeItem('inbox', 'Inbox', '✉'),
+            makeItem('me', 'Me', '◉'),
+        ], 'home', { 'hide-above': 'md' }));
+        // Auto-cycle demo — programmatic value changes prove the controlled
+        // model works without a click. Stops on unmount.
+        const secAuto = document.createElement('atlas-stack');
+        secAuto.setAttribute('gap', 'xs');
+        const lblA = document.createElement('atlas-label');
+        lblA.textContent = 'Programmatic cycle (every 1.5s)';
+        secAuto.appendChild(lblA);
+        const autoBar = makeBar([
+            makeItem('a', 'Alpha', 'α'),
+            makeItem('b', 'Bravo', 'β'),
+            makeItem('c', 'Charlie', 'γ'),
+            makeItem('d', 'Delta', 'δ'),
+        ], 'a');
+        secAuto.appendChild(autoBar);
+        const order = ['a', 'b', 'c', 'd'];
+        let i = 0;
+        const timer = setInterval(function () {
+            i = (i + 1) % order.length;
+            const next = must(order[i], 'cycle index modulo order.length is always in-bounds');
+            autoBar.setAttribute('value', next);
+            onLog('cycled', { value: next });
+        }, 1500);
+        stack.append(sec3, sec4, sec5, secHide, secAuto);
+        demoEl.appendChild(stack);
+        return function () {
+            clearInterval(timer);
+            stack.remove();
+        };
+    },
+    configVariants: [{ name: 'default', config: {} }],
 });

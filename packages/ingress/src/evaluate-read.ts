@@ -18,9 +18,9 @@
  */
 
 import { policyEvaluationsTotal } from '@atlas/metrics';
+import { toLogError } from '@atlas/platform-core';
 import type { PolicyDecision, PolicyEvaluationRequest } from '@atlas/ports';
 import type { IngressState } from './submit-intent.ts';
-import { toLogError } from './log-error.ts';
 
 function newReadAuditId(): string {
   return `audit-read-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;

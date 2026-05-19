@@ -2,65 +2,55 @@ import type { SearchEngine } from '@atlas/ports';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchParams, SearchResponse, SearchResult } from '../responses.ts';
 import { CatalogError } from '../errors.ts';
-
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;
-
 function formatResult(d: SearchDocument): SearchResult {
-  const title = typeof d.fields['title'] === 'string' ? (d.fields['title']) : '';
-  const summaryRaw = d.fields['summary'];
-  const summary = typeof summaryRaw === 'string' ? summaryRaw : null;
-  const taxonomyRaw = d.fields['taxonomy_path'];
-  const taxonomyPath = typeof taxonomyRaw === 'string' ? taxonomyRaw : null;
-  const scoreRaw = d.fields['_score'];
-  const score = typeof scoreRaw === 'number' ? scoreRaw : 0;
-  return {
-    documentType: d.documentType,
-    documentId: d.documentId,
-    title,
-    summary,
-    taxonomyPath,
-    score,
-  };
+    const title = typeof d.fields['title'] === 'string' ? (d.fields['title']) : '';
+    const summaryRaw = d.fields['summary'];
+    const summary = typeof summaryRaw === 'string' ? summaryRaw : null;
+    const taxonomyRaw = d.fields['taxonomy_path'];
+    const taxonomyPath = typeof taxonomyRaw === 'string' ? taxonomyRaw : null;
+    const scoreRaw = d.fields['_score'];
+    const score = typeof scoreRaw === 'number' ? scoreRaw : 0;
+    return {
+        documentType: d.documentType,
+        documentId: d.documentId,
+        title,
+        summary,
+        taxonomyPath,
+        score,
+    };
 }
-
-export async function handleSearch(
-  tenantId: string,
-  principalId: string,
-  params: SearchParams,
-  search: SearchEngine,
-): Promise<SearchResponse> {
-  const trimmed = params.q.trim();
-  if (!trimmed) {
-    // Rust parity: `crates/catalog/src/queries/search.rs` uses
-    // `CatalogError::InvalidSeedPayload` for the missing-query case.
-    throw new CatalogError(
-      'INVALID_SEED_PAYLOAD',
-      'search query parameter `q` is required',
-    );
-  }
-  let docs = await search.search(trimmed, tenantId, principalId);
-  if (params.type && params.type.length > 0) {
-    docs = docs.filter((d) => d.documentType === params.type);
-  }
-
-  let pageSize = params.pageSize ?? DEFAULT_PAGE_SIZE;
-  if (pageSize <= 0) pageSize = DEFAULT_PAGE_SIZE;
-  if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
-  const offset = params.cursor ? Math.max(0, parseInt(params.cursor, 10) || 0) : 0;
-
-  const total = docs.length;
-  const start = Math.min(offset, total);
-  const end = Math.min(start + pageSize, total);
-  const page = docs.slice(start, end);
-  const hasMore = end < total;
-
-  return {
-    query: trimmed,
-    results: page.map(formatResult),
-    pageInfo: {
-      hasMore,
-      nextCursor: hasMore ? String(end) : null,
-    },
-  };
+export async function handleSearch(tenantId: string, principalId: string, params: SearchParams, search: SearchEngine): Promise<SearchResponse> {
+    const trimmed = params.q.trim();
+    if (!trimmed) {
+        // Rust parity: `crates/catalog/src/queries/search.rs` uses
+        // `CatalogError::InvalidSeedPayload` for the missing-query case.
+        throw new CatalogError('INVALID_SEED_PAYLOAD', 'search query parameter `q` is required');
+    }
+    let docs = await search.search(trimmed, tenantId, principalId);
+    if (params.type && params.type.length > 0) {
+        docs = docs.filter(function (d) {
+            return d.documentType === params.type;
+        });
+    }
+    let pageSize = params.pageSize ?? DEFAULT_PAGE_SIZE;
+    if (pageSize <= 0)
+        pageSize = DEFAULT_PAGE_SIZE;
+    if (pageSize > MAX_PAGE_SIZE)
+        pageSize = MAX_PAGE_SIZE;
+    const offset = params.cursor ? Math.max(0, parseInt(params.cursor, 10) || 0) : 0;
+    const total = docs.length;
+    const start = Math.min(offset, total);
+    const end = Math.min(start + pageSize, total);
+    const page = docs.slice(start, end);
+    const hasMore = end < total;
+    return {
+        query: trimmed,
+        results: page.map(formatResult),
+        pageInfo: {
+            hasMore,
+            nextCursor: hasMore ? String(end) : null,
+        },
+    };
 }

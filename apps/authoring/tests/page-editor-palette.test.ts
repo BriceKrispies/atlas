@@ -10,257 +10,227 @@
  * Once the shell wires `<page-editor-palette>` into the `left:palette`
  * tab slot the harness collapses to a real-tab selector.
  */
-
 import { test, expect, assertCommitted, readEditorState } from '@atlas/test-fixtures';
 import type { Page } from '@playwright/test';
-
 const ROUTE = '#/page-editor';
 const ROUTE_SURFACE = '[data-testid="authoring.page-editor"]';
-
 interface CommitLike {
-  surfaceId?: string;
-  intent?: string;
-  patch?: unknown;
-  at?: number;
+    surfaceId?: string;
+    intent?: string;
+    patch?: unknown;
+    at?: number;
 }
 interface PaletteSnapshot {
-  surfaceId: string;
-  pageId: string;
-  search: string;
-  selectedRegion: string | null;
-  expandedGroups: string[];
-  collapsedGroups: string[];
-  recentWidgetIds: string[];
-  filteredWidgetIds: string[];
-  lastCommit: CommitLike | null;
+    surfaceId: string;
+    pageId: string;
+    search: string;
+    selectedRegion: string | null;
+    expandedGroups: string[];
+    collapsedGroups: string[];
+    recentWidgetIds: string[];
+    filteredWidgetIds: string[];
+    lastCommit: CommitLike | null;
 }
-
 async function waitForEditor(page: Page, pageId: string): Promise<void> {
-  await page.waitForFunction((pid: string) => {
-    interface ContentPageEl extends Element {
-      editor?: unknown;
-    }
-    const stack: Array<Document | ShadowRoot | Element> = [document];
-    while (stack.length) {
-      const root = stack.shift();
-      if (!root || !('querySelector' in root) || !root.querySelector) continue;
-      const cp = root.querySelector<ContentPageEl>(`content-page[data-page-id="${pid}"]`);
-      if (cp && cp.editor) return true;
-      const all = root.querySelectorAll('*');
-      for (const el of all) {
-        if (el.shadowRoot) stack.push(el.shadowRoot);
-      }
-    }
-    return false;
-  }, pageId);
-}
-
-async function openEditor(page: Page, pageId: string): Promise<void> {
-  await page.goto(`/${ROUTE}`);
-  await page.locator(ROUTE_SURFACE).waitFor();
-  const select = page.locator(`${ROUTE_SURFACE} >> [data-testid="authoring.page-editor.page-select"]`);
-  await select.waitFor();
-  const current = await select.evaluate((el: HTMLElement & { value?: string }) => el.value ?? '');
-  if (current !== pageId) {
-    await select.evaluate((el: HTMLElement & { value: string }, next: string) => {
-      el.value = next;
-      el.dispatchEvent(
-        new CustomEvent('change', { detail: { value: next }, bubbles: true, composed: true }),
-      );
+    await page.waitForFunction(function (pid: string) {
+        interface ContentPageEl extends Element {
+            editor?: unknown;
+        }
+        const stack: Array<Document | ShadowRoot | Element> = [document];
+        while (stack.length) {
+            const root = stack.shift();
+            if (!root || !('querySelector' in root) || !root.querySelector)
+                continue;
+            const cp = root.querySelector<ContentPageEl>(`content-page[data-page-id="${pid}"]`);
+            if (cp && cp.editor)
+                return true;
+            const all = root.querySelectorAll('*');
+            for (const el of all) {
+                if (el.shadowRoot)
+                    stack.push(el.shadowRoot);
+            }
+        }
+        return false;
     }, pageId);
-  }
-  await waitForEditor(page, pageId);
 }
-
+async function openEditor(page: Page, pageId: string): Promise<void> {
+    await page.goto(`/${ROUTE}`);
+    await page.locator(ROUTE_SURFACE).waitFor();
+    const select = page.locator(`${ROUTE_SURFACE} >> [data-testid="authoring.page-editor.page-select"]`);
+    await select.waitFor();
+    const current = await select.evaluate(function (el: HTMLElement & {
+        value?: string;
+    }) {
+        return el.value ?? '';
+    });
+    if (current !== pageId) {
+        await select.evaluate(function (el: HTMLElement & {
+            value: string;
+        }, next: string) {
+            el.value = next;
+            el.dispatchEvent(new CustomEvent('change', { detail: { value: next }, bubbles: true, composed: true }));
+        }, pageId);
+    }
+    await waitForEditor(page, pageId);
+}
 async function mountPalette(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    interface ShellEl extends Element {
-      editorState?: unknown;
-    }
-    interface PaletteEl extends HTMLElement {
-      controller: unknown;
-    }
-    // Side-effect import registers the custom element. Vite serves the
-    // module at this path; TypeScript doesn't resolve absolute browser
-    // paths, so route through Function to keep the bundler from rewriting
-    // the specifier.
-    const mod = '/src/page-editor/left-panel/index.ts';
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
-    const dyn = new Function('m', 'return import(m)');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
-    await (dyn as (m: string) => Promise<unknown>)(mod);
-    const stack: Array<Document | ShadowRoot | Element> = [document];
-    let shell: ShellEl | null = null;
-    while (stack.length) {
-      const root = stack.shift();
-      if (!root || !('querySelector' in root) || !root.querySelector) continue;
-      const el = root.querySelector<ShellEl>('authoring-page-editor-shell');
-      if (el && el.editorState) {
-        shell = el;
-        break;
-      }
-      const all = root.querySelectorAll('*');
-      for (const e of all) {
-        if (e.shadowRoot) stack.push(e.shadowRoot);
-      }
-    }
-    if (!shell?.editorState) throw new Error('shell controller not ready');
-    document.querySelectorAll('page-editor-palette[data-test-mount]').forEach((n) => n.remove());
-    const palette = document.createElement('page-editor-palette') as PaletteEl;
-    palette.setAttribute('data-test-mount', 'true');
-    palette.controller = shell.editorState;
-    document.body.appendChild(palette);
-  });
+    await page.evaluate(async function () {
+        interface ShellEl extends Element {
+            editorState?: unknown;
+        }
+        interface PaletteEl extends HTMLElement {
+            controller: unknown;
+        }
+        // Side-effect import registers the custom element. Vite serves the
+        // module at this path; TypeScript doesn't resolve absolute browser
+        // paths, so route through Function to keep the bundler from rewriting
+        // the specifier.
+        const mod = '/src/page-editor/left-panel/index.ts';
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
+        const dyn = new Function('m', 'return import(m)');
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
+        await (dyn as (m: string) => Promise<unknown>)(mod);
+        const stack: Array<Document | ShadowRoot | Element> = [document];
+        let shell: ShellEl | null = null;
+        while (stack.length) {
+            const root = stack.shift();
+            if (!root || !('querySelector' in root) || !root.querySelector)
+                continue;
+            const el = root.querySelector<ShellEl>('authoring-page-editor-shell');
+            if (el && el.editorState) {
+                shell = el;
+                break;
+            }
+            const all = root.querySelectorAll('*');
+            for (const e of all) {
+                if (e.shadowRoot)
+                    stack.push(e.shadowRoot);
+            }
+        }
+        if (!shell?.editorState)
+            throw new Error('shell controller not ready');
+        document.querySelectorAll('page-editor-palette[data-test-mount]').forEach(function (n) {
+            return n.remove();
+        });
+        const palette = document.createElement('page-editor-palette') as PaletteEl;
+        palette.setAttribute('data-test-mount', 'true');
+        palette.controller = shell.editorState;
+        document.body.appendChild(palette);
+    });
 }
-
 async function readPaletteState(page: Page, pageId: string): Promise<PaletteSnapshot | null> {
-  const raw = await readEditorState(page, `${pageId}:palette`);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the palette-surface snapshot shape is contract-pinned by the palette element (mirrors page-editor-outline.test.ts).
-  return raw as PaletteSnapshot | null;
+    const raw = await readEditorState(page, `${pageId}:palette`);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the palette-surface snapshot shape is contract-pinned by the palette element (mirrors page-editor-outline.test.ts).
+    return raw as PaletteSnapshot | null;
 }
-
 async function setSearch(page: Page, value: string): Promise<void> {
-  // Drive the input via a synthetic event matching atlas-input's contract.
-  await page.evaluate((v: string) => {
-    const input = document.querySelector(
-      'page-editor-palette[data-test-mount] atlas-input[name="palette-search"]',
-    ) as (HTMLElement & { value: string }) | null;
-    if (!input) throw new Error('palette search input not mounted');
-    input.value = v;
-    input.dispatchEvent(new CustomEvent('input', { detail: { value: v }, bubbles: true, composed: true }));
-  }, value);
+    // Drive the input via a synthetic event matching atlas-input's contract.
+    await page.evaluate(function (v: string) {
+        const input = document.querySelector('page-editor-palette[data-test-mount] atlas-input[name="palette-search"]') as (HTMLElement & {
+            value: string;
+        }) | null;
+        if (!input)
+            throw new Error('palette search input not mounted');
+        input.value = v;
+        input.dispatchEvent(new CustomEvent('input', { detail: { value: v }, bubbles: true, composed: true }));
+    }, value);
 }
-
 async function setRegion(page: Page, value: string): Promise<void> {
-  await page.evaluate((v: string) => {
-    const select = document.querySelector(
-      'page-editor-palette[data-test-mount] atlas-select[name="palette-region-select"]',
-    ) as (HTMLElement & { value: string }) | null;
-    if (!select) throw new Error('palette region select not mounted');
-    select.value = v;
-    select.dispatchEvent(new CustomEvent('change', { detail: { value: v }, bubbles: true, composed: true }));
-  }, value);
+    await page.evaluate(function (v: string) {
+        const select = document.querySelector('page-editor-palette[data-test-mount] atlas-select[name="palette-region-select"]') as (HTMLElement & {
+            value: string;
+        }) | null;
+        if (!select)
+            throw new Error('palette region select not mounted');
+        select.value = v;
+        select.dispatchEvent(new CustomEvent('change', { detail: { value: v }, bubbles: true, composed: true }));
+    }, value);
 }
-
-test.describe('authoring.page-editor.shell.left-panel.palette — states', () => {
-  test('renders search row, region selector, and grouped chip list', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    const root = page.locator('page-editor-palette[data-test-mount]');
-    await expect(root.locator('atlas-input[name="palette-search"]')).toBeVisible();
-    await expect(root.locator('atlas-select[name="palette-region-select"]')).toBeVisible();
-    const groups = root.locator('atlas-box[data-role="group"]');
-    await expect.poll(async () => groups.count()).toBeGreaterThan(0);
-    // Auto-test-id propagation
-    const searchInput = root.locator('atlas-input[name="palette-search"]');
-    await expect(searchInput).toHaveAttribute(
-      'data-testid',
-      'authoring.page-editor.shell.left-panel.palette.palette-search',
-    );
-  });
+test.describe('authoring.page-editor.shell.left-panel.palette — states', function () {
+    test('renders search row, region selector, and grouped chip list', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        const root = page.locator('page-editor-palette[data-test-mount]');
+        await expect(root.locator('atlas-input[name="palette-search"]')).toBeVisible();
+        await expect(root.locator('atlas-select[name="palette-region-select"]')).toBeVisible();
+        const groups = root.locator('atlas-box[data-role="group"]');
+        await expect.poll(async function () {
+            return groups.count();
+        }).toBeGreaterThan(0);
+        // Auto-test-id propagation
+        const searchInput = root.locator('atlas-input[name="palette-search"]');
+        await expect(searchInput).toHaveAttribute('data-testid', 'authoring.page-editor.shell.left-panel.palette.palette-search');
+    });
 });
-
-test.describe('authoring.page-editor.shell.left-panel.palette — search', () => {
-  test('typing into search filters chips and commits setSearch', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    await setSearch(page, 'heading');
-    await assertCommitted(
-      page,
-      'editor:editor-blank:palette',
-      { intent: 'setSearch', patch: { search: 'heading' } },
-    );
-    const snap = await readPaletteState(page, 'editor-blank');
-    expect(snap?.filteredWidgetIds).toContain('sandbox.heading');
-    for (const id of snap?.filteredWidgetIds ?? []) {
-      expect(id.toLowerCase()).toContain('heading');
-    }
-    // The DOM should reflect the filter — non-matching chips removed.
-    const chips = page.locator(
-      'page-editor-palette[data-test-mount] atlas-button[data-palette-chip]',
-    );
-    const count = await chips.count();
-    expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i++) {
-      const id = await chips.nth(i).getAttribute('data-widget-id');
-      expect(id?.toLowerCase()).toContain('heading');
-    }
-  });
+test.describe('authoring.page-editor.shell.left-panel.palette — search', function () {
+    test('typing into search filters chips and commits setSearch', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        await setSearch(page, 'heading');
+        await assertCommitted(page, 'editor:editor-blank:palette', { intent: 'setSearch', patch: { search: 'heading' } });
+        const snap = await readPaletteState(page, 'editor-blank');
+        expect(snap?.filteredWidgetIds).toContain('sandbox.heading');
+        for (const id of snap?.filteredWidgetIds ?? []) {
+            expect(id.toLowerCase()).toContain('heading');
+        }
+        // The DOM should reflect the filter — non-matching chips removed.
+        const chips = page.locator('page-editor-palette[data-test-mount] atlas-button[data-palette-chip]');
+        const count = await chips.count();
+        expect(count).toBeGreaterThan(0);
+        for (let i = 0; i < count; i++) {
+            const id = await chips.nth(i).getAttribute('data-widget-id');
+            expect(id?.toLowerCase()).toContain('heading');
+        }
+    });
 });
-
-test.describe('authoring.page-editor.shell.left-panel.palette — group toggle', () => {
-  test('clicking the group toggle commits toggleGroup on the palette surface', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    const toggle = page.locator(
-      'page-editor-palette[data-test-mount] atlas-button[name="palette-group-toggle"]',
-    ).first();
-    const groupId = await toggle.getAttribute('data-group-id');
-    expect(groupId).toBeTruthy();
-    await toggle.click();
-    await assertCommitted(
-      page,
-      'editor:editor-blank:palette',
-      { intent: 'toggleGroup', patch: { group: groupId, expanded: false } },
-    );
-    const snap = await readPaletteState(page, 'editor-blank');
-    expect(snap?.collapsedGroups).toContain(groupId);
-  });
+test.describe('authoring.page-editor.shell.left-panel.palette — group toggle', function () {
+    test('clicking the group toggle commits toggleGroup on the palette surface', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        const toggle = page.locator('page-editor-palette[data-test-mount] atlas-button[name="palette-group-toggle"]').first();
+        const groupId = await toggle.getAttribute('data-group-id');
+        expect(groupId).toBeTruthy();
+        await toggle.click();
+        await assertCommitted(page, 'editor:editor-blank:palette', { intent: 'toggleGroup', patch: { group: groupId, expanded: false } });
+        const snap = await readPaletteState(page, 'editor-blank');
+        expect(snap?.collapsedGroups).toContain(groupId);
+    });
 });
-
-test.describe('authoring.page-editor.shell.left-panel.palette — region select', () => {
-  test('changing the region select commits selectAddRegion locally', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    await setRegion(page, 'sidebar');
-    await assertCommitted(
-      page,
-      'editor:editor-blank:palette',
-      { intent: 'selectAddRegion', patch: { region: 'sidebar' } },
-    );
-    const snap = await readPaletteState(page, 'editor-blank');
-    expect(snap?.selectedRegion).toBe('sidebar');
-  });
+test.describe('authoring.page-editor.shell.left-panel.palette — region select', function () {
+    test('changing the region select commits selectAddRegion locally', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        await setRegion(page, 'sidebar');
+        await assertCommitted(page, 'editor:editor-blank:palette', { intent: 'selectAddRegion', patch: { region: 'sidebar' } });
+        const snap = await readPaletteState(page, 'editor-blank');
+        expect(snap?.selectedRegion).toBe('sidebar');
+    });
 });
-
-test.describe('authoring.page-editor.shell.left-panel.palette — chip click', () => {
-  test('chip click commits addWidget on the shell with the selected region', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    await setRegion(page, 'sidebar');
-    const chip = page.locator(
-      'page-editor-palette[data-test-mount] atlas-button[data-palette-chip][data-widget-id="sandbox.heading"]',
-    ).first();
-    await chip.click();
-    await assertCommitted(
-      page,
-      'editor:editor-blank:shell',
-      {
-        intent: 'addWidget',
-        patch: { widgetId: 'sandbox.heading', region: 'sidebar' },
-      },
-    );
-  });
-
-  test('recents fold the last 5 added widgets', async ({ page }) => {
-    await openEditor(page, 'editor-blank');
-    await mountPalette(page);
-    await setRegion(page, 'main');
-    const widgets = ['sandbox.heading', 'sandbox.text', 'sandbox.kpi-tile', 'sandbox.sparkline'];
-    for (const widgetId of widgets) {
-      await page.locator(
-        `page-editor-palette[data-test-mount] atlas-button[data-palette-chip][data-widget-id="${widgetId}"]`,
-      ).first().click();
-      // Wait for the addWidget commit to land before clicking the next chip
-      // so the recents observer sees each commit individually.
-      await assertCommitted(
-        page,
-        'editor:editor-blank:shell',
-        { intent: 'addWidget', patch: { widgetId } },
-      );
-    }
-    const snap = await readPaletteState(page, 'editor-blank');
-    // Most-recent first; entries are de-duplicated and capped at 5.
-    expect(snap?.recentWidgetIds.slice(0, 4)).toEqual(widgets.slice().reverse());
-  });
+test.describe('authoring.page-editor.shell.left-panel.palette — chip click', function () {
+    test('chip click commits addWidget on the shell with the selected region', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        await setRegion(page, 'sidebar');
+        const chip = page.locator('page-editor-palette[data-test-mount] atlas-button[data-palette-chip][data-widget-id="sandbox.heading"]').first();
+        await chip.click();
+        await assertCommitted(page, 'editor:editor-blank:shell', {
+            intent: 'addWidget',
+            patch: { widgetId: 'sandbox.heading', region: 'sidebar' },
+        });
+    });
+    test('recents fold the last 5 added widgets', async function ({ page }) {
+        await openEditor(page, 'editor-blank');
+        await mountPalette(page);
+        await setRegion(page, 'main');
+        const widgets = ['sandbox.heading', 'sandbox.text', 'sandbox.kpi-tile', 'sandbox.sparkline'];
+        for (const widgetId of widgets) {
+            await page.locator(`page-editor-palette[data-test-mount] atlas-button[data-palette-chip][data-widget-id="${widgetId}"]`).first().click();
+            // Wait for the addWidget commit to land before clicking the next chip
+            // so the recents observer sees each commit individually.
+            await assertCommitted(page, 'editor:editor-blank:shell', { intent: 'addWidget', patch: { widgetId } });
+        }
+        const snap = await readPaletteState(page, 'editor-blank');
+        // Most-recent first; entries are de-duplicated and capped at 5.
+        expect(snap?.recentWidgetIds.slice(0, 4)).toEqual(widgets.slice().reverse());
+    });
 });
