@@ -13,17 +13,19 @@
  * route code runs unchanged. Mirrors the harness pattern used in
  * `src/routes/repositories.test.ts` and `src/routes/identity-a7.test.ts`.
  */
-import { describe, expect, test, beforeEach, vi } from 'vitest';
+import { describe, expect, test, beforeEach, afterAll } from '@atlas/test';
 import { Hono } from 'hono';
 import type { EventEnvelope, IntentEnvelope } from '@atlas/platform-core';
 import type { IntentHandler, IntentHandlerContext } from '@atlas/ports';
 import { attachTestPrincipalMiddleware, buildFakeAppState, buildFakeBundle, makeValidator, StubAllowEngine, StubDenyEngine, type FakeBundle, } from '../lib/fake-state.ts';
 import type { ServerVariables } from '../../src/middleware/principal.ts';
 import type { AppState } from '../../src/bootstrap.ts';
+import { __setBuildRequestBundleForTest, type RequestBundle } from '../../src/middleware/state.ts';
+import { intentRoutes } from '../../src/routes/intents.ts';
 // ----------------------------------------------------------------------
-// Test-scoped mock holder. The route imports `buildRequestBundle` from
-// `../middleware/state.ts`; we replace that export with a function that
-// returns whatever bundle the active test installed via `installBundle()`.
+// Bundle holder. Tests install a FakeBundle here; the override
+// registered below dispatches the route's `buildRequestBundle` call
+// to it. Cleared between cases via beforeEach.
 // ----------------------------------------------------------------------
 let nextBundle: FakeBundle | null = null;
 let nextBundleError: Error | null = null;
@@ -35,22 +37,17 @@ function installBundleError(e: Error): void {
     nextBundle = null;
     nextBundleError = e;
 }
-vi.mock('../../src/middleware/state.ts', async function () {
-    const actual = await vi.importActual<typeof import('../../src/middleware/state.ts')>('../../src/middleware/state.ts');
-    return {
-        ...actual,
-        buildRequestBundle: vi.fn(async function () {
-            if (nextBundleError)
-                throw nextBundleError;
-            if (!nextBundle) {
-                throw new Error('test setup: no fake bundle installed; call installBundle()');
-            }
-            return nextBundle;
-        }),
-    };
+__setBuildRequestBundleForTest(async function () {
+    if (nextBundleError) throw nextBundleError;
+    if (!nextBundle) {
+        throw new Error('test setup: no fake bundle installed; call installBundle()');
+    }
+    // FakeBundle is a structural superset for the route's consumption.
+    return nextBundle as unknown as RequestBundle;
 });
-// Late-import the route under test so the mock above takes effect.
-import { intentRoutes } from '../../src/routes/intents.ts';
+afterAll(function () {
+    __setBuildRequestBundleForTest(null);
+});
 // ----------------------------------------------------------------------
 // Build a Hono app with the same test-principal middleware shape the
 // other route tests use. The intents route is registered last; the

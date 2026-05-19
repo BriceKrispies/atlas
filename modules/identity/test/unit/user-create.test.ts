@@ -10,7 +10,7 @@
  * If the caller supplies the same `userId`, retries collide upstream
  * via the ingress idempotency check. Handler does not deduplicate.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleUserCreate } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 describe('handleUserCreate — happy path', function () {

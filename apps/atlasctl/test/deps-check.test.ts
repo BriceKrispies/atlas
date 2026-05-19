@@ -10,7 +10,7 @@
  * looking for `import` and `from` statements that reference forbidden
  * package names.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

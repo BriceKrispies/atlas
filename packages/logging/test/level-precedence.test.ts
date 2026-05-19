@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { InMemoryLevelController } from '../src/index.ts';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 describe('LevelController — InMemoryLevelController precedence', function () {

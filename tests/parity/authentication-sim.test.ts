@@ -12,7 +12,7 @@
  * `authorization-sim.test.ts`. We keep one smoke test here so the [sim] suite
  * shape mirrors [node] for greppability.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 describe('[sim] authentication parity', function () {
     test('sim_principal_is_trusted_no_jwt', async function () {

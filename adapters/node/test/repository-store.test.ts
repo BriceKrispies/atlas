@@ -10,7 +10,7 @@
  * connection. The contract's skip path (no `freshOtherTenant`) is
  * intentional here; see the suite's file-level docblock.
  */
-import { describe, it } from 'vitest';
+import { describe, it } from '@atlas/test';
 import { runRepositoryStoreContract } from '@atlas/contract-tests';
 import { PostgresRepositoryStore, PostgresRepositoryRevisionStore, } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';

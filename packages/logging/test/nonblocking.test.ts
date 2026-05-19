@@ -6,7 +6,7 @@
  *   2. setInterval continues to fire during/after the burst — confirms
  *      the event loop is reachable, not held captive.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Writable } from 'node:stream';
 import { performance } from 'node:perf_hooks';
 import { ConsoleJsonSink, InMemoryLevelController, LogPipeline, createRootContext, } from '../src/index.ts';

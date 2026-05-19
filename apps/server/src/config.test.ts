@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from '@atlas/test';
 import { loadConfig } from './config.ts';
 const REQUIRED_ENVS = [
     'CONTROL_PLANE_DB_URL',

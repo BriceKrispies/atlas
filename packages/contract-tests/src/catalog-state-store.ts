@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { CatalogStateRecord, CatalogStateStore } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 function rec(overrides: Partial<CatalogStateRecord> = {}): CatalogStateRecord {

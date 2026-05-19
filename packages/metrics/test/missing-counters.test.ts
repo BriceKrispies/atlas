@@ -9,7 +9,7 @@
  * exist). Once the singletons are added to `atlas-metrics.ts`
  * and re-exported from `index.ts`, the tests should pass.
  */
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import { projectionsBuiltTotal, wasmExecutionsTotal, workerHeartbeatsTotal, resetRegistry, getRegistry, } from '@atlas/metrics';
 beforeEach(function () {
     resetRegistry();

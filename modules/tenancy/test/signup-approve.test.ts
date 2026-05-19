@@ -7,7 +7,7 @@
  * buildMagicLinkUrl, revokeOutstandingInvites) are spied so each test
  * asserts both shape and order.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { CreateSignupRequestInput, CreateTenantInput, CustomDomain, CustomDomainStore, EmailMessage, EventStore, Mailer, MailerSendResult, SignupRequest, SignupRequestStatus, SignupRequestStore, StoredEvent, TenantRecord, TenantStore, } from '@atlas/ports';

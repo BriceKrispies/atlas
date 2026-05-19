@@ -14,7 +14,7 @@
  * with a known-bad fixture inline. That gives the same coverage with
  * less surface area.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@atlas/test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';

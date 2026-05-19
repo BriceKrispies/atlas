@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { SearchDocument } from '@atlas/platform-core';
 import type { SearchEngine } from '@atlas/ports';
 /** Narrows `arr[i]` to `T` for contract assertions where length was just asserted. */

@@ -9,7 +9,7 @@
  * test_keycloak_is_reachable) are deferred until the parity stack stands up
  * the same Keycloak realm `atlas itest` already provisions; see DEFERRED.md.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
 const d = baseUrl ? describe : describe.skip;
 async function fetchWhoami(headers: Record<string, string>): Promise<{

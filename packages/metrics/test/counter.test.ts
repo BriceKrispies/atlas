@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { Counter, MetricsLabelError } from '@atlas/metrics';
 describe('Counter', function () {
     test('inc() with no args increments the no-label series by 1', function () {

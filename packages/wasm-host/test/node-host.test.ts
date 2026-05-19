@@ -11,7 +11,7 @@
  *   - memory cap surfacing as a structured error rather than a crash
  *   - the main event loop staying responsive while a plugin is wedged
  */
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi } from '@atlas/test';
 import { setImmediate as setImmediateAsync } from 'node:timers/promises';
 import { wasmHostContract } from '@atlas/contract-tests';
 import { NodeWasmHost, WorkerWasmHost, InMemoryPluginLoader, WasmHostError, } from '@atlas/wasm-host';

@@ -5,7 +5,7 @@
  * `mfa-recovery.feature` end-to-end. WebAuthn / Passkey scenarios
  * await the A5.4 + A5.5 slice.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventStore, StoredEvent, Entity, EntityListOptions, EntityQueryOptions, EntityStore as PortEntityStore, EntityWriteInput, Relation, RelationStore, RelationWriteInput, } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';

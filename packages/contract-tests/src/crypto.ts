@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { Crypto } from '@atlas/ports';
 const utf8 = new TextEncoder();
 const SHA256_HELLO_WORLD_HEX = 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9';

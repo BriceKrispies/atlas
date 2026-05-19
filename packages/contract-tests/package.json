@@ -16,9 +16,9 @@
   },
   "devDependencies": {
     "@atlas/test-fixtures": "workspace:*",
-    "vitest": "^4.1.5"
+    "@atlas/test": "workspace:*"
   },
   "peerDependencies": {
-    "vitest": "^4.1.5"
+    "@atlas/test": "workspace:*"
   }
 }

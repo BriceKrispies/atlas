@@ -12,7 +12,7 @@
  *  - The structured warn payload matches the Rust event shape and
  *    omits optional fields when not provided.
  */
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi, afterEach } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { guardrail, techDebt, mvpShortcut, guardrailHitsTotal, resetRegistry, getRegistry, setGuardrailLogger, } from '@atlas/metrics';
 interface LoggerCall {

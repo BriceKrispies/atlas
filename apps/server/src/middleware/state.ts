@@ -216,7 +216,40 @@ export const REQUEST_DISPATCHER_CHAIN_NAMES: ReadonlyArray<string> = [
   'server-events',
 ];
 
-export async function buildRequestBundle(
+/**
+ * Test-only override for {@link buildRequestBundle}. Node ESM modules are
+ * immutable post-import, so `node:test` has no `vi.mock`-equivalent — route
+ * suites that need to inject a hand-built bundle install a stub here. The
+ * setter resets cleanly via `beforeEach`. Production code MUST NOT touch it.
+ *
+ * Marked `@internal`; only `apps/server/test/**` should import the setter.
+ */
+let _buildRequestBundleOverride:
+  | ((state: AppState, principal: Principal, correlationId: string) => Promise<RequestBundle>)
+  | null = null;
+
+/** @internal — test-only. */
+export function __setBuildRequestBundleForTest(
+  fn:
+    | ((state: AppState, principal: Principal, correlationId: string) => Promise<RequestBundle>)
+    | null,
+): void {
+  _buildRequestBundleOverride = fn;
+}
+
+export function buildRequestBundle(
+  state: AppState,
+  principal: Principal,
+  correlationId: string,
+): Promise<RequestBundle> {
+  return (_buildRequestBundleOverride ?? _buildRequestBundleImpl)(
+    state,
+    principal,
+    correlationId,
+  );
+}
+
+async function _buildRequestBundleImpl(
   state: AppState,
   principal: Principal,
   correlationId: string,

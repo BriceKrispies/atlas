@@ -17,7 +17,7 @@
  * The fixture output mirrors the assertion in
  * `crates/wasm_runtime/src/lib.rs::test_execute_demo_plugin`.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NodeWasmHost, BrowserWasmHost, InMemoryPluginLoader, } from '@atlas/wasm-host';

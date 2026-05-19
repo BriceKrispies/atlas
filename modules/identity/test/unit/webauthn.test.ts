@@ -13,7 +13,7 @@
  * The crypto branches are listed as `it.todo` so the e2e gap is
  * visible in test reports.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON, } from '@simplewebauthn/server';
 import { handleWebAuthnRegisterBegin, handleWebAuthnRegisterFinish, handleWebAuthnAssertBegin, handleWebAuthnAssertFinish, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';

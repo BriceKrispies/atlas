@@ -7,7 +7,7 @@
  * scenario coverage in `../handlers.test.ts` exercises the dispatcher
  * relation-edge wiring; this file owns pure-handler branches.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleMembershipCreate, handleUserCreate, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedUser(fx: ReturnType<typeof newFixture>, email = 'user@example.com'): Promise<string> {

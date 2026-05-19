@@ -9,7 +9,7 @@
  * Skipped silently when TEST_TENANT_DB_URL is unset (matches the rest of
  * the @atlas/adapter-node test suite).
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from '@atlas/test';
 import postgres from 'postgres';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { PostgresCustomDomainStore, runMigrations } from '../src/index.ts';

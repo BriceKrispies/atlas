@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { sortRows, nextSortDir, defaultCompare } from '../src/data-table/sort-core.ts';
 describe('sort-core', function () {
     it('sortRows asc numeric', function () {

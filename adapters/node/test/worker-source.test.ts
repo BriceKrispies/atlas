@@ -4,7 +4,7 @@
  * set. Imports the implementation directly because the public re-export
  * (`adapters/node/src/index.ts`) hasn't been added yet.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { PostgresEventStore } from '../src/index.ts';

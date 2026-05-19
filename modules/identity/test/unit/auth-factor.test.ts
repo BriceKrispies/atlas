@@ -6,7 +6,7 @@
  * `recovery-code.ts`). Those tests cover enrollment branches; this
  * file owns the revoke branches and the last-factor-protected guard.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleTotpEnroll, handleFactorRevoke, IdentityError, identityErrorCodes, DEFAULT_IDENTITY_POLICY, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function enrollTotp(fx: ReturnType<typeof newFixture>, userId = 'user-1', name = 'phone-1') {

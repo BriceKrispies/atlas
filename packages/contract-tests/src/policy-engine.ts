@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { PolicyEngine, PolicyEvaluationRequest, } from '@atlas/ports';
 interface MakeRequestOptions {
     principalId?: string;

@@ -7,7 +7,7 @@
  * SAML response fixture — deferred to a follow-up slice that pairs
  * with the external security review the plan flagged.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import type { Compression } from '@atlas/ports';
 import { buildAuthnRequest, generateSamlSpKey, parseIdpMetadata, DEFAULT_SAML_ATTRIBUTE_MAPPINGS, identityErrorCodes, } from '../src/index.ts';

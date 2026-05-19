@@ -2,7 +2,7 @@
  * Unit tests for MfaBypass handlers (Layer 1).
  * Combined: `Identity.MfaBypass.{Issue, Use}`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleMfaBypassIssue, handleMfaBypassUse, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 describe('handleMfaBypassIssue', function () {

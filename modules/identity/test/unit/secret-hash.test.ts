@@ -24,7 +24,7 @@
  * canonical extracted helper, so the two tests pin the same surface
  * from both sides.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { hashSecret, lookupOf } from '../../src/index.ts';
 describe('hashSecret — pinned SHA-256 test vectors (security-critical)', function () {
     it('hashes the empty string to the FIPS 180-4 zero-length digest', function () {

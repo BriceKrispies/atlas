@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { buildSecuritySchemes } from '../src/security-schemes.ts';
 describe('buildSecuritySchemes', function () {
     it('tenant has bearerAuth + apiKeyAuth + oauth2ClientCredentials', function () {

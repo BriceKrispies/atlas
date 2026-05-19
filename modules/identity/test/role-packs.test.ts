@@ -6,7 +6,7 @@
  * the bundle hash is reproducible), and the structural shape of the
  * emitted Cedar text.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { ActionDeclaration } from '@atlas/platform-core';
 import { buildRolePacksCedar, buildRolePackBundle } from '../src/index.ts';
 const ACTIONS: ActionDeclaration[] = [

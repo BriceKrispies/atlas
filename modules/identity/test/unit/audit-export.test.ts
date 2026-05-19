@@ -6,7 +6,7 @@
  * destination must carry either keys OR roleArn auth; every event
  * carries `retentionTag: 'retention:1y'` for the config audit trail.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleAuditExportConfigure, handleAuditExportActivate, handleAuditExportDisable, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 const VALID_DEST = {

@@ -16,7 +16,7 @@
  * imports aren't supported by the workspace exports map; the two files are
  * deliberately kept identical for the basic port factories).
  */
-import { vi } from 'vitest';
+import { vi } from '@atlas/test';
 import type { Cache, CatalogStateStore, Entity, EntityStore, EventStore, ProjectionStore, RelationStore, Relation, SearchEngine, StoredEvent, } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 // ── Cache ───────────────────────────────────────────────────────────

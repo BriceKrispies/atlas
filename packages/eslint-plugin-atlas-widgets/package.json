@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "atlas-test"
   },
   "peerDependencies": {
     "eslint": "^9.0.0"

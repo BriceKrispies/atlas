@@ -25,7 +25,7 @@
  * central loader. The duplicated-copy `$id` is the single source of truth
  * for this path.
  */
-import { test, expect } from 'vitest';
+import { test, expect } from '@atlas/test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';

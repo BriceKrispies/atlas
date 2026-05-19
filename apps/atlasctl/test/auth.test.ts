@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { resolveCredential, AuthError } from '../src/auth.ts';
 describe('resolveCredential precedence', function () {
     it('flag api-key wins over env and config', function () {

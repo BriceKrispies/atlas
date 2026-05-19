@@ -9,7 +9,7 @@
  * Spec-vs-impl drifts noted inline (e.g. invite "consumed" → impl
  * "accepted"). Resolve in a follow-up; not in scope for the spike.
  */
-import { expect } from 'vitest';
+import { expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { IdentityError, generateSecret, handleInviteAccept, handlePasswordLogin, handlePasswordSet, hashPassword, hashSecret, lookupOf, membershipEntityIdFor, newInviteTokenId, newUserId, putInviteTokenEntity, putUserEntity, putMembershipEntity, type InviteTokenDocument, type MembershipDocument, type UserDocument, } from '@atlas/identity';
 import { StepRegistry } from './runner.ts';

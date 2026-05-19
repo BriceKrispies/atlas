@@ -1,4 +1,4 @@
-import { afterAll, describe, it } from 'vitest';
+import { afterAll, describe, it } from '@atlas/test';
 import { RuleTester } from '@typescript-eslint/rule-tester';
 import rule from '../src/rules/no-cross-widget-reach.ts';
 

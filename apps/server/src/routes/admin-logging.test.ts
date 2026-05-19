@@ -11,7 +11,7 @@
  *   - GET /correlation/:id/recent returns events from the inspection sink
  *   - invalid level rejected with 400
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@atlas/test';
 import { Hono } from 'hono';
 import { CollectorSink, InMemoryLevelController, LogPipeline, MemoryRingBufferSink, } from '@atlas/logging';
 import type { LogEvent } from '@atlas/logging';

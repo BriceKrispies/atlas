@@ -12,7 +12,7 @@
  * Postgres cluster but namespaced by `database`, so reusing the existing
  * test DB is safe and keeps the harness uniform with the adapter suite.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from '@atlas/test';
 import postgres from 'postgres';
 import { CollectorSink, InMemoryLevelController, LogPipeline, createSystemContext, } from '@atlas/logging';
 import { acquireLeadership } from '../src/leader.ts';

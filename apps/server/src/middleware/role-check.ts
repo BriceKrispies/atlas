@@ -30,6 +30,7 @@ import {
   PostgresEntityStore,
   PostgresRelationStore,
 } from '@atlas/adapter-node';
+import type { EntityStore, RelationStore } from '@atlas/ports';
 import {
   MEMBERSHIP_ENTITY_TYPE,
   MEMBERSHIP_USER_EDGE,
@@ -48,6 +49,29 @@ export const PLATFORM_SUPPORT_ROLE = 'PlatformSupport';
 export const TENANT_ADMIN_ROLE = 'TenantAdmin';
 
 /**
+ * Production-default stores factory. Tests override via
+ * {@link __setRoleCheckStoresForTest} so the role-check helpers can run
+ * over in-memory shims without spinning up Postgres.
+ */
+async function _defaultRoleCheckStores(
+  state: AppState,
+  tenantId: string,
+): Promise<{ entities: EntityStore; relations: RelationStore }> {
+  const sql = await ensureTenantMigrated(state, tenantId);
+  return {
+    entities: new PostgresEntityStore(sql),
+    relations: new PostgresRelationStore(sql),
+  };
+}
+let _roleCheckStores: typeof _defaultRoleCheckStores = _defaultRoleCheckStores;
+/** @internal — test-only override hook. */
+export function __setRoleCheckStoresForTest(
+  fn: typeof _defaultRoleCheckStores | null,
+): void {
+  _roleCheckStores = fn ?? _defaultRoleCheckStores;
+}
+
+/**
  * Returns the active Membership for `(tenantId, userId)`, or null when
  * none exists / it's not active. Resolves via the
  * `MEMBERSHIP_USER_EDGE` cross-partition relation rather than scanning
@@ -59,9 +83,7 @@ async function findMembership(
   userId: string,
 ): Promise<MembershipDocument | null> {
   if (!userId) return null;
-  const sql = await ensureTenantMigrated(state, tenantId);
-  const entities = new PostgresEntityStore(sql);
-  const relations = new PostgresRelationStore(sql);
+  const { entities, relations } = await _roleCheckStores(state, tenantId);
   // The userId-keyed cross-partition relation has the membership entity_id
   // on `fromId`. There can only be one Membership per (tenant, user) by
   // construction (membershipEntityIdFor is derived from userId).

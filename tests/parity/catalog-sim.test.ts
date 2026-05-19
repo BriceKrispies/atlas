@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { createSimIngress, makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';

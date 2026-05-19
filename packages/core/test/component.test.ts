@@ -11,7 +11,7 @@
  *   - AtlasSurface state machine emits Surface.State.<from>.<to> transitions
  *   - _safeRender swallows render throws and emits Atlas.Render.Failed
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { AtlasElement, AtlasSurface, html } from '../src/index.ts';
 import { setTelemetrySink, type TelemetryEvent, type TelemetrySink, } from '../src/telemetry-pipeline.ts';

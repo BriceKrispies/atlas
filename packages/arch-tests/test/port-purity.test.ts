@@ -10,7 +10,7 @@
  *
  * Reference: ports/CLAUDE.md, .dependency-cruiser.cjs ▸ ports-no-impls
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { findImportViolations } from './_dependency-scan.ts';
 describe('ports/ purity', function () {
     it('ports/src does not import node:crypto', async function () {

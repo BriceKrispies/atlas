@@ -5,7 +5,7 @@
  * `StructuredAuthz.PolicyEvaluated` contract from `specs/crosscut/events.md`
  * and that the deny/permit emission gate honours `AUDIT_EMIT_PERMITS`.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@atlas/test';
 import type { PolicyDecision, PolicyEvaluationRequest } from '@atlas/ports';
 import { POLICY_EVALUATED_EVENT_TYPE, POLICY_EVALUATED_SCHEMA_ID, policyEvaluatedEvent, shouldEmitPolicyEvaluated, } from '../src/audit-emitter.ts';
 /**

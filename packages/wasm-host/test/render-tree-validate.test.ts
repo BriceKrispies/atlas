@@ -31,7 +31,7 @@
  * `kind` + `detail`, plus a string `invariant` tag (V1..V17) so tests
  * can assert the precise rule that fired.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 // Intentionally unresolvable today — this is the red-phase API target.
 // Both symbols MUST be re-exported from `@atlas/wasm-host`'s root.
 import { validateRenderTree, RenderTreeError, MAX_SERIALIZED_OUTPUT, } from '@atlas/wasm-host';

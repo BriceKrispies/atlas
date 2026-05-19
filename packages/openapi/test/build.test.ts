@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { buildOpenApi } from '../src/build.ts';
 import type { BuildOpenApiInput, ModuleManifest } from '../src/types.ts';

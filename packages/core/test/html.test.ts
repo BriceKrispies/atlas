@@ -5,7 +5,7 @@
  * conditional / array interpolation. Linkedom-backed (set up globally by
  * `test-setup/linkedom-shims.ts`, which installs `NodeFilter` etc).
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { html } from '../src/html.ts';
 // ── helpers ─────────────────────────────────────────────────────────

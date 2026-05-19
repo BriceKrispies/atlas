@@ -9,7 +9,7 @@
  * focused on the I10 contract and is the unit test the SDET pass
  * flagged as missing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { emitNotificationsForA7Event, IMPERSONATION_RETENTION_TAG, } from '../../src/index.ts';
 import { assertEventTags, newFixture } from '../lib/fixtures.ts';

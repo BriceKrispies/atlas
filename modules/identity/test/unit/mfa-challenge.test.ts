@@ -11,7 +11,7 @@
  * `unit/webauthn.test.ts`. WebAuthn requires real CBOR-encoded
  * assertions; that branch is covered in `a5-acceptance.test.ts`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleSessionIssue, handleTotpEnroll, handleMfaChallengeSubmit, hotp, decryptSecret, IdentityError, identityErrorCodes, type AuthSessionDocument, type AuthFactorDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function setup(fx: ReturnType<typeof newFixture>, userId = 'user-1') {

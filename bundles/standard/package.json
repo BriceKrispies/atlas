@@ -30,8 +30,8 @@
     "./bundle.manifest.json": "./src/bundle.manifest.json"
   },
   "scripts": {
-    "test:register": "vitest run test/register.test.ts",
-    "test:register-templates": "vitest run test/register-templates.test.ts"
+    "test:register": "atlas-test test/register.test.ts",
+    "test:register-templates": "atlas-test test/register-templates.test.ts"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

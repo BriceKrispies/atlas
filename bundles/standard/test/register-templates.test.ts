@@ -14,7 +14,7 @@
  *   5. Checks bundle.manifest.json's provides.templates list matches the
  *      shipped template ids exactly.
  */
-import { test, expect } from 'vitest';
+import { test, expect } from '@atlas/test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';

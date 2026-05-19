@@ -5,7 +5,7 @@
  * helpers. Wiring these into the principal middleware is exercised
  * by the route-level integration tests in `apps/server`.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { DEFAULT_RISK_ACK_WINDOW_SECONDS, DEFAULT_RISK_POLICY, acknowledgeStepUp, defaultRiskScorer, evaluateRiskGate, fixedRiskScorer, type AuthSessionDocument, } from '../src/index.ts';
 function fakeSession(overrides: Partial<AuthSessionDocument> = {}): AuthSessionDocument {

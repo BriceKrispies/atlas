@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 import { redact, sensitive, isSensitive } from '../src/index.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';

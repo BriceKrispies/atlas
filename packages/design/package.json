@@ -12,7 +12,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "atlas-test"
   },
   "dependencies": {
     "@atlas/core": "workspace:*",

@@ -25,12 +25,14 @@
  *     registry. Catches drift cheaply.
  */
 
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { catalogHandlerRegistry } from '@atlas/catalog';
 import type { IntentHandler, HandlerRegistry } from '@atlas/ports';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..');
 const BOOTSTRAP_TS = join(REPO_ROOT, 'apps', 'server', 'src', 'bootstrap.ts');
 const STATE_TS = join(REPO_ROOT, 'apps', 'server', 'src', 'middleware', 'state.ts');

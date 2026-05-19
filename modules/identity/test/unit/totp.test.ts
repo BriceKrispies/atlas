@@ -7,7 +7,7 @@
  * coverage: envelope shape, exact cache tags, error codes, the
  * locked / non-totp / decrypt-failure branches.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleTotpEnroll, handleTotpChallenge, hotp, decryptSecret, identityErrorCodes, IdentityError, DEFAULT_IDENTITY_POLICY, type TotpFactorAttrs, type AuthFactorDocument, type WebAuthnFactorAttrs, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function enroll(fx: ReturnType<typeof newFixture>, userId = 'user-1') {

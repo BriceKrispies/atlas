@@ -23,7 +23,7 @@
  * For a Postgres-backed integration test, see the planned suite under
  * `tests/integration/` (separate slice).
  */
-import { describe, expect, test, beforeEach, vi } from 'vitest';
+import { describe, expect, test, beforeEach } from '@atlas/test';
 import { Hono } from 'hono';
 import type { EventEnvelope } from '@atlas/platform-core';
 // ----------------------------------------------------------------------
@@ -251,43 +251,21 @@ class InMemoryRelationStore implements RelationStore {
 const events = new InMemoryEventStore();
 const entities = new InMemoryEntityStore();
 const relations = new InMemoryRelationStore();
-vi.mock('../bootstrap.ts', async function () {
-    const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
-    // Stand-in for the postgres `Sql` handle: the @atlas/adapter-node
-    // module mock below intercepts every consumer of the handle
-    // (constructors return the in-memory stores), so the handle's
-    // runtime shape doesn't matter. Returning `Promise<undefined>` is
-    // assignable to the spec because vitest's `vi.fn<T>()` typing for
-    // bound function-shape generics widens the return to `unknown`,
-    // which `actual` then spreads through unchanged.
-    const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async function () {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced. The handler-facing API never sees the placeholder shape, and there's no postgres.Sql fixture to satisfy the type without `unknown` widening.
-        return undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
-    };
-    return {
-        ...actual,
-        ensureTenantMigrated: vi.fn(ensureTenantMigrated),
-    };
+// Inject the in-memory stores via the route's test-only factory hook
+// (`__setStoresFactoryForTest`). Replaces the vitest-style module mocks
+// that targeted `../bootstrap.ts` and `@atlas/adapter-node` — Node ESM
+// has no equivalent, so the route owns a swap-point for tests.
+import { __setStoresFactoryForTest } from './identity-a7.ts';
+import { __setRoleCheckStoresForTest } from '../middleware/role-check.ts';
+__setStoresFactoryForTest(async function () {
+    return { eventStore: events, entities, relations };
 });
-vi.mock('@atlas/adapter-node', async function () {
-    const actual = await vi.importActual<typeof import('@atlas/adapter-node')>('@atlas/adapter-node');
-    // Function expressions (not arrow functions) so the production code's
-    // `new PostgresEntityStore(sql)` can invoke them as constructors.
-    function FakeEventStore(this: unknown): unknown {
-        return events;
-    }
-    function FakeEntityStore(this: unknown): unknown {
-        return entities;
-    }
-    function FakeRelationStore(this: unknown): unknown {
-        return relations;
-    }
-    return {
-        ...actual,
-        PostgresEventStore: FakeEventStore,
-        PostgresEntityStore: FakeEntityStore,
-        PostgresRelationStore: FakeRelationStore,
-    };
+// `assertPlatformOperator` / `assertTenantAdmin` (in role-check.ts) open
+// their own connection via `ensureTenantMigrated`; redirect them at the
+// same in-memory shims so role gates evaluate against the seeded
+// memberships rather than crashing on a missing Postgres pool.
+__setRoleCheckStoresForTest(async function () {
+    return { entities, relations };
 });
 // ----------------------------------------------------------------------
 // Test fixtures: build a Hono app with the routes mounted and a custom

@@ -13,7 +13,7 @@
  * The real integration (per-tenant pool wiring + the boot log line) is
  * exercised by the BDD scenario added in slice 4.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import type { Entity, EntityStore, EntityWriteInput } from '@atlas/ports';
 import {
   PLATFORM_ADMIN_EMAIL,

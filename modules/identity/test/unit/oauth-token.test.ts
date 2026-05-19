@@ -7,7 +7,7 @@
  * (RFC 7009 §2.2: respond 200 even on unknown token; we return null
  * envelope so the route emits no audit).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleApiKeyCreate, handleApiKeyRevoke, handleOAuthIssueToken, handleOAuthRevokeToken, handleServicePrincipalCreate, IdentityError, identityErrorCodes, type ApiKeyDocument, type ServicePrincipalDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedSpAndKey(fx: ReturnType<typeof newFixture>, scopes: string[] = ['read', 'write']): Promise<{

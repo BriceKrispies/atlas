@@ -63,12 +63,18 @@ export class SmtpMailer implements Mailer {
     private readonly sql: postgres.Sql,
     config: SmtpMailerConfig,
     private readonly logger?: Logger,
+    /**
+     * Transport factory override. Tests inject a stub here to avoid spinning
+     * up nodemailer's real transport. Production callers omit this and get
+     * the pooled SMTP transport from `nodemailer.createTransport`.
+     */
+    transportFactory: typeof createTransport = createTransport,
   ) {
     // Transport is owned by the adapter so apps/server doesn't need a
     // direct dependency on `nodemailer`. Pool=true keeps a small set of
     // long-lived TCP connections to the relay, which is what we want
     // for a server that sends a steady trickle of magic-link mail.
-    this.transport = createTransport({
+    this.transport = transportFactory({
       host: config.host,
       port: config.port,
       pool: true,

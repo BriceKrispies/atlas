@@ -25,7 +25,7 @@
  * RED PHASE: this file is expected to fail compilation today because
  * `privacy` is not yet on `CacheSetOptions`.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { PostgresCache } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';
 if (HAS_DB) {

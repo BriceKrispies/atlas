@@ -11,7 +11,7 @@
  * → broadcast wiring is verified by publishing directly to the broadcast,
  * which is the same surface the production dispatcher targets.
  */
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach } from '@atlas/test';
 import { Hono } from 'hono';
 import type { AppState } from '../bootstrap.ts';
 import { ServerEventBroadcast } from '../events/broadcast.ts';
@@ -139,6 +139,12 @@ describe('GET /api/v1/events', function () {
     beforeEach(function () {
         broadcast = new ServerEventBroadcast(64);
         app = buildApp(makeState(broadcast));
+    });
+    afterEach(function () {
+        // Drain every subscriber so the SSE route's `for await` exits
+        // and the keepalive `setInterval` clears. Without this the test
+        // process hangs under node:test (vitest used to force-kill).
+        broadcast.closeAllSubscribers();
     });
     test('rejects unauthenticated requests', async function () {
         const res = await app.request('/api/v1/events');

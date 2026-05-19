@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { buildCacheKey, renderTags, validateCacheArtifact, extractPlaceholder, extractAllPlaceholders, CacheError, type CacheArtifact, } from '@atlas/platform-core';
 /**
  * TS parity tests for `crates/core/src/cache.rs`. Each test mirrors the

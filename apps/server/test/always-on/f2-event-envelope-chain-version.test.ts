@@ -17,10 +17,12 @@
  * envelope-stamped version, and stale-version events fail loud rather than
  * silently running the wrong chain.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { EventEnvelope } from '@atlas/platform-core';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..');
 const ENVELOPE_SCHEMA = join(REPO_ROOT, 'packages', 'schemas', 'src', 'generated', 'event_envelope.schema.json');
 describe('F2 — event envelope dispatcherChainVersion (always-on §4.2 / I5)', function () {

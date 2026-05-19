@@ -7,7 +7,7 @@
  * (`atlas-sim-<tenantId>`), so writing into A's catalog state must be invisible
  * from B's ingress instance.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 describe('[sim] tenant_isolation parity', function () {

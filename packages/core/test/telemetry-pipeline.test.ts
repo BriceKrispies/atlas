@@ -9,7 +9,7 @@
  *  - sink errors thrown inside write() do not propagate to emitTelemetry
  *  - timestamp stamping is automatic
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { setTelemetrySink, getTelemetrySink, emitTelemetry, ConsoleJsonSink, BeaconHttpSink, type TelemetrySink, type TelemetryEvent, } from '../src/telemetry-pipeline.ts';
 // ── helpers ─────────────────────────────────────────────────────────

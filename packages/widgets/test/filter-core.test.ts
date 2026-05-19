@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { filterRows, type FilterableColumn } from '../src/data-table/filter-core.ts';
 interface TestRow extends Record<string, unknown> {
     id: number;

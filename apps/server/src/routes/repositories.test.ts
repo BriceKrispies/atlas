@@ -13,7 +13,7 @@
  * runs unchanged. `ensureTenantMigrated` is stubbed to a no-op since
  * the test doesn't need real Postgres pools.
  */
-import { describe, expect, test, beforeEach, vi } from 'vitest';
+import { describe, expect, test, beforeEach } from '@atlas/test';
 import { Hono } from 'hono';
 /**
  * Boundary reader for the route's JSON responses. The wire shape is the
@@ -154,44 +154,14 @@ class InMemoryRevisionStore implements RepositoryRevisionStore {
 const repositories = new InMemoryRepositoryStore();
 const revisions = new InMemoryRevisionStore();
 // ----------------------------------------------------------------------
-// Mocks: short-circuit `ensureTenantMigrated` and replace adapter
-// constructors with the in-memory shims. Same pattern as
-// `identity-a7.test.ts`.
+// Inject in-memory stores via the route's test-only factory hook.
+// Replaces the legacy `vi.mock('../bootstrap.ts')` + `vi.mock('@atlas/adapter-node')`
+// pattern — Node ESM modules are immutable post-import, so the route
+// owns a swap-point for tests instead.
 // ----------------------------------------------------------------------
-vi.mock('../bootstrap.ts', async function () {
-    const actual = await vi.importActual<typeof import('../bootstrap.ts')>('../bootstrap.ts');
-    // Same shim shape as `identity-a7.test.ts`: the route never dereferences
-    // the returned postgres.Sql handle (the @atlas/adapter-node mock below
-    // replaces the stores wholesale), so a no-op implementation is fine.
-    // The double-cast through `unknown` is the documented boundary: there's
-    // no postgres.Sql fixture lean enough to instantiate from a test.
-    const ensureTenantMigrated: typeof actual.ensureTenantMigrated = async function () {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — @atlas/adapter-node mock prevents the returned Sql handle from being dereferenced; identity-a7.test.ts uses the same shim shape with the same justification.
-        return undefined as unknown as Awaited<ReturnType<typeof actual.ensureTenantMigrated>>;
-    };
-    return {
-        ...actual,
-        ensureTenantMigrated: vi.fn(ensureTenantMigrated),
-    };
-});
-vi.mock('@atlas/adapter-node', async function () {
-    const actual = await vi.importActual<typeof import('@atlas/adapter-node')>('@atlas/adapter-node');
-    // Function expressions (not arrows) so `new PostgresRepositoryStore(sql)`
-    // can invoke them as constructors. The route code passes a `tenantId`
-    // on every method call — the shims read it explicitly so cross-tenant
-    // queries return the right null/empty result (the real adapter relies
-    // on the per-tenant connection pool for that isolation).
-    function FakeRepositoryStore(this: unknown): unknown {
-        return repositories;
-    }
-    function FakeRepositoryRevisionStore(this: unknown): unknown {
-        return revisions;
-    }
-    return {
-        ...actual,
-        PostgresRepositoryStore: FakeRepositoryStore,
-        PostgresRepositoryRevisionStore: FakeRepositoryRevisionStore,
-    };
+import { __setStoresFactoryForTest } from './repositories.ts';
+__setStoresFactoryForTest(async function () {
+    return { repositories, revisions };
 });
 // ----------------------------------------------------------------------
 // Test fixtures.

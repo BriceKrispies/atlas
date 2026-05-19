@@ -12,7 +12,7 @@
  *   - `expect` clause flips ok=true into reported ok=false on mismatch.
  */
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { canonicalJsonStringify, deriveCorrelationId, deriveIdempotencyKey, runScenario, } from '../src/index.ts';
 import type { IntentDriver, IntentResult, RunnerDeps, Scenario, ScenarioRef, SeedCorpus, } from '../src/index.ts';
 import type { Crypto } from '@atlas/ports';

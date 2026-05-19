@@ -4,7 +4,7 @@
  * as a SHOULD-FIX (cross-cutting cache-tag invalidation could miss
  * firing when an upstream projection rebuild threw).
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { composeDispatchers } from '../src/dispatcher.ts';
 function envelope(): EventEnvelope {
@@ -114,6 +114,6 @@ describe('composeDispatchers', function () {
             spy();
         });
         await expect(dispatch(envelope())).rejects.toBeUndefined();
-        expect(spy).toHaveBeenCalledOnce();
+        expect(spy).toHaveBeenCalledTimes(1);
     });
 });

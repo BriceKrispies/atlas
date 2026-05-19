@@ -15,7 +15,7 @@
  *   - Defensive tenant cross-check (rare, but covered).
  *   - Ring cap (revokedRefreshTokenHashes capped at 16).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { handleSessionIssue, handleSessionRefresh, handleSessionRevoke, IdentityError, identityErrorCodes, type AuthSessionDocument, DEFAULT_SESSION_POLICY, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';

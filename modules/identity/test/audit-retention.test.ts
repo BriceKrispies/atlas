@@ -4,7 +4,7 @@
  * Pure-function coverage for `audit-retention.ts`. The integration with
  * the audit-export pipeline lives in `a4-acceptance.test.ts`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { PLATFORM_RETENTION_FLOOR, isPlatformFloorRetention, shouldExportEvent, effectiveRetentionDays, } from '../src/index.ts';
 describe('audit-retention: PLATFORM_RETENTION_FLOOR', function () {
     it('contains exactly the 7y and 10y tags', function () {

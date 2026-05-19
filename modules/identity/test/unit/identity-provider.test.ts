@@ -5,7 +5,7 @@
  * are exercised by the SAML ACS / OIDC route paths in
  * `../a3-acceptance.test.ts` / `../a6-acceptance.test.ts`).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleIdpConfigure, handleIdpActivate, handleIdpDisable, handleIdpRotateJwks, handleJitProvision, IdentityError, identityErrorCodes, type IdentityProviderDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function configureIdp(fx: ReturnType<typeof newFixture>, overrides: Partial<Parameters<typeof handleIdpConfigure>[0]> = {}): Promise<IdentityProviderDocument> {

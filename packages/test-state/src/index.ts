@@ -36,10 +36,16 @@ declare global {
 // The outer guard lets this module be imported by plain Node tools
 // (dry-run scripts, unit tests) where `import.meta.env` is undefined.
 // In a Vite prod build the whole expression folds to `false`.
+//
+// Test override: tests stamping `globalThis.__ATLAS_TEST_STATE_DEV__` before
+// the module loads can force-flip DEV_MODE. The legacy vitest harness flipped
+// it via `import.meta.env.DEV`, but Node ESM doesn't share `import.meta`
+// across module instances — so the override has to live on globalThis.
 const metaEnv: ImportMetaEnv | undefined = (import.meta as {
     env?: ImportMetaEnv;
 }).env;
-const DEV_MODE: boolean = !!(metaEnv && metaEnv.DEV === true);
+const _devOverride = (globalThis as { __ATLAS_TEST_STATE_DEV__?: boolean }).__ATLAS_TEST_STATE_DEV__;
+const DEV_MODE: boolean = _devOverride !== undefined ? _devOverride : !!(metaEnv && metaEnv.DEV === true);
 const readers: Map<string, TestStateReader> | null = DEV_MODE ? new Map() : null;
 /**
  * Register a reader for a state key. Returns an unregister function.

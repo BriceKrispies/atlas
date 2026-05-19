@@ -20,7 +20,7 @@
  * with all relevant tables truncated, so test cases don't cross-contaminate.
  */
 import postgres from 'postgres';
-import { afterAll, beforeAll } from 'vitest';
+import { afterAll, beforeAll } from '@atlas/test';
 import { runMigrations } from '../src/index.ts';
 export const TEST_DB_URL = process.env['TEST_TENANT_DB_URL'];
 export const HAS_DB = typeof TEST_DB_URL === 'string' && TEST_DB_URL.length > 0;

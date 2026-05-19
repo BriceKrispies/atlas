@@ -18,7 +18,7 @@
  * not just on whatever sample of behavior a runtime test happened to
  * exercise.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -13,7 +13,7 @@
  * than the ~30s a 4096-bit pair takes; the assertions are about
  * envelope shape + idempotency, not key strength.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleSamlSpKeyGenerate, handleSamlSpKeyRotate, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { assertEventTags, newFixture } from '../lib/fixtures.ts';
 /**

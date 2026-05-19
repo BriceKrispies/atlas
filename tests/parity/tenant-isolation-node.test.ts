@@ -14,7 +14,7 @@
  * black-box request-level test below is the strongest assertion the parity
  * suite can make without bypassing the HTTP layer.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { uniqueIdempotencyKey, validIntent } from './lib/intent-fixtures.ts';

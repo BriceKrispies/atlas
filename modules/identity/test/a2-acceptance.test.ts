@@ -10,7 +10,7 @@
  * a scenario should land here in lockstep so the @phase-a2 set stays
  * truthful.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { handleApiKeyCreate, handleApiKeyRevoke, handleApiKeyRotate, handleInviteAccept, handleInviteIssue, handleOAuthIssueToken, handleOAuthRevokeToken, handlePasswordLogin, handlePasswordSet, handleServicePrincipalCreate, handleServicePrincipalDisable, handleSessionRefresh, handleSessionRevokeAllForUser, getApiKeyEntity, getOAuthTokenEntity, getServicePrincipalEntity, getSessionEntity, IdentityError, identityErrorCodes, parseApiKeyBearer, } from '../src/index.ts';
 import { assertEventTags, newFixture, dispatchAll } from './lib/fixtures.ts';

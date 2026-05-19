@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { Compression } from '@atlas/ports';
 const utf8 = new TextEncoder();
 /**

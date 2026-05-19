@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { IdbEventStore } from '@atlas/adapter-idb';
 import { IdbWorkerSource } from '../src/worker-source.ts';

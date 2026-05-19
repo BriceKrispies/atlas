@@ -2,7 +2,7 @@
  * Handler unit tests against an in-memory PolicyStore. Exercises the
  * three write handlers' contract behaviour without a real Postgres.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleCreatePolicy, handleActivatePolicy, handleArchivePolicy, AuthzError, authzErrorCodes, type PolicyStore, type PolicyDetail, type PolicySummary, type PolicyStatus, } from '../src/index.ts';
 interface Row {
     tenantId: string;

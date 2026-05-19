@@ -11,7 +11,7 @@
  * validateManifest. Also checks the bundle manifest's provides.widgets
  * list against the set of registered ids.
  */
-import { test, expect } from 'vitest';
+import { test, expect } from '@atlas/test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';

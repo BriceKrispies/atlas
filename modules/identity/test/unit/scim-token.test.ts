@@ -4,7 +4,7 @@
  *
  * Auth-issuing — secret hygiene assertions are mandatory.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleScimTokenEnable, handleScimTokenRotate, handleScimTokenRevoke, IdentityError, identityErrorCodes, type ScimTokenDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedActive(fx: ReturnType<typeof newFixture>): Promise<{

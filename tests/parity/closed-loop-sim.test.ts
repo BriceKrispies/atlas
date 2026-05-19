@@ -6,7 +6,7 @@
  * The Rust suite uses page-create; the TS sim wires only the catalog module,
  * so we use seed-apply as the equivalent end-to-end exerciser.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { intentWithUnknownAction, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';

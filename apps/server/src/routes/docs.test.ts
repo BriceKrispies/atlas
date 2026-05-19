@@ -10,7 +10,7 @@
  * The actual spec content is asserted in packages/openapi tests; this
  * file only verifies the route plumbing.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Hono } from 'hono';
 import { CollectorSink, InMemoryLevelController, LogPipeline, MemoryRingBufferSink, } from '@atlas/logging';
 import { tenantDocsRoutes, operatorDocsRoutes } from './docs.ts';

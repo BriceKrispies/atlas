@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 describe('AtlasExecutionContext inheritance — immutable .with*()', function () {

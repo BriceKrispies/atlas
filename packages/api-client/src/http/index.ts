@@ -6,8 +6,12 @@
  */
 import { emitTelemetry } from '@atlas/core';
 import type { Backend, BackendEventCallback, SerializedServerEvent, SerializedServerEventCallback, Unsubscribe, } from '../backend.ts';
-const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
-const TENANT_ID: string = import.meta.env.VITE_TENANT_ID ?? 'tenant-001';
+// `import.meta.env` is Vite-injected; under raw Node ESM (the test harness,
+// SSR) it can be undefined. Read through an optional chain so the module
+// loads in both worlds — production frontend builds still go through Vite.
+const _viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+const API_URL: string = _viteEnv?.VITE_API_URL ?? 'http://localhost:3000';
+const TENANT_ID: string = _viteEnv?.VITE_TENANT_ID ?? 'tenant-001';
 // TODO: Auth headers (Bearer token from @atlas/auth) will be injected here
 function headers(): Record<string, string> {
     return {

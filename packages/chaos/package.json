@@ -11,6 +11,6 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "vitest": "^4.1.5"
+    "@atlas/test": "workspace:*"
   }
 }

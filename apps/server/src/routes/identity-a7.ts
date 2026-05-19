@@ -38,9 +38,35 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { PostgresEntityStore, PostgresEventStore, PostgresRelationStore, } from '@atlas/adapter-node';
+import type { EntityStore, EventStore, RelationStore } from '@atlas/ports';
 import { handleBreakGlassApprove, handleBreakGlassDeny, handleBreakGlassIssue, handleBreakGlassRevoke, handleImpersonationEnd, handleImpersonationStart, identityDispatcher, IdentityError, listActiveImpersonationsForTenant, listGrantsForTenant, } from '@atlas/identity';
 import type { AppState } from '../bootstrap.ts';
 import { ensureTenantMigrated } from '../bootstrap.ts';
+
+/**
+ * Production wiring: open a tenant-scoped Postgres handle and instantiate the
+ * three stores the impersonation / break-glass flows touch. Tests override
+ * this whole bundle via `__setStoresFactoryForTest` so they can hand the
+ * routes in-memory fakes without spinning up Postgres.
+ */
+async function _defaultStoresForTenant(
+  state: AppState,
+  tenantId: string,
+): Promise<{ eventStore: EventStore; entities: EntityStore; relations: RelationStore }> {
+  const sql = await ensureTenantMigrated(state, tenantId);
+  return {
+    eventStore: new PostgresEventStore(sql),
+    entities: new PostgresEntityStore(sql),
+    relations: new PostgresRelationStore(sql),
+  };
+}
+let _storesFactory: typeof _defaultStoresForTenant = _defaultStoresForTenant;
+/** @internal — test-only override hook. */
+export function __setStoresFactoryForTest(
+  fn: typeof _defaultStoresForTenant | null,
+): void {
+  _storesFactory = fn ?? _defaultStoresForTenant;
+}
 import { errorEnvelope, errorResponse, jsonErrorEnvelope, } from '../middleware/errors.ts';
 import { correlationIdFor } from '../middleware/correlation.ts';
 import { assertPlatformOperator, assertTenantAdmin, } from '../middleware/role-check.ts';
@@ -259,10 +285,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'readonlyResourceTypes must be string[]', 400, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleImpersonationStart({
                 tenantId,
                 correlationId,
@@ -313,10 +336,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'tenantId + impersonationId required', 400, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleImpersonationEnd({
                 tenantId,
                 correlationId,
@@ -358,10 +378,7 @@ export function identityA7Routes(state: AppState): Hono<{
         if (denial)
             return denial;
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleImpersonationEnd({
                 tenantId,
                 correlationId,
@@ -408,8 +425,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'PRINCIPAL_INVALID', 'tenant admin or platform operator required', 403, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const entities = new PostgresEntityStore(sql);
+            const { entities } = await _storesFactory(state, tenantId);
             const sessions = await listActiveImpersonationsForTenant(entities, tenantId);
             return c.json({
                 impersonations: sessions.map(function (s) {
@@ -489,10 +505,7 @@ export function identityA7Routes(state: AppState): Hono<{
             }
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const requireApproval = typeof body['requireApproval'] === 'boolean'
                 ? (body['requireApproval'] as boolean)
                 : true;
@@ -544,10 +557,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'tenantId + grantId required', 400, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleBreakGlassApprove({
                 tenantId,
                 correlationId,
@@ -586,10 +596,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'SCHEMA_VALIDATION_FAILED', 'tenantId + grantId required', 400, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleBreakGlassDeny({
                 tenantId,
                 correlationId,
@@ -628,10 +635,7 @@ export function identityA7Routes(state: AppState): Hono<{
         if (denial)
             return denial;
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const eventStore = new PostgresEventStore(sql);
-            const entities = new PostgresEntityStore(sql);
-            const relations = new PostgresRelationStore(sql);
+            const { eventStore, entities, relations } = await _storesFactory(state, tenantId);
             const result = await handleBreakGlassRevoke({
                 tenantId,
                 correlationId,
@@ -672,8 +676,7 @@ export function identityA7Routes(state: AppState): Hono<{
             return errorResponse(c, 'PRINCIPAL_INVALID', 'tenant admin or platform operator required', 403, correlationId);
         }
         try {
-            const sql = await ensureTenantMigrated(state, tenantId);
-            const entities = new PostgresEntityStore(sql);
+            const { entities } = await _storesFactory(state, tenantId);
             const grants = await listGrantsForTenant(entities, tenantId);
             return c.json({
                 grants: grants.map(function (g) {

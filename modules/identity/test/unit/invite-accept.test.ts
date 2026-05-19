@@ -13,7 +13,7 @@
  * `INVITE_ALREADY_USED` because the first call flipped the invite
  * status — this is asserted in the error-paths block.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleInviteIssue, handleInviteAccept, IdentityError, identityErrorCodes, DEFAULT_SESSION_POLICY, type SessionPolicy, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedPendingInvite(fx: ReturnType<typeof newFixture>, email: string, rolesOnAccept: ReadonlyArray<string> = ['Author'], ttlSeconds?: number): Promise<{

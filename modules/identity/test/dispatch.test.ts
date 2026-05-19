@@ -27,7 +27,7 @@
  * own per-handler unit tests, plus `dispatchIdentityEvent` itself is the
  * same code path regardless of source.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleApiKeyCreate, handleApiKeyRotate, handleApiKeyRevoke, handleAuditExportConfigure, handleAuditExportActivate, handleAuditExportDisable, handleIdpConfigure, handleIdpActivate, handleIdpDisable, handleIdpRotateJwks, handleInviteIssue, handleInviteAccept, handleMfaBypassIssue, handleOAuthIssueToken, handleOAuthRevokeToken, handleSamlSpKeyGenerate, handleSamlSpKeyRotate, handleScimTokenEnable, handleScimTokenRotate, handleScimTokenRevoke, handleServicePrincipalCreate, handleServicePrincipalSetScopes, handleServicePrincipalDisable, handleSessionRevoke, handleSessionRevokeAllForUser, handleTotpEnroll, handleUserCreate, handleMembershipCreate, handleGenerateRecoveryCodes, handleRedeemRecoveryCode, handleFactorRevoke, type RecoveryCodeDocument, } from '../src/index.ts';
 import { isIdentityEvent } from '../src/events.ts';
 import { newFixture, dispatchAll, type Fixture } from './lib/fixtures.ts';

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { linearScale, bandScale, timeScale, toMs } from '../src/charts/scales.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 describe('scales', function () {

@@ -7,7 +7,7 @@
  * Complexity-validation branches (length min/max, character-class mix)
  * are exhaustively covered.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleUserCreate, handleSessionIssue, handlePasswordSet, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 const STRONG = 'CorrectHorseBatteryStaple1!';

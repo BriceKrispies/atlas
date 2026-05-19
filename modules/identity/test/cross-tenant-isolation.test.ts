@@ -20,7 +20,7 @@
  *   - getInviteToken
  *   - getSession, listOwnSessions, findSessionsByAccessTokenLookup
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { AUTH_SESSION_ENTITY_TYPE, INVITE_TOKEN_ENTITY_TYPE, MEMBERSHIP_ENTITY_TYPE, USER_ENTITY_TYPE, findSessionsByAccessTokenLookup, getInviteToken, getMembership, getSession, getUser, getUserByEmail, getUserByIdpSubject, listAllUsers, listMemberships, listOwnSessions, membershipEntityIdFor, type AuthSessionDocument, type IdentityQueryDeps, type InviteTokenDocument, type MembershipDocument, type UserDocument, } from '../src/index.ts';
 import { InMemoryEntityStore, InMemoryRelationStore } from './lib/fixtures.ts';

@@ -6,7 +6,7 @@
  * Mocks JWKS by hand-generating a key pair via `jose` so JWT verify
  * runs against a deterministic local key.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { handleIdpActivate, handleIdpConfigure, handleIdpDisable, handleIdpRotateJwks, handleJitProvision, findActiveProviderByIssuer, getIdentityProviderEntity, getMembershipEntity, IdentityError, identityErrorCodes, type IdentityProviderDocument, type JitClaims, } from '../src/index.ts';
 import { assertEventTags, dispatchAll, newFixture, type Fixture, } from './lib/fixtures.ts';

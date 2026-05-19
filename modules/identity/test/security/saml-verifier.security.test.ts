@@ -21,7 +21,7 @@
  * belongs in a follow-up slice once the architectural rewrite (extract
  * claims from canonicalized signed bytes) is scoped.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from '@atlas/test';
 import { verifySamlResponse, type VerifyOptions } from '../../src/index.ts';
 import { buildSamlResponseXml, generateTestIdpKey, newReplayChecker, signResponse, type TestKeyPair, } from './helpers.ts';
 const IDP_ISSUER = 'https://idp.example.com';

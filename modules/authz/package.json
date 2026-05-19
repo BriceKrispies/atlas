@@ -12,9 +12,9 @@
     "@atlas/ports": "workspace:*"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "atlas-test"
   },
   "devDependencies": {
-    "vitest": "^4.1.5"
+    "@atlas/test": "workspace:*"
   }
 }

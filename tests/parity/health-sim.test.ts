@@ -7,7 +7,7 @@
  * at least one action — analogous to the Rust readyz "schema_registry +
  * policies" gates.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 describe('[sim] health parity', function () {
     test('test_liveness_endpoint_returns_200_without_auth', async function () {

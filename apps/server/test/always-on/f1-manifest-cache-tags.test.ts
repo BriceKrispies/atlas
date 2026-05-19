@@ -18,9 +18,11 @@
  *
  * When this test passes, F1 is mechanizable at the reload boundary.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..');
 const MANIFEST_DIR = join(REPO_ROOT, 'packages', 'schemas', 'src', 'generated', 'manifests');
 const MANIFEST_SCHEMA = join(REPO_ROOT, 'specs', 'schemas', 'contracts', 'module_manifest.schema.json');

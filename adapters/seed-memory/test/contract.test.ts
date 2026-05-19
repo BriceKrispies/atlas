@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from '@atlas/test';
 import type { Crypto, Fixture, Scenario, } from '@atlas/ports';
 import { canonicalJsonStringify } from '@atlas/platform-core';
 import { seedCorpusContract, type SeedCorpusFactory, type SeedCorpusFactoryResult, } from '@atlas/contract-tests';
@@ -76,20 +76,17 @@ const factory: SeedCorpusFactory = async function ({ scenarios, fixtures }): Pro
             scenarioMap.delete(scenarioId);
         },
         async simulateValidatorMissing(schemaId, fn) {
-            const schemasModule = await import('@atlas/schemas');
-            const original = schemasModule.getSchemaValidator;
-            const spy = vi
-                .spyOn(schemasModule, 'getSchemaValidator')
-                .mockImplementation(function (id, version) {
-                if (id === schemaId)
-                    return null;
-                return original(id, version);
-            });
+            // Node ESM forbids reassigning module exports, so the legacy
+            // `vi.spyOn(schemasModule, 'getSchemaValidator')` no longer
+            // works. `@atlas/schemas` exposes a test-only override map
+            // (`__setSchemaValidatorOverrideForTest`) that the loader
+            // consults before Ajv; setting `null` simulates "missing".
+            const { __setSchemaValidatorOverrideForTest } = await import('@atlas/schemas');
+            __setSchemaValidatorOverrideForTest(schemaId, null);
             try {
                 await fn();
-            }
-            finally {
-                spy.mockRestore();
+            } finally {
+                __setSchemaValidatorOverrideForTest(schemaId, undefined);
             }
         },
     };

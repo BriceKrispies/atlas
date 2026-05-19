@@ -7,7 +7,7 @@
  * exercise the locked entity + handler surface that the routes will sit
  * on top of.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { BREAK_GLASS_RETENTION_TAG, IMPERSONATION_RETENTION_TAG, IdentityError, decideFromScore, defaultRiskScorer, fixedRiskScorer, getBreakGlassGrantEntity, getImpersonationSessionEntity, handleBreakGlassApprove, handleBreakGlassDeny, handleBreakGlassIssue, handleBreakGlassRevoke, handleImpersonationAction, handleImpersonationEnd, handleImpersonationStart, identityErrorCodes, resolveActiveGrants, resolveImpersonationToken, DEFAULT_RISK_POLICY, } from '../src/index.ts';
 import { assertEventTags, newFixture } from './lib/fixtures.ts';
 function fx(): ReturnType<typeof newFixture> {

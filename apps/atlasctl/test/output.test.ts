@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Writable } from 'node:stream';
 import { emitResult, type OutputDeps } from '../src/output.ts';
 class MemStream extends Writable {

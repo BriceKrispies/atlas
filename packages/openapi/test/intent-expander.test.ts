@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { actionIdToOperationId, expandIntents, } from '../src/intent-expander.ts';
 import type { ModuleManifest } from '../src/types.ts';

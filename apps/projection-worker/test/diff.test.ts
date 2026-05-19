@@ -4,7 +4,7 @@
  * Uses minimal in-memory ProjectionStore / Cache test doubles. The
  * doubles intentionally only implement the surface the wrapper touches.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import type { Cache, ProjectionStore } from '@atlas/ports';
 import type { CacheSetOptions } from '@atlas/platform-core';
 import { wrapShadow } from '../src/diff.ts';

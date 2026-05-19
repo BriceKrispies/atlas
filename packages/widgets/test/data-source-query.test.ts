@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { queryDataSource } from '../src/data-source/query-data-source.ts';
 import type { BackendLike } from '../src/data-source/query-data-source.ts';
 import type { Row, RowPatch } from '../src/data-source/types.ts';

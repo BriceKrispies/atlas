@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { StoredEvent, WorkerSource, WorkerSubscription } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';

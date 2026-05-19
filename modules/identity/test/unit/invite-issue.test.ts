@@ -6,7 +6,7 @@
  * appears in the event payload (per `crosscut/events.md`'s
  * secrets-stay-out-of-event-history rule).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleInviteIssue, hashSecret, lookupOf, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 describe('handleInviteIssue — happy path', function () {

@@ -7,7 +7,7 @@
  * cross-handler interaction is asserted in `unit/api-key.test.ts`,
  * not here.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleServicePrincipalCreate, handleServicePrincipalSetScopes, handleServicePrincipalDisable, IdentityError, identityErrorCodes, type ServicePrincipalDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedSp(fx: ReturnType<typeof newFixture>, scopes: string[] = ['read']): Promise<ServicePrincipalDocument> {

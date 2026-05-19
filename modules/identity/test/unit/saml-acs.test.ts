@@ -19,7 +19,7 @@
  * `describe.skip` with explicit TODO references to the e2e file —
  * keeping them visible in the test report so the gap is auditable.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleSamlAcs, identityErrorCodes, IdentityError, type IdentityProviderDocument, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 /**

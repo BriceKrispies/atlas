@@ -8,7 +8,7 @@
  * the real-world failure modes: empty data, nullish data, rejection,
  * and slow/racing responses.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { MultiSelectCore, LIFECYCLE, type Option, type OptionsSource, } from '../src/multi-select-core.ts';
 // ── helpers ────────────────────────────────────────────────────────
 const fruits: Option[] = [

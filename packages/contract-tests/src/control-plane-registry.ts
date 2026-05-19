@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { ControlPlaneRegistry } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 export function controlPlaneRegistryContract(makeRegistry: () => Promise<ControlPlaneRegistry>): void {

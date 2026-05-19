@@ -17,7 +17,7 @@
  *
  * Skipped silently when `NODE_PARITY_BASE_URL` is unset.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { createServerIngress, makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import type { SearchDocument } from '@atlas/platform-core';

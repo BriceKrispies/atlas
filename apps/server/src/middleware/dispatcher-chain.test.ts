@@ -32,7 +32,7 @@
  * structural assertion is "compositions match" and is enforced by
  * code review for now.)
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@atlas/test';
 import { composeDispatchers, cacheTagDispatcher, type Cache, type CatalogStateStore, type ProjectionStore, type SearchEngine, type RepositoryStore, type RepositoryRevisionStore, type EventDispatcher, type EntityStore, type RelationStore, type Entity, type EntityListOptions, type EntityQueryOptions, type EntityStatus, type EntityWriteInput, type Relation, type RelationWriteInput, } from '@atlas/ports';
 import type { CacheSetOptions, EventEnvelope, ServerEvent } from '@atlas/platform-core';
 import { catalogDispatcher } from '@atlas/catalog';

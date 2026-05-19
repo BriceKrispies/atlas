@@ -32,7 +32,7 @@
  *   - `Principal` lacks `principalType` and `claims` (TS type error / runtime undefined)
  *   - `parseDebugPrincipal` (in `principal.ts`) does not set those fields
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { Hono } from 'hono';
 import type { Principal } from '@atlas/platform-core';
 import { principalMiddleware, type ServerVariables } from './principal.ts';

@@ -21,6 +21,6 @@
     "@atlas/test-fixtures": "workspace:*",
     "postgres": "^3.4.5",
     "tsx": "^4.21.0",
-    "vitest": "^4.1.5"
+    "@atlas/test": "workspace:*"
   }
 }

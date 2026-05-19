@@ -16,7 +16,7 @@
  * the assertion behind a Vitest skip-on-throw rather than a hard skip
  * marker because the suite still wants to run the pure assertions).
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { ATLAS_NAMESPACE, CedarPolicyEngine, generateCedarSchema, USER_ENTITY_TYPE, } from '../src/index.ts';
 import { BundledFixtureLoader } from '../src/bundle-loader.ts';

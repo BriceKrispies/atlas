@@ -53,6 +53,27 @@ export class ServerEventBroadcast {
         return this.subscribers.size;
     }
     /**
+     * Forcibly close every subscriber. Iterators in `for await` loops wake
+     * up and return `done: true`, which lets the SSE route's `finally`
+     * block clear its keepalive `setInterval` and unblock the test process.
+     *
+     * Production callers don't need this — the SSE route unsubscribes
+     * per-connection on `req.signal.abort`. Tests use it in `afterEach`
+     * because `node:test` (unlike vitest) won't force-kill open handles,
+     * so a dangling keepalive interval pins the process forever.
+     */
+    closeAllSubscribers(): void {
+        for (const sub of this.subscribers) {
+            sub.closed = true;
+            const notify = sub.notify;
+            if (notify) {
+                sub.notify = null;
+                notify();
+            }
+        }
+        this.subscribers.clear();
+    }
+    /**
      * Publish an event to every subscriber. Non-blocking: subscribers whose
      * queues are full have their oldest event dropped (FIFO eviction).
      * Errors are never thrown from publish — a slow client must not break

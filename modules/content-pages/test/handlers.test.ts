@@ -5,7 +5,7 @@
  * against in-memory implementations of EventStore, EntityStore, and
  * RelationStore.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EventStore, StoredEvent, Entity, EntityListOptions, EntityQueryOptions, EntityStatus, EntityStore, EntityWriteInput, Relation, RelationStore, RelationWriteInput, } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';

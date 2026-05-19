@@ -5,7 +5,7 @@
  * Asserts complexity validation, hashing roundtrip, lockout behaviour,
  * and the constant-time-ish "always run a verify" path.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { handleUserCreate, handlePasswordSet, handlePasswordLogin, getUserEntity, IdentityError, identityErrorCodes, hashPassword, validatePasswordComplexity, type UserDocument, } from '../src/index.ts';
 import { dispatchAll, newFixture, type Fixture, } from './lib/fixtures.ts';

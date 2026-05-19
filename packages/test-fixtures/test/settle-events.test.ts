@@ -10,7 +10,7 @@
  *    message and preserves the original via `cause`.
  *  - Defaults `afterSeq` to `0n` (drains the whole tenant stream).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventStore, StoredEvent, EventDispatcher, } from '@atlas/ports';
 import { settleEvents } from '../src/settle-events.ts';

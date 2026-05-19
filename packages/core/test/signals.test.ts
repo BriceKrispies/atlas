@@ -5,7 +5,7 @@
  * exercised throughout the design system: dependency tracking, lazy
  * recomputation of computed values, batched coalescing, and effect cleanup.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from '@atlas/test';
 import { signal, computed, effect, batch } from '../src/signals.ts';
 describe('signal', function () {
     it('exposes the initial value and updates via .set', function () {

@@ -37,7 +37,7 @@
  * scenarios + fixtures to start with; every adapter must honour the
  * same seed shape so the same test bodies work everywhere.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import type { Fixture, FixtureRef, Scenario, ScenarioRef, SeedCorpus, } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 /**

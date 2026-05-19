@@ -19,7 +19,7 @@
  * mirrors how an admin tool would seed bundles in production
  * pre-Authz.Policy.* surface (Chunk 6c+).
  */
-import { describe, test, expect, beforeAll, afterAll } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll } from '@atlas/test';
 import postgres from 'postgres';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { intentWithMismatchedTenant, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';

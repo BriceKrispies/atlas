@@ -9,7 +9,7 @@
  * Uses `BundledFixtureLoader` to keep the tests pure (no DB). The WASM
  * binary loads on first `evaluate` — about one extra second on cold cache.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@atlas/test';
 import { policyEngineContract } from '@atlas/contract-tests';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { BundledFixtureLoader, CedarPolicyEngine, parseWrapper, } from '../src/index.ts';

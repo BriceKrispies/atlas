@@ -11,7 +11,7 @@
  * by the smoke script + Playwright integration spec landed alongside this
  * change.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Hono } from 'hono';
 import { CollectorSink, InMemoryLevelController, LogPipeline, } from '@atlas/logging';
 import type { LogEvent } from '@atlas/logging';

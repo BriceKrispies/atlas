@@ -1,7 +1,7 @@
 /**
  * Cache-tag → engine.invalidate routing tests.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from '@atlas/test';
 import { applyCacheTags } from '../src/cache-invalidation.ts';
 import type { CedarBundleCache } from '../src/cache-invalidation.ts';
 class RecordingCache implements CedarBundleCache {

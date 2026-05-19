@@ -5,7 +5,7 @@
  * a no-side-effect assertion and the bearer plaintext must never
  * persist on the document.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleApiKeyCreate, handleApiKeyRotate, handleApiKeyRevoke, handleServicePrincipalCreate, IdentityError, identityErrorCodes, type ApiKeyDocument, type ServicePrincipalDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function seedSp(fx: ReturnType<typeof newFixture>, scopes: string[] = ['read', 'write'], status: 'active' | 'disabled' = 'active'): Promise<ServicePrincipalDocument> {

@@ -19,7 +19,7 @@
  *   - metrics counter throws            → request still completes; logged
  *   - generic-fallthrough cache tags    → tags include Tenant:<id> (I10)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { submitIntent, type IngressState } from '../src/submit-intent.ts';
 // Local minimal ValidateFunction surface — `ControlPlaneRegistry`

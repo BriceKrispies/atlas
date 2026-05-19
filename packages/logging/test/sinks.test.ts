@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Writable } from 'node:stream';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { CollectorSink, ConsoleJsonSink, MemoryRingBufferSink, } from '../src/index.ts';

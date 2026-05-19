@@ -38,7 +38,7 @@
  * no test.
  */
 
-import { describe, test } from 'vitest';
+import { describe, test } from '@atlas/test';
 
 describe('F3 — KernelHandle surface (always-on §4.1 / I1 corollary)', function () {
   test.todo(

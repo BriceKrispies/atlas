@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { UpcasterRegistry, upcastToLatest } from './upcaster.ts';
 /**
  * Narrow an `unknown` attrs blob to a record so test upcasters can spread

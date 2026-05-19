@@ -5,7 +5,7 @@
  * structured errors for every constraint declared in
  * `widget_manifest.schema.json` (INV-WIDGET-01 / 02 / 03).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { validateManifest } from '../src/manifest.ts';
 import type { WidgetManifest } from '../src/types.ts';
 const valid: WidgetManifest = {

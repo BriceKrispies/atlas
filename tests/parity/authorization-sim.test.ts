@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { intentWithMismatchedTenant, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 describe('[sim] authorization parity', function () {

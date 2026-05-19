@@ -28,7 +28,7 @@
  * Expected red-phase failure: TS compile error
  *   "Module '"@atlas/ports"' has no exported member 'AnalyticsStore'."
  */
-import { describe, test, expect, expectTypeOf } from 'vitest';
+import { describe, test, expect, expectTypeOf } from '@atlas/test';
 import type { AnalyticsStore, AnalyticsEvent, AnalyticsQuery, } from '@atlas/ports';
 /**
  * Stub implementation that satisfies the desired AnalyticsStore contract.

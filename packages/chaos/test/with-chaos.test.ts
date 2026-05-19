@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { profiles, withChaos, type ChaosProfile } from '../src/index.ts';
 interface FakeStore {
     append(value: string): Promise<string>;

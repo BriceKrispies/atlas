@@ -16,31 +16,32 @@
  * passes the value through (the real driver wraps it in a serializer
  * sentinel, but the tagged-template fake just records the values).
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from '@atlas/test';
 import type postgres from 'postgres';
+import type { createTransport as RealCreateTransport } from 'nodemailer';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EmailMessage } from '@atlas/ports';
-// Hoisted spies so the `vi.mock` factory below can reference them and
-// the test bodies can assert against them. `vi.hoisted` is the official
-// vitest escape-hatch for this exact pattern.
-const transportSpies = vi.hoisted(function () {
-    return ({
-        sendMail: vi.fn(),
-        close: vi.fn(),
-    });
-});
-vi.mock('nodemailer', function () {
-    return ({
-        createTransport: vi.fn(function () {
-            return ({
-                sendMail: transportSpies.sendMail,
-                close: transportSpies.close,
-            });
-        }),
-    });
-});
-// Import AFTER the mock so the adapter sees the stubbed module.
-const { SmtpMailer } = await import('../src/mailer-smtp.ts');
+import { SmtpMailer } from '../src/mailer-smtp.ts';
+// Transport spies shared across the test suite. The `vi.mock`-on-nodemailer
+// pattern (with `vi.hoisted` to share state across the factory + test bodies)
+// only works under vitest; under node:test we instead inject the spies
+// through the `SmtpMailer` constructor's transport-factory parameter.
+const transportSpies = {
+    sendMail: vi.fn(),
+    close: vi.fn(),
+};
+// A `createTransport`-shaped factory that hands the adapter a transport whose
+// methods are our spies. The cast funnels the spy bundle into nodemailer's
+// `Transporter` shape — the adapter only consumes `sendMail`, so the
+// remaining surface (verify, use, etc.) is intentionally absent.
+const fakeTransportFactory = ((..._args: Parameters<typeof RealCreateTransport>) => ({
+    sendMail: transportSpies.sendMail,
+    close: transportSpies.close,
+})) as unknown as typeof RealCreateTransport;
+/** Constructs an SmtpMailer wired to the test transport spies. */
+function makeMailer(sql: postgres.Sql, cfg: ConstructorParameters<typeof SmtpMailer>[1]): SmtpMailer {
+    return new SmtpMailer(sql, cfg, undefined, fakeTransportFactory);
+}
 interface SqlCall {
     strings: TemplateStringsArray;
     values: unknown[];
@@ -123,7 +124,7 @@ describe('SmtpMailer', function () {
     it('writes to email_log with correct row shape', async function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'smtp-id-123' });
         const { sql, calls } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         const result = await mailer.send(baseMsg());
         expect(calls).toHaveLength(1);
         // Tagged-template values are positional in postgres.js; assert each
@@ -144,7 +145,7 @@ describe('SmtpMailer', function () {
     it('returns SMTP-supplied messageId when present', async function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'smtp-id-123' });
         const { sql, calls } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         const result = await mailer.send(baseMsg());
         expect(result.messageId).toBe('smtp-id-123');
         expect(assertDefined(calls[0], 'first sql call recorded').values[0]).toBe('smtp-id-123');
@@ -152,7 +153,7 @@ describe('SmtpMailer', function () {
     it('falls back to locally-minted messageId when SMTP omits', async function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: undefined });
         const { sql, calls } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         const result = await mailer.send(baseMsg());
         expect(result.messageId).toMatch(/^smtp-/);
         // Row insert MUST use the same id we returned — otherwise the read
@@ -162,7 +163,7 @@ describe('SmtpMailer', function () {
     it('sets X-Atlas-Correlation-Id on the SMTP envelope', async function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'm1' });
         const { sql } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         await mailer.send(baseMsg({ correlationId: 'corr-xyz' }));
         const arg = lastSendMailArg(0);
         expect(arg.headers['X-Atlas-Correlation-Id']).toBe('corr-xyz');
@@ -171,7 +172,7 @@ describe('SmtpMailer', function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'm1' });
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'm2' });
         const { sql } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         await mailer.send(baseMsg({ tenantId: 'tenant-xyz' }));
         const argWith = lastSendMailArg(0);
         expect(argWith.headers['X-Atlas-Tenant-Id']).toBe('tenant-xyz');
@@ -184,7 +185,7 @@ describe('SmtpMailer', function () {
     it('throws and skips email_log insert when SMTP rejects', async function () {
         transportSpies.sendMail.mockRejectedValueOnce(new Error('relay refused'));
         const { sql, calls } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         await expect(mailer.send(baseMsg())).rejects.toThrow(/relay refused/);
         // No phantom row — the contract is "logged iff sent".
         expect(calls).toHaveLength(0);
@@ -192,7 +193,7 @@ describe('SmtpMailer', function () {
     it('defaults tags to [] when omitted on the EmailMessage', async function () {
         transportSpies.sendMail.mockResolvedValueOnce({ messageId: 'm1' });
         const { sql, calls } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         const msg: EmailMessage = {
             to: 'a@b.test',
             subject: 's',
@@ -206,7 +207,7 @@ describe('SmtpMailer', function () {
     });
     it('close() invokes transport.close()', async function () {
         const { sql } = fakeSql();
-        const mailer = new SmtpMailer(sql, cfg);
+        const mailer = makeMailer(sql, cfg);
         await mailer.close();
         expect(transportSpies.close).toHaveBeenCalledTimes(1);
     });

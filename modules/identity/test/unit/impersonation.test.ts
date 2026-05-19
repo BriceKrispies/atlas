@@ -20,7 +20,7 @@
  * scope — the ingress idempotency check above does. No idempotency
  * `describe` block.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleImpersonationStart, handleImpersonationAction, handleImpersonationEnd, resolveImpersonationToken, IMPERSONATION_RETENTION_TAG, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 /**

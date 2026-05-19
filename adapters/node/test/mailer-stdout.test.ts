@@ -11,7 +11,7 @@
  * a tagged-template `vi.fn()` records each invocation so the test can
  * assert the column shape written to `control_plane.email_log`.
  */
-import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from '@atlas/test';
 import type postgres from 'postgres';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { EmailMessage } from '@atlas/ports';

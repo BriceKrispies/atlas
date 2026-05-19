@@ -12,7 +12,7 @@
  * Since the module installs a global `window.__atlasTest` once, we use
  * `vi.resetModules()` between cases so each test gets a fresh registry.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from '@atlas/test';
 interface TestStateModule {
     registerTestState: (key: string, reader: () => unknown) => () => void;
     unregisterTestState: (key: string) => void;
@@ -59,6 +59,12 @@ function stampMetaEnv(env: Record<string, unknown>): void {
         env?: Record<string, unknown>;
     };
     meta.env = { ...(meta.env ?? {}), ...env };
+    // Node ESM modules each have their own `import.meta`, so the stamp
+    // above does NOT propagate to the SUT. Mirror DEV onto the
+    // documented global override that the SUT also reads.
+    if ('DEV' in env) {
+        (globalThis as { __ATLAS_TEST_STATE_DEV__?: unknown }).__ATLAS_TEST_STATE_DEV__ = env['DEV'];
+    }
 }
 function clearMetaEnvKey(key: string): void {
     const meta = import.meta as {
@@ -67,9 +73,13 @@ function clearMetaEnvKey(key: string): void {
     if (meta.env)
         delete meta.env[key];
 }
+let _sutImportCounter = 0;
 async function importSut(): Promise<TestStateModule> {
-    vi.resetModules();
-    return (await import('../src/index.ts')) as unknown as TestStateModule;
+    // Node ESM caches by URL, so to get a *fresh* module evaluation each
+    // call we append a unique query string. Replaces the legacy
+    // `vi.resetModules()` pattern, which `node:test` has no equivalent for.
+    _sutImportCounter += 1;
+    return (await import(`../src/index.ts?v=${_sutImportCounter}`)) as unknown as TestStateModule;
 }
 function getWindowSlot(): {
     window?: {

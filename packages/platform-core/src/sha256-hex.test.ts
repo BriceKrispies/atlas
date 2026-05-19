@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import type { Crypto } from '@atlas/ports';
 import { sha256Hex } from '@atlas/platform-core';
 /**

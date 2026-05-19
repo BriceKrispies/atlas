@@ -9,7 +9,7 @@
  * - cache miss success path: writes value with the supplied TTL + tags
  * - subsequent call after settle: cache hit, no re-compute
  */
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi } from '@atlas/test';
 import { CachedRead, SingleFlight } from '@atlas/platform-core';
 import type { CacheSetOptions } from '@atlas/platform-core';
 import { assertDefined } from '@atlas/test-fixtures/assert';

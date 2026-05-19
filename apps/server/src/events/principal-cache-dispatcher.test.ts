@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { PrincipalCache } from '@atlas/platform-core';
 import type { EventEnvelope, Principal } from '@atlas/platform-core';
 import { principalCacheDispatcher } from './principal-cache-dispatcher.ts';

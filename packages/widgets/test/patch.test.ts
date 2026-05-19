@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { applyPatch, diff, keyOf } from '../src/data-source/patch.ts';
 import type { RowPatch } from '../src/data-source/types.ts';

@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { Histogram, MetricsLabelError } from '@atlas/metrics';
 describe('Histogram', function () {
     test('rejects empty buckets', function () {

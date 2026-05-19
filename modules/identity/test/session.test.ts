@@ -9,7 +9,7 @@
  *   - concurrent-session eviction (oldest-first)
  *   - I12: dispatcher reproduces post-state from event log
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { handleSessionIssue, handleSessionRefresh, handleSessionRevoke, handleSessionRevokeAllForUser, getSessionEntity, listActiveSessionsForUser, IdentityError, identityErrorCodes, DEFAULT_SESSION_POLICY, hashSecret, type AuthSessionDocument, } from '../src/index.ts';
 import { newFixture, dispatchAll } from './lib/fixtures.ts';

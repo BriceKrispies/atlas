@@ -20,7 +20,7 @@
  *   factory cannot supply a second connection, the test skips with a
  *   pinned comment so the contract intent is still recorded.
  */
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { RepositoryStore, RepositoryRevisionStore, RepositoryRecord, RevisionRecord, } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 export interface RepositoryStoreFactoryResult {

@@ -28,7 +28,7 @@
  * one level up, in the ingress pipeline. No idempotency assertion in
  * this file.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleSessionIssue, hashSecret, lookupOf, IdentityError, identityErrorCodes, DEFAULT_SESSION_POLICY, type AuthSessionDocument, type SessionPolicy, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 function sessionDocFromPayload(payload: unknown): AuthSessionDocument {

@@ -11,7 +11,9 @@
  * payload we sign here is byte-for-byte the kind of payload a
  * compliant IdP would emit.
  */
-import * as forge from 'node-forge';
+// `node-forge` is CJS; under Node ESM `import * as` only attaches `.default`.
+// Use the default import so the call sites (`forge.pki.*`) keep working.
+import forge from 'node-forge';
 import { SignedXml } from 'xml-crypto';
 export interface TestKeyPair {
     privateKeyPem: string;

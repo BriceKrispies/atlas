@@ -5,7 +5,7 @@
  * Mirrors `tests/blackbox/suites/health_test.rs` minus the metrics-related
  * scenarios (apps/server hasn't shipped /metrics yet — see DEFERRED.md).
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
 const d = baseUrl ? describe : describe.skip;
 /**

@@ -16,7 +16,7 @@
  * the browser host — that's where cross-language byte-equivalence is
  * checked.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import type { WasmHost, WasmPluginLoader } from '@atlas/ports';
 export interface WasmHostFactoryArg {
     /** Loader the suite seeds fixture bytes into before constructing the host. */

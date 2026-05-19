@@ -13,7 +13,7 @@
  *   - tenant scoping: tenant B sessions invisible to revoke-all in
  *     tenant A
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleSessionIssue, handleSessionRevoke, handleSessionRevokeAllForUser, IdentityError, identityErrorCodes, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';
 async function issue(fx: ReturnType<typeof newFixture>, userId = 'user-1'): Promise<string> {

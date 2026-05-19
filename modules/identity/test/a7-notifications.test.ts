@@ -9,7 +9,7 @@
  *   - no-op for non-A7 events and for `Action`-shaped events
  *   - audit-metadata-only payloads (no plaintext token / hash leaks)
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventStore, StoredEvent, } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { assertDefined } from '@atlas/test-fixtures/assert';

@@ -18,7 +18,7 @@
  * wires identity (browser-compatible argon2 dep + AuthSession entity
  * land in Phase A2). Until then, vitest covers the same surface.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { handleInviteIssue, handleInviteAccept, handlePasswordSet, handlePasswordLogin, getUserEntity, getMembershipEntity, getInviteTokenEntity, buildRolePackBundle, identityErrorCodes, } from '../src/index.ts';
 import { newFixture, dispatchAll } from './lib/fixtures.ts';

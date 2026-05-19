@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { selectRow, unselectRow, toggleRow, toggleAllOnPage, clearSelection, type SelectionKey, } from '../src/data-table/selection-core.ts';
 describe('selection-core', function () {
     it('selectRow none mode is a no-op', function () {

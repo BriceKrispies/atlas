@@ -17,7 +17,7 @@
  * Skipped automatically when `NODE_PARITY_BASE_URL` is absent —
  * matches the rest of the parity suite.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
 const d = baseUrl ? describe : describe.skip;
 interface PrometheusSample {

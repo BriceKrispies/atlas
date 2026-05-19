@@ -19,7 +19,7 @@
  * composite `AppState` / `RequestBundle` factories below are server-only
  * because they reference apps/server types.
  */
-import { vi } from 'vitest';
+import { vi } from '@atlas/test';
 import type { Context } from 'hono';
 import type { ActionEntry, Cache, CatalogStateStore, ControlPlaneRegistry, Entity, EntityStore, EventStore, HandlerRegistry, IntentHandler, PolicyDecision, PolicyEngine, PolicyEvaluationRequest, ProjectionStore, Relation, RelationStore, SearchEngine, StoredEvent, } from '@atlas/ports';
 import type { ValidateFunction } from '@atlas/schemas';

@@ -2,7 +2,7 @@
  * Unit tests for recovery-code handlers (Layer 1).
  * Combined: `Identity.RecoveryCode.{Generate, Regenerate, Redeem}`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { handleGenerateRecoveryCodes, handleRegenerateRecoveryCodes, handleRedeemRecoveryCode, IdentityError, identityErrorCodes, DEFAULT_IDENTITY_POLICY, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';

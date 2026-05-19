@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { intentWithoutIdempotencyKey, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];

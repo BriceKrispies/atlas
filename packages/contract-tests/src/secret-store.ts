@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { SecretStore } from '@atlas/ports';
 /**
  * Contract any `SecretStore` adapter must satisfy. Both

@@ -7,7 +7,7 @@
  * in Playwright when the harness lifts) — these tests cover the
  * underlying handlers + dispatcher chain.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventStore, StoredEvent, Entity, EntityListOptions, EntityQueryOptions, EntityStore as PortEntityStore, EntityWriteInput, Relation, RelationStore, RelationWriteInput, } from '@atlas/ports';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { assertDefined } from '@atlas/test-fixtures/assert';

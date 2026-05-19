@@ -9,7 +9,7 @@
  * The contract is exposed as `runBackendContract(makeBackend)` so any
  * future Backend impl can run the same suite.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { Backend, SerializedServerEvent, SerializedServerEventCallback, } from '../src/backend.ts';
 // ── Typed boundary readers ─────────────────────────────────────────

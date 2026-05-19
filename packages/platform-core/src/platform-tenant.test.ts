@@ -5,7 +5,7 @@
  * system-initiated events, is exercised by the apps/server boot
  * sequence and the identity handler tests respectively.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { PLATFORM_ROBOT_PRINCIPAL_ID, PLATFORM_TENANT_ID, bootstrapPlatformRobot, } from './platform-tenant.ts';
 describe('platform-tenant primitives', function () {
     it('PLATFORM_TENANT_ID is the canonical _platform slug', function () {

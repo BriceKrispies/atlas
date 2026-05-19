@@ -2,7 +2,7 @@
  * CLI smoke test — invokes atlasctl as a subprocess and asserts on
  * --help and `atlasctl version --json` outputs. No server is required.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

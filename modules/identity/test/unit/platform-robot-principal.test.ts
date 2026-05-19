@@ -26,7 +26,7 @@
  * back to "no real actor on system-initiated events" and the recursive
  * kernel principle loses its load-bearing test.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import { handleSessionIssue, handlePasswordLogin, handleInviteIssue, handleInviteAccept, handleOAuthRevokeToken, handleJitProvision, handleUserCreate, handlePasswordSet, IdentityError, type IdentityProviderDocument, type UserDocument, } from '../../src/index.ts';
 import { newFixture, dispatchAll } from '../lib/fixtures.ts';

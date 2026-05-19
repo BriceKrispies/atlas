@@ -13,7 +13,7 @@
  *   - register() validates handler typeof is function
  *   - onTrace errors are caught and routed via emitTelemetry (no throw)
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from '@atlas/test';
 import { CapabilityBridge } from '../src/capabilities.ts';
 import { CapabilityDeniedError } from '../src/errors.ts';
 import type { CapabilityTraceEvent, WidgetManifest } from '../src/types.ts';

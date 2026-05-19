@@ -11,7 +11,7 @@
  */
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes as nodeRandomBytes, scryptSync, timingSafeEqual as nodeTimingSafeEqual, } from 'node:crypto';
 import { Buffer } from 'node:buffer';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { sha256Hex } from '@atlas/platform-core';
 import type { Crypto, EventStore, RepositoryRecord, RepositoryRevisionStore, RepositoryStore, RevisionRecord, StoredEvent, } from '@atlas/ports';

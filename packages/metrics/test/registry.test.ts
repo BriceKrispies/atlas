@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import { Counter, Histogram, Registry, resetRegistry, getRegistry } from '@atlas/metrics';
 beforeEach(function () {
     resetRegistry();

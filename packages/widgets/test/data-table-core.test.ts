@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { DataTableCore, STATUS, type ColumnConfig, type DataTableCoreConfig, type DataTableState } from '../src/data-table/data-table-core.ts';
 interface TestRow extends Record<string, unknown> {
     id: number;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@atlas/test';
 import type { CustomDomain, CustomDomainStore } from '@atlas/ports';
 import { resolveHostTenant, TenantHostCache } from './tenant-resolution.ts';
 class FakeStore implements CustomDomainStore {

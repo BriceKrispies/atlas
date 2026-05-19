@@ -14,7 +14,7 @@
  * the handler does not deduplicate; the ingress pipeline above is
  * responsible. No idempotency block here.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { PLATFORM_ROBOT_PRINCIPAL_ID } from '@atlas/platform-core';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { assertDefined } from '@atlas/test-fixtures/assert';

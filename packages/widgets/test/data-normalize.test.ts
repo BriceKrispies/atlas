@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { normalize } from '../src/charts/data-normalize.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 describe('data-normalize', function () {

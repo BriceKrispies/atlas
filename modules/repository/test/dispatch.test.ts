@@ -14,7 +14,7 @@
  * `RepositoryStore` (fully event-derivable) and
  * `RepositoryRevisionStore` (bytes durable but not event-derived).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { RepositoryRecord, RepositoryRevisionStore, RepositoryStore, RevisionRecord, } from '@atlas/ports';
 import { REPOSITORY_CREATED_EVENT_TYPE, REPOSITORY_CREATED_SCHEMA_ID, REPOSITORY_CREATED_SCHEMA_VERSION, REPOSITORY_UPLOADED_EVENT_TYPE, REPOSITORY_UPLOADED_SCHEMA_ID, REPOSITORY_UPLOADED_SCHEMA_VERSION, repositoryDispatcher, } from '../src/index.ts';

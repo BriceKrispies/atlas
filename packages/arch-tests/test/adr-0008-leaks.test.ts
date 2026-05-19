@@ -9,7 +9,7 @@
  * Reference: specs/decisions/0008-atlas-on-atlas.md ▸ Decision §3
  *            "The four hexagon leaks (must-plug-first)"
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { findImportViolations } from './_dependency-scan.ts';
 describe('ADR-0008 hexagon leak regression net', function () {
     it('modules/identity does not reach node:crypto directly (Crypto port owns this)', async function () {

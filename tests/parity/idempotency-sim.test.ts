@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { intentWithoutIdempotencyKey, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 describe('[sim] idempotency parity', function () {

@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, it } from '@atlas/test';
 import { searchEngineContract } from '@atlas/contract-tests';
 import { PostgresSearchEngine } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { LogEvent } from '@atlas/logging';
 import type { CollectorSink } from '@atlas/logging';

@@ -14,7 +14,7 @@
  * today.
  */
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'vitest';
+import { describe, it } from '@atlas/test';
 import { AstBuilder, GherkinClassicTokenMatcher, Parser, } from '@cucumber/gherkin';
 import { IdGenerator } from '@cucumber/messages';
 import type * as messages from '@cucumber/messages';

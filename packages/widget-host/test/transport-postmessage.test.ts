@@ -13,7 +13,7 @@
  *   - route the new `kind: 'log'` LogEnvelope to onLog when set, drop when unset
  *   - dispose() removes the message listener
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from '@atlas/test';
 import { createPostMessageTransport } from '../src/transport/postmessage.ts';
 // ── lightweight fakes for the host window + iframe ─────────────────
 //

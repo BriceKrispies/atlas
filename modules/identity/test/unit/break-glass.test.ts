@@ -12,7 +12,7 @@
  * authz layer uses to decide whether a principal currently holds an
  * elevated role.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleBreakGlassIssue, handleBreakGlassApprove, handleBreakGlassDeny, handleBreakGlassAction, handleBreakGlassRevoke, resolveActiveGrants, BREAK_GLASS_RETENTION_TAG, IdentityError, identityErrorCodes, type BreakGlassGrantDocument, } from '../../src/index.ts';
 import { newFixture } from '../lib/fixtures.ts';
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { makeTestContext, makeTestRig } from './helpers.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 /** Boundary readback: every event the collector captures conforms to

@@ -4,7 +4,7 @@
  * here we only verify the names + label sets match the Rust
  * counterpart so dashboards keep working when traffic flips.
  */
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import { intentsSubmittedTotal, policyEvaluationsTotal, intentDurationSeconds, resetRegistry, getRegistry, } from '@atlas/metrics';
 beforeEach(function () {
     resetRegistry();

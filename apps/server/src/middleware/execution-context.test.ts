@@ -10,7 +10,7 @@
  *   - ctx.tenantId defaults to config.tenantId pre-auth
  *   - logs from ctx.logger include the request's correlationId
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Hono } from 'hono';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { CollectorSink, InMemoryLevelController, LogPipeline, } from '@atlas/logging';

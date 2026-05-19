@@ -40,18 +40,40 @@ type AppCtx = Context<{
  * Build the per-request per-tenant repository stores. Cheap closures
  * over the per-tenant Postgres pool; allocating fresh instances on
  * every call keeps this file decoupled from `buildRequestBundle`.
+ *
+ * The work is delegated to `_storesFactory` so tests can swap in
+ * in-memory implementations via {@link __setStoresFactoryForTest} —
+ * Node ESM modules are immutable post-import, so there's no
+ * `vi.mock`-equivalent for the legacy bootstrap-mock pattern.
  */
+async function _defaultStoresFactory(
+  state: AppState,
+  tenantId: string,
+): Promise<{ repositories: RepositoryStore; revisions: RepositoryRevisionStore }> {
+    const sql = await ensureTenantMigrated(state, tenantId);
+    return {
+        repositories: new PostgresRepositoryStore(sql),
+        revisions: new PostgresRepositoryRevisionStore(sql),
+    };
+}
+let _storesFactory: typeof _defaultStoresFactory = _defaultStoresFactory;
+/** @internal — test-only override hook. */
+export function __setStoresFactoryForTest(
+  fn: typeof _defaultStoresFactory | null,
+): void {
+  _storesFactory = fn ?? _defaultStoresFactory;
+}
 async function buildStores(state: AppState, c: AppCtx): Promise<{
     tenantId: string;
     repositories: RepositoryStore;
     revisions: RepositoryRevisionStore;
 }> {
     const principal = c.get('principal');
-    const sql = await ensureTenantMigrated(state, principal.tenantId);
+    const { repositories, revisions } = await _storesFactory(state, principal.tenantId);
     return {
         tenantId: principal.tenantId,
-        repositories: new PostgresRepositoryStore(sql),
-        revisions: new PostgresRepositoryRevisionStore(sql),
+        repositories,
+        revisions,
     };
 }
 export function repositoryRoutes(state: AppState): Hono<{

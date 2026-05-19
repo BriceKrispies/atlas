@@ -24,7 +24,7 @@
  * exercise the full per-request bundle. This unit test is purely
  * structural.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { REQUEST_DISPATCHER_CHAIN_NAMES } from './state.ts';
 import { WORKER_DISPATCHER_CHAIN_NAMES } from '../../../projection-worker/src/tenant-loop.ts';
 describe('inline dispatcher chain composition (I12 worker mirror)', function () {

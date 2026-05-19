@@ -10,7 +10,7 @@
  * change, which detached the option between mousedown and click (so
  * clicks never landed) and destroyed the search input mid-typing.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from '@atlas/test';
 import type { AtlasMultiSelect } from '../src/atlas-multi-select.ts';
 import type { Option, OptionsSource } from '../src/multi-select-core.ts';
 // DOM globals (document, HTMLElement, customElements, CSSStyleSheet,

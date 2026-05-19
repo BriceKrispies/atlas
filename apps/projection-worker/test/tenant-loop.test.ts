@@ -21,7 +21,7 @@
  * `apps/server/src/middleware/dispatcher-chain.test.ts`. We assert the
  * orchestration semantics that wrap the chain.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { Cache, CatalogStateStore, Entity, EntityListOptions, EntityQueryOptions, EntityStatus, EntityStore, EntityWriteInput, EventStore, ProjectionStore, Relation, RelationStore, RelationWriteInput, RepositoryRevisionStore, RepositoryStore, SearchEngine, StoredEvent, WorkerSource, WorkerSubscription, } from '@atlas/ports';
 import type { CacheSetOptions } from '@atlas/platform-core';

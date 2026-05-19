@@ -29,7 +29,7 @@
  * exactly the way `NODE_PARITY_BASE_URL` already gates the rest of the
  * `*-node.test.ts` files.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 /**
  * Boundary reader for parity-test JSON responses. T is the wire contract

@@ -67,7 +67,34 @@ function getAjv(): Ajv2020 {
   return ajv;
 }
 
+/**
+ * Test-only override map. Keyed by `schemaId`; when set, `getSchemaValidator`
+ * returns the value (including `null`) instead of consulting Ajv. Tests use
+ * it to simulate a missing validator — replaces the legacy
+ * `vi.spyOn(schemasModule, 'getSchemaValidator')` pattern, which can't work
+ * under Node ESM (module exports are read-only).
+ *
+ * Production code paths are unaffected when the map is empty.
+ */
+const _schemaValidatorOverrides = new Map<string, ValidateFunction | null>();
+
+/**
+ * @internal — test-only.
+ * Pass `value=null` to simulate "validator missing for this schemaId".
+ * Pass `value=undefined` to clear the override.
+ */
+export function __setSchemaValidatorOverrideForTest(
+  schemaId: string,
+  value: ValidateFunction | null | undefined,
+): void {
+  if (value === undefined) _schemaValidatorOverrides.delete(schemaId);
+  else _schemaValidatorOverrides.set(schemaId, value);
+}
+
 export function getSchemaValidator(schemaId: string, _version: number): ValidateFunction | null {
+  if (_schemaValidatorOverrides.has(schemaId)) {
+    return _schemaValidatorOverrides.get(schemaId) ?? null;
+  }
   const ajv = getAjv();
   const v = ajv.getSchema(schemaId);
   return (v as ValidateFunction | undefined) ?? null;

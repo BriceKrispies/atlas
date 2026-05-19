@@ -22,7 +22,7 @@
  * surface before they bite."
  */
 import 'fake-indexeddb/auto';
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { IdbCache, IdbEventStore, openAtlasIdb, type IdbDb } from '@atlas/adapter-idb';
 /** Asserts existence; replaces `arr[i]!` patterns where index is provably in-range. */

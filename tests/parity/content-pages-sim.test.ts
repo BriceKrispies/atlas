@@ -5,7 +5,7 @@
  * suites, plus a couple of TS-only scenarios for create/update/delete and
  * cross-tenant isolation.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect } from '@atlas/test';
 import { makeSimIngress } from './lib/sim-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
 import { newEventId } from '@atlas/catalog';

@@ -12,7 +12,11 @@
  *   - `publicCertPem`: self-signed X.509 PEM. Goes into SP metadata.
  */
 
-import * as forge from 'node-forge';
+// `import * as forge` only attaches `.default` under Node ESM (node-forge is
+// CJS). The runtime shape we actually want is the default export, so import
+// it explicitly — keeps the call sites (`forge.pki.rsa.generateKeyPair`,
+// `forge.pki.createCertificate`) unchanged.
+import forge from 'node-forge';
 
 export interface GeneratedSpKey {
   privateKeyPem: string;

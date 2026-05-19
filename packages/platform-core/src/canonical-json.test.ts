@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@atlas/test';
 import { canonicalJsonStringify } from '@atlas/platform-core';
 /**
  * Spec: `specs/crosscut/seed-corpus.md` §4.1 — determinism contract for

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { Cache } from '@atlas/ports';
 function sleep(ms: number): Promise<void> {
     return new Promise(function (r) {

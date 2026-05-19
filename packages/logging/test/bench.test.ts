@@ -9,7 +9,7 @@
  * in CI output. Hard threshold of 10 µs/op is generous enough to survive
  * on slow CI runners while still catching real regressions.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { Writable } from 'node:stream';
 import { CollectorSink, ConsoleJsonSink, InMemoryLevelController, LogPipeline, createRootContext, } from '../src/index.ts';
 const ITERATIONS = 100000;

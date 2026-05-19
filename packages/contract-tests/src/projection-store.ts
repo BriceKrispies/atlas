@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { ProjectionStore } from '@atlas/ports';
 export function projectionStoreContract(makeStore: () => Promise<ProjectionStore>): void {
     describe('ProjectionStore contract', function () {

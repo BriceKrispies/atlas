@@ -6,7 +6,7 @@
  * RelationStore. Asserts the I12 invariant: the dispatcher rebuilds the
  * post-state from event history alone.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@atlas/test';
 import { handleUserCreate, handleMembershipCreate, handleInviteIssue, handleInviteAccept, getUserEntity, getMembershipEntity, getInviteTokenEntity, IdentityError, identityErrorCodes, hashSecret, lookupOf, type UserDocument, } from '../src/index.ts';
 import { newFixture, dispatchAll } from './lib/fixtures.ts';
 describe('Identity.User.Create', function () {
