@@ -77,7 +77,7 @@ export async function createServerIngress(opts: ServerFactoryOptions): Promise<B
         return ({
             'X-Debug-Principal': debugPrincipalHeader(opts),
             'Content-Type': 'application/json',
-            ...(extra ?? {}),
+            ...extra,
         });
     };
     const post = async function <T>(path: string, body: unknown): Promise<T> {

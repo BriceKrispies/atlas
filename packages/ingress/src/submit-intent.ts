@@ -245,7 +245,7 @@ async function submitIntentInner(state: IngressState, envelope: IntentEnvelope, 
         }
     }
     const principalAttributes: Record<string, unknown> = {
-        ...(state.principalAttributes ?? {}),
+        ...state.principalAttributes,
         ...(state.principalRoles !== undefined ? { roles: state.principalRoles } : {}),
     };
     const evaluationRequest: PolicyEvaluationRequest = {

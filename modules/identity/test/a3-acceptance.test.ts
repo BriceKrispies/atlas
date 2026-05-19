@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from '@atlas/test';
 import { createSign, generateKeyPairSync } from 'node:crypto';
-import { handleIdpActivate, handleIdpConfigure, handleIdpDisable, handleIdpRotateJwks, handleJitProvision, findActiveProviderByIssuer, getIdentityProviderEntity, getMembershipEntity, IdentityError, identityErrorCodes, type IdentityProviderDocument, type JitClaims, } from '../src/index.ts';
+import { handleIdpActivate, handleIdpConfigure, handleIdpDisable, handleIdpRotateJwks, handleJitProvision, findActiveProviderByIssuer, getIdentityProviderEntity, identityErrorCodes, type IdentityProviderDocument, type JitClaims, } from '../src/index.ts';
 import { assertEventTags, dispatchAll, newFixture, type Fixture, } from './lib/fixtures.ts';
 type Fx = Fixture;
 function fx(): Fx {

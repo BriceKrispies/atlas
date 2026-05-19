@@ -2,8 +2,9 @@
 /**
  * One-shot codemod: convert ArrowFunctionExpression → FunctionExpression.
  *
- * Drives the eslint.config.ts `no-restricted-syntax: ArrowFunctionExpression`
- * ban platform-wide. Uses TypeScript's transformer API so nested arrows
+ * Drives the `atlas-no-arrow-functions` Semgrep rule in
+ * `.semgrep/atlas-invariants.yml` (ported from the old
+ * `eslint.config.ts ▸ no-restricted-syntax: ArrowFunctionExpression`). Uses TypeScript's transformer API so nested arrows
  * convert correctly in a single pass — text-edit-with-offsets clobbers
  * nested edits when the inner change shifts the outer's end position.
  *

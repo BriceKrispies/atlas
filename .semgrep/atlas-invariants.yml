@@ -164,3 +164,217 @@ rules:
         - "adapters/policy-cedar/bin/"
     pattern-regex: |
       \bconsole\.(log|error|warn|info|debug)\(
+
+  # --- Type system: no `X as unknown as Y` double-casts ------------------
+  #
+  # Ported from @atlas/eslint-plugin-widgets ▸ no-double-cast (deleted with
+  # the ESLint→oxlint migration). The double-cast is TypeScript's "I give
+  # up, trust me" pattern — most legitimate uses are at a small number of
+  # well-known boundaries (linkedom DOM shim, cedar-wasm CJS, postgres.js
+  # parameter widening, adversarial test fixtures). Suppress with
+  # `// nosemgrep: atlas-no-double-cast -- boundary: <reason>` at those
+  # sites. Anything else is a typing bug or a missing schema validator.
+
+  - id: atlas-no-double-cast
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      `as unknown as <Type>` is a type-system escape hatch. Narrow the
+      value through a validator/parser, use `satisfies T`, or add a typed
+      factory. If this is a legitimate boundary (linkedom DOM shim,
+      third-party library impedance, WASM, adversarial test fixture),
+      suppress with `// nosemgrep: atlas-no-double-cast -- boundary: <reason>`.
+    paths:
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+        - "packages/eslint-plugin-atlas-widgets/"
+    pattern: $X as unknown as $Y
+
+  # --- Style: no runtime arrow functions ---------------------------------
+  #
+  # Ported from eslint.config.ts ▸ no-restricted-syntax (deleted with the
+  # ESLint→oxlint migration; oxlint doesn't support no-restricted-syntax
+  # selectors). Arrows are banned EXCEPT when:
+  #   1. The body references lexical `this` — converting would silently
+  #      rebind `this`, breaking event handlers, lifecycle wiring, timers.
+  #   2. The arrow is a class-field initialiser (`foo = () => …`) — class-
+  #      field arrows auto-bind to the instance.
+  #
+  # TS function-type annotations (`(x: number) => number`) are unaffected
+  # — Semgrep matches expression positions, not type annotations.
+  #
+  # Semgrep can't easily express ESLint's `:not(:has(ThisExpression))`
+  # selector. The closest pragmatic approximation:
+  #   - match arrow expressions
+  #   - exclude class-field initialisers via pattern-not-inside
+  #   - exclude arrows whose source text contains `this` via
+  #     metavariable-regex on the body
+  #
+  # This is approximate — an arrow that references `this` only inside a
+  # nested non-arrow function will still be flagged. Suppress those with
+  # `// nosemgrep: atlas-no-arrow-functions -- <reason>`.
+
+  - id: atlas-no-arrow-functions
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Arrow functions are banned (except when they reference lexical `this`
+      or are class-field initialisers). Use a named function declaration
+      (`function foo() {}`) or a function expression (`function () {}`).
+      TS function-type annotations like `(x: number) => number` are fine —
+      only the runtime arrow form is banned.
+    paths:
+      exclude:
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
+        - "**/test/"
+        - "**/tests/"
+        - "scripts/"
+        - "packages/eslint-plugin-atlas-widgets/"
+        - "tests/"
+    patterns:
+      - pattern-either:
+          - pattern: ($...PARAMS) => $BODY
+          - pattern: $P => $BODY
+      - pattern-not-inside: |
+          class $C {
+            ...
+            $FIELD = ($...P) => $B;
+            ...
+          }
+      - pattern-not-inside: |
+          class $C {
+            ...
+            $FIELD = $P => $B;
+            ...
+          }
+      - metavariable-pattern:
+          metavariable: $BODY
+          pattern-not-regex: \bthis\b
+
+  # --- Widget isolation: no cross-widget reach ----------------------------
+  #
+  # Ported from @atlas/eslint-plugin-widgets ▸ no-cross-widget-reach.
+  # Widgets communicate only via context.channel (mediator) and
+  # context.request (capability bridge). Anything that lets one widget
+  # observe or influence another bypasses those gates.
+
+  - id: atlas-widgets-no-cross-widget-reach
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Widgets cannot reach across widget boundaries. Use context.channel
+      topics (mediator) or context.request (capability bridge) instead of
+      globals, sibling imports, postMessage, or document.* DOM queries.
+    paths:
+      include:
+        - "bundles/*/src/widgets/"
+    pattern-either:
+      - pattern: localStorage
+      - pattern: sessionStorage
+      - pattern: indexedDB
+      - pattern: new BroadcastChannel(...)
+      - pattern: new SharedWorker(...)
+      - pattern: new MessageChannel(...)
+      - pattern: window.parent
+      - pattern: window.top
+      - pattern: window.opener
+      - pattern: self.parent
+      - pattern: self.top
+      - pattern: self.opener
+      - pattern: globalThis.parent
+      - pattern: globalThis.top
+      - pattern: globalThis.opener
+      - pattern: document.cookie
+      - pattern: document.querySelector(...)
+      - pattern: document.querySelectorAll(...)
+      - pattern: document.getElementById(...)
+      - pattern: document.getElementsByTagName(...)
+      - pattern: document.getElementsByClassName(...)
+      - pattern: document.getElementsByName(...)
+      - pattern: $X.postMessage(...)
+      - pattern: postMessage(...)
+
+  # --- Widget isolation: no direct DOM access -----------------------------
+  #
+  # Ported from @atlas/eslint-plugin-widgets ▸ no-direct-dom. Widgets must
+  # render through the `html` tagged template from @atlas/core. DOM API
+  # access bypasses the signal-driven render path.
+
+  - id: atlas-widgets-no-direct-dom
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Widgets cannot manipulate the DOM directly — render through the
+      html`...` template from @atlas/core, declare event handlers as
+      `@event=${handler}` bindings, and derive state from signals.
+    paths:
+      include:
+        - "bundles/*/src/widgets/"
+    pattern-either:
+      - pattern: $X.innerHTML = $Y
+      - pattern: $X.outerHTML = $Y
+      - pattern: $X.textContent = $Y
+      - pattern: $X.innerText = $Y
+      - pattern: $X.createElement(...)
+      - pattern: $X.createTextNode(...)
+      - pattern: $X.createDocumentFragment(...)
+      - pattern: $X.appendChild(...)
+      - pattern: $X.removeChild(...)
+      - pattern: $X.replaceChild(...)
+      - pattern: $X.insertBefore(...)
+      - pattern: $X.insertAdjacentHTML(...)
+      - pattern: $X.insertAdjacentElement(...)
+      - pattern: $X.attachShadow(...)
+      - pattern: $X.cloneNode(...)
+      - pattern: $X.getRootNode(...)
+      - pattern: $X.addEventListener(...)
+      - pattern: $X.removeEventListener(...)
+      - pattern: this.shadowRoot
+      - pattern: this.parentNode
+      - pattern: this.parentElement
+      - pattern: this.ownerDocument
+      - pattern: this.nextSibling
+      - pattern: this.previousSibling
+      - pattern: this.firstChild
+      - pattern: this.lastChild
+      - pattern: this.childNodes
+      - pattern: this.children
+      - pattern: new MutationObserver(...)
+      - pattern: new ResizeObserver(...)
+      - pattern: new IntersectionObserver(...)
+
+  # --- Widget isolation: no UI-blocking or off-bridge IO ------------------
+  #
+  # Ported from @atlas/eslint-plugin-widgets ▸ no-ui-blocking. Widgets must
+  # use context.request(capability, args) for IO and avoid sync-blocking
+  # APIs that stall the main thread.
+
+  - id: atlas-widgets-no-ui-blocking
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Widgets cannot use sync-blocking APIs (alert/confirm/prompt) or do
+      IO outside the capability bridge. Use context.request('<capability>',
+      args) so the host can authorize and cancel; render confirmation UI
+      in the widget body instead of native dialogs.
+    paths:
+      include:
+        - "bundles/*/src/widgets/"
+    pattern-either:
+      - pattern: alert(...)
+      - pattern: confirm(...)
+      - pattern: prompt(...)
+      - pattern: fetch(...)
+      - pattern: eval(...)
+      - pattern: navigator.sendBeacon(...)
+      - pattern: new XMLHttpRequest(...)
+      - pattern: new WebSocket(...)
+      - pattern: new EventSource(...)
+      - pattern: new Worker(...)
+      - pattern: new SharedWorker(...)
+      - pattern: new ServiceWorker(...)
+      - pattern: new Function(...)

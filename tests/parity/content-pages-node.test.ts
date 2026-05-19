@@ -10,7 +10,6 @@
  * `UnsupportedInMode` and the assertion gracefully passes the skip).
  */
 import { describe, test, expect } from '@atlas/test';
-import { UnsupportedInMode } from './lib/factory.ts';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
 import { newEventId } from '@atlas/catalog';

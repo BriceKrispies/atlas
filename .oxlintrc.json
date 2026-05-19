@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "plugins": ["typescript", "oxc"],
   "categories": {
     "correctness": "error"
   },
@@ -20,7 +20,12 @@
     "test-setup/**",
     "**/vitest.config.ts",
     "**/playwright.bdd.config.ts",
+    "**/playwright.bdd.server.config.ts",
+    "**/*.mjs",
+    "**/*.js",
+    "tests/load/**",
     "adapters/policy-cedar/bin/**",
+    "packages/test/bin/**",
     "packages/openapi/scripts/**",
     "apps/server/test/**",
     "apps/projection-worker/test/**",
@@ -66,7 +71,12 @@
     "typescript/no-unsafe-assignment": "error",
     "typescript/no-unsafe-call": "error",
     "typescript/no-unsafe-member-access": "error",
-    "typescript/no-unsafe-return": "error"
+    "typescript/no-unsafe-return": "error",
+    "no-console": "error",
+    "no-unused-vars": "off",
+    "no-unused-expressions": "off",
+    "no-empty-pattern": "off",
+    "typescript/no-this-alias": "off"
   },
   "overrides": [
     {

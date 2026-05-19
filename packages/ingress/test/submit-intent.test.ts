@@ -35,7 +35,7 @@ type ValidateFunction = ((data: unknown) => boolean) & {
 };
 import type { EventEnvelope, IntentEnvelope, IntentResponse, Logger, } from '@atlas/platform-core';
 import { IngressError } from '@atlas/platform-core';
-import type { ActionEntry, ControlPlaneRegistry, EventDispatcher, HandlerRegistry, IntentHandler, PolicyDecision, PolicyEngine, PolicyEvaluationRequest, } from '@atlas/ports';
+import type { ActionEntry, ControlPlaneRegistry, EventDispatcher, HandlerRegistry, IntentHandler, PolicyDecision, PolicyEngine, } from '@atlas/ports';
 import { makeFakeCache, makeFakeCatalogState, makeFakeEventStore, makeFakeProjections, makeFakeSearch, type StatefulEventStore, } from './lib/factories.ts';
 // ── fakes ───────────────────────────────────────────────────────────
 function makeRegistry(opts: {

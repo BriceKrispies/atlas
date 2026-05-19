@@ -58,7 +58,7 @@ function stampMetaEnv(env: Record<string, unknown>): void {
     const meta = import.meta as {
         env?: Record<string, unknown>;
     };
-    meta.env = { ...(meta.env ?? {}), ...env };
+    meta.env = { ...meta.env, ...env };
     // Node ESM modules each have their own `import.meta`, so the stamp
     // above does NOT propagate to the SUT. Mirror DEV onto the
     // documented global override that the SUT also reads.

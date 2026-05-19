@@ -1,7 +1,7 @@
 /**
  * Architectural boundary checks for the Atlas monorepo.
  *
- * Complements eslint.config.ts (per-file rules) by enforcing graph-level
+ * Complements .oxlintrc.json (per-file rules) by enforcing graph-level
  * structure: no module-to-module synchronous coupling, no cycles, no
  * adapter imports inside modules, no implementation imports inside ports.
  *
@@ -40,7 +40,7 @@ module.exports = {
       name: 'modules-no-adapters',
       severity: 'error',
       comment:
-        'Modules depend on ports, never on adapters. Mirrors the ESLint ' +
+        'Modules depend on ports, never on adapters. Mirrors the oxlint ' +
         'no-restricted-imports rule; defensive belt-and-suspenders.',
       from: {
         path: '^modules/',

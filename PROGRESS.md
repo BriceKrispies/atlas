@@ -137,14 +137,14 @@ are the source of truth until they land here.
 
 | Tool | What it catches | Evidence |
 |---|---|---|
-| ESLint (flat config) | Type-safety, widget isolation, hexagonal boundaries | `eslint.config.ts` |
+| oxlint | Type-safety baseline, hexagonal boundaries, no-console, no-double-cast (via Semgrep), unused-disable-directive sweep | `.oxlintrc.json` |
 | TypeScript (`tsgo`, ultra-strict) | Type errors, narrowing gaps | `tsconfig.base.json` |
 | dependency-cruiser | Module → adapter imports, circular deps, orphans | `.dependency-cruiser.cjs`, `pnpm deps:check` |
 | `overseer:check` (custom) | Mechanical scan of 9 invariants (I1, I7, I9, I10, I12, I18, UI bar, dispatcher parity) | `scripts/overseer-check.ts` |
-| Semgrep (atlas-invariants ruleset) | Pattern-based checks for I1 (single ingress, modules-no-http) + UI bar; runs alongside `overseer:check` until parity is verified | `.semgrep/atlas-invariants.yml`, `pnpm lint:semgrep` |
+| Semgrep (atlas-invariants ruleset) | Pattern-based checks for I1 (single ingress, modules-no-http) + UI bar + widget isolation + arrow-function ban + no-double-cast (ports of the old `@atlas/eslint-plugin-widgets` rules); runs alongside `overseer:check` until parity is verified | `.semgrep/atlas-invariants.yml`, `pnpm lint:semgrep` |
 | `@atlas/chaos` | Adapter-layer fault injection (`withChaos(adapter, profile)`) for integration tests — error injection, latency spikes, dropped writes, deterministic via seed | `packages/chaos/` |
 | `@atlas/arch-tests` | Architecture rules expressed as Vitest tests; complements dep-cruiser. Each test scans a folder with an in-house typed import-scanner (`test/_dependency-scan.ts`) — no third-party arch lib. Initial set: ADR-0008 leak-regression nets + ports/ runtime-purity | `packages/arch-tests/test/` |
-| Biome (formatter only) | Auto-format TS/JS/JSON; ESLint stays as the linter | `biome.json`, `pnpm format` / `pnpm format:check` |
+| Biome (formatter only) | Auto-format TS/JS/JSON; oxlint owns linting | `biome.json`, `pnpm format` / `pnpm format:check` |
 | knip | Dead exports, unused deps, missing deps across the workspace | `.knip.json`, `pnpm lint:knip` |
 | syncpack | Workspace version drift across `package.json` files | `.syncpackrc.json`, `pnpm lint:syncpack` |
 | markdownlint-cli2 | Markdown style + structural issues | `.markdownlint-cli2.jsonc`, `pnpm lint:markdown` |

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { describe, expect, it, vi } from '@atlas/test';
+import { describe, expect, it } from '@atlas/test';
 import type { Crypto, Fixture, Scenario, } from '@atlas/ports';
 import { canonicalJsonStringify } from '@atlas/platform-core';
 import { seedCorpusContract, type SeedCorpusFactory, type SeedCorpusFactoryResult, } from '@atlas/contract-tests';

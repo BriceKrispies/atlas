@@ -87,5 +87,3 @@ declare global {
     __atlas_boot_error?: string;
   }
 }
-
-export {};

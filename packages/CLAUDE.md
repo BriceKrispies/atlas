@@ -31,7 +31,6 @@ These are load-bearing — read their CLAUDE.md before editing.
 | `test-state/` — `@atlas/test-state` | Dev-mode test API: surfaces register state readers; Playwright reads via `window.__atlasTest` |
 | `test-fixtures/` — `@atlas/test-fixtures` | Playwright + Axe accessibility helpers |
 | `contract-tests/` — `@atlas/contract-tests` | Vitest contract suites for ports — both `node` and `idb` adapters run these |
-| `eslint-plugin-atlas-widgets/` — `@atlas/eslint-plugin-widgets` | Lint rules for component best practices |
 
 ## Reading surface state from BDD steps
 
@@ -69,7 +68,7 @@ Frontend apps pull in `core` + `design` + `widgets` (+ `widget-host` + `page-tem
 
 ## Conventions
 
-- **Workspace name = `@atlas/<dir>`.** Most packages drop the `@atlas/` prefix in their dir name (e.g., `core/` → `@atlas/core`). Exception: `eslint-plugin-atlas-widgets`.
+- **Workspace name = `@atlas/<dir>`.** Most packages drop the `@atlas/` prefix in their dir name (e.g., `core/` → `@atlas/core`).
 - **Single `src/index.ts` re-export.** Every package's public surface comes through `src/index.ts`. If something is not re-exported there, treat it as private.
 - **No domain logic.** Anything tenant-specific or business-logic-heavy belongs in `/modules`.
 - **No HTTP.** Only `apps/server` exposes HTTP endpoints (Invariant I1).

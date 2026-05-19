@@ -34,8 +34,7 @@
     // scoped — and so the @atlas/<pkg> dependency-declaration discipline
     // is enforced for real packages.
     "playwright.config.ts",
-    "playwright.itest.config.ts",
-    "eslint.config.ts"
+    "playwright.itest.config.ts"
   ],
   "exclude": [
     "**/node_modules",

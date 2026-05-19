@@ -14,9 +14,9 @@
 pre-commit:
   parallel: true
   commands:
-    eslint:
+    oxlint:
       glob: "*.{ts,tsx,js,mjs,cjs}"
-      run: pnpm exec eslint --max-warnings=0 {staged_files}
+      run: pnpm exec oxlint {staged_files}
       stage_fixed: false
 
     markdownlint:

@@ -36,7 +36,7 @@
  * semantics, Invariant I12) so a partial first pass followed by a
  * later full rebuild is safe.
  *
- * Port-boundary rule (`eslint.config.ts`): this file MUST NOT import
+ * Port-boundary rule (`.oxlintrc.json`): this file MUST NOT import
  * from `@atlas/adapter-*` or `@atlas/modules-*`. The whole point is
  * that each module exports a dispatcher-factory the wiring layer
  * composes; the port itself is module-agnostic.
