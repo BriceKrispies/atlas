@@ -7,7 +7,9 @@
 
 ## Why this exists
 
-`custom-schema/object-definition` ([`../../../custom-schema/capabilities/object-definition/README.md`](../../../custom-schema/capabilities/object-definition/README.md)) lets a tenant declare object types. Tenants can't be allowed to declare unbounded numbers of them — each one provisions a Postgres table and consumes catalog/projection state. The capability calls `enforceQuota(tenantId, 'object-types-per-tenant')` in its ingress chain (step 3 of its End-to-End Flow). Without a Commerce-side dimension, that call returns "no limit configured" and the quota is effectively infinite.
+`custom-schema/object-definition` ([`../../../custom-schema/capabilities/object-definition/README.md`](../../../custom-schema/capabilities/object-definition/README.md)) lets a tenant declare object types. Tenants can't be allowed to declare unbounded numbers of them — each one provisions a Postgres table inside the tenant's database and consumes catalog/projection state. The capability calls `enforceQuota(tenantId, 'object-types-per-tenant')` in its ingress chain (step 3 of its End-to-End Flow). Without a Commerce-side dimension, that call returns "no limit configured" and the quota is effectively infinite.
+
+The capacity unit under [ADR 0005](../../../../decisions/0005-custom-schema-storage-strategy.md) (db-per-tenant) is "tables in the tenant's database." Each tenant has their own Postgres database (`atlas_t_<tenantUuid>`); object types are tables in `public` inside that database. Usage is `count(*)` of platform-owned `_atlas_object_types` rows in the tenant's DB; raw byte capacity is `pg_database_size(<tenantDbName>)` if Commerce later wants a size-based dimension.
 
 This brief reserves the dimension name and captures the non-negotiable shape requirement so `commerce-owner`'s eventual full spec stays consistent with how `object-definition` calls it.
 
@@ -50,7 +52,7 @@ Resolution flow Commerce must implement:
 1. Look up the tenant's current `Plan` for `tenantId`.
 2. Look up `quota_overrides` row keyed by `(tenantId, 'object-types-per-tenant')`.
 3. Pick the override if present, else the plan default.
-4. Count current usage: `SELECT count(*) FROM atlas_t_<tenantUuid>._atlas_object_types`. Fan-out style — Commerce already does this for other per-tenant dimensions.
+4. Count current usage: connect to the tenant's database (`atlas_t_<tenantUuid>`) via `PostgresTenantDbProvider.getPool(tenantId)` and run `SELECT count(*) FROM _atlas_object_types`. Fan-out style — Commerce already does this for other per-tenant dimensions.
 5. If `current >= limit` → throw `QuotaExceededError`. Otherwise return.
 
 The fan-out usage query is fine at expected tenant counts; if Commerce wants to maintain a denormalized counter, that's an internal optimization decision, not a contract concern.

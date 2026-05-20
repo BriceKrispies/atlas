@@ -1,7 +1,7 @@
 # 0013 — `EntityStore` is schema-typed, not generic-typed
 
 **Status:** Proposed (2026-05-12)
-**Depends on:** [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (the schema-per-tenant decision that makes schemas load-bearing for tenant data); the `Upcaster` pipeline referenced in [`ports/src/entity-store.ts:17-20`](../../ports/src/entity-store.ts).
+**Depends on:** [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (the db-per-tenant decision — revised 2026-05-20 from the original schema-per-tenant call — that makes schemas load-bearing for tenant data); the `Upcaster` pipeline referenced in [`ports/src/entity-store.ts:17-20`](../../ports/src/entity-store.ts).
 **Touches invariant:** I12 (projections rebuildable from events) — strengthens it by making the projected `attrs` shape verifiable on every read.
 
 ## Context
@@ -145,7 +145,7 @@ Each stage is its own ticket set under `tickets/schema-typed-entity-store/`. Fai
 1. **Upcaster pipeline status.** Cited in `ports/src/entity-store.ts:17-20` but not audited recently. Stage 1 starts with a status check; if upcasters are stubs, that scope joins this ADR or splits as a prerequisite ADR.
 2. **Cache validation default.** Re-validate on every cache hit, or trust the cache? Default is re-validate; the `trustedReadAfterWrite` exception needs a concrete cache-key naming convention so misuse is hard.
 3. **Browser-side validation.** `adapter-idb` consumes the same decoders. AJV bundle size in the browser needs measuring; if it's painful, the IDB adapter may use a lighter-weight validator generated from the same schema (e.g., `ajv/standalone` precompiled output).
-4. **Does this ADR open or close the door on tenant-defined entity types?** [ADR 0005](0005-custom-schema-storage-strategy.md) puts tenant types in `atlas_t_<tenantId>` schemas with native DDL. Those types have schemas too — declared by tenants at runtime, not committed to the repo. The decoder primitive must work for both: built-in types compile decoders at boot, tenant types compile decoders at type-declaration time and cache them per-tenant. This is consistent with 0005 but adds runtime-compiled decoder caching as a Stage 3 sub-task.
+4. **Does this ADR open or close the door on tenant-defined entity types?** [ADR 0005](0005-custom-schema-storage-strategy.md) puts tenant types in native tables inside each tenant's dedicated `atlas_t_<tenantUuid>` database, via the DDL allowlist. Those types have schemas too — declared by tenants at runtime, not committed to the repo. The decoder primitive must work for both: built-in types compile decoders at boot, tenant types compile decoders at type-declaration time and cache them per-tenant. This is consistent with 0005 but adds runtime-compiled decoder caching as a Stage 3 sub-task.
 
 ## Backstop
 

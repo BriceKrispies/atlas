@@ -7,8 +7,8 @@ Tenant-defined object types, fields, and validation rules — stored as data,
 not code. Lets a tenant extend the platform's data model without a deploy.
 The "metadata" foundation everything else in Extensibility builds on; the
 **Salesforce-shaped trunk** of [`vision.md`](../../vision.md)'s "the dream" —
-each tenant defines their own data model in their per-tenant DB, and Atlas
-hosts / queries / audits / surfaces UI over it.
+each tenant defines their own data model in their own Postgres database, and
+Atlas hosts / queries / audits / surfaces UI over it.
 
 ## Capabilities
 - [`object-definition`](capabilities/object-definition/README.md) — declare object types per tenant. **Designed (no implementation yet)**; first capability under this domain. Lands the DDL allowlist grammar that ADR 0005 deferred.
@@ -22,4 +22,4 @@ hosts / queries / audits / surfaces UI over it.
 ## Cross-references
 - (no legacy mapping — new domain)
 - Related invariants: **I7** (search tenant isolation), **I9** (cache keyed by tenant), **I12** (projections rebuildable from events), **I16** (DDL containment)
-- Storage strategy: **schema-per-tenant**, settled by [ADR 0005](../../decisions/0005-custom-schema-storage-strategy.md). Each tenant gets a Postgres schema `atlas_t_<tenantUuid>`; tenant-defined object types become native tables.
+- Storage strategy: **database-per-tenant**, settled by [ADR 0005](../../decisions/0005-custom-schema-storage-strategy.md) (revised 2026-05-20, supersedes the prior schema-per-tenant choice). Each tenant gets a dedicated Postgres database `atlas_t_<tenantUuid>`; tenant-defined object types become native tables in `public` inside that database, alongside platform-owned tables carrying the `_atlas_` prefix. Tenant isolation is enforced at the Postgres protocol layer — separate database, separate catalog, separate WAL, separate connection target.

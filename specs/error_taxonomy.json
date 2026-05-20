@@ -62,6 +62,11 @@
       "description": "Tenant is in quarantine mode and cannot process requests"
     },
     {
+      "code": "TENANT_DATABASE_NOT_PROVISIONED",
+      "category": "TENANT",
+      "description": "Tenant's dedicated Postgres database (atlas_t_<tenantUuid>) is missing or unreachable — control_plane.tenants.db_* is NULL or the database has not been provisioned. Surfaced by PostgresTenantDbProvider.getPool and by handlers that require the tenant data plane (e.g., CustomSchema.ObjectType.Define)."
+    },
+    {
       "code": "UNAUTHORIZED",
       "category": "AUTHZ",
       "description": "Principal is not authorized to perform this action"

@@ -117,12 +117,12 @@ The tenant-code instruction. A trigger (HTTP route function, schema-lifecycle ho
 
 ### mutateSchema
 
-The tenant-declaration instruction for the data model. A tenant declares an `ObjectType`, a `Field`, or a `Relation` against its own `CustomSchema`; the kernel translates the declaration into a constrained DDL set and applies it to the tenant's per-tenant Postgres schema (`atlas_t_<tenantId>`). Tenants do not issue raw SQL; the allowlist is mechanically enforced. Schema state is rebuildable from the tenant's event store — I12 holds for tenant-defined schemas too.
+The tenant-declaration instruction for the data model. A tenant declares an `ObjectType`, a `Field`, or a `Relation` against its own `CustomSchema`; the kernel translates the declaration into a constrained DDL set and applies it inside the tenant's database (`atlas_t_<tenantUuid>` per [ADR 0005](../decisions/0005-custom-schema-storage-strategy.md) — a database name, with tables landing in `public`). Tenants do not issue raw SQL; the allowlist is mechanically enforced. Schema state is rebuildable from the tenant's event store — I12 holds for tenant-defined schemas too.
 
 | | |
 |---|---|
 | **Inputs** | `ObjectType` / `Field` / `Relation` declaration (via `submitIntent` with a schema-mutation action) |
-| **Outputs** | domain event (`CustomSchema.ObjectType.Defined`, etc.); DDL applied to tenant schema; registry updated |
+| **Outputs** | domain event (`CustomSchema.ObjectType.Defined`, etc.); DDL applied inside the tenant's database; registry updated |
 | **Required invariants** | I12 (rebuildable from events), I16 (schema-mutation scope: own tenant, allowlist DDL) |
 | **Category** | kernel + adapter-backed (tenant declaration) |
 | **Code anchor** | [`ports/src/entity-type-registry.ts`](../../ports/src/entity-type-registry.ts) `EntityTypeRegistry` (read side; line 28); writes via dedicated operator surfaces — declaration spec under [`specs/domains/custom-schema/`](../domains/custom-schema/); migration applier port to-be-created (per [ADR 0005](../decisions/0005-custom-schema-storage-strategy.md)) |

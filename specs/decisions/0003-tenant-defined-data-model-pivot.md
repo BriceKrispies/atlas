@@ -91,7 +91,7 @@ The following 0002 calls stand:
 
 - The specific port shapes for `custom-schema` and `functions`. Each gets its own capability specs when scoped.
 - A platform-owner agent for Extensibility (defer; can land when the first capability is scoped).
-- The storage strategy fork already noted in `specs/domains/custom-schema/README.md` (sparse pivot table vs. schema-per-tenant vs. row-level-security). That decision stays open and gets recorded as its own ADR when made.
+- The storage strategy fork already noted in `specs/domains/custom-schema/README.md` (sparse pivot table vs. schema-per-tenant vs. row-level-security vs. database-per-tenant). That decision stays open and gets recorded as its own ADR when made. *(Resolved 2026-05-20 as database-per-tenant; see [ADR 0005](0005-custom-schema-storage-strategy.md).)*
 - Capacity planning and billing-economics for the public instance.
 
 ## Migration

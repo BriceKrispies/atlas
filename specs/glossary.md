@@ -8,7 +8,7 @@ These terms describe Atlas as it is today: a multi-tenant platform fabric where 
 The multi-tenant chassis Atlas provides — identity, authorization, tenancy, audit, observability, search — applied uniformly to every operation. Tenants get all of these by virtue of being a tenant on Atlas, not because they wrote code for it.
 
 **Custom Schema**
-A tenant-defined data model: entity types, fields, and relationships declared by a tenant via Atlas API. Stored in the tenant's per-tenant Postgres schema (`atlas_t_<tenantId>`) per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md). The Salesforce-shaped trunk of Atlas's vision.
+A tenant-defined data model: entity types, fields, and relationships declared by a tenant via Atlas API. Stored in the tenant's database (`atlas_t_<tenantUuid>`) per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md). The Salesforce-shaped trunk of Atlas's vision.
 
 **Tenant-Authored Function**
 Sandboxed code written by a tenant, attached to schema lifecycle events / HTTP routes / schedules, executed in the `FunctionRuntime` port (gVisor-backed by default per [ADR 0006](decisions/0006-function-runtime-substrate.md)). Distinct from `function-runner`, which is the internal infrastructure for workflow jobs.

@@ -1,7 +1,7 @@
 # 0007 — DSL substrate and authoring contract
 
 **Status:** Accepted (2026-05-09)
-**Depends on:** [`0003-tenant-defined-data-model-pivot.md`](0003-tenant-defined-data-model-pivot.md) (revives Extensibility, agentic-first), [`0004-platform-invariants-for-multi-tenant-fabric.md`](0004-platform-invariants-for-multi-tenant-fabric.md) (I14 tenant-code isolation, I15 egress mediation, I16 schema-mutation scope, I17 API/CLI/UI parity, I18 surface introspection), [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (schema-per-tenant), [`0006-function-runtime-substrate.md`](0006-function-runtime-substrate.md) (gVisor for tenant code).
+**Depends on:** [`0003-tenant-defined-data-model-pivot.md`](0003-tenant-defined-data-model-pivot.md) (revives Extensibility, agentic-first), [`0004-platform-invariants-for-multi-tenant-fabric.md`](0004-platform-invariants-for-multi-tenant-fabric.md) (I14 tenant-code isolation, I15 egress mediation, I16 schema-mutation scope, I17 API/CLI/UI parity, I18 surface introspection), [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (db-per-tenant; revised 2026-05-20 from the original schema-per-tenant call), [`0006-function-runtime-substrate.md`](0006-function-runtime-substrate.md) (gVisor for tenant code).
 
 ## Context
 
@@ -48,18 +48,18 @@ Every DSL Atlas hosts MUST satisfy all of the following. This is the price of in
 
 A DSL spec MUST include a "DSL contract conformance" subsection demonstrating each property. `architect` rejects DSL capability specs that don't.
 
-### 3. Storage — DSL artifacts live in the tenant's schema
+### 3. Storage — DSL artifacts live in the tenant's database
 
-DSL artifacts are tenant-owned content; per [ADR 0005](0005-custom-schema-storage-strategy.md) they live in the tenant's per-tenant Postgres schema. Specifically, in **platform-owned tables sibling to `_atlas_object_types`**:
+DSL artifacts are tenant-owned content; per [ADR 0005](0005-custom-schema-storage-strategy.md) they live in **the tenant's database** (`atlas_t_<tenantUuid>` is a Postgres database name, not a schema name). Specifically, in **platform-owned tables sibling to `_atlas_object_types`**, in the default `public` schema inside the tenant's DB:
 
-- `atlas_t_<tenantUuid>._atlas_dsl_<kind>` — one table per DSL kind (e.g. `_atlas_dsl_template`, `_atlas_dsl_query`, `_atlas_dsl_formula`).
+- `public._atlas_dsl_<kind>` inside `atlas_t_<tenantUuid>` — one table per DSL kind (e.g. `_atlas_dsl_template`, `_atlas_dsl_query`, `_atlas_dsl_formula`). The `_atlas_` prefix marks the table as platform-owned (tenant DDL via the allowlist cannot create, alter, or drop tables with that prefix).
 - Each row: `artifact_id` (uuid PK), `api_name` (tenant-unique), `source` (text, canonical), `ast` (jsonb, projected — see §4), `version` (bigint, monotonic per artifact), `created_at`, `updated_at`, `created_by`, `updated_by`.
-- Schema bootstrap is lazy on first artifact of a given kind, mirroring the `_atlas_object_types` lazy-bootstrap pattern from `custom-schema/object-definition`.
+- Table bootstrap is lazy on first artifact of a given kind, mirroring the `_atlas_object_types` lazy-bootstrap pattern from `custom-schema/object-definition`.
 - Each kind also lazy-bootstraps a sibling `_atlas_dsl_<kind>_versions` history table for prior-version recovery (see §7).
 
-DSL artifacts do **not** become custom-schema `ObjectType`s. They are platform infrastructure (Atlas-owned schema) holding tenant content (tenant-owned rows). Treating them as `ObjectType`s would create a bootstrap circularity (a `Template` `ObjectType` would itself need a template to render). Per-tenant schema, platform-managed shape — same pattern as `_atlas_object_types` and `_atlas_tenant_migrations`.
+DSL artifacts do **not** become custom-schema `ObjectType`s. They are platform infrastructure (platform-owned tables inside the tenant DB) holding tenant content (tenant-owned rows). Treating them as `ObjectType`s would create a bootstrap circularity (a `Template` `ObjectType` would itself need a template to render). Per-tenant DB, platform-managed shape — same pattern as `_atlas_object_types` and `_atlas_tenant_migrations`.
 
-I16 holds: DSL writes affect only the issuing tenant's schema; the connection-role enforcement from ADR 0005 §Constraints item 3 makes cross-tenant access impossible at the database layer.
+I16 holds: DSL writes affect only the issuing tenant's DB; the two-role topology from ADR 0005 §Constraints item 3 (platform-owned provisioner role for DDL, tenant runtime role for CRUD) makes cross-tenant access impossible at the protocol layer — a different database is a different connection target, a different catalog, and a different WAL stream.
 
 ### 4. Source-of-truth — text is canonical, AST is a projection
 
@@ -141,7 +141,7 @@ This ADR commits to the substrate, not to any individual DSL. The expected order
 
 1. **Expression DSL** — `${user.name | upper}` style; no statements, just typed expressions over a host-supplied scope. Smallest grammar, lowest risk, embedded by other DSLs.
 2. **Template DSL** — text + interpolation + bounded `{% if %}` / `{% for over finite-collection %}`. Builds on the expression DSL.
-3. **Query DSL** — typed query against a `custom-schema` object type; lowers to parameterized SQL via the adapter (no string concatenation; same identifier-safety bar as ADR 0005 §Per-Tenant Schema Translation).
+3. **Query DSL** — typed query against a `custom-schema` object type; lowers to parameterized SQL via the adapter (no string concatenation; same identifier-safety bar the ADR 0005 DDL allowlist applies inside the tenant's DB).
 
 Validation, formula, layout, and trigger-condition DSLs follow as their parent capabilities are scoped. Each lands as its own capability spec under the relevant domain (templating + layout under whatever the `seeds/cms-standard` capability stack ends up being; formula under `custom-schema/formula-fields`; trigger conditions under `workflow/triggers`; validation under `custom-schema/validation-rules`).
 
@@ -198,7 +198,7 @@ The choice carries forward into capability specs:
 
 - Vision dream this enables: [`vision.md`](../vision.md) §"What Atlas is" / Salesforce-shaped data + agentic surfaces.
 - Tenant-code boundary it does not weaken: [`0004-platform-invariants-for-multi-tenant-fabric.md`](0004-platform-invariants-for-multi-tenant-fabric.md) I14, I15.
-- Storage pattern it reuses: [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (schema-per-tenant, lazy bootstrap of platform-owned per-tenant tables).
+- Storage pattern it reuses: [`0005-custom-schema-storage-strategy.md`](0005-custom-schema-storage-strategy.md) (db-per-tenant, lazy bootstrap of platform-owned tables inside each tenant's database).
 - Tenant-code execution model it sits beside: [`0006-function-runtime-substrate.md`](0006-function-runtime-substrate.md).
 - Event-sourcing / projection-rebuild contract it observes: [`architecture.md`](../architecture.md) I12.
 - Cache-tag contract it observes: [`architecture.md`](../architecture.md) I9, I10.

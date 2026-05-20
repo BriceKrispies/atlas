@@ -62,7 +62,7 @@ Full Atlas-in-browser (every port has a working IDB impl, the entire control pla
 The following 0003 calls stand:
 
 - **Open public signup, agentic-first, single ingress (I1), tiny core** all stand. This ADR doesn't relax any of them.
-- **The Extensibility platform's `custom-schema` + `functions` work** proceeds independently per [ADR 0004](0004-platform-invariants-for-multi-tenant-fabric.md) (I13–I18 + REQ rules), [ADR 0005](0005-custom-schema-storage-strategy.md) (schema-per-tenant), [ADR 0006](0006-function-runtime-substrate.md) (gVisor), and [ADR 0007](0007-dsl-substrate-and-authoring-contract.md) (DSL substrate). None of those decisions are reopened.
+- **The Extensibility platform's `custom-schema` + `functions` work** proceeds independently per [ADR 0004](0004-platform-invariants-for-multi-tenant-fabric.md) (I13–I18 + REQ rules), [ADR 0005](0005-custom-schema-storage-strategy.md) (db-per-tenant; revised 2026-05-20 — the `_platform` tenant gets its own database, `atlas_t__platform`, just like every other tenant, which strengthens this ADR's recursive-kernel shape), [ADR 0006](0006-function-runtime-substrate.md) (gVisor), and [ADR 0007](0007-dsl-substrate-and-authoring-contract.md) (DSL substrate). None of those decisions are reopened.
 - **The 7-platform domain map** stays as 0002/0003 set it.
 
 ## Consequences

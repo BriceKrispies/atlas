@@ -376,20 +376,20 @@ These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 000
 
 ### CustomSchema
 - **Kind**: Noun
-- **Meaning**: A tenant-defined data model — entity types, fields, relationships, and indexes declared by a tenant via Atlas API and stored in the tenant's per-tenant Postgres schema (`atlas_t_<tenantId>`) per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md).
+- **Meaning**: A tenant-defined data model — entity types, fields, relationships, and indexes declared by a tenant via Atlas API and stored in the tenant's database (`atlas_t_<tenantUuid>`) per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md).
 - **Shape**:
   - `tenantId`
   - `objectTypes[]` — entity type declarations (name, fields, relationships)
   - `version` — monotonically increasing per tenant
 - **Touches**: PIPE-CMD-001, PIPE-PROJ-001, INV-DERIVED-001 (rebuildable from events)
 - **Rules**:
-  - Mutations confined to the issuing tenant's schema (Invariant **I16**).
-  - DDL drawn from a constrained allowlist; no `DROP DATABASE`, no `CREATE EXTENSION`, no cross-schema references.
+  - Mutations confined to the issuing tenant's database (Invariant **I16**).
+  - DDL drawn from a constrained allowlist; no `CREATE DATABASE`, no `DROP DATABASE`, no `CREATE EXTENSION`, no cross-database references.
   - The unit of declaration is the `ObjectType`; see [`domains/custom-schema/capabilities/object-definition/README.md`](domains/custom-schema/capabilities/object-definition/README.md) for the seam.
 
 ### ObjectType
 - **Kind**: Noun
-- **Meaning**: A tenant-declared entity type within a `CustomSchema`. Backed by a native Postgres table inside the tenant's `atlas_t_<tenantUuid>` schema. Identified by `objectTypeId` (UUID-shaped) and a tenant-unique `apiName` (regex `^[A-Za-z][A-Za-z0-9_]{0,62}$`, max 63 chars). Each `ObjectType.Defined` event mints exactly one type.
+- **Meaning**: A tenant-declared entity type within a `CustomSchema`. Backed by a native Postgres table inside the tenant's database `atlas_t_<tenantUuid>` (in the default `public` schema). Identified by `objectTypeId` (UUID-shaped) and a tenant-unique `apiName` (regex `^[A-Za-z][A-Za-z0-9_]{0,62}$`, max 63 chars). Each `ObjectType.Defined` event mints exactly one type.
 - **Shape**:
   - `tenantId`
   - `objectTypeId`
@@ -399,7 +399,7 @@ These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 000
 - **Touches**: PIPE-CMD-001, INV-DERIVED-001, **I7**, **I16**
 - **Rules**:
   - `apiName` is unique per `tenantId`; collision returns `OBJECT_TYPE_API_NAME_TAKEN`.
-  - Only types defined in the issuing tenant's schema are addressable; cross-tenant access is impossible at the type level (`tenantId` flows through every read).
+  - Only types defined in the issuing tenant's database are addressable; cross-tenant access is impossible at the protocol layer (a different tenant's database is a different connection target).
   - Field declarations are NOT part of this entity in v1 — see the `field-types` capability for adding columns.
 
 ### Field
@@ -419,7 +419,7 @@ These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 000
   - `relationId`, `tenantId`, `fromObjectTypeId`, `toObjectTypeId`, `apiName`, `cardinality` (`one-to-many` | `many-to-one` | `many-to-many`), `onDelete` (`restrict` | `cascade` | `set-null`)
 - **Touches**: PIPE-CMD-001, **I7**, **I16**
 - **Rules**:
-  - Both endpoints MUST live in the same tenant's schema (Invariant **I16**); cross-tenant relations are forbidden.
+  - Both endpoints MUST live in the same tenant's database (Invariant **I16**); cross-tenant relations are forbidden.
   - Out of scope for `object-definition`; declared as a reference-typed field by the `field-types` capability — there is no separate `relations` capability.
   - Naming disambiguation: this entry refers to the *tenant-defined* relation metadata, not the platform-level `RelationStore` port at `ports/src/relation-store.ts`.
 
@@ -759,7 +759,7 @@ The entries below are CMS-flavored vocabulary from before the developer-platform
 
 ### provisionTenant *(v2)*
 - **Kind**: Verb
-- **Meaning**: Atomically create a new tenant — control-plane row, per-tenant DB, per-tenant Postgres schema (`atlas_t_<tenantId>`), default quota ledger entries, admin user, ingress hostname binding. Triggered by `Tenancy.Signup.Approved` (private) or `PublicSignup.EmailVerified` (open).
+- **Meaning**: Atomically create a new tenant — control-plane row, per-tenant Postgres database (`atlas_t_<tenantUuid>`) with its runtime role granted, default quota ledger entries, admin user, ingress hostname binding. Triggered by `Tenancy.Signup.Approved` (private) or `PublicSignup.EmailVerified` (open).
 - **Signature**: `(SignupRequest) -> DomainEvent[]` (`Tenancy.TenantProvisioned`, `Identity.AdminUserCreated`, `Commerce.QuotaLedgerInitialized`, etc.)
 - **Touches**: PIPE-CMD-001, REQ-SIGNUP-001
 - **Rules**:

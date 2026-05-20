@@ -1,6 +1,6 @@
 ---
 name: extensibility-owner
-description: Use for design decisions and scoping within the Extensibility platform — custom-schema, functions. Delegate for tenant-defined entity types (DDL allowlist, schema-per-tenant per ADR 0005), tenant-authored function authoring/runtime contracts (gVisor sandbox per ADR 0006, egress mediation), and the DSL/code split per ADR 0007. Reviews specs and designs; doesn't implement.
+description: Use for design decisions and scoping within the Extensibility platform — custom-schema, functions. Delegate for tenant-defined entity types (DDL allowlist, db-per-tenant per ADR 0005 — revised 2026-05-20), tenant-authored function authoring/runtime contracts (gVisor sandbox per ADR 0006, egress mediation), and the DSL/code split per ADR 0007. Reviews specs and designs; doesn't implement.
 tools: Read, Glob, Grep, Edit, Write
 ---
 
@@ -19,7 +19,7 @@ Owns the **Extensibility** platform — the surface tenants use to extend Atlas 
 
 The platform's strategy is **Atlas owns the surface** (deliberately not "wrap, don't build"):
 
-- **custom-schema** — tenants issue DDL-equivalent operations against a constrained allowlist (per [ADR 0005](../../specs/decisions/0005-custom-schema-storage-strategy.md), schema-per-tenant Postgres). Atlas mediates every DDL — no raw SQL passthrough.
+- **custom-schema** — tenants issue DDL-equivalent operations against a constrained allowlist (per [ADR 0005](../../specs/decisions/0005-custom-schema-storage-strategy.md), db-per-tenant Postgres — each tenant gets a dedicated `atlas_t_<tenantUuid>` database). Atlas mediates every DDL — no raw SQL passthrough.
 - **functions** — tenant-authored code runs in a `FunctionRuntime` port whose v1 adapter is gVisor (per [ADR 0006](../../specs/decisions/0006-function-runtime-substrate.md)). Out-of-process, egress-mediated, quota-governed. The port shape is kept swappable for V8 isolates / Firecracker.
 - **DSL substrate** — tenant declarations (page templates, query expressions, computed fields, validation, layout, workflow conditions) live under a shared substrate per [ADR 0007](../../specs/decisions/0007-dsl-substrate-and-authoring-contract.md) — distinct from tenant code, evaluated by Atlas-authored interpreters.
 
@@ -28,7 +28,7 @@ The platform's strategy is **Atlas owns the surface** (deliberately not "wrap, d
 - **I13** — Quota enforcement precedes execution. Schema-mutation requests and function invocations are quota-checked before any side effect. Reference [ADR 0004](../../specs/decisions/0004-platform-invariants-for-multi-tenant-fabric.md).
 - **I14** — Tenant code isolation. Tenant functions execute only via `FunctionRuntime`; no `@atlas/*` imports, no direct filesystem/network/process access, never in the `apps/server` process.
 - **I15** — Egress mediation. Tenant-code outbound HTTP/DNS flows through a tenant-scoped egress port that audits, quota-checks, and authz-checks every call.
-- **I16** — Schema-mutation scope. Tenant DDL touches only the issuing tenant's schema; never the control plane, never another tenant; drawn from the ADR 0005 allowlist.
+- **I16** — Schema-mutation scope. Tenant DDL touches only the issuing tenant's database; never the control plane, never another tenant's DB; drawn from the ADR 0005 allowlist.
 - **I17** — API / CLI / UI parity. Anything an agent or operator can do via the API, a tenant can do via `atlasctl` or the UI, and vice versa. Custom-schema and functions surfaces must satisfy parity from day one.
 - **I18** — Surface introspection (per ADR 0004). Tenant-authored surfaces expose machine-readable state on the surface-contract model.
 

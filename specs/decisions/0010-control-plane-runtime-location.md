@@ -27,7 +27,7 @@ The control plane's *own* k8s API access (within the platform cluster) uses a `S
 
 ### 2. Per-tenant data lives in `tenant-_platform`'s Postgres, not in the tenant cluster
 
-A clarifying point: **tenant data (events, projections, repository bytes) lives in Atlas's Postgres in the platform cluster, not inside the tenant's own cluster.** Tenant clusters are *workload* substrate — they run the tenant's containers — not *data* substrate. Atlas's per-tenant DB layout (schema-per-tenant per [ADR 0005](0005-custom-schema-storage-strategy.md)) lives in one Postgres in the platform cluster, serving all tenants.
+A clarifying point: **tenant data (events, projections, repository bytes) lives in Atlas's Postgres in the platform cluster, not inside the tenant's own cluster.** Tenant clusters are *workload* substrate — they run the tenant's containers — not *data* substrate. Atlas's per-tenant DB layout (db-per-tenant per [ADR 0005](0005-custom-schema-storage-strategy.md); each tenant gets a dedicated `atlas_t_<tenantUuid>` database) lives in one Postgres cluster in the platform cluster, serving all tenants.
 
 The implication: a tenant's dedicated cluster going down does not lose their data. It also means Atlas's `_platform` Postgres is the central reliability concern; HA Postgres is a Phase 2+ priority.
 

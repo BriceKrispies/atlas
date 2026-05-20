@@ -340,13 +340,13 @@ The following invariants are **non-negotiable** and must be enforced by any impl
 
 **Semantics**:
 - Tenants do not issue raw SQL; they declare object types via Atlas API. The platform translates declarations into a constrained DDL set: `CREATE TABLE`, `ADD COLUMN`, `CREATE INDEX`, `ALTER COLUMN ... TYPE` (with safe-cast rules), `DROP COLUMN`, `DROP TABLE`.
-- Forbidden DDL: `DROP DATABASE`, `CREATE EXTENSION`, cross-schema references, triggers (those are Extensibility/`functions`' responsibility), `GRANT`, `REVOKE`, role manipulation.
-- Schema mutations are scoped to the issuing tenant's per-tenant Postgres schema (`atlas_t_<tenantId>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)) — never the control-plane DB, never another tenant's schema.
-- Per-tenant migration ledger is separate from the control-plane `_atlas_migrations` table; tenant schemas are rebuildable from the tenant's event store (I12 holds for tenant-defined schemas).
+- Forbidden DDL: `CREATE DATABASE`, `DROP DATABASE`, `CREATE EXTENSION`, cross-database references, triggers (those are Extensibility/`functions`' responsibility), `GRANT`, `REVOKE`, role manipulation.
+- Schema mutations are scoped to the issuing tenant's database (`atlas_t_<tenantUuid>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)) — never the control-plane DB, never another tenant's database. Tables inside the tenant's database live in `public` (the default Postgres schema); the database itself is the isolation boundary, enforced at the protocol layer (separate connection target, separate catalog, separate WAL).
+- Per-tenant migration ledger lives inside the tenant's database and is separate from the control-plane `_atlas_migrations` table; tenant schemas are rebuildable from the tenant's event store (I12 holds for tenant-defined schemas).
 
 **Purpose**: Tenant-controlled DDL is necessary for the Salesforce-shaped data model but is also the largest blast-radius primitive in the platform. The scope boundary is the difference between "tenants define their data" and "tenants operate the database."
 
-**Violation**: A tenant's schema mutation reaches another tenant's DB or executes DDL outside the allowlist.
+**Violation**: A tenant's schema mutation reaches another tenant's database or executes DDL outside the allowlist.
 
 **Source**: [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](decisions/0004-platform-invariants-for-multi-tenant-fabric.md), [`decisions/0005-custom-schema-storage-strategy.md`](decisions/0005-custom-schema-storage-strategy.md)
 
@@ -553,12 +553,12 @@ This is the outbound counterpart of I1's single-ingress rule for inbound traffic
 
 Per **I16**, tenant-defined schema mutations (`custom-schema`) are confined to:
 
-- The issuing tenant's per-tenant Postgres schema (`atlas_t_<tenantId>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)).
+- The issuing tenant's database (`atlas_t_<tenantUuid>` per [ADR 0005](decisions/0005-custom-schema-storage-strategy.md)). Tables live in `public` inside that database; platform-owned tables carry the `_atlas_` prefix.
 - A constrained DDL allowlist (`CREATE TABLE`, `ADD COLUMN`, `CREATE INDEX`, safe `ALTER COLUMN`, `DROP COLUMN`, `DROP TABLE`).
 
-The migration applier port asserts the target schema name matches the issuing tenant; cross-schema references and forbidden DDL (`DROP DATABASE`, `CREATE EXTENSION`, triggers, role manipulation) are rejected before any SQL executes.
+The migration applier port asserts the target connection resolves to the issuing tenant's database; cross-database references and forbidden DDL (`CREATE DATABASE`, `DROP DATABASE`, `CREATE EXTENSION`, triggers, role manipulation) are rejected before any SQL executes.
 
-Each tenant's connection role has `USAGE` only on its own schema; cross-schema queries fail at the database, not at the application.
+Each tenant's runtime role has CRUD privileges only on its own database's tables (no `CREATE` rights — all DDL goes through the platform's provisioner role); cross-tenant queries are impossible at the protocol layer because Postgres does not let one session attach to two databases.
 
 ### Compute-layer isolation
 
