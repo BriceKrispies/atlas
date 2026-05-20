@@ -50,6 +50,7 @@
     "domain:list": "node --experimental-transform-types scripts/atlas-domain.ts list",
     "domain:disable": "node --experimental-transform-types scripts/atlas-domain.ts disable",
     "tenant:add-admin": "node --experimental-transform-types scripts/tenant-add-admin.ts",
+    "dev:up": "node --experimental-transform-types scripts/dev-up.ts",
     "atlasctl": "node --experimental-transform-types apps/atlasctl/src/main.ts",
     "sync-openapi": "node --experimental-transform-types packages/openapi/scripts/sync-openapi.ts",
     "e2e:smoke": "node --experimental-transform-types scripts/e2e-smoke.ts",

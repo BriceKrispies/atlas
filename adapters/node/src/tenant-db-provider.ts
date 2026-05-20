@@ -17,10 +17,37 @@
  * `@atlas/ports` and this struct implements it.
  */
 import postgres from 'postgres';
+import { randomBytes } from 'node:crypto';
+import type { Logger } from '@atlas/platform-core';
+import { runMigrations } from './migrations/runner.ts';
 const DEFAULT_LRU_CAP = 32;
 const DEFAULT_POOL_MAX = 5;
+/**
+ * Maximum length of a Postgres identifier (NAMEDATALEN - 1). DB names and
+ * role names must fit within this; we sanitise the tenant id before
+ * concatenating with the `atlas_t_` prefix and `_runtime` suffix.
+ */
+const PG_IDENT_MAX = 63;
 export interface TenantDbProvider {
     getPool(tenantId: string): Promise<postgres.Sql>;
+}
+export interface ProvisionTenantDatabaseArgs {
+    /** Slug-style tenant id (e.g. `_platform`, `dev-tenant`). */
+    tenantId: string;
+    /** Human-readable name. Defaults to `tenantId`. Only used if the tenants row needs to be inserted (currently it must already exist — see notes). */
+    name?: string;
+    /** Optional region label, persisted on the tenants row. Ignored when the row already exists. */
+    region?: string;
+    /** Optional context-bound logger. The structured event is emitted via `logger.info(...)`; when omitted, no log is emitted. */
+    logger?: Logger;
+}
+export interface ProvisionTenantDatabaseResult {
+    /** `true` when the database was created on this call; `false` on idempotent re-runs. */
+    created: boolean;
+    /** Final Postgres database name (`atlas_t_<sanitisedTenantId>`). */
+    dbName: string;
+    /** Final tenant runtime role name (`atlas_t_<sanitisedTenantId>_runtime`). */
+    runtimeRole: string;
 }
 interface TenantConnectionInfo {
     host: string;
@@ -28,6 +55,75 @@ interface TenantConnectionInfo {
     name: string;
     user: string;
     password: string;
+}
+/**
+ * Sanitise a tenant id slug for use as part of a Postgres identifier.
+ * Tenants in the control plane use slugs like `_platform` or `dev-tenant`;
+ * Postgres identifiers permit `[a-z0-9_]` (case-folded) but `-` requires
+ * quoting and creates fragile interpolation. We replace `-` with `_` and
+ * reject anything outside the allowlist — defence-in-depth against an
+ * injection sneaking through the tenants table.
+ */
+function sanitiseTenantSlug(tenantId: string): string {
+    if (tenantId.length === 0) {
+        throw new Error('provisionTenantDatabase: tenantId is empty');
+    }
+    // Slug rules mirror the tenant-id validation upstream: lowercase
+    // letters, digits, `_`, and `-`. We turn `-` into `_` for the DB
+    // identifier (matches phase-2 dev-up expectations:
+    // `dev-tenant` → `atlas_t_dev_tenant`).
+    const normalised = tenantId.toLowerCase().replace(/-/g, '_');
+    if (!/^[a-z0-9_]+$/.test(normalised)) {
+        throw new Error(`provisionTenantDatabase: tenantId ${JSON.stringify(tenantId)} is not a valid slug`);
+    }
+    return normalised;
+}
+function dbNameFor(tenantId: string): string {
+    const slug = sanitiseTenantSlug(tenantId);
+    const name = `atlas_t_${slug}`;
+    if (name.length > PG_IDENT_MAX) {
+        throw new Error(`provisionTenantDatabase: derived db name ${name} exceeds ${PG_IDENT_MAX} chars`);
+    }
+    return name;
+}
+function runtimeRoleFor(tenantId: string): string {
+    const slug = sanitiseTenantSlug(tenantId);
+    const role = `atlas_t_${slug}_runtime`;
+    if (role.length > PG_IDENT_MAX) {
+        throw new Error(`provisionTenantDatabase: derived runtime role ${role} exceeds ${PG_IDENT_MAX} chars`);
+    }
+    return role;
+}
+/**
+ * Generate an opaque password for a freshly-created tenant runtime role.
+ * Stored cleartext in `control_plane.tenants.db_password` so the provider
+ * can open connections; this mirrors the existing `db_password TEXT`
+ * column and the rest of the dev-mode plaintext-secret posture. Replacing
+ * this with a sealed-secrets / KMS-backed shape is a follow-up tracked
+ * under `storage/secrets`.
+ */
+function generateRolePassword(): string {
+    return randomBytes(24).toString('base64url');
+}
+/**
+ * Quote a Postgres identifier (database or role name). The sanitisation
+ * above guarantees only `[a-z0-9_]` characters, so this is paranoia
+ * rather than necessity — but identifier interpolation into DDL warrants
+ * defence in depth.
+ */
+function quoteIdent(ident: string): string {
+    if (!/^[a-z0-9_]+$/.test(ident)) {
+        throw new Error(`refusing to quote unsafe identifier: ${ident}`);
+    }
+    return `"${ident}"`;
+}
+/**
+ * Quote a Postgres string literal by doubling single quotes. Used for
+ * `CREATE ROLE ... PASSWORD '...'` since postgres.js parameter binding
+ * is not supported for that grammar.
+ */
+function quoteLiteral(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
 }
 interface PostgresTenantDbProviderOptions {
     /** Maximum number of cached per-tenant pools before LRU eviction. */
@@ -40,16 +136,61 @@ interface PostgresTenantDbProviderOptions {
      * tests that want to point every tenant at the same physical DB.
      */
     resolveConnection?: (tenantId: string) => Promise<TenantConnectionInfo | null>;
-    /**
-     * Fallback connection info used when a `control_plane.tenants` row
-     * exists but its `db_*` columns are NULL. Dev/sim deployments share
-     * one physical DB across tenants (the control-plane DB), and tenant
-     * isolation lives at the `tenant_id` column level on the substrate
-     * tables — so production-style per-tenant connection info isn't
-     * required. When unset, NULL `db_*` columns still throw, preserving
-     * the strict production behaviour.
-     */
-    defaultConnectionInfo?: TenantConnectionInfo;
+}
+
+/**
+ * Structured error thrown by `getPool` when a tenant row exists but its
+ * `db_*` connection coordinates are NULL — i.e. the tenant has not had its
+ * dedicated database provisioned. ADR 0005 (db-per-tenant) is fail-closed:
+ * there is no shared-DB fallback.
+ *
+ * Operators see this in dev when they haven't run `pnpm dev:up`; in
+ * production it means the signup-approval provisioner hasn't completed
+ * (or failed mid-run). The `code` matches the canonical error taxonomy in
+ * `specs/error_taxonomy.json` and is surfaced upstream by handlers like
+ * `CustomSchema.ObjectType.Define`.
+ */
+export class TenantDatabaseNotProvisionedError extends Error {
+    readonly code = 'TENANT_DATABASE_NOT_PROVISIONED' as const;
+    readonly tenantId: string;
+    constructor(tenantId: string) {
+        super(
+            `tenant ${tenantId}: per-tenant database not provisioned ` +
+                `(control_plane.tenants.db_* is NULL). ` +
+                `In dev: run \`pnpm dev:up\` to provision the per-tenant DB. ` +
+                `In production: invoke the tenancy provisioner ` +
+                `(PostgresTenantDbProvider.provisionTenantDatabase) ` +
+                `during signup-approval. See ADR 0005 (db-per-tenant).`,
+        );
+        this.name = 'TenantDatabaseNotProvisionedError';
+        this.tenantId = tenantId;
+    }
+}
+/**
+ * Structured error thrown by `provisionTenantDatabase` when no
+ * `control_plane.tenants` row exists for the given tenantId. The
+ * provisioner refuses to create the per-tenant database / runtime role
+ * without an anchor row — otherwise a typo'd tenantId would silently
+ * create an orphan DB.
+ *
+ * The `code` matches the canonical `TENANT_NOT_FOUND` entry in
+ * `specs/error_taxonomy.json` (chosen over the ad-hoc `TENANT_ROW_MISSING`
+ * because the taxonomy already covers "tenant id does not exist" with
+ * that conventional code).
+ */
+export class TenantNotFoundError extends Error {
+    readonly code = 'TENANT_NOT_FOUND' as const;
+    readonly tenantId: string;
+    constructor(tenantId: string) {
+        super(
+            `tenant ${tenantId}: no row in control_plane.tenants — ` +
+                `provisionTenantDatabase refuses to create an orphan DB / role. ` +
+                `Insert the tenants row before calling the provisioner ` +
+                `(signup-approve / dev-up inserts it first).`,
+        );
+        this.name = 'TenantNotFoundError';
+        this.tenantId = tenantId;
+    }
 }
 /** Parse a `postgres://user:pass@host:port/dbname` URL into TenantConnectionInfo. */
 export function parseTenantConnectionUrl(url: string): TenantConnectionInfo {
@@ -88,6 +229,16 @@ function openPostgresFromInfo(info: TenantConnectionInfo, max: number): postgres
         user: info.user,
         password: info.password,
         max,
+        // Suppress postgres NOTICE chatter (`relation already exists,
+        // skipping`, `role already exists, skipping`, etc.) that
+        // otherwise leaks to stdout on idempotent provisioner re-runs.
+        // The information is already structurally captured by our own
+        // existence-check branches — the chatter just adds noise to
+        // `pnpm dev:up` output. See ticket
+        // db-per-tenant-followups/provisioner-hardening (F8).
+        onnotice: () => {
+            /* swallow */
+        },
     });
 }
 class TenantPoolCache {
@@ -154,20 +305,24 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     private readonly cache: TenantPoolCache;
     private readonly poolMax: number;
     private readonly resolveOverride?: (tenantId: string) => Promise<TenantConnectionInfo | null>;
-    private readonly defaultConnectionInfo?: TenantConnectionInfo;
     // Dedup concurrent first-time `getPool` calls per tenant so we don't
     // spin up N pools and discard N-1 (TOCTOU race in the previous
     // implementation).
     private readonly inFlight = new Map<string, Promise<postgres.Sql>>();
+    // Dedup concurrent `provisionTenantDatabase` calls per tenant. Without
+    // this, two parallel calls both pass the `pg_database` existence check,
+    // both attempt `CREATE DATABASE`, and the second errors with
+    // `database "<x>" already exists`. The promise is awaited by the
+    // second caller; the entry is cleared on both resolve and reject so
+    // subsequent calls re-issue cleanly (mirrors the `inFlight` pattern
+    // above).
+    private readonly inFlightProvision = new Map<string, Promise<ProvisionTenantDatabaseResult>>();
     constructor(private readonly controlPlane: postgres.Sql, opts: PostgresTenantDbProviderOptions = {}) {
         const cap = Math.max(1, opts.cap ?? DEFAULT_LRU_CAP);
         this.cache = new TenantPoolCache(cap);
         this.poolMax = opts.poolMax ?? DEFAULT_POOL_MAX;
         if (opts.resolveConnection) {
             this.resolveOverride = opts.resolveConnection;
-        }
-        if (opts.defaultConnectionInfo) {
-            this.defaultConnectionInfo = opts.defaultConnectionInfo;
         }
     }
     async getPool(tenantId: string): Promise<postgres.Sql> {
@@ -205,6 +360,237 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     async close(): Promise<void> {
         await this.cache.closeAll();
     }
+    /**
+     * Provision a per-tenant Postgres database for `tenantId`, following
+     * the topology fixed by ADR 0005 (db-per-tenant, two-role per DB).
+     *
+     * Idempotent — re-running yields the same end state with no errors.
+     * Existence checks against `pg_database` and `pg_roles` guard each
+     * mutating step.
+     *
+     * Concurrency: parallel calls for the same `tenantId` are de-duped
+     * via an in-flight promise map. The second caller awaits the first's
+     * result — exactly one `CREATE DATABASE` / `CREATE ROLE` attempt
+     * fires per tenant. The map entry is cleared on resolve AND reject,
+     * so subsequent calls re-issue cleanly even after a failed
+     * provision. See ticket
+     * db-per-tenant-followups/provisioner-hardening (F4).
+     *
+     * Precondition: the `control_plane.tenants` row for `tenantId` MUST
+     * exist before this call. The provisioner refuses to create the DB
+     * / role without an anchor row — otherwise a typo'd tenantId would
+     * silently create an orphan that no `getPool` could ever resolve
+     * to. Throws `TenantNotFoundError` (canonical code
+     * `TENANT_NOT_FOUND` per `specs/error_taxonomy.json`). The row check
+     * happens BEFORE any side effect — no CREATE DATABASE, no CREATE
+     * ROLE on the rejected path. See F5.
+     *
+     * Partial-state recovery: if a prior call created the role but
+     * crashed before the UPDATE, re-running converges. The reconciled
+     * path always writes `db_host/db_port/db_name/db_user`, even when
+     * `wasFirstTime = false`. `db_password` is NOT touched on the
+     * reconciled path (the original password isn't recoverable from the
+     * role after the fact, and rotating it would lock out any open
+     * pool). See F6 (Option A).
+     *
+     * Steps (in order, all under the privileged `controlPlane` connection):
+     *   1. Verify the `control_plane.tenants` row exists (F5).
+     *   2. `CREATE DATABASE <dbName>` if not present.
+     *   3. `CREATE ROLE <runtimeRole>` (LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE) if not present. Password generated and held in memory until step 6 — only persisted on the first-time path.
+     *   4. Grant `CONNECT` on the new DB to the runtime role.
+     *   5. Open a NEW connection as the provisioner (the `controlPlane` user) to the new DB and:
+     *        a. Run tenant migrations (`runMigrations(sql, 'tenant')`).
+     *        b. Grant `USAGE` on `public`, `SELECT,INSERT,UPDATE,DELETE` on all current and future tables in `public`. No `CREATE`/`ALTER`/`DROP` — that's the platform's job, not the tenant's (I16).
+     *   6. UPDATE `control_plane.tenants`. On first-time, writes all five
+     *      `db_*` columns including `db_password`. On reconciled re-runs,
+     *      writes `db_host/db_port/db_name/db_user` but NOT `db_password`.
+     *   7. Emit `Tenancy.Database.Provisioned` log event on first-time path.
+     *
+     * The connection used to run migrations is opened and closed in this
+     * call — it is NOT registered with the LRU. The runtime pool that
+     * `getPool(tenantId)` returns is separate and goes through the
+     * `db_*` columns this call populates.
+     */
+    async provisionTenantDatabase(args: ProvisionTenantDatabaseArgs): Promise<ProvisionTenantDatabaseResult> {
+        const { tenantId } = args;
+        const pending = this.inFlightProvision.get(tenantId);
+        if (pending) {
+            // Second concurrent caller for the same tenant joins the
+            // in-flight execution. They receive the same result; only
+            // one CREATE DATABASE / CREATE ROLE fires. The joining
+            // caller does NOT receive a `Tenancy.Database.Provisioned`
+            // log event through their own `args.logger` — that event is
+            // emitted by the first caller (which owns the
+            // `wasFirstTime` observation). Matches the
+            // idempotent-re-run semantics: at most one event per
+            // provision.
+            return pending;
+        }
+        const promise = this.runProvisionTenantDatabase(args).finally(() => {
+            // Clear on resolve AND reject so a failed provision doesn't
+            // poison the map. Mirrors the `inFlight` pattern in
+            // `getPool`.
+            this.inFlightProvision.delete(tenantId);
+        });
+        this.inFlightProvision.set(tenantId, promise);
+        return promise;
+    }
+    private async runProvisionTenantDatabase(args: ProvisionTenantDatabaseArgs): Promise<ProvisionTenantDatabaseResult> {
+        const { tenantId } = args;
+        const dbName = dbNameFor(tenantId);
+        const runtimeRole = runtimeRoleFor(tenantId);
+        // --- Step 1: Precondition — tenants row must exist (F5) ---
+        // Done BEFORE any side effect. A typo'd tenantId or a caller
+        // that forgot the INSERT would otherwise silently create an
+        // orphan DB + role that no `getPool` could ever resolve to.
+        const tenantRow = await this.controlPlane<{ exists: boolean }[]>`
+      SELECT EXISTS(SELECT 1 FROM control_plane.tenants WHERE tenant_id = ${tenantId}) AS exists
+    `;
+        if (tenantRow[0]?.exists !== true) {
+            throw new TenantNotFoundError(tenantId);
+        }
+        // --- Step 2: CREATE DATABASE (idempotent) ---
+        const dbExists = await this.controlPlane<{ exists: boolean }[]>`
+      SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${dbName}) AS exists
+    `;
+        const createdDb = dbExists[0]?.exists !== true;
+        if (createdDb) {
+            // CREATE DATABASE cannot run inside a transaction. postgres.js
+            // executes `sql.unsafe(...)` outside the implicit tx wrapper when
+            // no params are bound — exactly what's needed here.
+            await this.controlPlane.unsafe(`CREATE DATABASE ${quoteIdent(dbName)}`);
+        }
+        // --- Step 3: CREATE ROLE (idempotent) ---
+        const roleExists = await this.controlPlane<{ exists: boolean }[]>`
+      SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${runtimeRole}) AS exists
+    `;
+        const createdRole = roleExists[0]?.exists !== true;
+        // Only generate a password when we're about to create the role.
+        // Idempotent re-runs of `provisionTenantDatabase` do NOT rotate the
+        // password — the existing `control_plane.tenants.db_password`
+        // remains the source of truth.
+        let generatedPassword: string | null = null;
+        if (createdRole) {
+            generatedPassword = generateRolePassword();
+            await this.controlPlane.unsafe(`CREATE ROLE ${quoteIdent(runtimeRole)} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD ${quoteLiteral(generatedPassword)}`);
+        }
+        // --- Step 4: GRANT CONNECT on new DB (idempotent — repeated grants are no-ops) ---
+        await this.controlPlane.unsafe(`GRANT CONNECT ON DATABASE ${quoteIdent(dbName)} TO ${quoteIdent(runtimeRole)}`);
+        // --- Step 5: Open provisioner connection to the new DB, migrate, grant CRUD ---
+        const provisionerInfo = await this.provisionerInfoFor(dbName);
+        const tenantSql = openPostgresFromInfo(provisionerInfo, this.poolMax);
+        try {
+            await runMigrations(tenantSql, 'tenant');
+            // CRUD-only grants on `public` for the runtime role. No
+            // CREATE/ALTER/DROP. Default privileges so future tables
+            // created by the provisioner (e.g. follow-on migrations,
+            // tenant-DDL-allowlist materialisations) inherit the grant.
+            await tenantSql.unsafe(`GRANT USAGE ON SCHEMA public TO ${quoteIdent(runtimeRole)}`);
+            await tenantSql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${quoteIdent(runtimeRole)}`);
+            await tenantSql.unsafe(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${quoteIdent(runtimeRole)}`);
+            await tenantSql.unsafe(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${quoteIdent(runtimeRole)}`);
+            await tenantSql.unsafe(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${quoteIdent(runtimeRole)}`);
+        }
+        finally {
+            await tenantSql.end({ timeout: 5 }).catch(function () {
+                /* swallow — close is best-effort */
+            });
+        }
+        // --- Step 6: UPDATE control_plane.tenants ---
+        // Two paths:
+        //   - First-time (wasFirstTime): write all five db_* columns,
+        //     including the freshly-generated db_password.
+        //   - Reconciled (role already existed): write
+        //     db_host/db_port/db_name/db_user but NOT db_password.
+        //     This is what makes partial-state recovery converge — if a
+        //     prior call crashed after CREATE ROLE but before the
+        //     UPDATE, the columns were left NULL and the tenant was
+        //     unrecoverable without manual DROP ROLE. Always writing the
+        //     coordinates means re-running the provisioner reconciles
+        //     the row. The password is left alone because (a) it isn't
+        //     recoverable from the role after CREATE, and (b) rotating
+        //     it would lock out any pool already opened under the
+        //     previous password. See F6 Option A.
+        const wasFirstTime = createdRole && generatedPassword !== null;
+        if (wasFirstTime) {
+            await this.controlPlane`
+        UPDATE control_plane.tenants
+        SET db_host     = ${provisionerInfo.host},
+            db_port     = ${provisionerInfo.port},
+            db_name     = ${dbName},
+            db_user     = ${runtimeRole},
+            db_password = ${generatedPassword}
+        WHERE tenant_id = ${tenantId}
+      `;
+        }
+        else {
+            // Reconciled path. For a clean idempotent re-run (row
+            // already correctly populated) this is a no-op write; for
+            // partial-state recovery (db_* NULL after CREATE ROLE
+            // succeeded but the UPDATE failed) this is what converges
+            // the row.
+            await this.controlPlane`
+        UPDATE control_plane.tenants
+        SET db_host = ${provisionerInfo.host},
+            db_port = ${provisionerInfo.port},
+            db_name = ${dbName},
+            db_user = ${runtimeRole}
+        WHERE tenant_id = ${tenantId}
+      `;
+        }
+        // --- Step 7: Structured log event (first-time path only) ---
+        if (wasFirstTime && args.logger) {
+            args.logger.info('tenant database provisioned', {
+                event: 'Tenancy.Database.Provisioned',
+                properties: {
+                    tenantId,
+                    dbName,
+                    runtimeRole,
+                },
+            });
+        }
+        return { created: createdDb, dbName, runtimeRole };
+    }
+    /**
+     * Build a `TenantConnectionInfo` pointing at `dbName` but using the
+     * provisioner's connection coordinates (host / port / user / password).
+     * Migrations and DDL run under this identity; the tenant runtime role
+     * is CRUD-only.
+     */
+    private async provisionerInfoFor(dbName: string): Promise<TenantConnectionInfo> {
+        // postgres.js exposes the resolved connection options via the
+        // function's `.options` property. Reading them here keeps the
+        // provisioner identity consistent with whatever bootstrapped the
+        // `controlPlane` Sql — no second config source to drift against.
+        const opts = (this.controlPlane as unknown as {
+            options: {
+                host?: string | string[];
+                hostname?: string;
+                port?: number | number[];
+                user?: string;
+                username?: string;
+                pass?: string;
+                password?: string;
+            };
+        }).options;
+        const host = Array.isArray(opts.host) ? opts.host[0] : (opts.host ?? opts.hostname);
+        const port = Array.isArray(opts.port) ? opts.port[0] : opts.port;
+        const user = opts.user ?? opts.username;
+        const password = opts.pass ?? opts.password;
+        if (typeof host !== 'string' || host.length === 0) {
+            throw new Error('provisionTenantDatabase: could not resolve provisioner host from controlPlane connection');
+        }
+        if (typeof port !== 'number' || !Number.isFinite(port)) {
+            throw new Error('provisionTenantDatabase: could not resolve provisioner port from controlPlane connection');
+        }
+        if (typeof user !== 'string' || user.length === 0) {
+            throw new Error('provisionTenantDatabase: could not resolve provisioner user from controlPlane connection');
+        }
+        if (typeof password !== 'string') {
+            throw new Error('provisionTenantDatabase: could not resolve provisioner password from controlPlane connection');
+        }
+        return { host, port, name: dbName, user, password };
+    }
     private async lookupConnectionInfo(tenantId: string): Promise<TenantConnectionInfo | null> {
         if (this.resolveOverride) {
             return this.resolveOverride(tenantId);
@@ -228,14 +614,11 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
             row.db_name == null ||
             row.db_user == null ||
             row.db_password == null) {
-            // Dev/sim path — fall back to the shared connection info if the
-            // operator opted into it at boot. Production deployments leave
-            // `defaultConnectionInfo` unset, which preserves the original
-            // strict throw.
-            if (this.defaultConnectionInfo) {
-                return this.defaultConnectionInfo;
-            }
-            throw new Error(`tenant ${tenantId} is missing one of {db_host, db_port, db_name, db_user, db_password}`);
+            // ADR 0005 (db-per-tenant) is fail-closed: a tenant row without
+            // populated db_* coordinates means the per-tenant database has
+            // not been provisioned. There is no shared-DB fallback —
+            // protocol-layer isolation is the whole point.
+            throw new TenantDatabaseNotProvisionedError(tenantId);
         }
         return {
             host: row.db_host,

@@ -21,8 +21,12 @@ export { NodeCompression } from './compression.ts';
 export { NodeCrypto } from './crypto.ts';
 export {
   PostgresTenantDbProvider,
+  TenantDatabaseNotProvisionedError,
+  TenantNotFoundError,
   parseTenantConnectionUrl,
   type TenantDbProvider,
+  type ProvisionTenantDatabaseArgs,
+  type ProvisionTenantDatabaseResult,
 } from './tenant-db-provider.ts';
 export { runMigrations, type MigrationKind, type MigrationRunResult } from './migrations/runner.ts';
 export { runControlPlaneSeed, type SeedResult } from './migrations/seed.ts';

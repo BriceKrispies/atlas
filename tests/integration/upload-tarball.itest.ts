@@ -48,6 +48,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { test, expect } from '@playwright/test';
 import postgres from 'postgres';
+import { PostgresTenantDbProvider } from '@atlas/adapter-node';
+import { cleanOrphanTestDatabases } from './lib/tenant-db-janitor.ts';
 const INGRESS = process.env['INGRESS_BASE_URL'] ?? 'http://localhost:3000';
 const CP_URL = process.env['CONTROL_PLANE_DB_URL'];
 // Unique per-run identifiers so reruns don't collide on the
@@ -147,46 +149,62 @@ test.describe('upload-tarball: Repository.Create + Repository.Upload round-trip'
             return;
         }
         sql = postgres(CP_URL, { max: 2 });
+        // Orphan-DB janitor (F7). An interrupted prior run (Ctrl-C, OOM,
+        // host crash) leaves an empty `atlas_t_repo_itest_<old-runid>`
+        // database and matching `_runtime` role behind because `afterAll`
+        // never executes. The pattern matches only itest tenant DBs (the
+        // `_itest_` infix is enforced inside the helper as the safety
+        // anchor that prevents matching production tenant names). The
+        // helper is idempotent — when no orphans exist it is a no-op and
+        // emits no events.
+        await cleanOrphanTestDatabases(sql, 'atlas_t_repo_itest_%');
         // Defensive cleanup: a previous run with the same RUN_ID is
         // impossible (Date.now() based), but if a developer pins RUN_ID for
         // repro this prevents collisions on the tenants PK.
         await sql `DELETE FROM control_plane.custom_domains WHERE tenant_id = ${TENANT_SLUG}`;
         await sql `DELETE FROM control_plane.signup_requests WHERE tenant_slug = ${TENANT_SLUG}`;
         await sql `DELETE FROM control_plane.tenants WHERE tenant_id = ${TENANT_SLUG}`;
-        // Pre-provision the tenant row. db_host/db_port/etc stay NULL so the
-        // tenant-db provider falls back to its `defaultConnectionInfo` —
-        // matches the dev/sim path the public-signup approve handler also
-        // takes (see adapters/node/src/tenant-store.ts header comment).
+        // Pre-provision the tenant row, then run the db-per-tenant
+        // provisioner (ADR 0005) so the `db_*` columns are populated.
+        // Phase 3 removed the shared-DB fallback — a request against a
+        // tenant whose db_* are NULL now throws
+        // `TENANT_DATABASE_NOT_PROVISIONED` at the connection seam.
         await sql `
       INSERT INTO control_plane.tenants (tenant_id, name, status)
       VALUES (${TENANT_SLUG}, 'Repo ITest', 'active')
     `;
-        // Pre-clean the per-tenant `repositories` rows for our slug. In dev
-        // mode all tenants share one DB, so the table may carry rows from
-        // prior runs. We only delete by our slug (unique per RUN_ID anyway)
-        // to keep the cleanup tight.
-        try {
-            await sql `DELETE FROM repository_revisions
-                WHERE repo_id IN (SELECT repo_id FROM repositories WHERE repo_slug = ${REPO_SLUG})`;
-            await sql `DELETE FROM repositories WHERE repo_slug = ${REPO_SLUG}`;
-        }
-        catch {
-            // Tenant DB tables may not exist yet (migration runs on first
-            // ensureTenantMigrated). The first POST /api/v1/intents triggers
-            // it; nothing to clean up beforehand.
-        }
+        const provider = new PostgresTenantDbProvider(sql);
+        await provider.provisionTenantDatabase({ tenantId: TENANT_SLUG });
+        await provider.close();
+        // No per-tenant table pre-clean needed: every RUN_ID produces a
+        // unique tenant and therefore a freshly-created per-tenant DB
+        // (`atlas_t_repo_itest_<RUN_ID>`) with empty tables.
     });
     test.afterAll(async function () {
         if (!sql)
             return;
+        // Drop the per-tenant DB + role to keep the cluster clean across
+        // reruns. Each RUN_ID makes the DB name unique, but accumulated
+        // empty atlas_t_repo_itest_* databases would otherwise litter the
+        // Postgres instance.
+        //
+        // Slug rules from `sanitiseTenantSlug` in tenant-db-provider: lowercase
+        // letters/digits/_/-, dashes -> underscores. `repo-itest-${RUN_ID}` is
+        // safe; we mirror the derivation here so we don't import the helper.
+        const slug = TENANT_SLUG.toLowerCase().replace(/-/g, '_');
+        const dbName = `atlas_t_${slug}`;
+        const roleName = `atlas_t_${slug}_runtime`;
         try {
-            await sql `DELETE FROM repository_revisions
-                WHERE repo_id IN (SELECT repo_id FROM repositories WHERE repo_slug = ${REPO_SLUG})`;
-            await sql `DELETE FROM repositories WHERE repo_slug = ${REPO_SLUG}`;
+            await sql.unsafe(`DROP DATABASE IF EXISTS "${dbName}"`);
         }
         catch {
-            // Best-effort — if the tenant DB never got migrated the tables
-            // don't exist and the DELETEs throw. Either way nothing to clean.
+            // Best-effort
+        }
+        try {
+            await sql.unsafe(`DROP ROLE IF EXISTS "${roleName}"`);
+        }
+        catch {
+            // Best-effort
         }
         await sql `DELETE FROM control_plane.custom_domains WHERE tenant_id = ${TENANT_SLUG}`;
         await sql `DELETE FROM control_plane.signup_requests WHERE tenant_slug = ${TENANT_SLUG}`;

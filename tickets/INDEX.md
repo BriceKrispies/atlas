@@ -30,6 +30,12 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — review — → architect — HIGH (5/5 slices landed; pending invariant gate + live `pnpm bdd:server` run)
 
+## db-per-tenant-followups/
+
+- [error-envelope-mapping](db-per-tenant-followups/error-envelope-mapping.md) — refactor — review — → sdet — **HIGH** (sdet F3; mapping + 5 unit tests landed; E2E live-stack verification pending)
+- [provisioner-hardening](db-per-tenant-followups/provisioner-hardening.md) — refactor — review — → sdet — MEDIUM (sdet F4 + F5 + F6 + F8 landed; 4 new tests green + dev:up double-run NOTICE-clean)
+- [itest-tenant-db-janitor](db-per-tenant-followups/itest-tenant-db-janitor.md) — chore — review — → sdet — LOW (sdet F7; helper landed, manual verification green, awaiting adversarial pass)
+
 ## load-testing/
 
 - [multi-tenant-seeding](load-testing/multi-tenant-seeding.md) — test — open — → port-adapter-dev — MEDIUM (unlocks multi-tenant scenarios)

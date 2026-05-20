@@ -34,7 +34,6 @@ import {
   PostgresTenantStore,
   SmtpMailer,
   StdoutEventMailer,
-  parseTenantConnectionUrl,
   runMigrations,
 } from '@atlas/adapter-node';
 import type {
@@ -255,14 +254,76 @@ export async function bootstrap(
     });
   }
 
-  // In dev/sim every tenant shares the control-plane physical DB —
-  // tenant isolation is enforced at the `tenant_id` column level on
-  // the substrate tables (entities, relations, events). Production
-  // wiring populates per-tenant `db_*` columns and leaves the
-  // fallback unset so a missing column throws.
-  const tenantDb = new PostgresTenantDbProvider(controlPlaneSql, {
-    defaultConnectionInfo: parseTenantConnectionUrl(config.controlPlaneDbUrl),
-  });
+  // ADR 0005 §"Decision" + §"Migration" #4: every tenant — including
+  // `_platform` — runs out of its own Postgres database. The server
+  // does NOT auto-provision at boot; `pnpm dev:up` is the canonical
+  // bootstrap path so the dev/prod posture is symmetric (production
+  // operator provisioning uses the same `PostgresTenantDbProvider.
+  // provisionTenantDatabase` entrypoint, just not from this file).
+  //
+  // Refuse to boot if `_platform.db_*` are still NULL — a partially
+  // bootstrapped state where the row exists but the per-tenant DB
+  // doesn't would otherwise surface deep inside a handler as a confusing
+  // pool-resolution failure. Fail loud, point the operator at dev:up.
+  const platformDbRow = await controlPlaneSql<
+    {
+      db_host: string | null;
+      db_port: number | null;
+      db_name: string | null;
+      db_user: string | null;
+      db_password: string | null;
+    }[]
+  >`
+    SELECT db_host, db_port, db_name, db_user, db_password
+    FROM control_plane.tenants
+    WHERE tenant_id = ${PLATFORM_TENANT_ID}
+  `;
+  const platformDb = platformDbRow[0];
+  if (
+    !platformDb ||
+    platformDb.db_host == null ||
+    platformDb.db_port == null ||
+    platformDb.db_name == null ||
+    platformDb.db_user == null ||
+    platformDb.db_password == null
+  ) {
+    const missing = platformDb
+      ? Object.entries({
+          db_host: platformDb.db_host,
+          db_port: platformDb.db_port,
+          db_name: platformDb.db_name,
+          db_user: platformDb.db_user,
+          db_password: platformDb.db_password,
+        })
+          .filter(function ([, v]) { return v == null; })
+          .map(function ([k]) { return k; })
+      : ['<row missing>'];
+    deps.bootCtx.logger.fatal(
+      'platform tenant database not provisioned — refusing to start',
+      {
+        event: 'Server.Boot.PlatformDatabaseMissing',
+        properties: {
+          tenantId: PLATFORM_TENANT_ID,
+          missing,
+        },
+      },
+    );
+    throw new Error(
+      `Platform tenant '${PLATFORM_TENANT_ID}' is missing per-tenant database ` +
+        `connection coordinates (${missing.join(', ')}). ` +
+        `Run \`pnpm dev:up\` to provision the per-tenant DB before starting the server. ` +
+        `See ADR 0005 (db-per-tenant) and ADR 0015 §5 (dev-up seed contract).`,
+    );
+  }
+
+  // ADR 0005 commits to db-per-tenant — fail-closed, no shared-DB
+  // fallback. The platform-tenant `db_*` NULL guard above ensures the
+  // server only boots when `_platform` is fully provisioned; every
+  // other tenant must also have populated `db_*` (via the signup
+  // provisioner in production, via `pnpm dev:up` in dev) before its
+  // first request, or `getPool(tenantId)` throws
+  // `TENANT_DATABASE_NOT_PROVISIONED`.
+  const tenantDb = new PostgresTenantDbProvider(controlPlaneSql);
   const controlPlaneRegistry = new PostgresControlPlaneRegistry(
     controlPlaneSql,
     deps.bootCtx.logger,
@@ -401,6 +462,26 @@ export async function bootstrap(
     crypto,
   };
 
+  // Dev-mode boot banner (ADR 0015 §3 layer 3). Emitted at `warn` so it
+  // surfaces in default log scrapes; the visible message names exactly
+  // what is bypassed so an operator looking at a misconfigured prod box
+  // catches it on first glance.
+  if (config.devMode.enabled) {
+    deps.bootCtx.logger.warn(
+      'DEV MODE ENABLED — auth bypassed for unauthenticated requests — DO NOT EXPOSE',
+      {
+        event: 'Server.Boot.DevModeEnabled',
+        properties: {
+          principalId: config.devMode.principalId,
+          tenantId: config.devMode.tenantId,
+          roles: [...config.devMode.roles],
+          policyEngine: config.policyEngine,
+          tenantApex: config.tenantApex,
+        },
+      },
+    );
+  }
+
   // Seed the canonical platform-admin User + Membership in `_platform`.
   // Idempotent: returns `{ created: false }` when the User entity already
   // exists. This gives test/itest/BDD code a real principal row to point
@@ -506,8 +587,21 @@ function assertNever(x: never): never {
 }
 
 /**
- * Apply tenant-DB migrations on first access for a given tenant. Cached
- * via `state.migratedTenants` so subsequent requests skip the runner.
+ * Mark a tenant as ready and return its `Sql` pool.
+ *
+ * ADR 0005 db-per-tenant: provisioning (via
+ * `PostgresTenantDbProvider.provisionTenantDatabase`) is the only path
+ * that creates a tenant's database, runs tenant migrations as the
+ * provisioner role, and populates `control_plane.tenants.db_*`. The
+ * pool returned by `getPool(tenantId)` connects as the runtime role,
+ * which does NOT have `CREATE` on `public` — so re-running the
+ * migration runner from here would fail with `permission denied for
+ * schema public`. We never run migrations from this hook anymore.
+ *
+ * The phase-3 removal of the shared-DB fallback means a tenant
+ * without populated `db_*` throws `TENANT_DATABASE_NOT_PROVISIONED`
+ * at `getPool` time. There is no in-band recovery; provisioning is
+ * always out-of-band (signup-approval in prod, `pnpm dev:up` in dev).
  */
 export async function ensureTenantMigrated(
   state: AppState,
@@ -515,11 +609,8 @@ export async function ensureTenantMigrated(
 ): Promise<postgres.Sql> {
   const sql = await state.tenantDb.getPool(tenantId);
   if (!state.migratedTenants.has(tenantId)) {
-    await runMigrations(sql, 'tenant');
-    // After base migrations, reconcile the platform-default expression
-    // indexes on `entities`. No-op when no platform indexes have been
-    // registered yet (Phase A initial state).
-    await reconcileTenantIndexes(state, sql);
+    // Provisioning already applied migrations under the provisioner role.
+    // Mark the tenant as "migrated" for this process so we don't re-check.
     state.migratedTenants.add(tenantId);
   }
   return sql;

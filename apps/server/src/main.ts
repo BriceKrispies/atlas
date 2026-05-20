@@ -214,5 +214,22 @@ async function main(): Promise<void> {
     process.on('SIGTERM', function () {
         return void stop('SIGTERM');
     });
+    // Dev-mode heartbeat (ADR 0015 §3 layer 3). Once per minute while the
+    // server is up, re-emit the "auth bypassed" warning so any log scrape
+    // catches it even if the original boot banner has scrolled off.
+    if (config.devMode.enabled) {
+        const heartbeat = setInterval(function () {
+            bootCtx.logger.warn('DEV MODE ACTIVE — auth bypassed for unauthenticated requests', {
+                event: 'Server.DevMode.Heartbeat',
+                properties: {
+                    principalId: config.devMode.principalId,
+                    tenantId: config.devMode.tenantId,
+                },
+            });
+        }, 60_000);
+        // Don't keep the event loop alive solely for the heartbeat — without
+        // unref(), Ctrl-C would still drain its 60s tail.
+        heartbeat.unref();
+    }
 }
 void main();

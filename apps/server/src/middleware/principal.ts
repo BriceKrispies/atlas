@@ -34,6 +34,7 @@ import { errorResponse, errorMessage } from './errors.ts';
 import { correlationIdFor } from './correlation.ts';
 import { resolveHostTenant } from './tenant-resolution.ts';
 import { parseSessionCookie } from './cookie.ts';
+import { buildDevAdminPrincipal, noCredentialsPresent } from './dev-principal.ts';
 const DEBUG_PRINCIPAL_HEADER = 'X-Debug-Principal';
 const VALID_DEBUG_TYPES = new Set(['user', 'service', 'anonymous']);
 /**
@@ -543,6 +544,37 @@ export function principalMiddleware(state: AppState) {
         // a structured envelope while staying behaviourally aligned with Rust.
         const authHeader = c.req.header('Authorization') ?? c.req.header('authorization');
         if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+            // 3.5 Dev-mode principal injection — LAST fallback before 401.
+            //     Fires only when (a) the five-signal guard agreed at boot
+            //     (config.devMode.enabled) and (b) the request truly has
+            //     no auth credentials. Any real auth scheme above this
+            //     point wins. See ADR 0015 §2.
+            if (state.config.devMode.enabled
+                && noCredentialsPresent({
+                    authorizationHeader: c.req.header('Authorization') ?? c.req.header('authorization'),
+                    cookieHeader: c.req.header('cookie'),
+                    debugPrincipalHeader: c.req.header(DEBUG_PRINCIPAL_HEADER),
+                })) {
+                const devPrincipal = buildDevAdminPrincipal(state.config.devMode);
+                if (hostTenantId !== null && hostTenantId !== devPrincipal.tenantId) {
+                    // Host says tenantA, dev-injected principal is in dev-tenant.
+                    // Refuse to silently cross-tenant; the request is targeting
+                    // a non-dev tenant by hostname. Treat as a normal 401.
+                    logAuthnFailed(c, 'PRINCIPAL_INVALID', 'dev-injection-host-tenant-mismatch');
+                    return errorResponse(c, 'PRINCIPAL_INVALID', 'Tenant scope mismatch between Host and dev-injected principal', 403, correlationId);
+                }
+                c.set('principal', devPrincipal);
+                upgradeContextWithPrincipal(c, state, devPrincipal);
+                c.get('ctx').logger.warn('dev-mode principal injected', {
+                    event: 'Server.DevMode.PrincipalInjected',
+                    properties: {
+                        principalId: devPrincipal.principalId,
+                        tenantId: devPrincipal.tenantId,
+                    },
+                });
+                await next();
+                return;
+            }
             logAuthnFailed(c, 'PRINCIPAL_INVALID', 'missing-or-malformed-authorization-header');
             return errorResponse(c, 'PRINCIPAL_INVALID', 'Missing or malformed Authorization header', 401, correlationId);
         }

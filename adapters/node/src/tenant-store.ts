@@ -4,9 +4,12 @@
  * The reading side already lives in `PostgresTenantDbProvider` (it
  * resolves a tenantId to a connection); this is the inserter the
  * tenancy module reaches for during signup approval. Per-tenant DB
- * connection info (`db_host`, `db_port`, …) stays NULL here — the
- * provider falls back to its default-pool config when those columns are
- * empty, which is exactly the dev/sim path.
+ * connection info (`db_host`, `db_port`, …) is populated separately
+ * by `PostgresTenantDbProvider.provisionTenantDatabase` — ADR 0005
+ * commits to db-per-tenant and the fallback is gone (phase 3, 2026-05-20).
+ * Callers MUST run the provisioner after inserting the tenant row,
+ * otherwise the first `getPool(tenantId)` throws
+ * `TENANT_DATABASE_NOT_PROVISIONED`.
  */
 
 import type postgres from 'postgres';

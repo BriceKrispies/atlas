@@ -271,6 +271,12 @@ export function buildFakeAppState(opts: FakeAppStateOptions = {}): FakeAppState 
         tenantBaseUrl: function (tenantId: string) { return `http://${tenantId}.${tenantApex}:${port.toString()}`; },
         mailerMode: 'noop',
         smtp: null,
+        devMode: {
+            enabled: false,
+            principalId: 'dev-admin',
+            tenantId: 'dev-tenant',
+            roles: ['admin'],
+        },
     };
     // Build a throw-on-access proxy for the fields tests should not be
     // touching. Reading any of them throws with the field name so a stray

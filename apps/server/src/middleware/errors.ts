@@ -18,6 +18,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { IngressError } from '@atlas/platform-core';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
 import { IdentityError } from '@atlas/identity';
+import { TenantDatabaseNotProvisionedError } from '@atlas/adapter-node';
 
 /**
  * Collapse user-enumerable identity error codes to opaque ones at the
@@ -166,6 +167,28 @@ export function mapError(
   }
   if (e instanceof IngressError) {
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
+  }
+  if (e instanceof TenantDatabaseNotProvisionedError) {
+    // ADR 0005 (db-per-tenant) is fail-closed: when the per-tenant database
+    // hasn't been provisioned, the data plane is not ready for this tenant —
+    // service-unavailable, NOT an internal storage failure. Log the
+    // structured error so operators see the remediation message (dev:
+    // `pnpm dev:up`; prod: invoke the tenancy provisioner) under the same
+    // supportId surfaced to the client.
+    const envelope = errorEnvelope(e.code, e.message, correlationId);
+    const ctx = (c.get as (k: 'ctx') => AtlasExecutionContext | undefined)('ctx');
+    if (ctx !== undefined) {
+      ctx.logger.error('tenant database not provisioned', {
+        event: 'Tenancy.DatabaseNotProvisioned',
+        error: {
+          code: e.code,
+          message: e.message,
+          ...(e.stack !== undefined ? { stack: e.stack } : {}),
+        },
+        properties: { supportId: envelope.error.supportId, tenantId: e.tenantId },
+      });
+    }
+    return jsonErrorEnvelope(c, envelope, 503);
   }
   const envelope = errorEnvelope(
     'TRANSACTION_FAILED',

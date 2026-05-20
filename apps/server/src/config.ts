@@ -45,6 +45,26 @@ export interface TestAuthConfig {
     enabled: boolean;
     debugEndpoints: boolean;
 }
+/**
+ * Dev-mode contract — see specs/decisions/0015-dev-mode-contract.md.
+ *
+ * `enabled` is `true` only when ALL five guards in `validateDevMode()`
+ * agree. Any disagreement throws at boot. There is no half-on.
+ *
+ * When enabled, the principal middleware injects a seeded `dev-admin`
+ * principal for requests that present no auth credentials. Authz still
+ * evaluates, audit still emits, every invariant still holds — see ADR
+ * §2 (principal injection, not auth bypass).
+ */
+export interface DevModeConfig {
+    readonly enabled: boolean;
+    /** Hard-coded per ADR 0015 §"Constraints" #6 — not configurable. */
+    readonly principalId: 'dev-admin';
+    /** Hard-coded per ADR 0015 §"Constraints" #6 — not configurable. */
+    readonly tenantId: 'dev-tenant';
+    /** Roles attached to the injected principal. */
+    readonly roles: readonly ['admin'];
+}
 export interface AppConfig {
     port: number;
     controlPlaneDbUrl: string;
@@ -116,6 +136,12 @@ export interface AppConfig {
      * ignored otherwise. Read from `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`.
      */
     smtp: SmtpConfig | null;
+    /**
+     * Dev-mode contract. See specs/decisions/0015-dev-mode-contract.md.
+     * Built by `validateDevMode()`; throws at boot if requested without
+     * every safety signal agreeing.
+     */
+    devMode: DevModeConfig;
 }
 export type MailerMode = 'stdout' | 'noop' | 'smtp';
 export interface SmtpConfig {
@@ -123,6 +149,80 @@ export interface SmtpConfig {
     port: number;
     /** RFC-5322 From address used for every outbound message. */
     from: string;
+}
+/**
+ * Five-signal dev-mode guard. See ADR 0015 §1.
+ *
+ * Returns a `DevModeConfig` with `enabled: true` only when ALL of:
+ *   1. `ATLAS_DEV_MODE === "true"` (exact match — not truthy)
+ *   2. `environment` ∈ {'development','test'}
+ *   3. controlPlaneDbUrl host is loopback / *.localhost / *.local
+ *   4. tenantApex === 'localhost'
+ *   5. The build was not produced with ATLAS_PROD_BUILD=1
+ *
+ * Any disagreement when `ATLAS_DEV_MODE=true` is present is a fatal
+ * boot error — we refuse to silently downgrade. When `ATLAS_DEV_MODE`
+ * is unset / not `"true"`, returns `{ enabled: false, ... }` with no
+ * checks (production has no obligation to satisfy the guards).
+ */
+function validateDevMode(args: {
+    environment: AtlasEnvironment;
+    controlPlaneDbUrl: string;
+    tenantApex: string;
+}): DevModeConfig {
+    const off: DevModeConfig = {
+        enabled: false,
+        principalId: 'dev-admin',
+        tenantId: 'dev-tenant',
+        roles: ['admin'],
+    };
+    const raw = process.env['ATLAS_DEV_MODE'];
+    if (raw !== 'true') return off;
+    // Guard 1 already passed (we got here). Now guards 2..5:
+    const failures: string[] = [];
+    // Guard 2 — environment must be development or test.
+    if (args.environment !== 'development' && args.environment !== 'test') {
+        failures.push(`environment is '${args.environment}' (expected 'development' or 'test')`);
+    }
+    // Guard 3 — control-plane DB must be loopback.
+    let dbHost: string | null = null;
+    try {
+        dbHost = new URL(args.controlPlaneDbUrl).hostname.toLowerCase();
+    } catch {
+        failures.push(`CONTROL_PLANE_DB_URL is not a parseable URL`);
+    }
+    if (dbHost !== null) {
+        const isLoopback =
+            dbHost === 'localhost' ||
+            dbHost === '127.0.0.1' ||
+            dbHost === '::1' ||
+            dbHost === '[::1]' ||
+            dbHost.endsWith('.localhost') ||
+            dbHost.endsWith('.local');
+        if (!isLoopback) {
+            failures.push(`control-plane DB host '${dbHost}' is not loopback (must be localhost / 127.0.0.1 / *.localhost / *.local)`);
+        }
+    }
+    // Guard 4 — tenant apex must be localhost.
+    if (args.tenantApex !== 'localhost') {
+        failures.push(`TENANT_APEX is '${args.tenantApex}' (must be 'localhost' in dev-mode)`);
+    }
+    // Guard 5 — refuse if the build flag is set.
+    if (process.env['ATLAS_PROD_BUILD'] === '1') {
+        failures.push(`ATLAS_PROD_BUILD=1 is set (this binary was built for production; dev-mode cannot enable)`);
+    }
+    if (failures.length > 0) {
+        throw new Error(
+            `ATLAS_DEV_MODE=true but the safety guards refuse to enable it:\n  - ${failures.join('\n  - ')}\n` +
+            `See specs/decisions/0015-dev-mode-contract.md §1 for the contract. Either fix the misconfiguration or unset ATLAS_DEV_MODE.`,
+        );
+    }
+    return {
+        enabled: true,
+        principalId: 'dev-admin',
+        tenantId: 'dev-tenant',
+        roles: ['admin'],
+    };
 }
 function inferEnvironment(): AtlasEnvironment {
     const explicit = process.env['ATLAS_ENVIRONMENT'];
@@ -217,6 +317,8 @@ export function loadConfig(): AppConfig {
         }
         return `https://${slug}.${tenantApex}`;
     };
+    const environment = inferEnvironment();
+    const devMode = validateDevMode({ environment, controlPlaneDbUrl, tenantApex });
     return {
         port: portNum,
         controlPlaneDbUrl,
@@ -224,7 +326,7 @@ export function loadConfig(): AppConfig {
         testAuth: { enabled: testAuthEnabled, debugEndpoints },
         tenantId,
         rustLog,
-        environment: inferEnvironment(),
+        environment,
         policyEngine,
         workerMode,
         insecureCookies,
@@ -234,5 +336,6 @@ export function loadConfig(): AppConfig {
         tenantBaseUrl,
         mailerMode,
         smtp,
+        devMode,
     };
 }
