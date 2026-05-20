@@ -385,26 +385,43 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
      * happens BEFORE any side effect — no CREATE DATABASE, no CREATE
      * ROLE on the rejected path. See F5.
      *
-     * Partial-state recovery: if a prior call created the role but
-     * crashed before the UPDATE, re-running converges. The reconciled
-     * path always writes `db_host/db_port/db_name/db_user`, even when
-     * `wasFirstTime = false`. `db_password` is NOT touched on the
-     * reconciled path (the original password isn't recoverable from the
-     * role after the fact, and rotating it would lock out any open
-     * pool). See F6 (Option A).
+     * Partial-state recovery: first-time, post-partial-crash, and
+     * reconciled paths converge on the same end state. A password is
+     * generated only when either the role doesn't exist OR
+     * `control_plane.tenants.db_password IS NULL`; otherwise it is
+     * preserved. The realistic crash scenario is "CREATE ROLE
+     * succeeded, no UPDATE ran at all" — all five `db_*` columns NULL
+     * including `db_password`. The original role password is not
+     * recoverable from `pg_roles` after CREATE, so partial recovery
+     * issues `ALTER ROLE ... PASSWORD '<new>'` and writes all five
+     * columns. This rotation is materially safe because no `getPool`
+     * could have succeeded against the NULL row anyway — there is no
+     * open runtime pool to lock out. On the narrow "db_password
+     * survived but the four coordinates were NULL" path the password
+     * is preserved (it's still the live secret). See F6.
      *
      * Steps (in order, all under the privileged `controlPlane` connection):
      *   1. Verify the `control_plane.tenants` row exists (F5).
      *   2. `CREATE DATABASE <dbName>` if not present.
-     *   3. `CREATE ROLE <runtimeRole>` (LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE) if not present. Password generated and held in memory until step 6 — only persisted on the first-time path.
+     *   3. `CREATE ROLE <runtimeRole>` if not present. If the role
+     *      already exists but `control_plane.tenants.db_password IS
+     *      NULL` (post-partial-crash recovery), generate a new
+     *      password and `ALTER ROLE ... PASSWORD '<new>'` to make it
+     *      usable again. Otherwise the role's existing password is
+     *      preserved.
      *   4. Grant `CONNECT` on the new DB to the runtime role.
      *   5. Open a NEW connection as the provisioner (the `controlPlane` user) to the new DB and:
      *        a. Run tenant migrations (`runMigrations(sql, 'tenant')`).
      *        b. Grant `USAGE` on `public`, `SELECT,INSERT,UPDATE,DELETE` on all current and future tables in `public`. No `CREATE`/`ALTER`/`DROP` — that's the platform's job, not the tenant's (I16).
-     *   6. UPDATE `control_plane.tenants`. On first-time, writes all five
-     *      `db_*` columns including `db_password`. On reconciled re-runs,
-     *      writes `db_host/db_port/db_name/db_user` but NOT `db_password`.
-     *   7. Emit `Tenancy.Database.Provisioned` log event on first-time path.
+     *   6. UPDATE `control_plane.tenants`. When a password was
+     *      generated (first-time or post-partial-crash recovery),
+     *      writes all five `db_*` columns including `db_password`. On
+     *      pure idempotent re-runs (role exists AND `db_password` is
+     *      populated), writes `db_host/db_port/db_name/db_user` but
+     *      NOT `db_password`.
+     *   7. Emit `Tenancy.Database.Provisioned` log event when a
+     *      password was generated (first-time or post-partial-crash
+     *      recovery).
      *
      * The connection used to run migrations is opened and closed in this
      * call — it is NOT registered with the LRU. The runtime pool that
@@ -443,12 +460,20 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
         // Done BEFORE any side effect. A typo'd tenantId or a caller
         // that forgot the INSERT would otherwise silently create an
         // orphan DB + role that no `getPool` could ever resolve to.
-        const tenantRow = await this.controlPlane<{ exists: boolean }[]>`
-      SELECT EXISTS(SELECT 1 FROM control_plane.tenants WHERE tenant_id = ${tenantId}) AS exists
+        // Also snapshot db_password so the partial-crash recovery path
+        // (Step 3) can detect "role exists but no usable password
+        // persisted" without a second round-trip.
+        const tenantRow = await this.controlPlane<{ exists: boolean; db_password: string | null }[]>`
+      SELECT
+        TRUE AS exists,
+        db_password
+      FROM control_plane.tenants
+      WHERE tenant_id = ${tenantId}
     `;
-        if (tenantRow[0]?.exists !== true) {
+        if (tenantRow.length === 0) {
             throw new TenantNotFoundError(tenantId);
         }
+        const existingPassword = tenantRow[0]?.db_password ?? null;
         // --- Step 2: CREATE DATABASE (idempotent) ---
         const dbExists = await this.controlPlane<{ exists: boolean }[]>`
       SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${dbName}) AS exists
@@ -460,19 +485,33 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
             // no params are bound — exactly what's needed here.
             await this.controlPlane.unsafe(`CREATE DATABASE ${quoteIdent(dbName)}`);
         }
-        // --- Step 3: CREATE ROLE (idempotent) ---
+        // --- Step 3: CREATE ROLE (or ALTER ROLE on partial recovery) ---
         const roleExists = await this.controlPlane<{ exists: boolean }[]>`
       SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${runtimeRole}) AS exists
     `;
         const createdRole = roleExists[0]?.exists !== true;
-        // Only generate a password when we're about to create the role.
-        // Idempotent re-runs of `provisionTenantDatabase` do NOT rotate the
-        // password — the existing `control_plane.tenants.db_password`
-        // remains the source of truth.
+        // Generate a password when EITHER (a) the role doesn't exist
+        // yet (first-time) OR (b) the role exists but
+        // `control_plane.tenants.db_password IS NULL` (post-partial-
+        // crash recovery — the realistic crash scenario is "CREATE
+        // ROLE succeeded, no UPDATE ran at all", leaving all five
+        // db_* columns NULL). On the recovery path we ALTER ROLE
+        // because the original password isn't recoverable from
+        // pg_roles and a NULL db_password means no getPool could have
+        // succeeded — there is no open runtime pool to lock out by
+        // rotating. Otherwise the existing password is preserved.
+        const needsFreshPassword = createdRole || existingPassword === null;
         let generatedPassword: string | null = null;
         if (createdRole) {
             generatedPassword = generateRolePassword();
             await this.controlPlane.unsafe(`CREATE ROLE ${quoteIdent(runtimeRole)} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD ${quoteLiteral(generatedPassword)}`);
+        }
+        else if (needsFreshPassword) {
+            // Role exists but db_password is NULL — partial-crash
+            // recovery. Reset the role's password to a fresh value so
+            // the runtime pool can authenticate after this call.
+            generatedPassword = generateRolePassword();
+            await this.controlPlane.unsafe(`ALTER ROLE ${quoteIdent(runtimeRole)} WITH PASSWORD ${quoteLiteral(generatedPassword)}`);
         }
         // --- Step 4: GRANT CONNECT on new DB (idempotent — repeated grants are no-ops) ---
         await this.controlPlane.unsafe(`GRANT CONNECT ON DATABASE ${quoteIdent(dbName)} TO ${quoteIdent(runtimeRole)}`);
@@ -497,22 +536,25 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
             });
         }
         // --- Step 6: UPDATE control_plane.tenants ---
-        // Two paths:
-        //   - First-time (wasFirstTime): write all five db_* columns,
-        //     including the freshly-generated db_password.
-        //   - Reconciled (role already existed): write
-        //     db_host/db_port/db_name/db_user but NOT db_password.
-        //     This is what makes partial-state recovery converge — if a
-        //     prior call crashed after CREATE ROLE but before the
-        //     UPDATE, the columns were left NULL and the tenant was
-        //     unrecoverable without manual DROP ROLE. Always writing the
-        //     coordinates means re-running the provisioner reconciles
-        //     the row. The password is left alone because (a) it isn't
-        //     recoverable from the role after CREATE, and (b) rotating
-        //     it would lock out any pool already opened under the
-        //     previous password. See F6 Option A.
-        const wasFirstTime = createdRole && generatedPassword !== null;
-        if (wasFirstTime) {
+        // Two paths, keyed by whether a password was generated this
+        // call (`generatedPassword !== null`):
+        //   - Password-generating path (first-time OR partial-crash
+        //     recovery): write all five db_* columns including
+        //     db_password. This is what makes the realistic crash
+        //     scenario — "CREATE ROLE succeeded, no UPDATE ran at
+        //     all", leaving all five columns NULL — converge: the
+        //     ALTER ROLE in Step 3 made the role usable again, and
+        //     this UPDATE persists the matching coordinates and the
+        //     fresh password.
+        //   - Pure idempotent re-run (role exists AND db_password was
+        //     already populated): write db_host/db_port/db_name/db_user
+        //     but NOT db_password. The existing password is the live
+        //     secret; rotating it would lock out any open runtime
+        //     pool. The coordinate-only UPDATE is what converges the
+        //     narrow "db_password survived but other columns got
+        //     NULLed" partial state.
+        // See F6.
+        if (generatedPassword !== null) {
             await this.controlPlane`
         UPDATE control_plane.tenants
         SET db_host     = ${provisionerInfo.host},
@@ -524,11 +566,10 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
       `;
         }
         else {
-            // Reconciled path. For a clean idempotent re-run (row
-            // already correctly populated) this is a no-op write; for
-            // partial-state recovery (db_* NULL after CREATE ROLE
-            // succeeded but the UPDATE failed) this is what converges
-            // the row.
+            // Pure idempotent re-run. For a clean re-run (row already
+            // correctly populated) this is a no-op write; for the
+            // narrow "db_password survived but other columns NULL"
+            // partial state this is what converges the row.
             await this.controlPlane`
         UPDATE control_plane.tenants
         SET db_host = ${provisionerInfo.host},
@@ -538,8 +579,14 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
         WHERE tenant_id = ${tenantId}
       `;
         }
-        // --- Step 7: Structured log event (first-time path only) ---
-        if (wasFirstTime && args.logger) {
+        // --- Step 7: Structured log event ---
+        // Fires whenever a password was generated — i.e. either
+        // first-time or post-partial-crash recovery. A pure
+        // idempotent re-run is silent (matches the "at most one event
+        // per provision" contract; recovery is materially a
+        // provision).
+        const emitProvisionedEvent = generatedPassword !== null;
+        if (emitProvisionedEvent && args.logger) {
             args.logger.info('tenant database provisioned', {
                 event: 'Tenancy.Database.Provisioned',
                 properties: {

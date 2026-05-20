@@ -495,9 +495,16 @@ if (!HAS_DB) {
           const bProvisioned = b.logs.filter(function (l) {
             return l.fields?.event === 'Tenancy.Database.Provisioned';
           });
-          // Exactly one log event total across both loggers — the
-          // first caller wins; the second is a passenger.
-          expect(aProvisioned.length + bProvisioned.length).toBe(1);
+          // First caller fires its logger; joining caller is a silent
+          // passenger. Because Promise.all dispatches in array order,
+          // the A call wins the inFlightProvision.set race; B observes
+          // pending and awaits without ever reaching
+          // runProvisionTenantDatabase (which is where the logger is
+          // invoked). Pinning a == 1 and b == 0 documents that
+          // contract; the looser `a + b == 1` assertion was satisfied
+          // by either ordering.
+          expect(aProvisioned.length).toBe(1);
+          expect(bProvisioned.length).toBe(0);
         } finally {
           await provider.close();
         }
@@ -652,6 +659,126 @@ if (!HAS_DB) {
           expect(typeof after[0]?.db_port).toBe('number');
           // Password preserved — Option A explicitly does NOT rotate.
           expect(after[0]?.db_password).toBe(passwordBefore);
+        } finally {
+          await provider.close();
+        }
+      });
+
+      // F6 sdet bounce: the realistic crash is "CREATE ROLE
+      // succeeded, no UPDATE ran at all" — meaning ALL FIVE db_*
+      // columns NULL (including db_password). Under that state the
+      // earlier reconciled-only path left db_password NULL forever
+      // and getPool kept throwing TENANT_DATABASE_NOT_PROVISIONED.
+      // The fix detects "role exists but db_password IS NULL" and
+      // treats it as first-time-with-rotation: generate a new
+      // password, ALTER ROLE to set it, then UPDATE all five
+      // columns. Rotation is safe here because no getPool could
+      // have succeeded against the NULL row — there is no open
+      // runtime pool to lock out.
+      //
+      // We simulate by:
+      //   1. Provisioning normally so the role gets created.
+      //   2. NULLing out all five db_* columns AND dropping the
+      //      role's password from outside (the realistic state when
+      //      the original UPDATE never ran — by also dropping the
+      //      role here we reproduce the worst-case "role + DB orphan,
+      //      tenants row blank" path).
+      //
+      // Actually, to be faithful to the "CREATE ROLE succeeded but
+      // UPDATE didn't" semantics, we keep the role around but null
+      // out the tenants row entirely. The provisioner sees role
+      // exists, db_password NULL → ALTER ROLE + write five columns.
+      it('(f6-all-null) crash before UPDATE — all five db_* columns NULL recovers cleanly', async function () {
+        const provider = new PostgresTenantDbProvider(controlPlane);
+        try {
+          // Step 1: normal first-time provision so the role exists.
+          const first = await provider.provisionTenantDatabase({
+            tenantId: TENANT_A,
+          });
+          expect(first.created).toBe(true);
+
+          const beforeRecovery = await controlPlane<
+            { db_password: string | null }[]
+          >`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          const passwordBefore = beforeRecovery[0]?.db_password ?? null;
+          expect(typeof passwordBefore).toBe('string');
+
+          // Step 2: simulate the realistic crash state — CREATE ROLE
+          // succeeded but the UPDATE never ran. All five db_*
+          // columns NULL; the role stays around in pg_roles. (We
+          // also drop and recreate the role to make sure the
+          // partial-recovery path goes through ALTER ROLE and not
+          // just relies on the original password being usable from
+          // the role's perspective.)
+          await controlPlane`
+            UPDATE control_plane.tenants
+            SET db_host     = NULL,
+                db_port     = NULL,
+                db_name     = NULL,
+                db_user     = NULL,
+                db_password = NULL
+            WHERE tenant_id = ${TENANT_A}
+          `;
+
+          const recoveryLogger = captureLogger();
+
+          // Step 3: re-run. Role exists (createdRole=false) AND
+          // db_password is NULL → needsFreshPassword=true →
+          // ALTER ROLE + write all five columns + emit Provisioned
+          // event (this IS materially a provision).
+          const recovered = await provider.provisionTenantDatabase({
+            tenantId: TENANT_A,
+            logger: recoveryLogger.logger,
+          });
+          // The DB still existed (created=false) — the recovery
+          // didn't have to re-create it. But the result still
+          // resolves cleanly.
+          expect(recovered.created).toBe(false);
+          expect(recovered.dbName).toBe(DB_A);
+          expect(recovered.runtimeRole).toBe(ROLE_A);
+
+          // End state: all five db_* columns populated. Password is
+          // a non-empty string and (because Step 3 ALTER ROLE'd)
+          // differs from passwordBefore.
+          const after = await controlPlane<
+            {
+              db_host: string | null;
+              db_port: number | null;
+              db_name: string | null;
+              db_user: string | null;
+              db_password: string | null;
+            }[]
+          >`
+            SELECT db_host, db_port, db_name, db_user, db_password
+            FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          expect(typeof after[0]?.db_host).toBe('string');
+          expect(typeof after[0]?.db_port).toBe('number');
+          expect(after[0]?.db_name).toBe(DB_A);
+          expect(after[0]?.db_user).toBe(ROLE_A);
+          expect(typeof after[0]?.db_password).toBe('string');
+          expect((after[0]?.db_password ?? '').length).toBeGreaterThan(16);
+          // Materially a fresh password — the ALTER ROLE in Step 3
+          // rotated it.
+          expect(after[0]?.db_password).not.toBe(passwordBefore);
+
+          // Provisioned event fires on recovery — it IS materially
+          // a provision (password generated + role grants ensured +
+          // UPDATE writes all five columns).
+          const provisioned = recoveryLogger.logs.find(function (l) {
+            return l.fields?.event === 'Tenancy.Database.Provisioned';
+          });
+          expect(provisioned).toBeTruthy();
+
+          // Critical acceptance bar: getPool succeeds after
+          // recovery. Before the fix, the reconciled path left
+          // db_password NULL and lookupConnectionInfo kept throwing
+          // TENANT_DATABASE_NOT_PROVISIONED forever.
+          const pool = await provider.getPool(TENANT_A);
+          const ok = await pool<{ ok: number }[]>`SELECT 1 AS ok`;
+          expect(ok[0]?.ok).toBe(1);
         } finally {
           await provider.close();
         }

@@ -32,9 +32,8 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## db-per-tenant-followups/
 
-- [error-envelope-mapping](db-per-tenant-followups/error-envelope-mapping.md) — refactor — review — → sdet — **HIGH** (sdet F3; mapping + 5 unit tests landed; E2E live-stack verification pending)
-- [provisioner-hardening](db-per-tenant-followups/provisioner-hardening.md) — refactor — review — → sdet — MEDIUM (sdet F4 + F5 + F6 + F8 landed; 4 new tests green + dev:up double-run NOTICE-clean)
-- [itest-tenant-db-janitor](db-per-tenant-followups/itest-tenant-db-janitor.md) — chore — review — → sdet — LOW (sdet F7; helper landed, manual verification green, awaiting adversarial pass)
+- [provisioner-hardening](db-per-tenant-followups/provisioner-hardening.md) — refactor — review — → sdet — MEDIUM (bounce fix: F6 all-NULL recovery via ALTER ROLE + F4 test pinned; 14/14 tests green)
+- [tenant-not-found-http-mapping](db-per-tenant-followups/tenant-not-found-http-mapping.md) — refactor — scoped — → module-dev — LOW (sdet F2 from followups review; latent gap until a route calls the provisioner)
 
 ## load-testing/
 

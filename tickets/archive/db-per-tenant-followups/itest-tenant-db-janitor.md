@@ -1,6 +1,6 @@
 ---
 title: Drop orphan atlas_t_*_itest_* databases at integration-test suite start
-status: review
+status: done
 type: chore
 owner: port-adapter-dev
 phase: 2
@@ -69,3 +69,5 @@ After implementation: pnpm typecheck, run `pnpm test:integration` to confirm nor
   - `pnpm typecheck` failure (`vitest/globals`) is preexisting on `main` and unrelated. Standalone tsgo on the new file with the project's strict flags is clean. `tests/tsconfig.json` excludes `tests/integration/`, so this directory is not in any project-wide typecheck; Playwright resolves it at runtime.
   - The upload-tarball test itself fails on a preexisting `UNKNOWN_SCHEMA: repository.create.intent.v1 v1` from the server (reproduces on baseline `main` without my changes) — this is environmental (likely a missing `pnpm dev:up` schema-registration step) and not in scope of this ticket. The janitor's beforeAll runs and exits cleanly before that downstream failure.
   - Stayed strictly inside `tests/integration/`; no provider edits. Transitioning to `review` for sdet adversarial pass.
+- 2026-05-20 (sdet): pass — finding 5 verified the two-level safety guard against adversarial pattern attempts. Status → architect.
+- 2026-05-20 (architect): pass on I1 (test-only helper, no HTTP surface), test isolation safety (two-level guard; `atlas_t_dev_%` is rejected at the helper boundary), hexagonal layering (correct placement under `tests/integration/lib/`; role-suffix duplicated as constant to avoid test→adapter import), idempotent on clean runs, event name acceptable under the test-code exemption. Status → done; archived.

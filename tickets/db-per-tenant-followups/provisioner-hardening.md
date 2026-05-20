@@ -21,6 +21,7 @@ acceptance:
   - "pnpm typecheck passes; pnpm --filter @atlas/adapter-node test passes"
 created: 2026-05-20
 updated: 2026-05-20
+
 ---
 
 ## Why
@@ -79,4 +80,58 @@ After implementation: pnpm typecheck + adapter-node tests, run `pnpm dev:up` twi
   - **F6 (Option A)**: Step 6 of `runProvisionTenantDatabase` now has two branches — first-time writes all five `db_*` columns including `db_password`; reconciled writes `db_host/db_port/db_name/db_user` but NOT `db_password`. The reconciled UPDATE is what converges partial-state. Test `(f6)` first-time-provisions, snapshots `db_password`, NULLs out the four coordinates (simulating crash mid-UPDATE), re-runs, asserts coordinates restored and `db_password` unchanged.
   - **F8**: `openPostgresFromInfo` now passes `onnotice: () => {}` to `postgres()`. Verified by running `pnpm dev:up` twice — both runs produce zero `NOTICE`/`skipping` output on stdout and stderr (counted via `grep -ci`). Structured `DevUp.*` events still flow to stderr as before.
 - 2026-05-20: tests passing — `pnpm exec atlas-test test/tenant-db-provider.test.ts` from `adapters/node/` runs 13/13 green (4 new tests + 9 pre-existing). Three unrelated pre-existing flakes in the wider adapter-node suite (`search-engine.ts` concurrency test, two `worker-source.test.ts` LISTEN/NOTIFY timing tests) were not touched by this work and predate it (last commit on those files was 4 commits ago, before this session). Typecheck noise from the `@atlas/test` shim's loose `it`/`describe` types is pre-existing and identical in shape across every test file. Source file `tenant-db-provider.ts` itself is typecheck-clean.
+- 2026-05-20: status → review.
+- 2026-05-20: sdet bounce → back to in-flight. Two issues:
+  1. (important) F6 partial-state coverage too narrow — the realistic
+     crash is "CREATE ROLE succeeded, no UPDATE ran at all" → ALL
+     FIVE db_* columns NULL including db_password. Under the
+     previous reconciled-only path, db_password stayed NULL forever
+     and getPool kept throwing TENANT_DATABASE_NOT_PROVISIONED.
+  2. (nit) F4 test under-specified — `aProvisioned.length +
+     bProvisioned.length === 1` was satisfied by either ordering;
+     didn't pin "first caller fires, joining caller is silent
+     passenger".
+- 2026-05-20: bounce fix landed (port-adapter-dev):
+  - **F6 widened**: `runProvisionTenantDatabase` now snapshots
+    `db_password` alongside the existence check in Step 1. Step 3
+    introduces a `needsFreshPassword` predicate — true when EITHER
+    the role doesn't exist (createRole branch, unchanged) OR the
+    role exists but `control_plane.tenants.db_password IS NULL`. On
+    the latter (post-partial-crash recovery) path we generate a
+    fresh password and issue `ALTER ROLE <name> WITH PASSWORD
+    '<new>'`. Step 6 keyed on `generatedPassword !== null` instead
+    of `wasFirstTime`: when a password was generated (first-time OR
+    recovery), all five columns are written; on pure idempotent
+    re-runs (role exists AND db_password populated), only the four
+    coordinates are written. Step 7's Provisioned event fires
+    whenever a password was generated (recovery IS materially a
+    provision). Rotation on recovery is safe because no getPool
+    could have succeeded against the NULL row — there is no open
+    runtime pool to lock out. Method docstring updated to spell the
+    convergent semantics out: "first-time, post-partial-crash, and
+    reconciled paths converge. Password is generated only when both
+    the role doesn't exist OR db_password is NULL; otherwise
+    preserved."
+  - **F4 test tightened**: `expect(aProvisioned.length).toBe(1);
+    expect(bProvisioned.length).toBe(0);` pins the first-caller-
+    fires / joining-caller-silent contract. The old sum-based
+    assertion is gone.
+  - **New test `(f6-all-null)`**: NULLs all five db_* columns
+    (simulating "CREATE ROLE succeeded, no UPDATE ran at all"),
+    re-runs the provisioner with a captureLogger, asserts: all five
+    columns repopulated, db_password is a fresh non-empty value
+    differing from the pre-NULL snapshot, Provisioned event emits,
+    `getPool` succeeds (the load-bearing acceptance bar — before the
+    fix getPool would have thrown TENANT_DATABASE_NOT_PROVISIONED
+    forever).
+  - Tests: 14/14 green in `adapters/node/test/tenant-db-provider.test.ts`
+    (13 prior + 1 new f6-all-null). The narrow F6 case (db_password
+    survived, other columns NULL) still passes — `needsFreshPassword`
+    is false there, so the password is preserved.
+  - `pnpm dev:up` round-trip: zero `NOTICE`/`skipping` on stdout or
+    stderr (counted via `grep -ci`). F8 suppression intact.
+  - Typecheck noise from the `vitest/globals` ambient type and the
+    @atlas/test shim is pre-existing and identical with these
+    changes reverted; the source file itself introduces no new
+    type errors.
 - 2026-05-20: status → review.
