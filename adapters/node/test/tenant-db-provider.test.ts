@@ -784,6 +784,298 @@ if (!HAS_DB) {
         }
       });
 
+      // Out-of-band recovery: operator manually `DROP DATABASE` after a
+      // healthy provision, leaving role + db_* (including db_password) in
+      // place. Re-running the provisioner must recreate the DB, re-run
+      // tenant migrations, and re-apply grants. Because
+      // `existingPassword !== null` AND `createdRole === false`,
+      // `needsFreshPassword` stays false — no ALTER ROLE, no
+      // `Tenancy.Database.Provisioned` event (the contract is "fire when
+      // a password is generated"), and `db_password` in `tenants` is
+      // preserved bit-for-bit. The runtime pool authenticates against
+      // the unchanged role password.
+      it('(out-of-band drop database, role survives) — provisioner recreates DB, preserves password', async function () {
+        const provider = new PostgresTenantDbProvider(controlPlane);
+        try {
+          // Step 1: normal first-time provision.
+          const first = await provider.provisionTenantDatabase({ tenantId: TENANT_A });
+          expect(first.created).toBe(true);
+
+          // Snapshot the password — the contract under this branch is
+          // "preserve". The runtime role's password in pg_roles is also
+          // unchanged across DROP DATABASE (role lives in pg_authid,
+          // which is cluster-wide).
+          const before = await controlPlane<{ db_password: string | null }[]>`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          const passwordBefore = before[0]?.db_password;
+          expect(typeof passwordBefore).toBe('string');
+
+          // Step 2: simulate manual operator intervention — DROP DATABASE
+          // only. Role survives in pg_roles; db_* columns in `tenants`
+          // are NOT touched (this is the manual-intervention scenario,
+          // distinct from F6 which simulates a crash that left the row
+          // NULL).
+          await controlPlane.unsafe(`DROP DATABASE "${DB_A}"`);
+
+          // Confirm the precondition state for this case: DB gone, role
+          // still present, db_* still populated.
+          const preDb = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${DB_A}) AS exists
+          `;
+          expect(preDb[0]?.exists).toBe(false);
+          const preRole = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${ROLE_A}) AS exists
+          `;
+          expect(preRole[0]?.exists).toBe(true);
+
+          // Step 3: re-run. createdDb=true (DB missing), createdRole=false
+          // (role survives), existingPassword !== null → needsFreshPassword=false.
+          // Result: CREATE DATABASE fires, no ALTER ROLE, coordinate-only
+          // UPDATE on the tenants row, no Provisioned log event.
+          const recoveryLogger = captureLogger();
+          const recovered = await provider.provisionTenantDatabase({
+            tenantId: TENANT_A,
+            logger: recoveryLogger.logger,
+          });
+          // `created` reflects "DB was created on this call".
+          expect(recovered.created).toBe(true);
+          expect(recovered.dbName).toBe(DB_A);
+          expect(recovered.runtimeRole).toBe(ROLE_A);
+
+          // End state: DB exists, role still exists, db_* unchanged
+          // (specifically db_password preserved).
+          const postDb = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${DB_A}) AS exists
+          `;
+          expect(postDb[0]?.exists).toBe(true);
+          const postRole = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${ROLE_A}) AS exists
+          `;
+          expect(postRole[0]?.exists).toBe(true);
+          const after = await controlPlane<{ db_password: string | null }[]>`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          // Password preserved (Step 6 took the coordinate-only branch
+          // because generatedPassword === null).
+          expect(after[0]?.db_password).toBe(passwordBefore);
+
+          // Migrations re-applied inside the newly created DB — the
+          // `_migrations` ledger should be populated. This is the
+          // tenant-DB version, not the control-plane one.
+          const cpOpts = controlPlane.options as {
+            host: string | string[];
+            port: number | number[];
+            pass?: string;
+          };
+          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0]! : cpOpts.host;
+          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0]! : cpOpts.port;
+          const tenantSql = postgres({
+            host: cpHost,
+            port: cpPort,
+            database: DB_A,
+            user: controlPlane.options.user,
+            password: cpOpts.pass,
+            max: 1,
+            prepare: false,
+          });
+          try {
+            const migrations = await tenantSql<{ filename: string }[]>`
+              SELECT filename FROM public._migrations ORDER BY filename
+            `;
+            expect(migrations.length).toBeGreaterThan(0);
+          } finally {
+            await tenantSql.end({ timeout: 1 });
+          }
+
+          // No Provisioned event — generatedPassword was null, recovery
+          // was structurally non-rotating.
+          const provisioned = recoveryLogger.logs.find(function (l) {
+            return l.fields?.event === 'Tenancy.Database.Provisioned';
+          });
+          expect(provisioned).toBeUndefined();
+
+          // Critical acceptance bar: getPool succeeds end-to-end.
+          // Authenticates with the preserved password against the
+          // recreated DB.
+          const pool = await provider.getPool(TENANT_A);
+          const ok = await pool<{ ok: number }[]>`SELECT 1 AS ok`;
+          expect(ok[0]?.ok).toBe(1);
+        } finally {
+          await provider.close();
+        }
+      });
+
+      // Out-of-band recovery: operator manually `DROP ROLE` after a
+      // healthy provision, leaving DB + db_* in place (including the
+      // now-stale db_password — pg_authid no longer has the role to
+      // back it). Re-running the provisioner must CREATE ROLE with a
+      // fresh password (createdRole=true → needsFreshPassword=true),
+      // skip CREATE DATABASE, and persist the new password to
+      // `tenants.db_password`. The OLD password must no longer
+      // authenticate — proving rotation actually rotated rather than
+      // regenerating the same value.
+      //
+      // Operator setup: Postgres refuses `DROP ROLE` while the role
+      // holds privileges on objects in any DB. The realistic manual
+      // sequence is: connect to the tenant DB, `DROP OWNED BY <role>`
+      // (revokes grants + drops owned objects in that DB), then
+      // `DROP ROLE`. We script that explicitly so the precondition
+      // state is faithful.
+      it('(out-of-band drop role, database survives) — provisioner recreates role with fresh password', async function () {
+        const provider = new PostgresTenantDbProvider(controlPlane);
+        try {
+          // Step 1: normal first-time provision.
+          const first = await provider.provisionTenantDatabase({ tenantId: TENANT_A });
+          expect(first.created).toBe(true);
+
+          const before = await controlPlane<{ db_password: string | null }[]>`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          const passwordBefore = before[0]?.db_password;
+          expect(typeof passwordBefore).toBe('string');
+
+          // Step 2: simulate manual operator intervention — DROP ROLE
+          // only. To drop the role cleanly we first revoke its grants
+          // and drop any owned objects in the tenant DB (Postgres
+          // refuses DROP ROLE while privileges exist). This is the
+          // realistic operator sequence.
+          const cpOpts = controlPlane.options as {
+            host: string | string[];
+            port: number | number[];
+            pass?: string;
+          };
+          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0]! : cpOpts.host;
+          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0]! : cpOpts.port;
+          const tenantSqlForCleanup = postgres({
+            host: cpHost,
+            port: cpPort,
+            database: DB_A,
+            user: controlPlane.options.user,
+            password: cpOpts.pass,
+            max: 1,
+            prepare: false,
+          });
+          try {
+            await tenantSqlForCleanup.unsafe(
+              `DROP OWNED BY "${ROLE_A}" CASCADE`,
+            );
+          } finally {
+            await tenantSqlForCleanup.end({ timeout: 1 });
+          }
+          // Also revoke the role's CONNECT grant + the per-DB ACL on the
+          // tenant database (held in pg_database.datacl, not visible to
+          // DROP OWNED BY when run from another DB). Then drop the role.
+          await controlPlane.unsafe(
+            `REVOKE ALL PRIVILEGES ON DATABASE "${DB_A}" FROM "${ROLE_A}"`,
+          );
+          await controlPlane.unsafe(`DROP ROLE "${ROLE_A}"`);
+
+          // Confirm the precondition state: role gone, DB still present,
+          // db_* still populated with the now-orphaned password.
+          const preRole = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${ROLE_A}) AS exists
+          `;
+          expect(preRole[0]?.exists).toBe(false);
+          const preDb = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${DB_A}) AS exists
+          `;
+          expect(preDb[0]?.exists).toBe(true);
+          const orphaned = await controlPlane<{ db_password: string | null }[]>`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          expect(orphaned[0]?.db_password).toBe(passwordBefore);
+
+          // Step 3: re-run. createdDb=false (DB still there),
+          // createdRole=true (role missing) → needsFreshPassword=true.
+          // Result: no CREATE DATABASE, CREATE ROLE fires with a fresh
+          // password, password-rotating UPDATE on the tenants row,
+          // Provisioned log event emitted (recovery IS materially a
+          // provision per the F6 contract).
+          const recoveryLogger = captureLogger();
+          const recovered = await provider.provisionTenantDatabase({
+            tenantId: TENANT_A,
+            logger: recoveryLogger.logger,
+          });
+          // `created` reflects "DB was created on this call". The DB
+          // was untouched, so this is false.
+          expect(recovered.created).toBe(false);
+          expect(recovered.dbName).toBe(DB_A);
+          expect(recovered.runtimeRole).toBe(ROLE_A);
+
+          // End state: role exists again, DB unchanged, db_password
+          // ROTATED.
+          const postRole = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = ${ROLE_A}) AS exists
+          `;
+          expect(postRole[0]?.exists).toBe(true);
+          const postDb = await controlPlane<{ exists: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = ${DB_A}) AS exists
+          `;
+          expect(postDb[0]?.exists).toBe(true);
+          const after = await controlPlane<{ db_password: string | null }[]>`
+            SELECT db_password FROM control_plane.tenants WHERE tenant_id = ${TENANT_A}
+          `;
+          expect(typeof after[0]?.db_password).toBe('string');
+          expect((after[0]?.db_password ?? '').length).toBeGreaterThan(16);
+          // Materially fresh — the rotation actually rotated, not just
+          // regenerated the same value.
+          expect(after[0]?.db_password).not.toBe(passwordBefore);
+
+          // Provisioned event emitted — generatedPassword !== null
+          // because createdRole=true.
+          const provisioned = recoveryLogger.logs.find(function (l) {
+            return l.fields?.event === 'Tenancy.Database.Provisioned';
+          });
+          expect(provisioned).toBeTruthy();
+
+          // Critical acceptance bar: getPool succeeds end-to-end with
+          // the freshly rotated password. Two assertions: (a) the new
+          // password authenticates, (b) the OLD password no longer
+          // authenticates against the freshly created role.
+          const pool = await provider.getPool(TENANT_A);
+          const ok = await pool<{ ok: number }[]>`SELECT 1 AS ok`;
+          expect(ok[0]?.ok).toBe(1);
+
+          // Direct authentication probe with the OLD password — must
+          // fail, because the freshly CREATE ROLE'd role has the new
+          // password and the old credential value is gone.
+          const stale = postgres({
+            host: cpHost,
+            port: cpPort,
+            database: DB_A,
+            user: ROLE_A,
+            password: passwordBefore!,
+            max: 1,
+            prepare: false,
+            // postgres.js retries on connection error by default. For a
+            // negative auth probe we want a single attempt with a fast
+            // failure mode.
+            max_lifetime: 1,
+            idle_timeout: 1,
+          });
+          let staleAuthError: unknown = undefined;
+          try {
+            await stale<{ ok: number }[]>`SELECT 1 AS ok`;
+          } catch (e) {
+            staleAuthError = e;
+          } finally {
+            await stale.end({ timeout: 1 }).catch(function () { /* ignore */ });
+          }
+          expect(staleAuthError).toBeTruthy();
+          // Postgres returns SQLSTATE 28P01 on password mismatch. We
+          // assert on the message rather than the structured code
+          // because postgres.js wraps the error type variably across
+          // versions, but the human-readable phrase is stable.
+          const staleMsg = staleAuthError instanceof Error
+            ? staleAuthError.message
+            : String(staleAuthError);
+          expect(staleMsg).toMatch(/password authentication failed|28P01/i);
+        } finally {
+          await provider.close();
+        }
+      });
+
       it('(e) runtime role cannot CREATE INDEX or TRUNCATE', async function () {
         const provider = new PostgresTenantDbProvider(controlPlane);
         try {

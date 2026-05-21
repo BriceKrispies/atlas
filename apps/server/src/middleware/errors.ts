@@ -144,6 +144,23 @@ export function jsonErrorEnvelope(
 }
 
 /**
+ * Find an instance of `ctor` either at the top level of `err` or one level
+ * down via `Error.cause`. One level is intentional: handlers that wrap a
+ * tenant error for logging clarity typically do
+ * `throw new Error('outer', { cause: tnfe })` — a single hop. Deeper nesting
+ * isn't a real-world Atlas pattern.
+ *
+ * Used so `mapError` keeps mapping `TenantNotFoundError` and
+ * `TenantDatabaseNotProvisionedError` to 404 / 503 even when a caller wraps
+ * for context, instead of silently collapsing to TRANSACTION_FAILED / 500.
+ */
+function findCause<T>(err: unknown, ctor: new (...args: never[]) => T): T | null {
+  if (err instanceof ctor) return err;
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  return cause instanceof ctor ? cause : null;
+}
+
+/**
  * Convert an unknown thrown value into a structured response. Routes wrap
  * their bodies with `try { ... } catch (e) { return mapError(c, e, ...) }`.
  *
@@ -171,46 +188,55 @@ export function mapError(
   if (e instanceof IngressError) {
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
   }
-  if (e instanceof TenantDatabaseNotProvisionedError) {
+  // Both tenant-error branches use `findCause` so a handler that wraps for
+  // logging clarity (`throw new Error('outer', { cause: tnfe })`) still
+  // gets the right HTTP envelope. The INNER error's code / message / tenantId
+  // are what surface to the client and the structured log — the wrapper's
+  // text is intentionally discarded (the operational signal is the tenant
+  // condition, not the surrounding context). See
+  // `tickets/db-per-tenant-followups/wrapped-tenant-errors-unmapped.md`.
+  const tdnp = findCause(e, TenantDatabaseNotProvisionedError);
+  if (tdnp !== null) {
     // ADR 0005 (db-per-tenant) is fail-closed: when the per-tenant database
     // hasn't been provisioned, the data plane is not ready for this tenant —
     // service-unavailable, NOT an internal storage failure. Log the
     // structured error so operators see the remediation message (dev:
     // `pnpm dev:up`; prod: invoke the tenancy provisioner) under the same
     // supportId surfaced to the client.
-    const envelope = errorEnvelope(e.code, e.message, correlationId);
+    const envelope = errorEnvelope(tdnp.code, tdnp.message, correlationId);
     const ctx = (c.get as (k: 'ctx') => AtlasExecutionContext | undefined)('ctx');
     if (ctx !== undefined) {
       ctx.logger.error('tenant database not provisioned', {
         event: 'Tenancy.DatabaseNotProvisioned',
         error: {
-          code: e.code,
-          message: e.message,
-          ...(e.stack !== undefined ? { stack: e.stack } : {}),
+          code: tdnp.code,
+          message: tdnp.message,
+          ...(tdnp.stack !== undefined ? { stack: tdnp.stack } : {}),
         },
-        properties: { supportId: envelope.error.supportId, tenantId: e.tenantId },
+        properties: { supportId: envelope.error.supportId, tenantId: tdnp.tenantId },
       });
     }
     return jsonErrorEnvelope(c, envelope, 503);
   }
-  if (e instanceof TenantNotFoundError) {
+  const tnf = findCause(e, TenantNotFoundError);
+  if (tnf !== null) {
     // ADR 0005 (db-per-tenant): the provisioner refuses to create orphan
     // databases / roles when there is no `control_plane.tenants` row. That
     // is a "tenant does not exist" condition at the registry, not an
     // internal storage failure — surface it as 404 with the canonical
     // TENANT_NOT_FOUND code so a future signup-approve / provisioning
     // route returns the right shape (sibling to the F3 mapping above).
-    const envelope = errorEnvelope(e.code, e.message, correlationId);
+    const envelope = errorEnvelope(tnf.code, tnf.message, correlationId);
     const ctx = (c.get as (k: 'ctx') => AtlasExecutionContext | undefined)('ctx');
     if (ctx !== undefined) {
       ctx.logger.error('tenant not found', {
         event: 'Tenancy.TenantNotFound',
         error: {
-          code: e.code,
-          message: e.message,
-          ...(e.stack !== undefined ? { stack: e.stack } : {}),
+          code: tnf.code,
+          message: tnf.message,
+          ...(tnf.stack !== undefined ? { stack: tnf.stack } : {}),
         },
-        properties: { supportId: envelope.error.supportId, tenantId: e.tenantId },
+        properties: { supportId: envelope.error.supportId, tenantId: tnf.tenantId },
       });
     }
     return jsonErrorEnvelope(c, envelope, 404);

@@ -226,3 +226,102 @@ describe('mapError — TenantNotFoundError', function () {
         expect(body.error.message).not.toBe('Internal storage failure');
     });
 });
+
+/**
+ * Wrapped-cause coverage for the two tenant-error branches. A handler that
+ * wraps a tenant error for logging clarity — e.g.
+ * `throw new Error('outer', { cause: tnfe })` — must still get the right
+ * envelope. `mapError` calls `findCause` to look one level down the
+ * `Error.cause` chain before falling through to the catch-all. See
+ * `tickets/db-per-tenant-followups/wrapped-tenant-errors-unmapped.md`.
+ */
+describe('mapError — wrapped Error.cause (one-level unwrap)', function () {
+    // Wrapper-text sentinel: chosen so the substring does NOT appear in
+    // either inner error's message (which already mention "signup-approve",
+    // "pnpm dev:up", etc.). Lets us assert the wrapper's text is discarded
+    // without false positives from the inner message's natural content.
+    const WRAPPER_SENTINEL = 'xx-outer-wrapper-context-xx';
+
+    it('maps a TenantNotFoundError wrapped in `new Error(..., { cause })` to 404 / TENANT_NOT_FOUND', async function () {
+        const inner = new TenantNotFoundError('some-tenant');
+        const outer = new Error(WRAPPER_SENTINEL, { cause: inner });
+        const { app } = makeRig(outer);
+        const res = await app.request('/boom');
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.code).toBe('TENANT_NOT_FOUND');
+        // The envelope MUST surface the INNER error's message, not the
+        // wrapper's text — the operational signal is the tenant condition.
+        expect(body.error.message).toContain('some-tenant');
+        expect(body.error.message).toContain('control_plane.tenants');
+        expect(body.error.message).not.toContain(WRAPPER_SENTINEL);
+    });
+
+    it('preserves the inner error code/message/tenantId in the server-side log for a wrapped TenantNotFoundError', async function () {
+        const inner = new TenantNotFoundError('some-tenant');
+        const outer = new Error(WRAPPER_SENTINEL, { cause: inner });
+        const { app, collector } = makeRig(outer);
+        const res = await app.request('/boom');
+        const body = (await res.json()) as EnvelopeBody;
+        const lines = eventsNamed(collector, 'Tenancy.TenantNotFound');
+        expect(lines).toHaveLength(1);
+        const e = assertDefined(lines[0], 'Tenancy.TenantNotFound log event present');
+        // The log carries the INNER error's structured fields — wrapping
+        // for context MUST NOT degrade the operational signal.
+        expect(e.error?.code).toBe('TENANT_NOT_FOUND');
+        expect(e.error?.message).toContain('control_plane.tenants');
+        expect(e.error?.message).not.toContain(WRAPPER_SENTINEL);
+        expect(e.properties).toMatchObject({
+            supportId: body.error.supportId,
+            tenantId: 'some-tenant',
+        });
+    });
+
+    it('maps a TenantDatabaseNotProvisionedError wrapped in `new Error(..., { cause })` to 503 / TENANT_DATABASE_NOT_PROVISIONED', async function () {
+        const inner = new TenantDatabaseNotProvisionedError('dev-tenant');
+        const outer = new Error(WRAPPER_SENTINEL, { cause: inner });
+        const { app } = makeRig(outer);
+        const res = await app.request('/boom');
+        expect(res.status).toBe(503);
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.code).toBe('TENANT_DATABASE_NOT_PROVISIONED');
+        // The envelope MUST surface the INNER error's remediation message,
+        // not the wrapper's text.
+        expect(body.error.message).toContain('dev-tenant');
+        expect(body.error.message).toContain('per-tenant database not provisioned');
+        expect(body.error.message).toContain('pnpm dev:up');
+        expect(body.error.message).not.toContain(WRAPPER_SENTINEL);
+    });
+
+    it('preserves the inner error code/message/tenantId in the server-side log for a wrapped TenantDatabaseNotProvisionedError', async function () {
+        const inner = new TenantDatabaseNotProvisionedError('dev-tenant');
+        const outer = new Error(WRAPPER_SENTINEL, { cause: inner });
+        const { app, collector } = makeRig(outer);
+        const res = await app.request('/boom');
+        const body = (await res.json()) as EnvelopeBody;
+        const lines = eventsNamed(collector, 'Tenancy.DatabaseNotProvisioned');
+        expect(lines).toHaveLength(1);
+        const e = assertDefined(lines[0], 'Tenancy.DatabaseNotProvisioned log event present');
+        expect(e.error?.code).toBe('TENANT_DATABASE_NOT_PROVISIONED');
+        expect(e.error?.message).toContain('per-tenant database not provisioned');
+        expect(e.error?.message).not.toContain(WRAPPER_SENTINEL);
+        expect(e.properties).toMatchObject({
+            supportId: body.error.supportId,
+            tenantId: 'dev-tenant',
+        });
+    });
+
+    it('does NOT unwrap a generic wrapper whose `cause` is unrelated — falls through to TRANSACTION_FAILED / 500', async function () {
+        // Negative case: only the two tenant-error classes are unwrapped.
+        // A wrapper whose cause is some other Error (or undefined) MUST
+        // hit the catch-all so we never silently re-interpret arbitrary
+        // chained errors as tenant conditions.
+        const outer = new Error('something else', { cause: new Error('plain inner') });
+        const { app } = makeRig(outer);
+        const res = await app.request('/boom');
+        expect(res.status).toBe(500);
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.code).toBe('TRANSACTION_FAILED');
+        expect(body.error.message).toBe('Internal storage failure');
+    });
+});

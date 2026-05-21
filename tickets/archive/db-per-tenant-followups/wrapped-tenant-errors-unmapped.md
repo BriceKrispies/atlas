@@ -1,9 +1,9 @@
 ---
 title: mapError instanceof checks don't see TenantNotFoundError / TenantDatabaseNotProvisionedError when wrapped by a `cause` chain
-status: open
+status: done
 type: drift-finding
-owner: module-dev
-phase: 1
+owner: architect
+phase: 3
 adr: specs/decisions/0005-custom-schema-storage-strategy.md
 vision: []
 invariants: []
@@ -69,3 +69,6 @@ dated log entry, transition to `review`.
 ## Notes / log
 
 - 2026-05-20: filed by sdet during review of `tenant-not-found-http-mapping`. The mapping work was correct as scoped; this is a sibling gap that applies to both tenant-error branches and was out of scope for the original ticket.
+- 2026-05-20: module-dev took direction (A) defensive. Added `findCause<T>` one-level `Error.cause` unwrap helper above `mapError` and refactored the two tenant-error branches (`TenantDatabaseNotProvisionedError`, `TenantNotFoundError`) to use it. The INNER error's code/message/tenantId now populate both the envelope and the structured server log when a handler wraps for context. Added 5 new test cases in `errors.test.ts` under a new `describe('mapError — wrapped Error.cause (one-level unwrap)')` block: wrapped TenantNotFoundError → 404, wrapped TenantDatabaseNotProvisionedError → 503, log-fields preserved for both, and a negative case (generic wrapper with unrelated cause still collapses to TRANSACTION_FAILED / 500). All 15 tests in errors.test.ts pass; full @atlas/server suite stays at the pre-existing 8 failures (no new failures introduced). `findCause` deliberately scoped to the two tenant errors — other branches (IdentityError, IngressError) untouched per ticket scope. Status → `review` for sdet handoff.
+- 2026-05-20: sdet adversarial review — no blockers. Verified: `findCause` is null/undefined/primitive-safe (optional chaining on `(err as ...)?.cause`); branch order in `mapError` preserves the two tenant branches before the catch-all; both branches are line-for-line symmetric (same envelope mint, same log shape, same `inner.stack` usage); negative test rules out generic-wrapper false positives via the `xx-outer-wrapper-context-xx` sentinel; envelope + log carry the INNER error's `code`/`message`/`tenantId`/`stack` (verified in tests 2/4); `findCause` is module-private (no export). Two nits, both LOW: (1) no test pins the one-level boundary against two-level wrapping (e.g., `new Error('outer', { cause: new Error('mid', { cause: tnfe }) })` collapses to 500) — ticket scope says intentional, but a future contributor "fixing" deeper unwrap would not trip an assertion; (2) no test pins IdentityError-wraps-tenant ordering (the `IdentityError` branch on errors.ts:179 fires first; a wrapped tenant cause underneath an IdentityError is invisible by design) — current behaviour is correct but undocumented. Both nits are non-blocking — appropriate for a follow-up chore if hardening is desired. Transitioning to `architect` for the invariant gate.
+- 2026-05-20 (architect): invariant gate — pass. I1 clean (mapping stays inside mapError, no new HTTP surface, findCause private to errors.ts:157). I5 clean (envelope correlationId sourced from the request-scoped parameter at errors.ts:206/229; inner error never overrides it; pinned in tests at errors.test.ts:109/187). Both tenant branches line-for-line symmetric (errors.ts:198-219 vs :221-242) — only status + event name diverge. Inner error's code/message/tenantId/stack populating envelope + log is the correct call: structural code lives on the inner, wrapper text is narrative. Branch ordering preserved — IdentityError (:179) and IngressError (:188) still precede the tenant findCause branches. findCause is single-level (errors.ts:159-160) and module-private; defensive scope held. sdet's two LOW nits (two-level wrap, IdentityError-wraps-tenant precedence) acknowledged as deliberate hardening out-of-scope. Status → done; archived.

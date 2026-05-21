@@ -30,11 +30,6 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — review — → architect — HIGH (5/5 slices landed; pending invariant gate + live `pnpm bdd:server` run)
 
-## db-per-tenant-followups/
-
-- [wrapped-tenant-errors-unmapped](db-per-tenant-followups/wrapped-tenant-errors-unmapped.md) — drift-finding — open — → module-dev — LOW (sdet finding: bare instanceof in mapError misses Error.cause wrappers for both tenant-error branches)
-- [provisioner-out-of-band-state-coverage](db-per-tenant-followups/provisioner-out-of-band-state-coverage.md) — test — open — → sdet — LOW (architect coverage note: no test for DROP DATABASE-without-DROP ROLE or vice versa)
-
 ## load-testing/
 
 - [multi-tenant-seeding](load-testing/multi-tenant-seeding.md) — test — open — → port-adapter-dev — MEDIUM (unlocks multi-tenant scenarios)
