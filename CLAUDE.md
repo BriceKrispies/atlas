@@ -8,6 +8,25 @@ A previous Rust prototype under `/crates`, `/tools/cli`, `/apps/control-plane`, 
 
 Strategy is to **wrap existing tools as adapters** (k3s, kaniko, Caddy, Hetzner Cloud, Gitea, MinIO, etc.) — Atlas's value-add is the developer UX + the multi-tenant glue + unified audit + a single CLI (`atlasctl`).
 
+## Agent-Operability Law
+
+Atlas is agentic-first. If a task becomes difficult because the system is hard to navigate, generate against, debug, observe, test, refactor, or explain, treat that friction as possible architecture feedback — not as something to silently brute-force through.
+
+Before applying a workaround, stop and produce an **Agent-Operability Finding** when the friction suggests a structural issue.
+
+A finding must name:
+
+1. The task being attempted.
+2. The friction type: navigation, contract, generation, debugging, observation, refactor, verification, or ownership.
+3. The concrete evidence: files, missing specs, unclear boundaries, brittle tests, missing logs, hidden coupling, inconsistent patterns, or ambiguous ownership.
+4. The tempting local workaround.
+5. The structural fix that would make future agent work easier.
+6. The smallest safe next step: spec update, test harness, logging improvement, boundary extraction, module split, manifest addition, or ticket.
+
+Do not use this as an excuse to avoid normal implementation work. Use it when the difficulty comes from Atlas being insufficiently explicit, observable, bounded, or machine-readable.
+
+If the friction touches an invariant, platform boundary, public API, repeated pattern, or agentic-first tenet, escalate through the slice workflow instead of patching locally.
+
 ## Agent Routing — Where to Go
 
 Pick the closest match and read its CLAUDE.md before working in that area.

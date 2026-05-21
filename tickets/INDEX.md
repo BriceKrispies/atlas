@@ -37,6 +37,14 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [soak-scenario](load-testing/soak-scenario.md) — test — open — → module-dev — LOW
 - [remote-load-gen](load-testing/remote-load-gen.md) — test — open — → user — LOW — blocked_by: load-testing/multi-tenant-seeding
 
+## dsl/
+
+- [template-dsl](dsl/template-dsl.md) — capability — open — → spec-keeper — MEDIUM (re-uses expression DSL as embedded primitive; ADR 0007 §10)
+- [query-dsl](dsl/query-dsl.md) — capability — open — → spec-keeper — MEDIUM (first effectful-host-op DSL; port: 'EntityStore'; ADR 0007 §10)
+- [atlasctl-dsl-cli](dsl/atlasctl-dsl-cli.md) — capability — open — → spec-keeper — LOW (CLI wrappers for the 4 live HTTP endpoints; agentic-first dogfood)
+- [bdd-roundtrip](dsl/bdd-roundtrip.md) — test — open — → sdet — MEDIUM (closes slice-workflow Phase 2 gate for the DSL surface)
+- [cedar-policy-actions](dsl/cedar-policy-actions.md) — capability — open — → spine-owner — **HIGH** (slice #5a deferred I2 gate on read/validate routes)
+
 ---
 
 Done and dropped tickets live in [`archive/`](archive/), preserving the same set structure. They are not listed here.
