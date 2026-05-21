@@ -173,9 +173,13 @@ if (!HAS_DB) {
 
       // Migrations were applied — `_migrations` ledger present + at least
       // one row.
+      const row = tenantRow[0];
+      if (!row || row.db_host === null || row.db_port === null) {
+        throw new Error('tenant row missing db_host/db_port after provision');
+      }
       const tenantSql = postgres({
-        host: tenantRow[0]!.db_host!,
-        port: tenantRow[0]!.db_port!,
+        host: row.db_host,
+        port: row.db_port,
         database: DB_A,
         // Connect as the provisioner to read `_migrations`; the runtime
         // role does not need SELECT on `_migrations` (and shouldn't —
@@ -868,8 +872,11 @@ if (!HAS_DB) {
             port: number | number[];
             pass?: string;
           };
-          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0]! : cpOpts.host;
-          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0]! : cpOpts.port;
+          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0] : cpOpts.host;
+          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0] : cpOpts.port;
+          if (cpHost === undefined || cpPort === undefined) {
+            throw new Error('control-plane connection missing host/port');
+          }
           const tenantSql = postgres({
             host: cpHost,
             port: cpPort,
@@ -945,8 +952,11 @@ if (!HAS_DB) {
             port: number | number[];
             pass?: string;
           };
-          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0]! : cpOpts.host;
-          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0]! : cpOpts.port;
+          const cpHost = Array.isArray(cpOpts.host) ? cpOpts.host[0] : cpOpts.host;
+          const cpPort = Array.isArray(cpOpts.port) ? cpOpts.port[0] : cpOpts.port;
+          if (cpHost === undefined || cpPort === undefined) {
+            throw new Error('control-plane connection missing host/port');
+          }
           const tenantSqlForCleanup = postgres({
             host: cpHost,
             port: cpPort,
@@ -1040,12 +1050,15 @@ if (!HAS_DB) {
           // Direct authentication probe with the OLD password — must
           // fail, because the freshly CREATE ROLE'd role has the new
           // password and the old credential value is gone.
+          if (passwordBefore === undefined) {
+            throw new Error('passwordBefore not captured before stale auth probe');
+          }
           const stale = postgres({
             host: cpHost,
             port: cpPort,
             database: DB_A,
             user: ROLE_A,
-            password: passwordBefore!,
+            password: passwordBefore,
             max: 1,
             prepare: false,
             // postgres.js retries on connection error by default. For a
