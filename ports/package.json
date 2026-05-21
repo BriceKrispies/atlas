@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@atlas/dsl-substrate": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "ajv": "^8.17.0"
   }

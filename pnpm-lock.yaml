@@ -147,6 +147,9 @@ importers:
       '@atlas/content-pages':
         specifier: workspace:*
         version: link:../../modules/content-pages
+      '@atlas/dsl-substrate':
+        specifier: workspace:*
+        version: link:../../packages/dsl-substrate
       '@atlas/identity':
         specifier: workspace:*
         version: link:../../modules/identity
@@ -717,9 +720,6 @@ importers:
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../platform-core
-      '@atlas/ports':
-        specifier: workspace:*
-        version: link:../../ports
     devDependencies:
       '@atlas/test':
         specifier: workspace:*
@@ -936,6 +936,9 @@ importers:
 
   ports:
     dependencies:
+      '@atlas/dsl-substrate':
+        specifier: workspace:*
+        version: link:../packages/dsl-substrate
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../packages/platform-core

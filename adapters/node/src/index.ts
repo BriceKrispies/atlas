@@ -11,6 +11,7 @@ export { PostgresRepositoryRevisionStore } from './repository-revision-store.ts'
 export { PostgresEntityStore } from './entity-store.ts';
 export { PostgresRelationStore } from './relation-store.ts';
 export { PostgresEntityTypeRegistry } from './entity-type-registry.ts';
+export { PostgresDslArtifactStore } from './dsl-artifact-store.ts';
 export { PostgresPolicyStore } from './policy-store.ts';
 export { StdoutEventMailer, PostgresEmailLogStore } from './mailer-stdout.ts';
 export { SmtpMailer } from './mailer-smtp.ts';

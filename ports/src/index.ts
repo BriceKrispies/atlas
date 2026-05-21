@@ -57,6 +57,11 @@ export type {
 } from './relation-store.ts';
 export type { EntityTypeRegistry } from './entity-type-registry.ts';
 export type {
+  DslArtifactStore,
+  SaveDslArtifactInput,
+  SaveDslArtifactResult,
+} from './dsl-artifact-store.ts';
+export type {
   RepositoryStore,
   RepositoryRevisionStore,
   RepositoryRecord,
