@@ -46,19 +46,16 @@ export async function listPages(): Promise<readonly PageSummary[]> {
   // Path matches the mock backend (`/pages`) so admin surfaces work in
   // both modes. The server route mounts under the same prefix.
   const result = await backend.query('/pages');
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: backend.query is the JSON wire boundary; the PageSummary[] shape is contract-pinned by the server's /pages route (apps/server/src/routes/content-pages.ts).
   return (result as readonly PageSummary[] | null) ?? [];
 }
 
 export async function getPage(pageId: string): Promise<PageDocument | null> {
   const result = await backend.query(`/pages/${pageId}`);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: backend.query is the JSON wire boundary; the PageDocument shape is contract-pinned by the server's /pages/:id route.
   return (result as PageDocument | null) ?? null;
 }
 
 export async function getRenderTree(pageId: string): Promise<RenderTree | null> {
   const result = await backend.query(`/pages/${pageId}/render-tree`);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: backend.query is the JSON wire boundary; the RenderTree shape is contract-pinned by the server's /pages/:id/render-tree route + buildRenderTree projection.
   return (result as RenderTree | null) ?? null;
 }
 

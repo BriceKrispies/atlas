@@ -117,7 +117,6 @@ export function errorResponse(
 ): Response {
   return c.json(
     errorEnvelope(code, message, correlationId),
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: Hono types ContentfulStatusCode as a narrow string-union of valid status codes; status arrives as a runtime `number` from module/handler error classes. We accept the cast at this single chokepoint so callers don't each pay for it.
     status as ContentfulStatusCode,
   );
 }
@@ -138,7 +137,6 @@ export function jsonErrorEnvelope(
 ): Response {
   return c.json(
     envelope,
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: see errorResponse() — same Hono ContentfulStatusCode impedance.
     status as ContentfulStatusCode,
   );
 }

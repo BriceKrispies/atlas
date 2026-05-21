@@ -26,7 +26,6 @@ function payloadOf(payload: unknown): Record<string, unknown> {
     if (payload === null || typeof payload !== 'object') {
         throw new Error(`expected payload to be an object, got: ${typeof payload}`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof guard narrows object to string-keyed record; centralised so call sites stay cast-free.
     return payload as Record<string, unknown>;
 }
 const VALID = {

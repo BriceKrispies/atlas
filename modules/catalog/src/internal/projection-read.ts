@@ -19,6 +19,5 @@ export function readProjection<T>(value: unknown): T | null {
   if (value === null || value === undefined) return null;
   // Boundary: the projection is the sole writer of this key, writing
   // exactly `T`. The port erases that contract to `unknown`.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: projection is sole writer; type T is the response shape it produces
   return value as T;
 }

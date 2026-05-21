@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- contract-test diagnostics emit to stdout for the multi-adapter comparator */
 /**
  * Cross-adapter contract for `SeedCorpus` (memory / fs / sqlite).
  *
@@ -50,7 +51,6 @@ import { assertDefined } from '@atlas/test-fixtures/assert';
  * type-system escape lives in exactly one audited spot.
  */
 const makeMalformed = function <T>(shape: unknown): T {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test-fixture-malformed: adversarial input for validator-rejection test; single audited escape for all malformed-body scenarios in this contract suite
     return shape as T;
 };
 /**
@@ -668,7 +668,6 @@ export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
                     fixtures: [],
                 });
                 if (!r.simulateValidatorMissing) {
-                    // eslint-disable-next-line no-console -- harness-diagnostic: contract-suite skip-notice for adapters that don't implement the optional hook; surfaces in vitest's reporter so the skipped branch is visible
                     console.warn('adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (scenario) skipped');
                     return;
                 }
@@ -688,7 +687,6 @@ export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
                     fixtures: [ADMIN_FIXTURE],
                 });
                 if (!r.simulateValidatorMissing) {
-                    // eslint-disable-next-line no-console -- harness-diagnostic: contract-suite skip-notice for adapters that don't implement the optional hook; surfaces in vitest's reporter so the skipped branch is visible
                     console.warn('adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (fixture) skipped');
                     return;
                 }

@@ -28,7 +28,6 @@ test.describe('content-page editor — committed-state contract', function () {
         await paletteChip(page, 'content.announcements').click();
         await dropSlot(page, 'sidebar').click();
         await assertCommitted(page, SURFACE, { intent: 'add' });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the editor-surface state shape is contract-pinned by the content-page editor controller.
         const state = (await readEditorState(page, PAGE)) as {
             lastCommit: {
                 patch: {
@@ -71,7 +70,6 @@ test.describe('content-page editor — committed-state contract', function () {
         await page.mouse.move(slotBox.x + slotBox.width / 2, slotBox.y + slotBox.height / 2, { steps: 6 });
         await page.mouse.up();
         await assertCommitted(page, SURFACE, { intent: 'drop' });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the editor-surface state shape is contract-pinned by the content-page editor controller.
         const state = (await readEditorState(page, PAGE)) as {
             lastCommit: {
                 patch: {

@@ -99,7 +99,6 @@ function errMessage(e: unknown): string {
 function isMessageEventLike(e: Event): e is Event & {
     data: string;
 } {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: Event is a DOM lib type; we read one optional property to type-test
     return typeof (e as {
         data?: unknown;
     }).data === 'string';
@@ -167,7 +166,6 @@ function ensurePooledSource(tags: readonly string[]): PooledSource {
         // The server emits SerializedServerEvent shapes; we hand the parsed
         // value to subscribers as that type. Schema mismatches surface as
         // runtime errors inside the subscriber's own typed access.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: parsed SSE JSON arrives untyped from the network
         const typed = parsed as SerializedServerEvent;
         for (const cb of pooled.subscribers) {
             try {

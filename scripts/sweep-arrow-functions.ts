@@ -235,7 +235,6 @@ function main(): void {
     try {
       s = statSync(abs);
     } catch {
-      // eslint-disable-next-line no-console
       console.error(`skip: ${r} not found`);
       continue;
     }
@@ -246,15 +245,12 @@ function main(): void {
     }
   }
 
-  // eslint-disable-next-line no-console
   console.log(
     `\nfiles scanned: ${stats.filesScanned.toString()} | modified: ${stats.filesModified.toString()} | arrows converted: ${stats.arrowsConverted.toString()} | skipped(this): ${stats.arrowsSkippedThis.toString()} | skipped(class-field): ${stats.arrowsSkippedClassField.toString()}`,
   );
   if (stats.skippedSites.length > 0) {
-    // eslint-disable-next-line no-console
     console.log('\nskipped sites (need manual review):');
     for (const s of stats.skippedSites) {
-      // eslint-disable-next-line no-console
       console.log(`  ${s.file}:${s.line.toString()} — ${s.reason}`);
     }
   }

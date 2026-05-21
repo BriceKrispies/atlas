@@ -183,14 +183,12 @@ export async function runEditorOp(page: Page, pageId: string, op: EditorOp, args
         // re-view it as a record of `(a) => unknown | undefined` so the
         // `typeof handler !== 'function'` narrow yields a callable, and
         // run a single boundary-cast here rather than per call-site.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: content-page.editor is the EditorAPI bag; values are operation handles. The runtime guard `typeof handler !== 'function'` keeps each call safe; the cast only narrows the index value type for the type system.
         const editor = cp.editor as Record<string, ((a: unknown) => unknown) | undefined>;
         const handler = editor[op];
         if (typeof handler !== 'function')
             return { ok: false, reason: 'op-not-found' };
         return handler.call(cp.editor, args);
     }, { pageId, op, args });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: page.evaluate returns unknown; EditorOpResult is contract-pinned by the EditorAPI on the content-page element (open index signature so per-op return shapes pass through).
     return raw as EditorOpResult;
 }
 /**

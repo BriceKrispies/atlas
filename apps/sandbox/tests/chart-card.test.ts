@@ -50,7 +50,6 @@ interface CommitPatch {
  */
 async function readChart(page: Page, id: string): Promise<ChartSnapshot | null> {
     const snap = await readChartState(page, id);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the chart-card surface shape is contract-pinned by its controller.
     return snap as ChartSnapshot | null;
 }
 async function readChartOrThrow(page: Page, id: string): Promise<ChartSnapshot> {
@@ -65,7 +64,6 @@ async function assertCommit(page: Page, key: string, match: {
     patch: Record<string, unknown>;
 }): Promise<CommitPatch> {
     const commit = await assertCommitted(page, key, match);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: assertCommitted returns unknown; commit shape is contract-pinned by the chart-card controller.
     return commit as CommitPatch;
 }
 async function openCard(page: Page): Promise<void> {

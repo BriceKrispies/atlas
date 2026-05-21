@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 /**
  * Layout editor dry-run: exercises the <atlas-layout-editor> flows that
  * don't require real pointer events (add slot, rename, resize via panel,
@@ -179,12 +180,10 @@ async function main(): Promise<void> {
     await testEditor_deleteSlot();
     await testEditor_onChangeAndOnSaveFire();
     await testEditor_onChangeDoesNotFireOnInvalidEdit();
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? err.stack : undefined;
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack ?? err);
     process.exit(1);
 });

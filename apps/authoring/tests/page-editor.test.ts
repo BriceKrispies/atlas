@@ -104,7 +104,6 @@ async function runEditorOp(page: Page, pageId: string, op: string, args?: unknow
         }
         return { ok: false, reason: 'editor-not-found' };
     }, { pid: pageId, op, args });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the page-editor's imperative `cp.editor[op]` API is intentionally schema-free for test escape-hatch use; the EditorOpResult shape is contract-pinned by callers and asserted in-test.
     return result as EditorOpResult;
 }
 interface WidgetEntry {
@@ -136,7 +135,6 @@ async function listEditor(page: Page, pageId: string): Promise<WidgetEntry[]> {
         }
         return [];
     }, pageId);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the editor's `list` op returns WidgetEntry[] per the editor's spec; the page.evaluate return is unknown by design.
     return result as WidgetEntry[];
 }
 interface PanelStateShape {
@@ -192,7 +190,6 @@ async function readShellSnapshot(page: Page): Promise<ShellSnapshot | null> {
     });
     if (!raw || typeof raw !== 'object')
         return null;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: shell exposes getEditorSnapshot() returning unknown; the snapshot shape is contract-pinned by the shell controller.
     return raw as ShellSnapshot;
 }
 async function shellShadowQuery(page: Page, selector: string): Promise<{
@@ -512,7 +509,6 @@ interface ShellSnapshotShape {
  */
 async function readShellState(page: Page, key: string): Promise<ShellSnapshotShape> {
     const raw = await readEditorState(page, key);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the shell-surface snapshot shape is contract-pinned by the shell controller.
     return assertDefined(raw as ShellSnapshotShape | null, `shell snapshot for ${key}`);
 }
 test.describe('authoring.page-editor — acceptance', function () {
@@ -579,7 +575,6 @@ test.describe('authoring.page-editor — acceptance', function () {
             intent: 'addWidget',
             patch: { widgetId: 'sandbox.heading', region: 'main' },
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: assertCommitted returns unknown; the commit envelope's patch shape is contract-pinned by the addWidget intent spec.
         const commit = commitRaw as {
             patch: Record<string, unknown>;
         };

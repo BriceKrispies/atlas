@@ -6,7 +6,6 @@ import { assertDefined } from '@atlas/test-fixtures/assert';
  *  type. Centralise the index-signature widening here so individual call
  *  sites stay clean. */
 function asLooseRecord(v: object): Record<string, unknown> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: widening a typed object so an arbitrary "leakage" key can be probed without the structural narrowing the cast would imply.
     return v as Record<string, unknown>;
 }
 describe('AtlasExecutionContext basics', function () {

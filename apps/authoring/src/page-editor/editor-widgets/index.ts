@@ -70,7 +70,7 @@ function toWidgetManifest(m: EditorWidgetEntry['manifest']): WidgetManifest {
         version: String(m['version'] ?? ''),
         displayName: String(m['displayName'] ?? ''),
         configSchema: String(m['configSchema'] ?? ''),
-        isolation: String(m['isolation'] ?? 'inline') as WidgetManifest['isolation'], // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: as-const manifest literal narrowed to one of the IsolationMode values; validateManifest re-checks at runtime
+        isolation: String(m['isolation'] ?? 'inline') as WidgetManifest['isolation'],
     };
     if (typeof m['description'] === 'string')
         out.description = m['description'];

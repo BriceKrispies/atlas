@@ -186,7 +186,7 @@ function wrapPayloadInEnvelope(action: ActionDeclaration, envelopeSchema: JsonSc
     // via a runtime shape check rather than a structural cast.
     const rawProps = cloned['properties'];
     const properties: Record<string, unknown> | undefined = typeof rawProps === 'object' && rawProps !== null && !Array.isArray(rawProps)
-        ? (rawProps as Record<string, unknown>) // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON object narrowed by the typeof+non-null+!isArray guard above
+        ? (rawProps as Record<string, unknown>)
         : undefined;
     if (properties !== undefined) {
         properties['eventType'] = {

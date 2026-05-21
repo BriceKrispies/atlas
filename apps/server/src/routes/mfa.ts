@@ -250,7 +250,6 @@ export function mfaRoutes(state: AppState): Hono<{
                 principalId: principal.principalId,
                 userId: principal.userId,
                 challengeId,
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied RegistrationResponseJSON; @simplewebauthn/server validates the interior shape inside verifyRegistrationResponse. The object-shape narrow is in readWebAuthnResponseJson.
                 response: response as unknown as WebAuthnRegisterFinishCommand['response'],
                 expectedOrigin,
                 rpId,
@@ -304,7 +303,6 @@ export function mfaRoutes(state: AppState): Hono<{
                 correlationId: cid,
                 principalId: principal.principalId,
                 challengeId,
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied AuthenticationResponseJSON; @simplewebauthn/server validates the interior shape inside verifyAuthenticationResponse. The object-shape narrow is in readWebAuthnResponseJson.
                 response: response as unknown as WebAuthnAssertFinishCommand['response'],
                 expectedOrigin,
                 rpId,
@@ -479,7 +477,6 @@ export function mfaRoutes(state: AppState): Hono<{
         const webauthn: WebAuthnSubmitField | null = webauthnInner
             ? {
                 challengeId: webauthnInner.challengeId,
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: browser-supplied AuthenticationResponseJSON; @simplewebauthn/server validates the interior shape during verifyAuthenticationResponse. The object-shape narrow is in readWebAuthnResponseJson.
                 response: webauthnInner.response as unknown as WebAuthnSubmitField['response'],
                 expectedOrigin,
                 rpId,

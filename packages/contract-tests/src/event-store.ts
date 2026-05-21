@@ -238,7 +238,6 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
             // it. Contract: append rejects (rather than silently writing a
             // half-shaped row).
             const { eventId: _omitted, ...broken } = makeEvent({ eventId: 'evt-broken' });
-            // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- adversarial test fixture: deliberately missing required `eventId` to exercise the adapter's reject-on-missing-PK path
             const brokenEnvelope = broken as unknown as EventEnvelope;
             await expect(store.append(brokenEnvelope)).rejects.toThrow();
         });

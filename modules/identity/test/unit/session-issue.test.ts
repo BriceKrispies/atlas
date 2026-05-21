@@ -41,7 +41,6 @@ function sessionDocFromPayload(payload: unknown): AuthSessionDocument {
     }
     // Tests already pinned the producing handler — the document field on
     // session events is always an `AuthSessionDocument` by construction.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test boundary: handler under test emits AuthSessionDocument here
     return doc as AuthSessionDocument;
 }
 describe('handleSessionIssue — happy path', function () {

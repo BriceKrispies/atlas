@@ -86,7 +86,6 @@ async function readJsonStringFields<K extends string>(res: Response, fields: rea
     // returned record's values are runtime-guaranteed to be strings.
     // Object.fromEntries widens K to `string` in its return type, hence
     // the narrow assertion below.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-response-reader builder; Object.fromEntries types its result as `{[k:string]: V}`, but the input `fields: readonly K[]` proves every key is a K, and every value is `expectString`-validated above.
     return Object.fromEntries(fields.map(function (field) {
         return [field, expectString(body[field], field)];
     })) as Record<K, string>;
@@ -151,7 +150,6 @@ class InMemoryEntityStore implements EntityStore {
         const r = this.rows.get(this.k(t, ty, id));
         if (!r || r.status === 'deleted')
             return null;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; row was stored as Entity<unknown> and the caller's T is contract-pinned by the entity type used at put-time. Mirrors the cast pattern in PostgresEntityStore.
         return r as Entity<T>;
     }
     async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -186,7 +184,6 @@ class InMemoryEntityStore implements EntityStore {
             .filter(function (r) {
             return (desired === null ? true : r.status === desired);
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; rows are Entity<unknown>, caller's T is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore.list.
         return filtered as Entity<T>[];
     }
     async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
@@ -194,18 +191,15 @@ class InMemoryEntityStore implements EntityStore {
             return r.tenantId === t && r.entityType === ty;
         });
         if (!opts.attrsEqual) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; see EntityStore.list.
             return all as Entity<T>[];
         }
         const preds = Object.entries(opts.attrsEqual);
         const matched = all.filter(function (row) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; entity.attrs is typed as the caller's TAttrs, accessed here as a Record for predicate-equality filtering. Mirrors PostgresEntityStore.query.
             const attrs = row.attrs as Record<string, unknown>;
             return preds.every(function ([k, v]) {
                 return attrs?.[k] === v;
             });
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; see EntityStore.list.
         return matched as Entity<T>[];
     }
 }
@@ -234,14 +228,12 @@ class InMemoryRelationStore implements RelationStore {
         const out = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === t && r.edgeType === e && r.fromId === f;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; rows are Relation<unknown>, caller's T is contract-pinned by the edge type used at add-time. Mirrors PostgresRelationStore.outgoing.
         return out as Relation<T>[];
     }
     async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
         const out = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === t && r.edgeType === e && r.toId === to;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; see RelationStore.outgoing.
         return out as Relation<T>[];
     }
 }
@@ -274,7 +266,6 @@ __setRoleCheckStoresForTest(async function () {
 // principal.test.ts).
 // ----------------------------------------------------------------------
 function makeState(): AppState {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: identity-a7 routes only read `state.config` (passed-through to identityDispatcher under the in-memory adapter mock); building a full AppState (Postgres pools, secret store, mailer, signup queue) is gratuitous overhead for these route-shape tests, and the un-mocked surface is unreachable. A real AppState is exercised in apps/server/test/integration/.
     return {
         config: {
             port: 3000,

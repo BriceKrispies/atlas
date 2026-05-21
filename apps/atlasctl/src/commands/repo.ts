@@ -191,7 +191,6 @@ export async function runRepoDownload(client: ClientOptions, slug: string, revis
     // documented Node-typings workaround until DefinitelyTyped unifies
     // them; the runtime objects are interchangeable. Available in Node 18+.
     const nodeStream = Readable.fromWeb(
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: DOM ReadableStream<Uint8Array> vs node:stream/web ReadableStream<any> are structurally identical at runtime but TS-incompatible across the lib boundary.
     res.body as Parameters<typeof Readable.fromWeb>[0]);
     await pipeline(nodeStream, dest);
     const correlationId = res.headers.get('x-correlation-id') ?? client.correlationId;

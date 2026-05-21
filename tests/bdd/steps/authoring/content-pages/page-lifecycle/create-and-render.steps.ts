@@ -48,7 +48,6 @@ async function readContentPage(page: Page, pageId: string): Promise<PageDocument
             throw new Error('window.__atlas is not mounted — non-BDD build?');
         return action.getContentPage(id);
     }, pageId);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.getContentPage returns Promise<unknown>; PageDocumentLike is contract-pinned by the content-pages module (see modules/content-pages/src/queries).
     return raw as PageDocumentLike | null;
 }
 async function readContentPageRenderTree(page: Page, pageId: string): Promise<RenderTreeLike | null> {
@@ -58,7 +57,6 @@ async function readContentPageRenderTree(page: Page, pageId: string): Promise<Re
             throw new Error('window.__atlas is not mounted — non-BDD build?');
         return action.getContentPageRenderTree(id);
     }, pageId);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.getContentPageRenderTree returns Promise<unknown>; RenderTreeLike is contract-pinned by the content-pages render-tree projection.
     return raw as RenderTreeLike | null;
 }
 async function readContentPageList(page: Page): Promise<PageSummaryLike[]> {
@@ -68,7 +66,6 @@ async function readContentPageList(page: Page): Promise<PageSummaryLike[]> {
             throw new Error('window.__atlas is not mounted — non-BDD build?');
         return action.listContentPages();
     });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: window.__atlas.listContentPages returns Promise<unknown>; PageSummaryLike[] is contract-pinned by the content-pages listing query.
     return raw as PageSummaryLike[];
 }
 // ---------------- Envelope builders ----------------
@@ -272,7 +269,6 @@ Then('the render tree for page {string} is the default tree', async function ({ 
     expect(tree.nodes.length).toBeGreaterThan(0);
 });
 Then('the listing contains a page with id {string} titled {string}', async function ({ world }, pageId: string, expectedTitle: string) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: world.lastQueryResponse is `unknown` by design; the preceding `When the admin lists all pages` step stashes PageSummaryLike[] here.
     const list = world.lastQueryResponse as PageSummaryLike[] | null;
     expect(Array.isArray(list)).toBe(true);
     const match = (list ?? []).find(function (p) {

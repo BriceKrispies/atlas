@@ -52,7 +52,6 @@ interface JsonSchema {
  */
 async function readSchemaFile(path: string): Promise<JsonSchema> {
     const text = await readFile(path, 'utf8');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON Schema fixture read — file shape is a JSON Schema with the optional fields declared in `JsonSchema` above; every field accessed by the assertions is optional, so a malformed file surfaces as a failed `expect`, not a runtime crash.
     return JSON.parse(text) as JsonSchema;
 }
 test('regression: page-layout.v1 + page-document.v1 duplicated $ids match short-form contract', async function () {

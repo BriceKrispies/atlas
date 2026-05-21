@@ -25,7 +25,6 @@ import type {
 function asWide<TPayload extends ContentPagesIntentPayload>(
   h: IntentHandler<TPayload>,
 ): IntentHandler {
-  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: registry erases payload-generic; ingress dispatches by actionId string and the narrowed types only live inside each closure
   return h as unknown as IntentHandler;
 }
 

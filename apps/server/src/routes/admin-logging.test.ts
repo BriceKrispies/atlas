@@ -120,7 +120,6 @@ function readString(v: unknown, label: string): string {
 function readEvents(v: unknown): LogEvent[] {
     if (!Array.isArray(v))
         throw new Error('Test invariant: events not an array');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: array shape narrowed via Array.isArray; the events are produced by MemoryRingBufferSink which only emits LogEvent values, so element shape is contract-pinned.
     return v as LogEvent[];
 }
 describe('admin-logging route — gate', function () {

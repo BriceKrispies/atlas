@@ -116,7 +116,6 @@ export const mockBackend: Backend = {
             // Boundary: the mock store's event bus is typed `unknown`; payloads
             // are produced by this package's own mock writers so the shape is
             // known by construction.
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: mock event bus is internally produced; payload shape is owned by this package
             const ev = event as SerializedServerEvent;
             if (tagSet.size > 0) {
                 const evTags = ev.tags;

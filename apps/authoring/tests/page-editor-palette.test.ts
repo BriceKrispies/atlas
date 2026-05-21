@@ -86,9 +86,7 @@ async function mountPalette(page: Page): Promise<void> {
         // paths, so route through Function to keep the bundler from rewriting
         // the specifier.
         const mod = '/src/page-editor/left-panel/index.ts';
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
         const dyn = new Function('m', 'return import(m)');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
         await (dyn as (m: string) => Promise<unknown>)(mod);
         const stack: Array<Document | ShadowRoot | Element> = [document];
         let shell: ShellEl | null = null;
@@ -120,7 +118,6 @@ async function mountPalette(page: Page): Promise<void> {
 }
 async function readPaletteState(page: Page, pageId: string): Promise<PaletteSnapshot | null> {
     const raw = await readEditorState(page, `${pageId}:palette`);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the palette-surface snapshot shape is contract-pinned by the palette element (mirrors page-editor-outline.test.ts).
     return raw as PaletteSnapshot | null;
 }
 async function setSearch(page: Page, value: string): Promise<void> {

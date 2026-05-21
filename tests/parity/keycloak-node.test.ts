@@ -37,7 +37,6 @@ import { assertDefined } from '@atlas/test-fixtures/assert';
  * we narrow `any` to `T` once here instead of at every call site.
  */
 async function readJsonAs<T>(res: Response): Promise<T> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTTP parity test — T is the endpoint's contracted response shape (Keycloak OIDC discovery / token / apps/server whoami).
     return (await res.json()) as T;
 }
 const keycloakBaseUrl = process.env['KEYCLOAK_BASE_URL'];

@@ -88,7 +88,7 @@ export class AtlasElement extends HTMLElement {
     if (existing) {
       if (existing !== elementClass && !_defineWarned.has(tag)) {
         _defineWarned.add(tag);
-        // eslint-disable-next-line no-console -- dev-only: AtlasElement framework warns at the boundary when two modules race to register the same custom element tag; there is no structured logger this early in element lifecycle and the warning's audience is the human developer at the browser dev console
+        // eslint-disable-next-line no-console -- AtlasElement.define warn-once on tag conflict; we have no logger here
         console.warn(
           `[atlas] AtlasElement.define("${tag}"): tag already registered to a different constructor; ignoring re-registration.`,
         );
@@ -160,7 +160,6 @@ export class AtlasElement extends HTMLElement {
    * fields without scattered casts.
    */
   protected _ctor(): typeof AtlasElement {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-constructor-narrowing
     return this.constructor as typeof AtlasElement;
   }
 
@@ -383,7 +382,6 @@ export class AtlasSurface extends AtlasElement {
    * casts.
    */
   protected override _ctor(): typeof AtlasSurface {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: typed-constructor-narrowing
     return this.constructor as typeof AtlasSurface;
   }
 

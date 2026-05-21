@@ -72,7 +72,6 @@ function makeIframe(): FakeIframe {
  *  + this test's FakeWindow give us a structurally-compatible shape; we
  *  funnel every call through this helper so the cast lives in one place. */
 function asIframe(fake: FakeIframe): HTMLIFrameElement {
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; transport only reads iframe.contentWindow, the FakeIframe matches that slice structurally.
     return fake as unknown as HTMLIFrameElement;
 }
 /** Narrow vi.fn() mock call arg (`unknown[][]`) to a known wire-protocol

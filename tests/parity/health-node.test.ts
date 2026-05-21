@@ -14,7 +14,6 @@ const d = baseUrl ? describe : describe.skip;
  * `any` to `T` once in this helper instead of at every call site.
  */
 async function readJsonAs<T>(res: Response): Promise<T> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTTP parity test — T is the route's contracted response shape.
     return (await res.json()) as T;
 }
 d('[node] health parity', function () {

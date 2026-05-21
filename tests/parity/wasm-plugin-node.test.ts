@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- parity test diagnostics print to stdout for the multi-runtime comparator */
 /**
  * Parity scenario for the demo-transform Rust WASM plugin invoked via
  * the TS WasmHost.
@@ -62,7 +63,6 @@ describe('[wasm-plugin] demo-transform across both hosts', function () {
         if (!bytes) {
             // Skip cleanly when the .wasm hasn't been built. The Rust test
             // suite has the same precondition.
-            // eslint-disable-next-line no-console -- harness-diagnostic: parity-suite skip notice when the demo .wasm hasn't been built; surfaces in vitest's reporter so the skipped path is visible
             console.warn(`[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`);
             return;
         }
@@ -77,7 +77,6 @@ describe('[wasm-plugin] demo-transform across both hosts', function () {
     test('BrowserWasmHost runs the demo plugin and matches the Rust assertion', async function () {
         const bytes = await loadDemoPluginBytes();
         if (!bytes) {
-            // eslint-disable-next-line no-console -- harness-diagnostic: parity-suite skip notice when the demo .wasm hasn't been built; surfaces in vitest's reporter so the skipped path is visible
             console.warn(`[wasm-plugin] demo plugin not built at ${DEMO_PLUGIN_PATH}; skipping`);
             return;
         }

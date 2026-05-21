@@ -95,9 +95,7 @@ async function mountOutline(page: Page): Promise<void> {
         // paths, so route through Function to keep the bundler from rewriting
         // the specifier. The dynamic import returns `unknown` — we discard it.
         const mod = '/src/page-editor/left-panel/index.ts';
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval -- intentional: dynamic-import a Vite-served module by URL, hidden from the bundler.
         const dyn = new Function('m', 'return import(m)');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: new Function returns the generic `Function` type; we know the body is `import(m)` which returns Promise<unknown>.
         await (dyn as (m: string) => Promise<unknown>)(mod);
         const stack: Array<Document | ShadowRoot | Element> = [document];
         let shell: ShellEl | null = null;
@@ -130,7 +128,6 @@ async function mountOutline(page: Page): Promise<void> {
 }
 async function readOutlineState(page: Page, pageId: string): Promise<OutlineSnapshot | null> {
     const raw = await readEditorState(page, `${pageId}:outline`);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; the outline-surface snapshot shape is contract-pinned by the outline element.
     return raw as OutlineSnapshot | null;
 }
 interface ShellSnapshot {
@@ -161,7 +158,6 @@ async function readShellSnapshot(page: Page): Promise<ShellSnapshot | null> {
         }
         return null;
     });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the shell's imperative getEditorSnapshot returns unknown; ShellSnapshot is contract-pinned by the shell element and asserted in-test.
     return raw as ShellSnapshot | null;
 }
 async function clickOutlineRow(page: Page, instanceId: string, modifier?: 'Shift'): Promise<void> {

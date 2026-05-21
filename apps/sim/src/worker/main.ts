@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- sim worker is the browser-side projection mirror; structured console output is its harness contract with the BDD driver */
 /**
  * apps/sim — Web Worker projection mirror (Phase 4 of the worker
  * migration; see `specs/worker.md`).
@@ -75,7 +76,6 @@ interface WorkerGlobalSurface {
 // satisfies `WorkerGlobalSurface` (postMessage/addEventListener('message')/
 // close), but TS has no way to know that without `lib: WebWorker`. This
 // double-cast is the documented escape hatch.
-// eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Web Worker scope, narrowing `self` to the worker surface
 const ctx: WorkerGlobalSurface = self as unknown as WorkerGlobalSurface;
 interface RuntimeState {
     tenantId: string;
@@ -102,7 +102,6 @@ ctx.addEventListener('message', function (e: MessageEvent<InboundMessage>) {
             void handleInit(msg).catch(function (err) {
                 // Boot failure — surface via console; main thread will time out
                 // its `ready` wait and report it.
-                // eslint-disable-next-line no-console -- harness-diagnostic: sim worker has no structured-logger pipeline (per-tab worker context); diagnostic for the main thread + developer dev-tools console
                 console.error('[atlas-sim-worker] init failed', err);
             });
             break;
@@ -170,7 +169,6 @@ async function consumeLoop(state: RuntimeState): Promise<void> {
                 // Mirror server-worker semantics: log + advance. Sim's not
                 // authoritative; halting the loop on failure would just hide
                 // bugs from BDD instead of surfacing them in the events log.
-                // eslint-disable-next-line no-console -- harness-diagnostic: sim worker has no structured-logger pipeline; this is the per-event dispatch failure path that BDD will see in stdout
                 console.warn('[atlas-sim-worker] dispatch failed; advancing cursor', {
                     eventId: event.eventId,
                     eventType: event.eventType,
@@ -184,7 +182,6 @@ async function consumeLoop(state: RuntimeState): Promise<void> {
                         state.processedSeq = event.seq;
                 }
                 catch (err) {
-                    // eslint-disable-next-line no-console -- harness-diagnostic: sim worker has no structured-logger pipeline; surfaces ack-write failures so BDD doesn't silently drop the cursor
                     console.warn('[atlas-sim-worker] ack failed', {
                         seq: event.seq.toString(),
                         error: err instanceof Error ? err.message : String(err),
@@ -195,7 +192,6 @@ async function consumeLoop(state: RuntimeState): Promise<void> {
         }
     }
     catch (err) {
-        // eslint-disable-next-line no-console -- harness-diagnostic: sim worker has no structured-logger pipeline; terminal log so a dead worker is visible in dev-tools console
         console.error('[atlas-sim-worker] consume loop terminated', err);
     }
 }
@@ -216,7 +212,6 @@ async function handleSettle(msg: SettleMessage): Promise<void> {
     const HARD_TIMEOUT_MS = 5000;
     while (runtime.processedSeq < head) {
         if (Date.now() - start > HARD_TIMEOUT_MS) {
-            // eslint-disable-next-line no-console -- harness-diagnostic: sim worker has no structured-logger pipeline; BDD's settle path needs the timeout visible so a hung dispatcher doesn't look like a passing test
             console.warn('[atlas-sim-worker] settle timeout', {
                 tenantId: runtime.tenantId,
                 head: head.toString(),

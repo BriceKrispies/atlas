@@ -51,7 +51,6 @@ function makeRig(): TestRig {
     // a full AppState here would pull in Postgres pools / JWKS / adapters
     // that aren't relevant to this wiring test. Suppress the boundary cast
     // once at the construction site.
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: middleware reads only logPipeline + config; full AppState wiring is out-of-scope for this unit test
     const state = {
         logPipeline: pipeline,
         config: { tenantId: 'dev-tenant', environment: 'test' },

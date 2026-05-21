@@ -32,7 +32,6 @@ function rowToEntity<TAttrs>(row: EntityRow): Entity<TAttrs> {
         // Boundary: `attrs` is opaque to the adapter; caller supplies `TAttrs`
         // matching the entity_type's registered schema. Mirrors
         // `adapters/node/src/entity-store.ts`.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: per-row `attrs` is opaque to the adapter; caller supplies `TAttrs` matching the entity_type's registered schema
         attrs: row.attrs as TAttrs,
         status: toEntityStatus(row.status),
         createdAt: row.createdAt,
@@ -47,7 +46,7 @@ function attrsContains(attrs: unknown, predicate: Record<string, unknown>): bool
         return false;
     // `typeof === 'object'` + non-null narrows to a record-like; iterate via
     // `Object.entries` typed against the predicate's known keys.
-    const a = attrs as Readonly<Record<string, unknown>>; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: attrs is JSON-shaped `unknown` at the storage boundary
+    const a = attrs as Readonly<Record<string, unknown>>;
     for (const [k, v] of Object.entries(predicate)) {
         if (a[k] !== v)
             return false;

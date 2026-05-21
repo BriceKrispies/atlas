@@ -196,7 +196,6 @@ const defaultLoader: CedarWasmLoader = async function () {
     // The single boundary cast lives here, justified once: cedar-wasm
     // ships no TS types for the dynamic-import namespace, so we widen to
     // `unknown` and re-narrow each function entry through `pickFn` below.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- library: @cedar-policy/cedar-wasm/nodejs ships no TS types for the dynamic-import namespace; entries are narrowed structurally through pickFn
     const mod = (await import('@cedar-policy/cedar-wasm/nodejs')) as unknown as Record<string, unknown> & {
         default?: Record<string, unknown>;
     };
@@ -208,12 +207,10 @@ const defaultLoader: CedarWasmLoader = async function () {
     function pickFn<F extends (...a: never[]) => unknown>(name: string): F | undefined {
         const direct = mod[name];
         if (typeof direct === 'function') {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
             return direct as F;
         }
         const fromDefault = mod.default?.[name];
         if (typeof fromDefault === 'function') {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: cedar-wasm exports are typed `unknown` from the dynamic import; runtime `typeof === 'function'` is the strongest check available
             return fromDefault as F;
         }
         return undefined;

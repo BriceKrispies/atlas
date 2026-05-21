@@ -19,7 +19,6 @@ class CapturingStream extends Writable {
     }
     records(): LogEvent[] {
         return this.lines().map(function (l) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-only JSON line reader; each line is produced by ConsoleJsonSink which writes a serialized LogEvent shape (its on-the-wire format is the very contract under test here).
             return JSON.parse(l) as LogEvent;
         });
     }

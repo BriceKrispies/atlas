@@ -273,7 +273,6 @@ function arr<T>(v: T | T[] | undefined): T[] {
  * Different `Node` definitions, same DOM node at runtime.
  */
 function asXmlCryptoNode(el: Element): Node {
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: xml-crypto's Node type doesn't unify with @xmldom/xmldom's Element at compile time, but they're the same DOM Node at runtime
     return el as unknown as Node;
 }
 /**
@@ -281,6 +280,5 @@ function asXmlCryptoNode(el: Element): Node {
  * Same structural shape at runtime; the two libraries publish disjoint types.
  */
 function asXmlCryptoElement(node: unknown): Element | null {
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: @xmldom/xmldom NodeList.item() returns its own Node type which doesn't unify with the DOM Element type; structurally identical at runtime
     return (node ?? null) as unknown as Element | null;
 }

@@ -83,7 +83,6 @@ class InMemoryEntityStore implements EntityStore {
         const row = this.rows.get(this.k(tenantId, entityType, entityId));
         if (!row || row.status === 'deleted')
             return null;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; row was stored as Entity<unknown> and the caller's TAttrs is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore and modules/identity/test/lib/fixtures.ts.
         return row as Entity<TAttrs>;
     }
     async put<TAttrs = unknown>(input: EntityWriteInput<TAttrs>): Promise<Entity<TAttrs>> {
@@ -118,7 +117,6 @@ class InMemoryEntityStore implements EntityStore {
             .filter(function (r) {
             return (desired === null ? true : r.status === desired);
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory EntityStore shim; rows are Entity<unknown>, caller's TAttrs is contract-pinned by the entity type used at put-time. Mirrors PostgresEntityStore.list.
         return filtered as Entity<TAttrs>[];
     }
     async query<TAttrs = unknown>(tenantId: string, entityType: string, opts: EntityQueryOptions): Promise<Entity<TAttrs>[]> {
@@ -127,7 +125,6 @@ class InMemoryEntityStore implements EntityStore {
             return base;
         const preds = Object.entries(opts.attrsEqual);
         return base.filter(function (r) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: entity.attrs is typed as the caller's TAttrs; accessed here as a Record for predicate-equality filtering. Mirrors PostgresEntityStore.query.
             const a = r.attrs as Record<string, unknown>;
             return preds.every(function ([k, v]) {
                 return a?.[k] === v;
@@ -160,14 +157,12 @@ class InMemoryRelationStore implements RelationStore {
         const out = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === tenantId && r.edgeType === edgeType && r.fromId === fromId;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; rows are Relation<unknown>, caller's TAttrs is contract-pinned by the edge type used at add-time. Mirrors PostgresRelationStore.outgoing.
         return out as Relation<TAttrs>[];
     }
     async incoming<TAttrs = unknown>(tenantId: string, edgeType: string, toId: string): Promise<Relation<TAttrs>[]> {
         const out = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === tenantId && r.edgeType === edgeType && r.toId === toId;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: in-memory RelationStore shim; see RelationStore.outgoing.
         return out as Relation<TAttrs>[];
     }
 }
@@ -199,7 +194,6 @@ function throwingProxy<T extends object>(name: string): T {
                 `non-identity dispatcher should have returned early before reaching its context`);
         },
     });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: throw-on-access proxy stands in for a structural port type; every member access throws, so the type is descriptive only (used by composeDispatchers to type-check its inputs).
     return proxy as T;
 }
 const stubCatalogState = throwingProxy<CatalogStateStore>('CatalogStateStore');

@@ -20,7 +20,6 @@ function rowToRelation<TAttrs>(row: RelationRow): Relation<TAttrs> {
         edgeType: row.edge_type,
         fromId: row.from_id,
         toId: row.to_id,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: DB JSON column → caller-chosen generic TAttrs; trust the caller's type parameter.
         attrs: (row.attrs ?? null) as TAttrs | null,
         createdAt: row.created_at,
     };

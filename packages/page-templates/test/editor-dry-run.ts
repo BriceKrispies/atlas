@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 /**
  * Editor dry-run: exercises the new zones-based editor and the imperative
  * EditorAPI end-to-end in a linkedom DOM.
@@ -78,7 +79,6 @@ function cleanAnnouncementsManifest(): WidgetManifest {
     delete clean['$schema'];
     delete clean['$comment'];
     delete clean['$invariants'];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the fixture is a schema-validated WidgetManifest with documentation-only `$schema/$comment/$invariants` keys stripped; what remains satisfies WidgetManifest. The runtime validator inside WidgetRegistry.register re-checks.
     return clean as WidgetManifest;
 }
 /**
@@ -782,9 +782,7 @@ async function testCanEditFalseGate(): Promise<void> {
         event: string;
         payload: unknown;
     }> = [];
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run captures telemetry by stubbing console.debug (the documented dev-sink emit path in packages/core/src/telemetry-pipeline.ts); restored in the finally block below
     const origDebug = console.debug;
-    // eslint-disable-next-line no-console -- harness-diagnostic: see preceding line — stubbing console.debug to capture telemetry events for this assertion
     console.debug = (function (event: string, payload: unknown): void {
         telemetryEvents.push({ event, payload });
     }) as typeof console.debug;
@@ -813,7 +811,6 @@ async function testCanEditFalseGate(): Promise<void> {
         await waitMicrotasks(5);
     }
     finally {
-        // eslint-disable-next-line no-console -- harness-diagnostic: restoring the original console.debug after the telemetry-capture stub above
         console.debug = origDebug;
     }
 }
@@ -881,12 +878,10 @@ async function main(): Promise<void> {
     await testContentPage_editorAPI_rejectsRequiredEmpty();
     await testCanEditFalseGate();
     await testValidatingStoreRejection_asPersistFailed();
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? err.stack : undefined;
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack ?? err);
     process.exit(1);
 });

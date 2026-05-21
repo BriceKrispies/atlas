@@ -29,7 +29,6 @@ function parseAuditLine(line: string): AuditExportLine {
     if (parsed == null || typeof parsed !== 'object') {
         throw new Error(`audit export line is not an object: ${line}`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- runtime-checked to be an object on the line above
     const obj = parsed as {
         [k: string]: unknown;
     };
@@ -84,7 +83,6 @@ class InMemoryEntityStore implements PortEntityStore {
         const r = this.rows.get(this.k(t, ty, id));
         if (!r || r.status === 'deleted')
             return null;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return r as Entity<T>;
     }
     async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -119,7 +117,6 @@ class InMemoryEntityStore implements PortEntityStore {
             .filter(function (r) {
             return (desired === null ? true : r.status === desired);
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return filtered as Entity<T>[];
     }
     async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
@@ -127,14 +124,12 @@ class InMemoryEntityStore implements PortEntityStore {
             return r.tenantId === t && r.entityType === ty;
         });
         if (!opts.attrsEqual) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
             return all as Entity<T>[];
         }
         const preds = Object.entries(opts.attrsEqual);
         const matched = all.filter(function (row) {
             if (row.attrs == null || typeof row.attrs !== 'object')
                 return false;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
             const attrs = row.attrs as {
                 [k: string]: unknown;
             };
@@ -142,7 +137,6 @@ class InMemoryEntityStore implements PortEntityStore {
                 return attrs[k] === v;
             });
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return matched as Entity<T>[];
     }
 }
@@ -172,14 +166,12 @@ class InMemoryRelationStore implements RelationStore {
         const filtered = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === t && r.edgeType === e && r.fromId === f;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
         return filtered as Relation<T>[];
     }
     async incoming<T = unknown>(t: string, e: string, to: string): Promise<Relation<T>[]> {
         const filtered = Array.from(this.rows.values()).filter(function (r) {
             return r.tenantId === t && r.edgeType === e && r.toId === to;
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased relation store
         return filtered as Relation<T>[];
     }
 }

@@ -30,6 +30,5 @@ export function jsonParam<T>(
   sql: postgres.Sql,
   value: T,
 ): postgres.Parameter {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: postgres.js sql.json typing (`JSONValue`) is too narrow for parameterised JSON values whose static type is `unknown` / `Record<string, unknown>`; this is the single shielded cast for the whole adapter
   return sql.json(value as never);
 }

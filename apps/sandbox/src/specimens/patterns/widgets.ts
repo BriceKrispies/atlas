@@ -42,7 +42,6 @@ function mountAnnouncementsHarness(demoEl: HTMLElement): () => void {
     // dev-time fixture contract — narrower literals are compatible at
     // runtime. Pass through `unknown` so the assignment isn't structurally
     // narrowed at the type level.
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: dev-time JSON fixture, HarnessSpec is structurally compatible
     harness.spec = announcementsHarnessSpec as unknown as HarnessSpec;
     harness.widgetId = 'content.announcements';
     harness.resolveWidgetModuleUrl = function (widgetId: string) {
@@ -167,7 +166,6 @@ function mountDataTable(demo: HTMLElement, ctx: {
             // on `patch.type` so a malformed patch is a no-op rather
             // than a crash.
             window.__atlasTestDataSource = {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: sandbox→test bridge; runtime `applyPatch` already branches on patch.type, so a malformed `unknown` is a no-op.
                 emit: function (patch: unknown): void { ds.emit(patch as RowPatch<SampleRow>); },
             };
         }

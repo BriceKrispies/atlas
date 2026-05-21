@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- view-mode runtime falls back to console on widget-host load failure; tested explicitly */
 /**
  * <content-page> — view-mode runtime for page templates + page documents.
  */
@@ -61,7 +62,6 @@ function resolveWidgetRegistry(injected: WidgetRegistryLike | null | undefined):
 }
 function telemetry(event: string, payload: Record<string, unknown>): void {
     // Errors go to console.error; lifecycle events to console.debug.
-    // eslint-disable-next-line no-console -- contract-exempt: frontend telemetry seam — this is the documented dev console emit path per specs/frontend/observability.md, swappable for a structured sink at app boot
     const fn = event === 'atlas.content-page.load.error' ? console.error : console.debug;
     fn(event, payload);
 }
@@ -373,7 +373,6 @@ export class ContentPageElement extends AtlasSurface {
                 return;
             }
             if (cmp < 0) {
-                // eslint-disable-next-line no-console -- dev-only: schema-version drift debug; lifts to the operator dev-tools console when a stored page document is older than the registered template (recovery path is automatic re-render, this is informational)
                 console.debug('atlas.content-page.version.behind', {
                     pageId: this.pageId,
                     templateId: doc.templateId,

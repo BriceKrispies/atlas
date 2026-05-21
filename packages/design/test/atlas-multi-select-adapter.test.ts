@@ -102,7 +102,7 @@ function must<T>(v: T | undefined | null): T {
  * events, so the cast is bounded to this helper.
  */
 function onCustom<T>(target: EventTarget, type: string, fn: (e: CustomEvent<T>) => void): void {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/no-explicit-any -- linkedom-DOM-shape: CustomEvent listeners aren't in the standard HTMLElementEventMap; the cast is bounded to this helper
+    // eslint-disable-next-line typescript/no-explicit-any -- DOM EventListener typing doesn't preserve CustomEvent<T> through addEventListener; the cast is the standard escape hatch at this boundary
     target.addEventListener(type, fn as any);
 }
 const fruits: Option[] = [

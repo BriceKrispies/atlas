@@ -38,7 +38,6 @@ interface ErrorEnvelope {
  * the route's own schema definitions for no test value.
  */
 async function readResponseAs<T>(res: Response): Promise<T> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTTP test client — see file-level JSDoc above. T is the route's contracted response shape.
     return (await res.json()) as T;
 }
 function debugPrincipalHeader(opts: ServerFactoryOptions): string {

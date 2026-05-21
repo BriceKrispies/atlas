@@ -52,7 +52,6 @@ export function buildContext({ principal, tenantId, correlationId, locale, theme
                     /* fall through to console */
                 }
             }
-            // eslint-disable-next-line no-console -- contract-exempt: widget-host's bridge to the host page surfaces widget logs through the host's console when no telemetry sink is wired; this IS the documented dev-time fallback in specs/frontend/observability.md
             console[level](prefix, ...args);
         };
     };

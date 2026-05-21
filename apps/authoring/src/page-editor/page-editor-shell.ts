@@ -36,7 +36,6 @@ function asCustomEvent<D>(ev: Event): CustomEvent<D> | null {
     // CustomEvent generic is erased at runtime; the caller declares the expected
     // detail shape and is responsible for tolerating malformed details. This is
     // the canonical event-listener boundary.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: CustomEvent<unknown>→<D> at listener call-site; runtime check is `instanceof CustomEvent`.
     return ev as CustomEvent<D>;
 }
 /**

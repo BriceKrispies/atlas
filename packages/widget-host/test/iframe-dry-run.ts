@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 /**
  * Structural dry-run for the iframe isolation pieces.
  *
@@ -10,7 +11,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 function fail(msg: string): never {
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', msg);
     process.exit(1);
 }
@@ -49,12 +49,10 @@ async function main(): Promise<void> {
     if (/setAttribute\(\s*['"]sandbox['"][^)]*allow-same-origin/.test(iframeHostSrc)) {
         fail('iframe-host.ts must NOT grant allow-same-origin on the sandbox attribute');
     }
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack);
     process.exit(1);
 });

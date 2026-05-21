@@ -31,7 +31,6 @@ const BY_ID: Readonly<Record<PreviewDevice, DeviceFrame>> = Object.freeze(
 // Object.fromEntries returns `Record<string, DeviceFrame>` — DEVICES is
 // a closed list keyed by every `PreviewDevice` literal, so the
 // narrower type holds by construction.
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- DEVICES enumerates every PreviewDevice; this is a typed Object.fromEntries
 Object.fromEntries(DEVICES.map(function (d) {
     return [d.id, d];
 })) as Record<PreviewDevice, DeviceFrame>);

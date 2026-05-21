@@ -74,7 +74,6 @@ export class DataTableWidget extends AtlasElement {
     // Boundary: atlas-data-table is an AtlasElement that exposes `columns`
     // and `dataSource` as upgraded properties; the element type registry
     // doesn't surface those through HTMLElementTagNameMap.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: known custom-element properties
     const table = tableEl as HTMLElement & {
       columns: unknown;
       dataSource: unknown;

@@ -177,7 +177,7 @@ export class EditorController {
                 handler(payload);
             }
             catch (err) {
-                // eslint-disable-next-line no-console -- dev-only: editor controller's listener-error surface; audience is the developer authoring an editor extension, not a production telemetry stream (the editor is a build-time authoring surface)
+                // eslint-disable-next-line no-console -- swallow listener throws to keep the editor alive; surfaced to the browser console for the page author
                 console.error('[editor-controller] listener threw', err);
             }
         }

@@ -21,7 +21,6 @@ import { Hono } from 'hono';
  * of at every call site.
  */
 async function readJsonAs<T>(res: Response): Promise<T> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: route test reader — T is the route's contracted response shape (RepositoryRecord[] etc.).
     return (await res.json()) as T;
 }
 import type { RepositoryRecord, RepositoryRevisionStore, RepositoryStore, RevisionRecord, } from '@atlas/ports';
@@ -186,7 +185,6 @@ function makeState(): AppState {
             policyEngine: 'stub' as const,
         },
     };
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: in-memory route suite — see makeState() JSDoc; full AppState requires Postgres + JWKS + adapter wiring that this suite intentionally short-circuits via vi.mock above.
     return partial as unknown as AppState;
 }
 interface PrincipalSpec {

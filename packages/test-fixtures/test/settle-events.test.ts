@@ -126,7 +126,6 @@ describe('settleEvents', function () {
             if (env.eventId === 'evt-boom')
                 throw original;
         };
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- vitest's expect.stringContaining returns `any` by design; the matchObject API expects asymmetric matchers
         const messageMatcher: string = expect.stringContaining('evt-boom');
         await expect(settleEvents({ eventStore: store, dispatch, tenantId: 't1' })).rejects.toMatchObject({
             message: messageMatcher,

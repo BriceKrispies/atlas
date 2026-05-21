@@ -433,7 +433,6 @@ export function attachEditor({ contentPageEl, templateEl: _templateEl, widgetHos
         // ApiResult unions to CommitResult-compatible shape; reason is optional
         // in both. exactOptionalPropertyTypes catches the union's `reason?: string | undefined`
         // mismatch with `reason?: string` — the runtime values are identical.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: ApiResult.reason `string | undefined` vs CommitResult.reason `string?` under exactOptionalPropertyTypes
         return res as CommitResult;
     }
     async function commitSlot(region: string): Promise<void> {

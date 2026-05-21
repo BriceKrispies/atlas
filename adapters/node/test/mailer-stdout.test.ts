@@ -40,7 +40,6 @@ function fakeSql(): {
             return ({ __json: v });
         },
     });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- library: postgres.js `Sql` is a callable with hundreds of overloads we can't faithfully reconstruct in a test; this single shielded cast funnels the fake-sql shape into the adapter constructor.
     const sql = withJson as unknown as postgres.Sql;
     return { sql, calls };
 }

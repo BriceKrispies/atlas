@@ -23,7 +23,6 @@ const fruits: Option[] = [
 function fixedSource(data: unknown): OptionsSource {
     return {
         load: async function () {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- contract-exempt: this fake exists to feed runtime-malformed payloads (non-array, nullish) into MultiSelectCore so the LIFECYCLE.EMPTY path can be exercised. The widened `unknown` parameter + narrow cast IS the test surface.
             return data as readonly Option[] | null | undefined;
         },
     };

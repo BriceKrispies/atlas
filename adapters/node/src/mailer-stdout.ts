@@ -87,7 +87,7 @@ export class StdoutEventMailer implements Mailer {
     // `StdoutEventMailer` is the noop/dev mailer driver whose job is to
     // emit the message envelope to stdout for harness inspection. The
     // SMTP adapter routes its equivalent line through `ctx.logger.info`.
-    // eslint-disable-next-line no-console -- contract-exempt: stdout mailer's stdout emission IS the side effect (see file header + mailer-stdout.test.ts spies).
+    // eslint-disable-next-line no-console -- stdout mailer adapter; writing to stdout IS the adapter contract
     console.log(
       JSON.stringify({
         // Canonical Domain.Verb.Outcome event name per

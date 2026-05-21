@@ -40,7 +40,6 @@ export class Registry {
   get<M extends Metric = Metric>(name: string): M | undefined {
     const v = this.metrics.get(name);
     if (v === undefined) return undefined;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- registry stores name→Metric with the concrete subtype erased; caller declares the expected `M` and `getOrRegister` keeps the (name, type) mapping consistent.
     return v as M;
   }
 

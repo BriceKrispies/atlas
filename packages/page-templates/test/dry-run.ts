@@ -3,6 +3,7 @@
  * linkedom DOM. Exits 0 with "OK" on success, 1 with a diagnostic on
  * failure. Invoked via `pnpm --filter @atlas/page-templates dry-run`.
  */
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 import { customElements, document, HTMLElementCtor, loadFixture } from './_lib/setup.ts';
 import { must } from '../src/internal/assert.ts';
 // ---- import the package under test (registers <content-page>) --------
@@ -39,7 +40,7 @@ function sortedStringify(value: unknown): string {
         return '[' + value.map(sortedStringify).join(',') + ']';
     }
     // `value` is `object` here; widening to a string-keyed record is safe.
-    const obj: Record<string, unknown> = value as Record<string, unknown>; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- boundary: TS narrows non-array `object` to plain `object`; reading own string keys is structurally safe.
+    const obj: Record<string, unknown> = value as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
     return ('{' +
         keys
@@ -203,7 +204,6 @@ function makeWidgetRegistry(): InstanceType<typeof WidgetRegistry> {
     delete clean['$schema'];
     delete clean['$comment'];
     delete clean['$invariants'];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: the fixture is a schema-validated WidgetManifest with documentation-only `$schema/$comment/$invariants` keys stripped; what remains satisfies WidgetManifest. WidgetRegistry.register re-validates at runtime.
     wr.register({ manifest: clean as WidgetManifest, element: AnnouncementsWidget });
     return wr;
 }
@@ -318,12 +318,10 @@ async function main(): Promise<void> {
     await testContentPageHappyPath();
     await testContentPageTemplateMissing();
     await testContentPageVersionAhead();
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? err.stack : undefined;
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack ?? err);
     process.exit(1);
 });

@@ -3,6 +3,7 @@
  * linkedom DOM. Exits 0 with "OK" on success, 1 with a diagnostic on
  * failure. Invoked via `pnpm --filter @atlas/widget-host dry-run`.
  */
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 import { parseHTML } from 'linkedom';
 // --- set up a browser-ish global environment BEFORE importing packages
 const dom = parseHTML('<!doctype html><html><head></head><body></body></html>');
@@ -19,7 +20,6 @@ interface GlobalInstallSlots {
     NodeFilter: unknown;
     structuredClone: unknown;
 }
-// eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; installing parsed-DOM objects as globals so subsequent module imports see them.
 const g = globalThis as unknown as Partial<GlobalInstallSlots> & Record<string, unknown>;
 g.window = dom.window;
 g.document = dom.document;
@@ -74,7 +74,6 @@ if (typeof docForShim.createTreeWalker !== 'function') {
                 const next = i < elements.length ? elements[i] : undefined;
                 if (!next)
                     return null;
-                // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; treewalker shim returns linkedom element nodes shaped as the DOM Element our consumers expect.
                 return next as unknown as Element;
             },
         };
@@ -165,12 +164,10 @@ const manifest: WidgetManifest = {
 // for classes that extend HTMLElement but aren't meant to be parsed from
 // markup; we register a tag here purely to satisfy the headless DOM.
 customElements.define('demo-stub-widget', 
-// eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; customElements.define expects the lib.dom CustomElementConstructor signature, but our StubWidget extends linkedom's HTMLElement which is structurally compatible at runtime.
 StubWidget as unknown as CustomElementConstructor);
 const registry = new WidgetRegistry();
 registry.register({
     manifest,
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: linkedom-DOM-shape; the registry types its element ctor against lib.dom HTMLElement, but at runtime we register a linkedom-backed subclass.
     element: StubWidget as unknown as new () => HTMLElement,
 });
 function assert(cond: unknown, msg: string): asserts cond {
@@ -280,12 +277,10 @@ async function main(): Promise<void> {
     host.remove();
     await waitMicrotasks(5);
     assert(stubNode.onUnmountCalled === true, 'stub.onUnmount should have run during host teardown');
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack);
     process.exit(1);
 });

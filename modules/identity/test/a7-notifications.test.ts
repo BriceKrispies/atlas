@@ -34,7 +34,6 @@ function payloadField(env: EventEnvelope, key: string): unknown {
         return undefined;
     if (!(key in p))
         return undefined;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- guarded by `in p` check above
     return (p as {
         [k: string]: unknown;
     })[key];
@@ -104,7 +103,6 @@ class InMemoryEntityStore implements PortEntityStore {
         const r = this.rows.get(this.k(t, ty, id));
         if (!r || r.status === 'deleted')
             return null;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return r as Entity<T>;
     }
     async put<T = unknown>(input: EntityWriteInput<T>): Promise<Entity<T>> {
@@ -139,7 +137,6 @@ class InMemoryEntityStore implements PortEntityStore {
             .filter(function (r) {
             return (desired === null ? true : r.status === desired);
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return filtered as Entity<T>[];
     }
     async query<T = unknown>(t: string, ty: string, opts: EntityQueryOptions): Promise<Entity<T>[]> {
@@ -147,14 +144,12 @@ class InMemoryEntityStore implements PortEntityStore {
             return r.tenantId === t && r.entityType === ty;
         });
         if (!opts.attrsEqual) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
             return all as Entity<T>[];
         }
         const preds = Object.entries(opts.attrsEqual);
         const matched = all.filter(function (row) {
             if (row.attrs == null || typeof row.attrs !== 'object')
                 return false;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
             const attrs = row.attrs as {
                 [k: string]: unknown;
             };
@@ -162,7 +157,6 @@ class InMemoryEntityStore implements PortEntityStore {
                 return attrs[k] === v;
             });
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-fixture type-erased entity store
         return matched as Entity<T>[];
     }
 }

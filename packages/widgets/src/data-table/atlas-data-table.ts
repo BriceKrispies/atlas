@@ -627,7 +627,6 @@ function readColumnValue<R extends Row>(row: R, col: AnyColumn<R>): unknown {
  * between the typed consumer surface and the dispatcher's `unknown` bus.
  */
 function toAnyColumns<R extends Row>(next: Columns<R> | ReadonlyArray<AnyColumn<R>>): Array<AnyColumn<R>> {
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Column<R, V> → Column<R, unknown> variance bridge (typed consumer surface → unknown dispatcher).
     return [...next] as unknown as Array<AnyColumn<R>>;
 }
 function messageBlock(role: string, heading: string, body: string): HTMLElement {

@@ -38,7 +38,6 @@ function makeRig(): Rig {
     // would touch them; the boundary cast below scopes that compromise to a
     // single annotated line. Full AppState wiring is exercised in
     // apps/server/test/integration/.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: principal-middleware test rig; the auth paths under test (debug-principal accept + missing-Authorization reject) never reach the SQL / tenant-db / registry fields, so we stub the AppState surface the middleware actually touches and cast through `unknown` once.
     const state = {
         config: {
             port: 3000,

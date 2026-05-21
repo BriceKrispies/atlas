@@ -25,7 +25,6 @@ function toLayoutDocuments(raw: ReadonlyArray<unknown>): LayoutDocument[] {
                 return `${e.path}: ${e.message}`;
             }).join('; ')}`);
         }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: validator just passed; bundle-imported JSON
         out.push(entry as LayoutDocument);
     }
     return out;
@@ -45,7 +44,6 @@ function toPageDocuments(raw: ReadonlyArray<unknown>): PageDocument[] {
                 return `${e.path}: ${e.message}`;
             }).join('; ')}`);
         }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: validator just passed; bundle-imported JSON
         out.push(entry as PageDocument);
     }
     return out;

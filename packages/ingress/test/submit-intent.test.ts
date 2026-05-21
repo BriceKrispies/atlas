@@ -57,7 +57,6 @@ function makeRegistry(opts: {
             // `.errors`, so the substitution is safe. Pulling ajv into
             // ingress's devDependencies just for the type would create a
             // needless dep — keep the boundary cast, suppress both lints.
-            // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: Ajv's ValidateFunction vs structural test validator (callable + .errors); avoids pulling ajv into ingress devDeps
             return v as unknown as ReturnType<ControlPlaneRegistry['getSchemaValidator']>;
         },
     };

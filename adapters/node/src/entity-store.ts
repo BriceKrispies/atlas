@@ -48,7 +48,6 @@ function rowToEntity<TAttrs>(row: EntityRow): Entity<TAttrs> {
         // mirror (`adapters/idb/src/entity-store.ts:29`). Per-entity-type
         // validation happens in the entity-wrapper layer in `@atlas/identity`
         // / `@atlas/content-pages`.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: per-row JSONB `attrs` is opaque to the adapter; caller supplies `TAttrs` matching the entity_type's registered schema
         attrs: row.attrs as TAttrs,
         status: toEntityStatus(row.status),
         createdAt: row.created_at,

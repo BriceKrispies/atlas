@@ -60,7 +60,6 @@ describe('withChaos', function () {
         // Write is dropped — store sees no append, return is undefined.
         const id = await wrapped.append('lost');
         expect(id).toBeUndefined();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: makeFakeStore returns FakeStore but adds the test-only __appends() hook; the wrapper erases that detail
         expect((store as unknown as {
             __appends(): number;
         }).__appends()).toBe(0);

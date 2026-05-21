@@ -116,7 +116,6 @@ export class AuthoringLayoutEditorRoute extends AtlasSurface {
                 layoutId: `authoring.${Date.now().toString(36)}`,
                 displayName: 'Untitled layout',
             });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed API surface is asserted at the construction boundary.
         const editor = document.createElement('atlas-layout-editor') as AtlasLayoutEditorLike;
         editor.onChange = function () { };
         editor.onSave = async function (doc: LayoutDocument) {

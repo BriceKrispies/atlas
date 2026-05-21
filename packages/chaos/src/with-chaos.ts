@@ -96,7 +96,6 @@ export function withChaos<T extends object>(adapter: T, profile: ChaosProfile): 
             // After `typeof value === 'function'`, `value` is callable. TS
             // narrows it to `Function` — we widen to a typed variadic so
             // `.bind` and `.apply` are callable without any-typing.
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: Proxy wraps untyped adapter methods; runtime callable check above
             const fn = value as (...a: unknown[]) => unknown;
             if (typeof prop === 'symbol')
                 return fn.bind(target);

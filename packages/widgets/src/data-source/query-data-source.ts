@@ -50,7 +50,6 @@ export function queryDataSource<R extends Row = Row>(backend: BackendLike, path:
                     total = obj.total;
                 }
             }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: caller-supplied generic R; the function exposes the type contract via its <R> parameter, and the backend response was validated to be `unknown[]` above. Runtime row-shape validation would require a caller-supplied schema, which is out of scope for this generic data-source factory.
             const rows = rowsUnknown as R[];
             return { rows, total: total ?? rows.length };
         },

@@ -20,7 +20,6 @@ function mountLayoutPreview(demoEl: HTMLElement, ctx: {
     const layoutDoc: LayoutDocument | null = layoutId
         ? sandboxLayoutRegistry.get(layoutId)
         : null;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: createElement returns HTMLElement; the custom element's typed `layout` property is asserted at the construction boundary.
     const el = document.createElement('atlas-layout') as AtlasLayoutElementLike;
     el.layout = layoutDoc;
     demoEl.appendChild(el);

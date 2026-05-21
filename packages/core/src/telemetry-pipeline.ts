@@ -49,7 +49,7 @@ class NullSink implements TelemetrySink {
  */
 export class ConsoleJsonSink implements TelemetrySink {
     write(event: TelemetryEvent): void {
-        // eslint-disable-next-line no-console -- contract-exempt: this sink's contract IS to write telemetry events to the browser dev console (legacy `console.debug('[telemetry]', obj)` shape that telemetrySpy Playwright fixtures match against); see specs/frontend/observability.md
+        // eslint-disable-next-line no-console -- ConsoleJsonSink's job is to emit to the browser console
         console.debug('[telemetry]', event);
     }
 }

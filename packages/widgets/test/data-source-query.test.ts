@@ -23,7 +23,6 @@ function fakeBackend({ response, subscribe = true }: {
     const backend: BackendLike = {
         async query(path: string): Promise<unknown> {
             if (typeof response === 'function') {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: union response is `unknown | ResponseFn`; typeof check narrows to fn but TS can't see through the union for `unknown`.
                 return (response as ResponseFn)(path);
             }
             return response;

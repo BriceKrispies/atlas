@@ -107,7 +107,7 @@ export const v = {
      * underlying mount-config field is `unknown` and the widget owns its
      * own runtime validation downstream.
      */
-    // eslint-disable-next-line @typescript-eslint/no-restricted-types -- intentional: matches NonNullable<unknown> exactly
+    // eslint-disable-next-line typescript/no-restricted-types -- `{}` is the intentional TypeScript narrowing primitive for "any non-null non-undefined value"; `object` would exclude string/number/boolean
     defined: function (x: unknown): x is {} {
         return x !== null && x !== undefined;
     },

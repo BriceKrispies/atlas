@@ -233,6 +233,5 @@ export function asWidgetConfigSchema(raw: unknown): WidgetConfigSchema {
   }
   // The minimum-viable shape is verified; the schema files are
   // committed JSON we own. Concentrate the structural cast here.
-  // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON-schema-fixture-imported-as-known-type
   return raw as unknown as WidgetConfigSchema;
 }

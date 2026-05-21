@@ -186,7 +186,6 @@ export class AtlasJsonView extends AtlasElement {
             // `JSON.parse` returns exactly that at runtime. The renderer
             // (`_renderNode`) defends against any concrete shape (arrays vs
             // objects vs primitives), so the cast captures truth.
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: JSON.parse returns the structural JsonValue shape by definition; renderer handles every branch defensively
             this._data = parsed as JsonValue;
         }
         catch {

@@ -51,7 +51,6 @@ async function loadCedar(): Promise<CedarWasmWeb> {
             const init = mod['default'];
             if (typeof init === 'function') {
                 // Some builds require `await init()` to fetch the .wasm file.
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM module exports `unknown`-typed callables
                 await (init as () => Promise<unknown>)();
             }
             const isAuthorizedFn = mod['isAuthorized'];
@@ -65,11 +64,9 @@ async function loadCedar(): Promise<CedarWasmWeb> {
             // `CedarWasmWeb` surface. The justified casts are concentrated here.
             return {
                 isAuthorized(call: unknown): unknown {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM callable narrowed via typeof check
                     return (isAuthorizedFn as CedarWasmWeb['isAuthorized'])(call);
                 },
                 policySetTextToParts(text: string): unknown {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: third-party WASM callable narrowed via typeof check
                     return (policySetTextToPartsFn as CedarWasmWeb['policySetTextToParts'])(text);
                 },
             };
@@ -188,7 +185,6 @@ function asIsAuthorizedAnswer(raw: unknown): IsAuthorizedAnswer {
     if (t !== 'success' && t !== 'failure') {
         throw new Error('cedar isAuthorized: missing/invalid `type`');
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: discriminator verified above; rest of the shape is cedar-wasm/web's documented contract
     return raw as IsAuthorizedAnswer;
 }
 const ID_ANNOTATION = /@id(?!\w)\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/;

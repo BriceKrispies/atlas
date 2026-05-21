@@ -36,6 +36,5 @@ export function readSeed(state: CatalogStateRecord): SeedPayload {
   // contract) but the catalog module is the sole writer and only writes
   // SeedPayload. The `as unknown as` form is required because the
   // narrowing is by construction, not by structural check.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: catalog is sole writer of CatalogStateRecord.payload; runtime check above guards null/non-object
   return v as SeedPayload;
 }

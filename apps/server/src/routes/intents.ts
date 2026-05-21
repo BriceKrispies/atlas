@@ -84,7 +84,6 @@ export function intentRoutes(state: AppState): Hono<{
         // surface. The object-shape narrow above closes the "primitive /
         // array / null defeats `.correlationId`" path; submitIntent owns the
         // rest. Same pattern as mfa.ts WebAuthn response handling.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion, atlas-widgets/no-double-cast -- boundary: submitIntent's schema validator is the authority on IntentEnvelope shape; object-narrow done above
         const envelope: IntentEnvelope = raw as unknown as IntentEnvelope;
         // Stamp correlation id from the resolved request flow if the body left it
         // empty — submitIntent's defaults expect it populated.

@@ -44,7 +44,6 @@ export function createMountPageEditor(ctx: MountPageEditorCtx): MountPageEditorF
         // Boundary: the page-editor shell is an AtlasElement that takes
         // upgraded properties (pageId, stores, registries…) not yet declared
         // in HTMLElementTagNameMap.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: setting upgraded properties on a known custom element
         const shell = shellEl as HTMLElement & Record<string, unknown>;
         shell['pageId'] = pageId;
         shell['pageStore'] = pageStore;

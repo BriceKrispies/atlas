@@ -49,7 +49,6 @@ interface EditorSnapshot {
  */
 async function readEditor(page: Page, id: string): Promise<EditorSnapshot | null> {
     const snap = await readEditorState(page, id);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown by design; the block-editor surface shape is contract-pinned by its controller.
     return snap as EditorSnapshot | null;
 }
 async function readEditorOrThrow(page: Page, id: string): Promise<EditorSnapshot> {

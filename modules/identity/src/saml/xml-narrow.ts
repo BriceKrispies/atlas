@@ -22,7 +22,6 @@ export function asXmlRecord(v: unknown): Record<string, unknown> | undefined {
         return undefined;
     if (Array.isArray(v))
         return undefined;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- library: fast-xml-parser returns 'any' from .parse(); this single cast funnels every parsed-tree object read through one runtime-checked narrowing
     return v as Record<string, unknown>;
 }
 /** Pure runtime `typeof` guard — no cast at all. */

@@ -213,7 +213,7 @@ export class AtlasFormField extends AtlasElement {
     }
     if (candidates.length === 1) return candidates[0] ?? null;
     if (candidates.length > 1 && typeof console !== 'undefined') {
-      // eslint-disable-next-line no-console -- dev-only: design-component author-time warning; audience is the developer wiring a form field, not a production observability stream
+      // eslint-disable-next-line no-console -- design-system author-facing diagnostic on ambiguous control wiring
       console.warn(
         '[atlas-form-field] Multiple child elements detected; add `data-atlas-control` to the wired control for reliable aria wiring.',
       );

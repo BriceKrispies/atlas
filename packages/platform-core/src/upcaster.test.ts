@@ -12,7 +12,6 @@ function asRecord(attrs: unknown): Record<string, unknown> {
     if (typeof attrs !== 'object' || attrs === null) {
         throw new Error(`expected attrs to be an object, got ${typeof attrs}`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: post-typeof-check narrowing from `unknown` to a string-keyed record so test upcasters can spread the attrs blob. The runtime check above guarantees the object is non-null.
     return attrs as Record<string, unknown>;
 }
 describe('UpcasterRegistry', function () {

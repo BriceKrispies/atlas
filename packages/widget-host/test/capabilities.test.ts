@@ -154,14 +154,12 @@ describe('CapabilityBridge — register() input validation', function () {
         // to assert the runtime typeof-function guard fires. The double-cast is
         // unavoidable because the test is verifying the runtime check exists for
         // callers that bypass TypeScript (JS consumers, dynamic imports).
-        /* eslint-disable atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: adversarial test fixture exercising runtime typeof-function guard against invalid handler arguments */
         expect(function () {
             return bridge.register('x.y', undefined as unknown as () => unknown);
         }).toThrow(TypeError);
         expect(function () {
             return bridge.register('x.y', 42 as unknown as () => unknown);
         }).toThrow(TypeError);
-        /* eslint-enable atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion */
     });
 });
 describe('CapabilityBridge — capability grant matrix', function () {

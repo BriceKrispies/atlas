@@ -130,7 +130,6 @@ export class PointerSensor {
      * we use, so this is a documentation cast, not a behaviour change.
      */
     private _rootAsListener(): Document {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: HTMLElement|Document union drops typed addEventListener overloads; both halves share the methods we call.
         return this._root as Document;
     }
     /** Hard-cancel an in-flight drag (e.g. programmatic abort, view change). */

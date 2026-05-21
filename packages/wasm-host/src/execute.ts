@@ -155,9 +155,7 @@ export async function runModule(
   // point — the WASM ABI is the source of truth for these types.
   const exports: PluginExports = {
     memory,
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: wasm-export-signature
     alloc: alloc as unknown as (len: number) => number,
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: wasm-export-signature
     render: render as unknown as (ptr: number, len: number) => bigint,
   };
 

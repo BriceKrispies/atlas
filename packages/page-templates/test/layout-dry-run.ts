@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 /**
  * Layout subsystem dry-run: exercises the data model, store, registry,
  * and <atlas-layout> rendering in a linkedom DOM.
@@ -221,12 +222,10 @@ async function main(): Promise<void> {
     testPresets_allValid();
     testAtlasLayout_createsPositionedSections();
     testAtlasLayout_addAndRemoveSlots();
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? err.stack : undefined;
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack ?? err);
     process.exit(1);
 });

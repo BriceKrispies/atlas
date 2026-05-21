@@ -86,7 +86,6 @@ async function mountInspector(page: Page, pageId: string): Promise<void> {
         // Lazy-load the inspector module so the customElements registration
         // happens on the first test that needs it. The dev server serves source
         // files relative to the authoring app root, so `/src/...` resolves.
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-type-assertion -- boundary: Function-constructed dynamic import is the only way to defeat the bundler-walk; the resolved value is `unknown` by design.
         const dynImport = new Function('s', 'return import(s)') as (s: string) => Promise<unknown>;
         try {
             await dynImport('/src/page-editor/right-panel/inspector.ts');
@@ -146,7 +145,6 @@ async function mountInspector(page: Page, pageId: string): Promise<void> {
  */
 async function readInspector(page: Page, pageId: string): Promise<InspectorSnapshot | null> {
     const snap = await readEditorState(page, `${pageId}:inspector`);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: test-state registry returns unknown; inspector snapshot shape is contract-pinned by its controller.
     return snap as InspectorSnapshot | null;
 }
 async function readInspectorOrThrow(page: Page, pageId: string): Promise<InspectorSnapshot> {
@@ -351,7 +349,6 @@ test.describe('page-editor-inspector — presets', function () {
             intent: 'updateWidgetConfig',
             patch: { instanceId: STARTER_HEADING_ID },
         });
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: assertCommitted returns unknown; the shell commit envelope shape is contract-pinned by the shell controller.
         const shellCommit = shellCommitRaw as {
             patch: {
                 config?: Record<string, unknown>;

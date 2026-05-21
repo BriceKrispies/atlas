@@ -150,7 +150,6 @@ export async function cleanOrphanTestDatabases(
         // Single structured line per drop. Newline-delimited JSON so log
         // scrapers / the Playwright stdout capture can pick this up the
         // same way they pick up server-side events.
-        // eslint-disable-next-line no-console
         console.log(JSON.stringify(event));
     }
     return { drops };

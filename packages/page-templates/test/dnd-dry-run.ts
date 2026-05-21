@@ -1,6 +1,7 @@
 /**
  * DnD subsystem dry-run: unit-tests the leaf modules in a linkedom DOM.
  */
+/* eslint-disable no-console -- dry-run scripts diagnose to stdout/stderr by design */
 import { document } from './_lib/setup.ts';
 import { must } from '../src/internal/assert.ts';
 const { Projection, DragOverlay, CommitBoundary, cloneSourcePreview, } = await import('../src/dnd/index.ts');
@@ -107,12 +108,10 @@ async function main(): Promise<void> {
     await testProjection_sourceGhostAndActiveTarget();
     await testOverlay_mountMoveUnmount();
     await testClonePreview_matchesSourceFootprint();
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's success report; stdout IS the contract per file header
     console.log('OK');
 }
 main().catch(function (err: unknown) {
     const stack = err instanceof Error ? err.stack : undefined;
-    // eslint-disable-next-line no-console -- harness-diagnostic: dry-run CLI's failure report; stderr IS the contract per file header
     console.error('FAIL:', stack ?? err);
     process.exit(1);
 });

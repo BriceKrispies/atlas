@@ -90,7 +90,6 @@ function walk(value: unknown, keys: ReadonlySet<string>, seen: WeakSet<object>):
     // contract. `Object.entries` on `object` types as `[string, any][]`,
     // which would trip no-unsafe-* rules; cast to a typed record view of
     // the same runtime value at this one boundary.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- boundary: redaction walks enumerable keys of any plain object; runtime guards above pin shape
     const entries = Object.entries(value as Record<string, unknown>);
     const out: Record<string, unknown> = {};
     for (const [k, v] of entries) {

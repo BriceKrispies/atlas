@@ -30,7 +30,6 @@ function makeApp(opts: {
     // bootstrap surface (pools, adapters, jwks) is not exercised by these
     // smoke tests. The double cast is the canonical pattern for shaping a
     // partial fixture into the production interface at the test boundary.
-    // eslint-disable-next-line atlas-widgets/no-double-cast, @typescript-eslint/no-unsafe-type-assertion -- boundary: test fixture stubs the long-lived AppState; the routes under test only touch the four fields above and the production bootstrap is exercised elsewhere.
     const state = {
         config: { tenantId: 'dev-tenant', environment: 'test' },
         logPipeline,

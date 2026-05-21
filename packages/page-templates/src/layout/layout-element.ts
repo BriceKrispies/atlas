@@ -57,7 +57,7 @@ export class AtlasLayoutElement extends AtlasElement {
     if (!doc) return;
     const result = validateLayoutDocument(doc);
     if (!result.ok) {
-      // eslint-disable-next-line no-console -- dev-only: layout element validation failure; surfaces to the developer authoring the layout (rendered fallback is empty, this is the diagnostic)
+      // eslint-disable-next-line no-console -- author-facing diagnostic on invalid layout document
       console.error('[atlas-layout] invalid layout document', result.errors);
       return;
     }
