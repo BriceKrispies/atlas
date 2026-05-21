@@ -438,6 +438,15 @@ importers:
       '@atlas/content-pages':
         specifier: workspace:*
         version: link:../../modules/content-pages
+      '@atlas/dsl':
+        specifier: workspace:*
+        version: link:../../modules/dsl
+      '@atlas/dsl-expression':
+        specifier: workspace:*
+        version: link:../../packages/dsl-expression
+      '@atlas/dsl-substrate':
+        specifier: workspace:*
+        version: link:../../packages/dsl-substrate
       '@atlas/identity':
         specifier: workspace:*
         version: link:../../modules/identity

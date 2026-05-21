@@ -13,18 +13,13 @@ import {
   PostgresProjectionStore,
   PostgresSearchEngine,
   PostgresCatalogStateStore,
+  PostgresDslArtifactStore,
   PostgresPolicyStore,
 } from '@atlas/adapter-node';
+import { dslHandlerRegistry } from '@atlas/dsl';
 import { policyEvaluatedEvent, shouldEmitPolicyEvaluated } from '@atlas/ports';
-import {
-  catalogHandlerRegistry,
-  catalogDispatcher,
-  type CatalogQueryDeps,
-} from '@atlas/catalog';
-import {
-  authzHandlerRegistry,
-  composeRegistries,
-} from '@atlas/authz';
+import { catalogHandlerRegistry, catalogDispatcher, type CatalogQueryDeps } from '@atlas/catalog';
+import { authzHandlerRegistry, composeRegistries } from '@atlas/authz';
 import {
   contentPagesHandlerRegistry,
   contentPagesDispatcher,
@@ -37,16 +32,10 @@ import {
   getMembershipEntity,
   type IdentityQueryDeps,
 } from '@atlas/identity';
-import {
-  repositoryDispatcher,
-  repositoryHandlerRegistry,
-} from '@atlas/repository';
+import { repositoryDispatcher, repositoryHandlerRegistry } from '@atlas/repository';
 import { policyCacheDispatcher } from '@atlas/adapter-policy-cedar';
 import type { CedarBundleCache } from '@atlas/adapter-policy-cedar';
-import type {
-  IngressState,
-  EventDispatcher,
-} from '@atlas/ingress';
+import type { IngressState, EventDispatcher } from '@atlas/ingress';
 import { cacheTagDispatcher, composeDispatchers } from '@atlas/ports';
 import type { PolicyEngine } from '@atlas/ports';
 import type { Principal, PrincipalCache } from '@atlas/platform-core';
@@ -180,6 +169,13 @@ export interface RequestBundle {
   contentPagesDeps: ContentPagesQueryDeps;
   identityDeps: IdentityQueryDeps;
   /**
+   * Per-request DSL artifact store. Constructed against the tenant pool;
+   * read by routes/dsl.ts for list / get / getVersion. The composed
+   * handler registry also uses the same instance for the
+   * `Dsl.<Kind>.Update` write path.
+   */
+  dslArtifactStore: PostgresDslArtifactStore;
+  /**
    * The principal as enriched against the request tenant's identity
    * data: `userId` and `roles` populated from `User`/`Membership` lookups,
    * `attributes` carrying User attrs for ABAC. The basic `Principal`
@@ -242,11 +238,7 @@ export function buildRequestBundle(
   principal: Principal,
   correlationId: string,
 ): Promise<RequestBundle> {
-  return (_buildRequestBundleOverride ?? _buildRequestBundleImpl)(
-    state,
-    principal,
-    correlationId,
-  );
+  return (_buildRequestBundleOverride ?? _buildRequestBundleImpl)(state, principal, correlationId);
 }
 
 async function _buildRequestBundleImpl(
@@ -271,6 +263,10 @@ async function _buildRequestBundleImpl(
   // disturbing the metadata surface.
   const repositories = repositoryStoreFor(sql);
   const revisions = repositoryRevisionStoreFor(sql);
+  // DSL artifact store — per-tenant, lazy-bootstrapped per kind. Read by
+  // the DSL route group (apps/server/src/routes/dsl.ts) and by the
+  // composed `dslHandlerRegistry` injected into `baseHandlers` below.
+  const dslArtifactStore = new PostgresDslArtifactStore(sql);
 
   // Identity enrichment — resolve User by JWT subject, Membership by
   // (tenantId, userId), then layer roles + attributes onto the
@@ -292,6 +288,10 @@ async function _buildRequestBundleImpl(
     contentPagesHandlerRegistry(entities),
     identityHandlerRegistry(entities),
     repositoryHandlerRegistry(),
+    dslHandlerRegistry({
+      kindRegistry: state.dslKindRegistry,
+      artifactStore: dslArtifactStore,
+    }),
   );
   // The repository handlers expect `repositories` + `repositoryRevisions`
   // on the `IntentHandlerContext`, which the canonical
@@ -349,20 +349,26 @@ async function _buildRequestBundleImpl(
   // We still build `inlineDispatch` first because the call sites
   // (submitIntent, the audit hook below) expect an `EventDispatcher`
   // shape regardless of mode; in async mode we just don't invoke it.
-  const wrap = function (name: string, d: EventDispatcher | null): EventDispatcher | null { return d === null ? null : instrumentDispatcher(name, state, principal.tenantId, correlationId, d); };
+  const wrap = function (name: string, d: EventDispatcher | null): EventDispatcher | null {
+    return d === null
+      ? null
+      : instrumentDispatcher(name, state, principal.tenantId, correlationId, d);
+  };
 
   // Per-module loggers so flipping a single module to debug surfaces its
   // dispatcher breadcrumbs without spamming the others. Each is built
   // from the same pipeline + tenant/correlation envelope; `moduleId`
   // is what the LevelController consults when resolving per-module
   // overrides set via `atlasctl logging set --module <id> debug`.
-  const dispatchCtx = function (moduleId: string) { return createSystemContext({
+  const dispatchCtx = function (moduleId: string) {
+    return createSystemContext({
       pipeline: state.logPipeline,
       environment: state.config.environment,
       tenantId: principal.tenantId,
       moduleId,
       correlationId,
-    }); };
+    });
+  };
 
   const inlineDispatch: EventDispatcher = composeDispatchers(
     wrap(
@@ -375,13 +381,16 @@ async function _buildRequestBundleImpl(
         logger: dispatchCtx('@atlas/catalog').logger,
       }),
     ),
-    wrap('content-pages', contentPagesDispatcher({
-      entities,
-      relations,
-      cache,
-      logger: dispatchCtx('@atlas/content-pages').logger,
-      ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
-    })),
+    wrap(
+      'content-pages',
+      contentPagesDispatcher({
+        entities,
+        relations,
+        cache,
+        logger: dispatchCtx('@atlas/content-pages').logger,
+        ...(state.wasmHost !== undefined ? { wasmHost: state.wasmHost } : {}),
+      }),
+    ),
     wrap(
       'identity',
       identityDispatcher({
@@ -515,6 +524,7 @@ async function _buildRequestBundleImpl(
     catalogDeps,
     contentPagesDeps,
     identityDeps,
+    dslArtifactStore,
     principal: enrichedPrincipal,
   };
 }
@@ -544,14 +554,11 @@ async function enrichPrincipal(
   // Lookup-by-IDP-subject first (the JWT path); fall back to direct
   // User-id lookup if the principalId happens to match a User entity_id
   // (debug-principal path).
-  let user = await findUserByIdpSubject(
-    entities,
-    principal.tenantId,
-    principal.principalId,
-  );
+  let user = await findUserByIdpSubject(entities, principal.tenantId, principal.principalId);
   if (!user) {
-    const direct = await import('@atlas/identity').then(function (m) { return m.getUserEntity(entities, principal.tenantId, principal.principalId); },
-    );
+    const direct = await import('@atlas/identity').then(function (m) {
+      return m.getUserEntity(entities, principal.tenantId, principal.principalId);
+    });
     user = direct;
   }
   if (!user) {
@@ -564,11 +571,7 @@ async function enrichPrincipal(
     cache.set(principal.tenantId, principal.principalId, enriched);
     return enriched;
   }
-  const membership = await getMembershipEntity(
-    entities,
-    principal.tenantId,
-    user.userId,
-  );
+  const membership = await getMembershipEntity(entities, principal.tenantId, user.userId);
   const enriched: Principal = {
     ...principal,
     userId: user.userId,
@@ -581,9 +584,7 @@ async function enrichPrincipal(
       ...(user.givenName !== undefined ? { givenName: user.givenName } : {}),
       ...(user.familyName !== undefined ? { familyName: user.familyName } : {}),
       userStatus: user.status,
-      ...(membership?.status !== undefined
-        ? { membershipStatus: membership.status }
-        : {}),
+      ...(membership?.status !== undefined ? { membershipStatus: membership.status } : {}),
     },
   };
   cache.set(principal.tenantId, principal.principalId, enriched);

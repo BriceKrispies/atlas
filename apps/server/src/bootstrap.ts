@@ -23,6 +23,7 @@ import {
   NodeCrypto,
   PostgresControlPlaneRegistry,
   PostgresCustomDomainStore,
+  PostgresDslArtifactStore,
   PostgresEmailLogStore,
   PostgresEntityStore,
   PostgresEntityTypeRegistry,
@@ -36,6 +37,13 @@ import {
   StdoutEventMailer,
   runMigrations,
 } from '@atlas/adapter-node';
+import { makeDslKindRegistry, type DslKind, type DslKindRegistry } from '@atlas/dsl';
+import {
+  ExpressionEvaluator,
+  makeExpressionRegistry,
+  parse as parseExpression,
+} from '@atlas/dsl-expression';
+import type { HostOpSet } from '@atlas/dsl-substrate';
 import type {
   Compression,
   Crypto,
@@ -61,10 +69,7 @@ import {
 import { seedPlatformAdmin } from './bootstrap-platform-admin.ts';
 import { TenantHostCache } from './middleware/tenant-resolution.ts';
 import { StubPolicyEngine } from '@atlas/adapter-policy-stub';
-import {
-  NodeWasmHost,
-  FilesystemPluginLoader,
-} from '@atlas/wasm-host';
+import { NodeWasmHost, FilesystemPluginLoader } from '@atlas/wasm-host';
 import type { WasmHost } from '@atlas/ports';
 import {
   CedarPolicyEngine,
@@ -75,11 +80,7 @@ import { moduleManifests } from '@atlas/schemas';
 import type { PolicyEngine } from '@atlas/ports';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
 import { PrincipalCache } from '@atlas/platform-core';
-import type {
-  LevelController,
-  LogPipeline,
-  MemoryRingBufferSink,
-} from '@atlas/logging';
+import type { LevelController, LogPipeline, MemoryRingBufferSink } from '@atlas/logging';
 import type { AppConfig } from './config.ts';
 import { ServerEventBroadcast } from './events/broadcast.ts';
 
@@ -137,6 +138,14 @@ export interface AppState {
    */
   readonly entityTypeRegistry: EntityTypeRegistry;
   readonly upcasterRegistry: UpcasterRegistry;
+  /**
+   * Process-wide registry of DSL kinds (expression, template, query, …).
+   * Built once at boot; injected per-request alongside the per-tenant
+   * `DslArtifactStore` into the DSL handler factory. Currently only the
+   * expression DSL is wired; template + query land in subsequent slices.
+   * See `specs/decisions/0007-dsl-substrate-and-authoring-contract.md`.
+   */
+  readonly dslKindRegistry: DslKindRegistry;
   /**
    * Lazily resolved JWKS. Null when test-auth is enabled and no JWKS URL was
    * configured. The principal middleware checks before invoking.
@@ -221,10 +230,7 @@ export interface BootstrapDeps {
   readonly bootCtx: AtlasExecutionContext;
 }
 
-export async function bootstrap(
-  config: AppConfig,
-  deps: BootstrapDeps,
-): Promise<AppState> {
+export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise<AppState> {
   const controlPlaneSql = postgres(config.controlPlaneDbUrl, { max: 5 });
 
   // Probe the connection up front — fail loud at boot rather than mid-request.
@@ -295,19 +301,20 @@ export async function bootstrap(
           db_user: platformDb.db_user,
           db_password: platformDb.db_password,
         })
-          .filter(function ([, v]) { return v == null; })
-          .map(function ([k]) { return k; })
+          .filter(function ([, v]) {
+            return v == null;
+          })
+          .map(function ([k]) {
+            return k;
+          })
       : ['<row missing>'];
-    deps.bootCtx.logger.fatal(
-      'platform tenant database not provisioned — refusing to start',
-      {
-        event: 'Server.Boot.PlatformDatabaseMissing',
-        properties: {
-          tenantId: PLATFORM_TENANT_ID,
-          missing,
-        },
+    deps.bootCtx.logger.fatal('platform tenant database not provisioned — refusing to start', {
+      event: 'Server.Boot.PlatformDatabaseMissing',
+      properties: {
+        tenantId: PLATFORM_TENANT_ID,
+        missing,
       },
-    );
+    });
     throw new Error(
       `Platform tenant '${PLATFORM_TENANT_ID}' is missing per-tenant database ` +
         `connection coordinates (${missing.join(', ')}). ` +
@@ -334,6 +341,22 @@ export async function bootstrap(
   const entityTypeRegistry = new PostgresEntityTypeRegistry(controlPlaneSql);
   const upcasterRegistry = new UpcasterRegistry();
 
+  // DSL kind registry — process-wide. Each registered DSL contributes a
+  // `DslKind` descriptor with its parser + evaluator + host-op set.
+  // Slice #5: only the expression DSL is wired; template + query land
+  // when their packages ship. Adding a kind is one line here plus the
+  // sibling concrete-DSL package.
+  const expressionEvaluator = new ExpressionEvaluator();
+  const expressionRegistry = makeExpressionRegistry();
+  const expressionKind: DslKind<unknown, unknown, unknown, HostOpSet> = {
+    kind: 'expression',
+    parse: (source: string) =>
+      parseExpression(source) as ReturnType<DslKind<unknown, unknown, unknown, HostOpSet>['parse']>,
+    evaluator: expressionEvaluator,
+    registry: expressionRegistry,
+  };
+  const dslKindRegistry = makeDslKindRegistry([expressionKind]);
+
   let jwks: JWTVerifyGetKey | null = null;
   if (config.oidc.jwksUrl) {
     try {
@@ -341,9 +364,7 @@ export async function bootstrap(
     } catch (e) {
       // Bad URL parse should be loud; downstream "fetch failed" is lazy.
       const cause = e instanceof Error ? e.message : String(e);
-      throw new Error(
-        `failed to construct JWKS resolver for ${config.oidc.jwksUrl}: ${cause}`,
-      );
+      throw new Error(`failed to construct JWKS resolver for ${config.oidc.jwksUrl}: ${cause}`);
     }
   }
 
@@ -361,10 +382,7 @@ export async function bootstrap(
       // bundled module manifests. Every tenant's policies validate against
       // the same schema; tenants only customise *policies*, not types.
       const schema = generateCedarSchema(moduleManifests());
-      policyEngine = new CedarPolicyEngine(
-        new PostgresBundleLoader(controlPlaneSql),
-        { schema },
-      );
+      policyEngine = new CedarPolicyEngine(new PostgresBundleLoader(controlPlaneSql), { schema });
       break;
     }
     default:
@@ -394,10 +412,12 @@ export async function bootstrap(
   switch (config.mailerMode) {
     case 'noop':
       mailer = {
-        send: async function () { return ({
-          messageId: 'noop',
-          sentAt: new Date().toISOString(),
-        }); },
+        send: async function () {
+          return {
+            messageId: 'noop',
+            sentAt: new Date().toISOString(),
+          };
+        },
       };
       break;
     case 'smtp': {
@@ -405,9 +425,7 @@ export async function bootstrap(
       // host/port/from; the null check below mirrors that guarantee.
       const smtp = config.smtp;
       if (!smtp) {
-        throw new Error(
-          'mailerMode=smtp but no smtp config — config loader contract broken',
-        );
+        throw new Error('mailerMode=smtp but no smtp config — config loader contract broken');
       }
       mailer = new SmtpMailer(controlPlaneSql, smtp, deps.bootCtx.logger);
       break;
@@ -448,6 +466,7 @@ export async function bootstrap(
     principalCache,
     entityTypeRegistry,
     upcasterRegistry,
+    dslKindRegistry,
     jwks,
     migratedTenants: new Set<string>(),
     policyEngine,
@@ -545,9 +564,7 @@ export function repositoryStoreFor(sql: postgres.Sql): RepositoryStore {
   return new PostgresRepositoryStore(sql);
 }
 
-export function repositoryRevisionStoreFor(
-  sql: postgres.Sql,
-): RepositoryRevisionStore {
+export function repositoryRevisionStoreFor(sql: postgres.Sql): RepositoryRevisionStore {
   return new PostgresRepositoryRevisionStore(sql);
 }
 
@@ -562,17 +579,18 @@ export function repositoryRevisionStoreFor(
  * time for a tenant; subsequent boots see the indexes already there
  * and the reconcile is a no-op.
  */
-export async function reconcileTenantIndexes(
-  state: AppState,
-  sql: postgres.Sql,
-): Promise<void> {
+export async function reconcileTenantIndexes(state: AppState, sql: postgres.Sql): Promise<void> {
   const declared = await state.entityTypeRegistry.listAllPlatformIndexes();
   const liveRows = await sql<Array<{ indexname: string }>>`
     SELECT indexname
     FROM pg_indexes
     WHERE schemaname = 'public' AND tablename = 'entities'
   `;
-  const live = new Set(liveRows.map(function (r) { return r.indexname; }));
+  const live = new Set(
+    liveRows.map(function (r) {
+      return r.indexname;
+    }),
+  );
   const { create, drop } = reconcileEntityIndexes(declared, live);
   for (const stmt of drop) {
     await sql.unsafe(stmt);

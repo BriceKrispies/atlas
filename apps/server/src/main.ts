@@ -17,7 +17,15 @@
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { ConsoleJsonSink, InMemoryLevelController, LogPipeline, MemoryRingBufferSink, createSystemContext, isLogLevel, registerForExitFlush, } from '@atlas/logging';
+import {
+  ConsoleJsonSink,
+  InMemoryLevelController,
+  LogPipeline,
+  MemoryRingBufferSink,
+  createSystemContext,
+  isLogLevel,
+  registerForExitFlush,
+} from '@atlas/logging';
 import type { LogLevel } from '@atlas/platform-core';
 import { loadConfig } from './config.ts';
 import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
@@ -35,6 +43,7 @@ import { identityIdpRoutes } from './routes/identity-idp.ts';
 import { mfaRoutes } from './routes/mfa.ts';
 import { oauthRoutes } from './routes/oauth.ts';
 import { repositoryRoutes } from './routes/repositories.ts';
+import { dslRoutes } from './routes/dsl.ts';
 import { samlRoutes } from './routes/saml.ts';
 import { scimRoutes } from './routes/scim.ts';
 import { signupRoutes } from './routes/signup.ts';
@@ -45,191 +54,194 @@ import { tenantDocsRoutes, operatorDocsRoutes } from './routes/docs.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 import { executionContextMiddleware } from './middleware/execution-context.ts';
 function buildApp(state: AppState): Hono<{
-    Variables: ServerVariables;
+  Variables: ServerVariables;
 }> {
-    const app = new Hono<{
-        Variables: ServerVariables;
-    }>();
-    // Build per-request AtlasExecutionContext FIRST so every downstream
-    // middleware + route can use c.var.ctx for logging. Anonymous-principal
-    // ctx is replaced by the principal middleware when auth resolves.
-    app.use('*', executionContextMiddleware(state));
-    // Public routes — no authn.
-    app.route('/', healthRoutes(state));
-    // /metrics is also public — Prometheus scrapes from inside the cluster
-    // network. If exposing the endpoint outside that perimeter, gate it with
-    // authn here. Mirrors the Rust ingress's unauthenticated metrics route.
-    app.route('/', metricsRoutes());
-    // Identity invite-accept is also public: the token IS the auth. The
-    // user has no JWT yet — that's exactly what they're getting by
-    // accepting the invite.
-    app.route('/', identityRoutes(state));
-    // OAuth routes are also public — auth lives in client_id +
-    // client_secret on the request body (RFC 6749).
-    app.route('/', oauthRoutes(state));
-    // SCIM 2.0 — public mount because auth is the SCIM bearer token,
-    // not a JWT. The scim middleware self-validates the bearer.
-    app.route('/', scimRoutes(state));
-    // SAML 2.0 — public mount; ACS callback verifies the IdP's
-    // signature inline (no JWT/cookie path).
-    app.route('/', samlRoutes(state));
-    // Public signup form, submit endpoint, and magic-link confirm —
-    // anonymous; the signup intent is allowed without a principal.
-    app.route('/', signupRoutes(state));
-    // Tenant-home GET / — public; serves a minimal welcome HTML when
-    // the request Host resolves to a registered custom-domain. Falls
-    // back to a "not registered" page for unknown hosts (including the
-    // bare `localhost` apex). Mounted last so route order doesn't
-    // collide with /signup or /api/v1/...
-    // Public OpenAPI tenant spec + Scalar UI at /docs.
-    // The operator counterpart is admin-gated below.
-    app.route('/', tenantDocsRoutes(state));
-    app.route('/', tenantHomeRoutes(state));
-    // Authenticated routes — principal middleware first, then route group.
-    const authed = new Hono<{
-        Variables: ServerVariables;
-    }>();
-    authed.use('*', principalMiddleware(state));
-    authed.route('/', intentRoutes(state));
-    authed.route('/', catalogRoutes(state));
-    authed.route('/', authzRoutes(state));
-    authed.route('/', contentPagesRoutes(state));
-    authed.route('/', eventsRoutes(state));
-    authed.route('/', identityAuthedRoutes(state));
-    authed.route('/', identityIdpRoutes(state));
-    authed.route('/', identityA7Routes(state));
-    authed.route('/', mfaRoutes(state));
-    authed.route('/', adminSignupRoutes(state));
-    authed.route('/', adminLoggingRoutes(state));
-    authed.route('/', operatorDocsRoutes(state));
-    // Code platform / `repository` domain — read-side surface for the
-    // `upload-tarball` capability. Writes flow through `intentRoutes`.
-    authed.route('/', repositoryRoutes(state));
-    if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
-        authed.route('/', debugRoutes(state));
-    }
-    app.route('/', authed);
-    return app;
+  const app = new Hono<{
+    Variables: ServerVariables;
+  }>();
+  // Build per-request AtlasExecutionContext FIRST so every downstream
+  // middleware + route can use c.var.ctx for logging. Anonymous-principal
+  // ctx is replaced by the principal middleware when auth resolves.
+  app.use('*', executionContextMiddleware(state));
+  // Public routes — no authn.
+  app.route('/', healthRoutes(state));
+  // /metrics is also public — Prometheus scrapes from inside the cluster
+  // network. If exposing the endpoint outside that perimeter, gate it with
+  // authn here. Mirrors the Rust ingress's unauthenticated metrics route.
+  app.route('/', metricsRoutes());
+  // Identity invite-accept is also public: the token IS the auth. The
+  // user has no JWT yet — that's exactly what they're getting by
+  // accepting the invite.
+  app.route('/', identityRoutes(state));
+  // OAuth routes are also public — auth lives in client_id +
+  // client_secret on the request body (RFC 6749).
+  app.route('/', oauthRoutes(state));
+  // SCIM 2.0 — public mount because auth is the SCIM bearer token,
+  // not a JWT. The scim middleware self-validates the bearer.
+  app.route('/', scimRoutes(state));
+  // SAML 2.0 — public mount; ACS callback verifies the IdP's
+  // signature inline (no JWT/cookie path).
+  app.route('/', samlRoutes(state));
+  // Public signup form, submit endpoint, and magic-link confirm —
+  // anonymous; the signup intent is allowed without a principal.
+  app.route('/', signupRoutes(state));
+  // Tenant-home GET / — public; serves a minimal welcome HTML when
+  // the request Host resolves to a registered custom-domain. Falls
+  // back to a "not registered" page for unknown hosts (including the
+  // bare `localhost` apex). Mounted last so route order doesn't
+  // collide with /signup or /api/v1/...
+  // Public OpenAPI tenant spec + Scalar UI at /docs.
+  // The operator counterpart is admin-gated below.
+  app.route('/', tenantDocsRoutes(state));
+  app.route('/', tenantHomeRoutes(state));
+  // Authenticated routes — principal middleware first, then route group.
+  const authed = new Hono<{
+    Variables: ServerVariables;
+  }>();
+  authed.use('*', principalMiddleware(state));
+  authed.route('/', intentRoutes(state));
+  authed.route('/', catalogRoutes(state));
+  authed.route('/', authzRoutes(state));
+  authed.route('/', contentPagesRoutes(state));
+  authed.route('/', eventsRoutes(state));
+  authed.route('/', identityAuthedRoutes(state));
+  authed.route('/', identityIdpRoutes(state));
+  authed.route('/', identityA7Routes(state));
+  authed.route('/', mfaRoutes(state));
+  authed.route('/', adminSignupRoutes(state));
+  authed.route('/', adminLoggingRoutes(state));
+  authed.route('/', operatorDocsRoutes(state));
+  // Code platform / `repository` domain — read-side surface for the
+  // `upload-tarball` capability. Writes flow through `intentRoutes`.
+  authed.route('/', repositoryRoutes(state));
+  // DSL read + validate routes (per ADR 0007 §8). Writes flow through
+  // `intentRoutes` once the action manifest lands (slice #5b).
+  authed.route('/', dslRoutes(state));
+  if (state.config.testAuth.enabled && state.config.testAuth.debugEndpoints) {
+    authed.route('/', debugRoutes(state));
+  }
+  app.route('/', authed);
+  return app;
 }
 async function main(): Promise<void> {
-    const config = loadConfig();
-    // Logging pipeline — built FIRST so every boot log goes through
-    // structured channels per specs/crosscut/logging.md. Two sinks:
-    // ConsoleJsonSink (stdout) and MemoryRingBufferSink (in-memory ring
-    // for atlasctl logging inspect <correlationId>). Keep a typed
-    // reference to the ring so the admin-logging route can query it
-    // without iterating pipeline.sinks.
-    // LOG_LEVEL seeds the global override on the level controller. Defaults
-    // to 'info' for production parity. Smoke / debugging flows set
-    // LOG_LEVEL=debug to surface boundary trace lines (Request.Received,
-    // Dispatcher.Ran, etc.) that are filtered out at info.
-    const initialLevel: LogLevel = (function () {
-        const raw = process.env['LOG_LEVEL'];
-        if (raw && isLogLevel(raw))
-            return raw;
-        return 'info';
-    })();
-    const levelController = new InMemoryLevelController(initialLevel);
-    const inspectionSink = new MemoryRingBufferSink({ capacity: 5000 });
-    const logPipeline = new LogPipeline([new ConsoleJsonSink(), inspectionSink], levelController);
-    registerForExitFlush(logPipeline);
-    const bootCtx = createSystemContext({
-        pipeline: logPipeline,
-        environment: config.environment,
-        moduleId: '@atlas/server',
+  const config = loadConfig();
+  // Logging pipeline — built FIRST so every boot log goes through
+  // structured channels per specs/crosscut/logging.md. Two sinks:
+  // ConsoleJsonSink (stdout) and MemoryRingBufferSink (in-memory ring
+  // for atlasctl logging inspect <correlationId>). Keep a typed
+  // reference to the ring so the admin-logging route can query it
+  // without iterating pipeline.sinks.
+  // LOG_LEVEL seeds the global override on the level controller. Defaults
+  // to 'info' for production parity. Smoke / debugging flows set
+  // LOG_LEVEL=debug to surface boundary trace lines (Request.Received,
+  // Dispatcher.Ran, etc.) that are filtered out at info.
+  const initialLevel: LogLevel = (function () {
+    const raw = process.env['LOG_LEVEL'];
+    if (raw && isLogLevel(raw)) return raw;
+    return 'info';
+  })();
+  const levelController = new InMemoryLevelController(initialLevel);
+  const inspectionSink = new MemoryRingBufferSink({ capacity: 5000 });
+  const logPipeline = new LogPipeline([new ConsoleJsonSink(), inspectionSink], levelController);
+  registerForExitFlush(logPipeline);
+  const bootCtx = createSystemContext({
+    pipeline: logPipeline,
+    environment: config.environment,
+    moduleId: '@atlas/server',
+  });
+  bootCtx.logger.info('starting @atlas/server', {
+    event: 'Server.Boot.Starting',
+    properties: {
+      port: config.port,
+      tenant: config.tenantId,
+      environment: config.environment,
+      testAuth: config.testAuth.enabled,
+      rustLog: config.rustLog,
+      workerMode: config.workerMode,
+      policyEngine: config.policyEngine,
+    },
+  });
+  let state: AppState;
+  try {
+    state = await bootstrap(config, {
+      logPipeline,
+      levelController,
+      inspectionSink,
+      bootCtx,
     });
-    bootCtx.logger.info('starting @atlas/server', {
-        event: 'Server.Boot.Starting',
-        properties: {
-            port: config.port,
-            tenant: config.tenantId,
-            environment: config.environment,
-            testAuth: config.testAuth.enabled,
-            rustLog: config.rustLog,
-            workerMode: config.workerMode,
-            policyEngine: config.policyEngine,
-        },
+    bootCtx.logger.info('bootstrap complete', { event: 'Server.Boot.Complete' });
+  } catch (e) {
+    bootCtx.logger.fatal('bootstrap failed', {
+      event: 'Server.Boot.Failed',
+      error: {
+        code: 'BOOT_FAILED',
+        message: e instanceof Error ? e.message : String(e),
+        ...(e instanceof Error && e.stack !== undefined ? { stack: e.stack } : {}),
+      },
     });
-    let state: AppState;
+    process.exit(1);
+  }
+  const app = buildApp(state);
+  const server = serve(
+    { fetch: app.fetch, port: config.port, hostname: '0.0.0.0' },
+    function (info) {
+      bootCtx.logger.info('listening', {
+        event: 'Server.Boot.Listening',
+        properties: { address: info.address, port: info.port },
+      });
+    },
+  );
+  const stop = async function (signal: string): Promise<void> {
+    bootCtx.logger.info('shutdown received', {
+      event: 'Server.Shutdown.Received',
+      properties: { signal },
+    });
+    // 1. Stop accepting new connections, drain in-flight requests. Awaiting
+    //    `server.close` is required — fire-and-forget would let the pool
+    //    teardown below race a request that is mid-`postgres.Sql` query.
     try {
-        state = await bootstrap(config, {
-            logPipeline,
-            levelController,
-            inspectionSink,
-            bootCtx,
+      await new Promise<void>(function (resolve, reject) {
+        server.close(function (err) {
+          return err ? reject(err) : resolve();
         });
-        bootCtx.logger.info('bootstrap complete', { event: 'Server.Boot.Complete' });
+      });
+    } catch (e) {
+      bootCtx.logger.error('http server close error', {
+        event: 'Server.Shutdown.CloseError',
+        error: {
+          code: 'HTTP_CLOSE_FAILED',
+          message: e instanceof Error ? e.message : String(e),
+        },
+      });
     }
-    catch (e) {
-        bootCtx.logger.fatal('bootstrap failed', {
-            event: 'Server.Boot.Failed',
-            error: {
-                code: 'BOOT_FAILED',
-                message: e instanceof Error ? e.message : String(e),
-                ...(e instanceof Error && e.stack !== undefined ? { stack: e.stack } : {}),
-            },
-        });
-        process.exit(1);
-    }
-    const app = buildApp(state);
-    const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, function (info) {
-        bootCtx.logger.info('listening', {
-            event: 'Server.Boot.Listening',
-            properties: { address: info.address, port: info.port },
-        });
-    });
-    const stop = async function (signal: string): Promise<void> {
-        bootCtx.logger.info('shutdown received', {
-            event: 'Server.Shutdown.Received',
-            properties: { signal },
-        });
-        // 1. Stop accepting new connections, drain in-flight requests. Awaiting
-        //    `server.close` is required — fire-and-forget would let the pool
-        //    teardown below race a request that is mid-`postgres.Sql` query.
-        try {
-            await new Promise<void>(function (resolve, reject) {
-                server.close(function (err) {
-                    return (err ? reject(err) : resolve());
-                });
-            });
-        }
-        catch (e) {
-            bootCtx.logger.error('http server close error', {
-                event: 'Server.Shutdown.CloseError',
-                error: {
-                    code: 'HTTP_CLOSE_FAILED',
-                    message: e instanceof Error ? e.message : String(e),
-                },
-            });
-        }
-        // 2. Tear down tenant pools, then the control-plane pool. See
-        //    `bootstrap.shutdown` — order matters because tenant-DB lookups
-        //    reference the control-plane Sql.
-        await shutdown(state);
-        process.exit(0);
-    };
-    process.on('SIGINT', function () {
-        return void stop('SIGINT');
-    });
-    process.on('SIGTERM', function () {
-        return void stop('SIGTERM');
-    });
-    // Dev-mode heartbeat (ADR 0015 §3 layer 3). Once per minute while the
-    // server is up, re-emit the "auth bypassed" warning so any log scrape
-    // catches it even if the original boot banner has scrolled off.
-    if (config.devMode.enabled) {
-        const heartbeat = setInterval(function () {
-            bootCtx.logger.warn('DEV MODE ACTIVE — auth bypassed for unauthenticated requests', {
-                event: 'Server.DevMode.Heartbeat',
-                properties: {
-                    principalId: config.devMode.principalId,
-                    tenantId: config.devMode.tenantId,
-                },
-            });
-        }, 60_000);
-        // Don't keep the event loop alive solely for the heartbeat — without
-        // unref(), Ctrl-C would still drain its 60s tail.
-        heartbeat.unref();
-    }
+    // 2. Tear down tenant pools, then the control-plane pool. See
+    //    `bootstrap.shutdown` — order matters because tenant-DB lookups
+    //    reference the control-plane Sql.
+    await shutdown(state);
+    process.exit(0);
+  };
+  process.on('SIGINT', function () {
+    return void stop('SIGINT');
+  });
+  process.on('SIGTERM', function () {
+    return void stop('SIGTERM');
+  });
+  // Dev-mode heartbeat (ADR 0015 §3 layer 3). Once per minute while the
+  // server is up, re-emit the "auth bypassed" warning so any log scrape
+  // catches it even if the original boot banner has scrolled off.
+  if (config.devMode.enabled) {
+    const heartbeat = setInterval(function () {
+      bootCtx.logger.warn('DEV MODE ACTIVE — auth bypassed for unauthenticated requests', {
+        event: 'Server.DevMode.Heartbeat',
+        properties: {
+          principalId: config.devMode.principalId,
+          tenantId: config.devMode.tenantId,
+        },
+      });
+    }, 60_000);
+    // Don't keep the event loop alive solely for the heartbeat — without
+    // unref(), Ctrl-C would still drain its 60s tail.
+    heartbeat.unref();
+  }
 }
 void main();

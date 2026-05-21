@@ -169,9 +169,9 @@ export class PostgresDslArtifactStore implements DslArtifactStore {
             1,
             ${input.substrateVersion},
             ${input.source},
-            ${tx.json(input.ast as unknown)},
-            ${tx.json(input.sourceMap as unknown)},
-            ${tx.json(input.dependencies as unknown)},
+            ${tx.json(input.ast as never)},
+            ${tx.json(input.sourceMap as never)},
+            ${tx.json(input.dependencies as never)},
             ${input.createdBy},
             ${input.createdBy}
           )
@@ -201,9 +201,9 @@ export class PostgresDslArtifactStore implements DslArtifactStore {
           ${prior.tenant_id},
           ${prior.substrate_version},
           ${prior.source},
-          ${tx.json(prior.ast)},
-          ${tx.json(prior.source_map)},
-          ${tx.json(prior.dependencies)},
+          ${tx.json(prior.ast as never)},
+          ${tx.json(prior.source_map as never)},
+          ${tx.json(prior.dependencies as never)},
           ${prior.created_at},
           ${prior.updated_at},
           ${prior.created_by},
@@ -220,9 +220,9 @@ export class PostgresDslArtifactStore implements DslArtifactStore {
           version = ${nextVersion},
           substrate_version = ${input.substrateVersion},
           source = ${input.source},
-          ast = ${tx.json(input.ast as unknown)},
-          source_map = ${tx.json(input.sourceMap as unknown)},
-          dependencies = ${tx.json(input.dependencies as unknown)},
+          ast = ${tx.json(input.ast as never)},
+          source_map = ${tx.json(input.sourceMap as never)},
+          dependencies = ${tx.json(input.dependencies as never)},
           updated_at = now(),
           updated_by = ${input.createdBy}
         WHERE tenant_id = ${input.tenantId} AND api_name = ${input.apiName}

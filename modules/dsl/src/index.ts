@@ -30,6 +30,12 @@ export {
 } from './handlers/dsl-update.ts';
 
 export {
+  dslHandlerRegistry,
+  dslHandlerEntries,
+  type DslHandlerRegistryDeps,
+} from './handlers/registry.ts';
+
+export {
   type DslQueryDeps,
   type ValidateDslSourceInput,
   type ValidateDslSourceResult,

@@ -237,7 +237,11 @@
       "Bash(TEST_TENANT_DB_URL=\"postgres://atlas_platform:local_dev_password@localhost:15433/adapters_node_test\" pnpm exec atlas-test adapters/node/test/dsl-artifact-store.test.ts)",
       "Bash(pnpm --filter @atlas/dsl-expression typecheck)",
       "Bash(pnpm --filter @atlas/dsl-expression test)",
-      "Bash(pnpm --filter @atlas/dsl test)"
+      "Bash(pnpm --filter @atlas/dsl test)",
+      "Bash(pnpm dev:up)",
+      "Bash(ATLAS_DEV_MODE=true TEST_AUTH_ENABLED=true DEBUG_AUTH_ENDPOINT_ENABLED=true CONTROL_PLANE_DB_URL='postgres://atlas_platform:local_dev_password@localhost:15433/control_plane' pnpm --filter @atlas/server dev)",
+      "Bash(echo \"server PID: $!\")",
+      "Bash(taskkill //F //IM node.exe)"
     ]
   }
 }
