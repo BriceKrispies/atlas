@@ -712,6 +712,22 @@ importers:
         specifier: ^0.18.0
         version: 0.18.12
 
+  packages/dsl-substrate:
+    dependencies:
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../platform-core
+      '@atlas/ports':
+        specifier: workspace:*
+        version: link:../../ports
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../test
+      '@atlas/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
+
   packages/ingress:
     dependencies:
       '@atlas/logging':

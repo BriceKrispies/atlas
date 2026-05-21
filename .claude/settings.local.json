@@ -227,7 +227,12 @@
       "Bash(sed -n '140,200p' tests/integration/public-signup.itest.ts)",
       "Bash(podman network *)",
       "Bash(pnpm bdd:server)",
-      "Bash(echo \"exit=$? lines=$\\(wc -l < /tmp/lint.log\\)\")"
+      "Bash(echo \"exit=$? lines=$\\(wc -l < /tmp/lint.log\\)\")",
+      "Bash(pnpm --filter @atlas/dsl-substrate typecheck)",
+      "Bash(pnpm --filter @atlas/dsl-substrate test)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm format *)",
+      "Bash(pnpm format:check packages/dsl-substrate)"
     ]
   }
 }
