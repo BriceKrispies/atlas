@@ -241,7 +241,11 @@
       "Bash(pnpm dev:up)",
       "Bash(ATLAS_DEV_MODE=true TEST_AUTH_ENABLED=true DEBUG_AUTH_ENDPOINT_ENABLED=true CONTROL_PLANE_DB_URL='postgres://atlas_platform:local_dev_password@localhost:15433/control_plane' pnpm --filter @atlas/server dev)",
       "Bash(echo \"server PID: $!\")",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(pnpm --filter @atlas/schemas prepare)",
+      "Bash(pnpm --filter @atlas/schemas test)",
+      "Bash(echo \"PID $!\")",
+      "Bash(grep -rn \"composeRegistries\\\\\\\\\\\\\\\\s\\\\*\\\\\\\\\\\\\\\\\\(\" C:/dev/atlas/apps/server/src/ C:/dev/atlas/apps/server/test/)"
     ]
   }
 }

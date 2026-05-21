@@ -18,10 +18,8 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { IngressError } from '@atlas/platform-core';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
 import { IdentityError } from '@atlas/identity';
-import {
-  TenantDatabaseNotProvisionedError,
-  TenantNotFoundError,
-} from '@atlas/adapter-node';
+import { DslHandlerError } from '@atlas/dsl';
+import { TenantDatabaseNotProvisionedError, TenantNotFoundError } from '@atlas/adapter-node';
 
 /**
  * Collapse user-enumerable identity error codes to opaque ones at the
@@ -93,11 +91,7 @@ function newSupportId(): string {
   return `sup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function errorEnvelope(
-  code: string,
-  message: string,
-  correlationId: string,
-): ErrorEnvelope {
+export function errorEnvelope(code: string, message: string, correlationId: string): ErrorEnvelope {
   return {
     error: {
       code,
@@ -115,10 +109,7 @@ export function errorResponse(
   status: number,
   correlationId: string,
 ): Response {
-  return c.json(
-    errorEnvelope(code, message, correlationId),
-    status as ContentfulStatusCode,
-  );
+  return c.json(errorEnvelope(code, message, correlationId), status as ContentfulStatusCode);
 }
 
 /**
@@ -130,15 +121,8 @@ export function errorResponse(
  * Pays the `ContentfulStatusCode` cast in one place so callers don't
  * each repeat it.
  */
-export function jsonErrorEnvelope(
-  c: Context,
-  envelope: ErrorEnvelope,
-  status: number,
-): Response {
-  return c.json(
-    envelope,
-    status as ContentfulStatusCode,
-  );
+export function jsonErrorEnvelope(c: Context, envelope: ErrorEnvelope, status: number): Response {
+  return c.json(envelope, status as ContentfulStatusCode);
 }
 
 /**
@@ -169,11 +153,7 @@ function findCause<T>(err: unknown, ctor: new (...args: never[]) => T): T | null
  * leak. The raw error is logged server-side under the supportId for
  * operator correlation.
  */
-export function mapError(
-  c: Context,
-  e: unknown,
-  correlationId: string,
-): Response {
+export function mapError(c: Context, e: unknown, correlationId: string): Response {
   if (e instanceof IdentityError) {
     const pub = publicIdentityCode(e.code);
     if (pub.code !== e.code) {
@@ -185,6 +165,13 @@ export function mapError(
   }
   if (e instanceof IngressError) {
     return errorResponse(c, e.code, e.message, e.status, e.correlationId || correlationId);
+  }
+  if (e instanceof DslHandlerError) {
+    // Surface DSL handler errors with their stored HTTP status + taxonomy
+    // code. The sourceRange + suggestion travel as structured fields on
+    // the error envelope's `properties` so agents can drive iteration
+    // against the parse/static-check errors per ADR 0007 §8.
+    return errorResponse(c, e.code, e.message, e.status, correlationId);
   }
   // Both tenant-error branches use `findCause` so a handler that wraps for
   // logging clarity (`throw new Error('outer', { cause: tnfe })`) still
@@ -239,11 +226,7 @@ export function mapError(
     }
     return jsonErrorEnvelope(c, envelope, 404);
   }
-  const envelope = errorEnvelope(
-    'TRANSACTION_FAILED',
-    'Internal storage failure',
-    correlationId,
-  );
+  const envelope = errorEnvelope('TRANSACTION_FAILED', 'Internal storage failure', correlationId);
   // Log the raw error server-side so operators can join request → root cause
   // via the supportId without exposing internal text to the client.
   // Per specs/crosscut/logging.md: ctx.logger pairs the log line's

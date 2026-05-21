@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 2,
+  "moduleId": "dsl-expression",
+  "displayName": "DSL — Expression",
+  "version": "0.1.0",
+  "moduleType": ["api"],
+  "capabilities": ["dsl-authoring"],
+  "actions": [
+    {
+      "actionId": "Dsl.Expression.Update",
+      "resourceType": "DslArtifact",
+      "verb": "update",
+      "auditLevel": "INFO"
+    }
+  ],
+  "resources": [{ "resourceType": "DslArtifact", "ownership": "module" }],
+  "events": [],
+  "projections": [],
+  "migrations": [],
+  "uiRoutes": [],
+  "jobs": [],
+  "cacheArtifacts": []
+}

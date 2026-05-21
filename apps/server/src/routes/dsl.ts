@@ -53,7 +53,7 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
   app.get('/api/v1/dsl/:kind', async function (c: AppCtx) {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
-    const kind = c.req.param('kind');
+    const kind = c.req.param('kind') ?? '';
     try {
       const bundle = await buildRequestBundle(state, principal, correlationId);
       const artifacts = await listDslArtifacts(
@@ -89,8 +89,8 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
   app.get('/api/v1/dsl/:kind/:apiName', async function (c: AppCtx) {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
-    const kind = c.req.param('kind');
-    const apiName = c.req.param('apiName');
+    const kind = c.req.param('kind') ?? '';
+    const apiName = c.req.param('apiName') ?? '';
     try {
       const bundle = await buildRequestBundle(state, principal, correlationId);
       const artifact = await getDslArtifact(
@@ -124,9 +124,9 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
   app.get('/api/v1/dsl/:kind/:apiName/v/:version', async function (c: AppCtx) {
     const correlationId = c.get('correlationId');
     const principal = c.get('principal');
-    const kind = c.req.param('kind');
-    const apiName = c.req.param('apiName');
-    const versionRaw = c.req.param('version');
+    const kind = c.req.param('kind') ?? '';
+    const apiName = c.req.param('apiName') ?? '';
+    const versionRaw = c.req.param('version') ?? '';
     const version = Number.parseInt(versionRaw, 10);
     if (!Number.isFinite(version) || version < 1) {
       return errorResponse(
@@ -173,7 +173,7 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
   // artifact-write budget. Idempotent (no audit, no event, no write).
   app.post('/api/v1/dsl/:kind/validate', async function (c: AppCtx) {
     const correlationId = c.get('correlationId');
-    const kind = c.req.param('kind');
+    const kind = c.req.param('kind') ?? '';
     let body: ValidateBody;
     try {
       body = (await c.req.json()) as ValidateBody;

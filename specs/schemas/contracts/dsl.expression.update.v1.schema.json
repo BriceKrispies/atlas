@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsl.expression.update.v1",
+  "title": "DslExpressionUpdatePayload",
+  "description": "Payload schema for Dsl.Expression.Update intents. The handler in @atlas/dsl parses + static-checks `source`, saves to the DslArtifactStore port, and emits Dsl.Expression.Updated. Per ADR 0007 §5.",
+  "type": "object",
+  "properties": {
+    "actionId": { "type": "string", "const": "Dsl.Expression.Update" },
+    "resourceType": { "type": "string", "const": "DslArtifact" },
+    "resourceId": { "type": ["string", "null"] },
+    "apiName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$",
+      "description": "Tenant-supplied stable identifier. URL- + SQL-safe per modules/dsl/src/errors.ts API_NAME_PATTERN."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536,
+      "description": "Expression-DSL source text. The handler parses + static-checks before persisting."
+    },
+    "substrateVersion": {
+      "type": "string",
+      "description": "Optional substrate version stamped on the artifact. Defaults to the wiring layer's `defaultSubstrateVersion` (currently '0.1.0')."
+    }
+  },
+  "required": ["actionId", "resourceType", "apiName", "source"]
+}

@@ -7,25 +7,62 @@ import draft7MetaSchema from 'ajv/dist/refs/json-schema-draft-07.json' with { ty
 
 import seedApply from './generated/catalog.seed_package.apply.v1.schema.json' with { type: 'json' };
 import familyPublish from './generated/catalog.family.publish.v1.schema.json' with { type: 'json' };
-import seedApplied from './generated/catalog.seed_package_applied.v1.schema.json' with { type: 'json' };
-import familyPublished from './generated/catalog.family_published.v1.schema.json' with { type: 'json' };
-import variantUpserted from './generated/catalog.variant_upserted.v1.schema.json' with { type: 'json' };
-import policyEvaluated from './generated/platform.policy_evaluated.v1.schema.json' with { type: 'json' };
-import authzPolicyCreate from './generated/authz.policy.create.v1.schema.json' with { type: 'json' };
-import authzPolicyActivate from './generated/authz.policy.activate.v1.schema.json' with { type: 'json' };
-import authzPolicyArchive from './generated/authz.policy.archive.v1.schema.json' with { type: 'json' };
-import contentPagesPageCreate from './generated/content_pages.page.create.v1.schema.json' with { type: 'json' };
-import contentPagesPageUpdate from './generated/content_pages.page.update.v1.schema.json' with { type: 'json' };
-import contentPagesPageDelete from './generated/content_pages.page.delete.v1.schema.json' with { type: 'json' };
-import contentPagesPageRead from './generated/content_pages.page.read.v1.schema.json' with { type: 'json' };
+import seedApplied from './generated/catalog.seed_package_applied.v1.schema.json' with {
+  type: 'json',
+};
+import familyPublished from './generated/catalog.family_published.v1.schema.json' with {
+  type: 'json',
+};
+import variantUpserted from './generated/catalog.variant_upserted.v1.schema.json' with {
+  type: 'json',
+};
+import policyEvaluated from './generated/platform.policy_evaluated.v1.schema.json' with {
+  type: 'json',
+};
+import authzPolicyCreate from './generated/authz.policy.create.v1.schema.json' with {
+  type: 'json',
+};
+import authzPolicyActivate from './generated/authz.policy.activate.v1.schema.json' with {
+  type: 'json',
+};
+import authzPolicyArchive from './generated/authz.policy.archive.v1.schema.json' with {
+  type: 'json',
+};
+import contentPagesPageCreate from './generated/content_pages.page.create.v1.schema.json' with {
+  type: 'json',
+};
+import contentPagesPageUpdate from './generated/content_pages.page.update.v1.schema.json' with {
+  type: 'json',
+};
+import contentPagesPageDelete from './generated/content_pages.page.delete.v1.schema.json' with {
+  type: 'json',
+};
+import contentPagesPageRead from './generated/content_pages.page.read.v1.schema.json' with {
+  type: 'json',
+};
+import dslExpressionUpdate from './generated/dsl.expression.update.v1.schema.json' with {
+  type: 'json',
+};
+import dslExpressionUpdated from './generated/dsl.expression.updated.v1.schema.json' with {
+  type: 'json',
+};
 import seedScenario from './generated/seed.scenario.v1.schema.json' with { type: 'json' };
 import seedFixture from './generated/seed.fixture.v1.schema.json' with { type: 'json' };
 import seedTemplate from './generated/seed.template.v1.schema.json' with { type: 'json' };
-import seedAxisDefinition from './generated/seed.axis_definition.v1.schema.json' with { type: 'json' };
+import seedAxisDefinition from './generated/seed.axis_definition.v1.schema.json' with {
+  type: 'json',
+};
 import eventEnvelope from './generated/event_envelope.schema.json' with { type: 'json' };
-import structuredCatalogManifest from './generated/manifests/structured-catalog.manifest.json' with { type: 'json' };
+import structuredCatalogManifest from './generated/manifests/structured-catalog.manifest.json' with {
+  type: 'json',
+};
 import authzManifest from './generated/manifests/authz.manifest.json' with { type: 'json' };
-import contentPagesManifest from './generated/manifests/content-pages.manifest.json' with { type: 'json' };
+import contentPagesManifest from './generated/manifests/content-pages.manifest.json' with {
+  type: 'json',
+};
+import dslExpressionManifest from './generated/manifests/dsl-expression.manifest.json' with {
+  type: 'json',
+};
 import badgeFamilySeedRaw from './generated/badge-family.json' with { type: 'json' };
 
 const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
@@ -42,6 +79,8 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   contentPagesPageUpdate as AnySchemaObject,
   contentPagesPageDelete as AnySchemaObject,
   contentPagesPageRead as AnySchemaObject,
+  dslExpressionUpdate as AnySchemaObject,
+  dslExpressionUpdated as AnySchemaObject,
   seedScenario as AnySchemaObject,
   seedFixture as AnySchemaObject,
   seedTemplate as AnySchemaObject,
@@ -133,6 +172,7 @@ export interface ModuleManifest {
 const MODULE_MANIFESTS: ReadonlyArray<ModuleManifest> = [
   authzManifest as ModuleManifest,
   contentPagesManifest as ModuleManifest,
+  dslExpressionManifest as ModuleManifest,
   structuredCatalogManifest as ModuleManifest,
 ];
 

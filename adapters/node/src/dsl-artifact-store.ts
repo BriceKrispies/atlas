@@ -80,56 +80,22 @@ export class PostgresDslArtifactStore implements DslArtifactStore {
 
   constructor(private readonly sql: postgres.Sql) {}
 
+  /**
+   * Validates the kind and marks it as registered in-process. Tables for
+   * the kind are created by tenant migrations (see
+   * `src/migrations/tenant/00000003_dsl_expression.sql` for the worked
+   * example), NOT by this method — the runtime role has CRUD on `public`
+   * but no CREATE (ADR 0005 two-role topology). Migrations run as the
+   * provisioner; the runtime inherits CRUD via `ALTER DEFAULT PRIVILEGES`.
+   *
+   * Each new DSL kind ships a sibling migration file that pre-creates the
+   * `public._atlas_dsl_<kind>` + `public._atlas_dsl_<kind>_versions`
+   * tables. The handler still calls `ensureKindRegistered()` for the
+   * port-level contract (the in-memory adapter and the future IDB adapter
+   * use lazy bootstrap), but at the Postgres surface it's a no-op.
+   */
   async ensureKindRegistered(kind: string): Promise<void> {
     assertKind(kind);
-    if (this.bootstrapped.has(kind)) return;
-
-    const table = dslTableName(kind);
-    const versionsTable = dslVersionsTableName(kind);
-
-    // CREATE TABLE IF NOT EXISTS for both. JSONB for structured fields;
-    // BIGINT for monotonic version. UNIQUE (tenant_id, api_name) on the
-    // current table because the row IS the latest version. Composite PK
-    // (artifact_id, version) on the versions table because multiple
-    // versions of the same artifact coexist.
-    await this.sql.unsafe(`
-      CREATE TABLE IF NOT EXISTS public.${table} (
-        artifact_id        UUID PRIMARY KEY,
-        api_name           TEXT NOT NULL,
-        tenant_id          TEXT NOT NULL,
-        version            BIGINT NOT NULL,
-        substrate_version  TEXT NOT NULL,
-        source             TEXT NOT NULL,
-        ast                JSONB NOT NULL,
-        source_map         JSONB NOT NULL,
-        dependencies       JSONB NOT NULL,
-        created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-        created_by         TEXT NOT NULL,
-        updated_by         TEXT NOT NULL,
-        UNIQUE (tenant_id, api_name)
-      )
-    `);
-
-    await this.sql.unsafe(`
-      CREATE TABLE IF NOT EXISTS public.${versionsTable} (
-        artifact_id        UUID NOT NULL,
-        version            BIGINT NOT NULL,
-        api_name           TEXT NOT NULL,
-        tenant_id          TEXT NOT NULL,
-        substrate_version  TEXT NOT NULL,
-        source             TEXT NOT NULL,
-        ast                JSONB NOT NULL,
-        source_map         JSONB NOT NULL,
-        dependencies       JSONB NOT NULL,
-        created_at         TIMESTAMPTZ NOT NULL,
-        updated_at         TIMESTAMPTZ NOT NULL,
-        created_by         TEXT NOT NULL,
-        updated_by         TEXT NOT NULL,
-        PRIMARY KEY (artifact_id, version)
-      )
-    `);
-
     this.bootstrapped.add(kind);
   }
 

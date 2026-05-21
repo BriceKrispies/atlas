@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsl.expression.updated.v1",
+  "title": "DslExpressionUpdatedPayload",
+  "description": "Event payload emitted by the Dsl.Expression.Update handler after a successful save. The artifact storage IS the projection per ADR 0007 §3 — this event drives audit + cache invalidation; no projection rebuild reads it.",
+  "type": "object",
+  "properties": {
+    "kind": { "type": "string", "const": "expression" },
+    "apiName": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+    "artifactId": {
+      "type": "string",
+      "description": "Server-minted UUID. Stable across all versions of this (tenantId, apiName) artifact."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic; 1 on first save, +1 per subsequent save."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["inserted", "versioned"],
+      "description": "`inserted` for the first save (version=1); `versioned` for every save after."
+    }
+  },
+  "required": ["kind", "apiName", "artifactId", "version", "outcome"]
+}

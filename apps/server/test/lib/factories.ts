@@ -303,6 +303,7 @@ export function buildFakeAppState(opts: FakeAppStateOptions = {}): FakeAppState 
         principalCache: notWired('principalCache'),
         entityTypeRegistry: notWired('entityTypeRegistry'),
         upcasterRegistry: notWired('upcasterRegistry'),
+        dslKindRegistry: notWired('dslKindRegistry'),
         jwks: null,
         migratedTenants: new Set<string>(),
         policyEngine: new StubAllowEngine(),
@@ -434,6 +435,14 @@ export function buildFakeBundle(opts: FakeBundleOptions): FakeBundle {
             entities,
             relations,
         },
+        // Tests that exercise DSL paths instantiate a real
+        // `PostgresDslArtifactStore`; the unit-test fake-bundle
+        // throws on access via the same `notWired` pattern as the
+        // AppState factory.
+        dslArtifactStore: new Proxy(
+            {},
+            { get: () => { throw new Error('FakeBundle.dslArtifactStore not wired'); } },
+        ) as unknown as RequestBundle['dslArtifactStore'],
         principal,
         events,
         dispatchSpy,
