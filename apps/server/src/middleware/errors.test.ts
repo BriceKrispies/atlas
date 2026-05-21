@@ -15,7 +15,10 @@
  */
 import { describe, it, expect } from '@atlas/test';
 import { Hono } from 'hono';
-import { TenantDatabaseNotProvisionedError } from '@atlas/adapter-node';
+import {
+    TenantDatabaseNotProvisionedError,
+    TenantNotFoundError,
+} from '@atlas/adapter-node';
 import {
     CollectorSink,
     InMemoryLevelController,
@@ -136,6 +139,84 @@ describe('mapError — TenantDatabaseNotProvisionedError', function () {
         // failure" — a misleading envelope for what is in fact config
         // drift on the tenant row.
         const err = new TenantDatabaseNotProvisionedError('dev-tenant');
+        const { app } = makeRig(err);
+        const res = await app.request('/boom');
+        expect(res.status).not.toBe(500);
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.code).not.toBe('TRANSACTION_FAILED');
+        expect(body.error.code).not.toBe('UNMAPPED_ERROR');
+        expect(body.error.message).not.toBe('Internal storage failure');
+    });
+});
+
+/**
+ * F2 follow-up from the db-per-tenant slice (sibling of F3 above): the
+ * provisioner-precondition `TenantNotFoundError` (from `@atlas/adapter-node`)
+ * must surface as HTTP 404 with the canonical `TENANT_NOT_FOUND` code — not
+ * as the catch-all `TRANSACTION_FAILED` / 500. See
+ * `tickets/db-per-tenant-followups/tenant-not-found-http-mapping.md`.
+ */
+describe('mapError — TenantNotFoundError', function () {
+    it('returns HTTP 404 with code=TENANT_NOT_FOUND', async function () {
+        const err = new TenantNotFoundError('some-tenant');
+        const { app } = makeRig(err);
+        const res = await app.request('/boom');
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.code).toBe('TENANT_NOT_FOUND');
+    });
+
+    it('passes the precondition message from the error through to the envelope', async function () {
+        const err = new TenantNotFoundError('some-tenant');
+        const { app } = makeRig(err);
+        const res = await app.request('/boom');
+        const body = (await res.json()) as EnvelopeBody;
+        // The exact message is owned by `@atlas/adapter-node`; assert on
+        // the load-bearing substrings (tenantId + the load-bearing "no row
+        // in control_plane.tenants" phrasing the provisioner uses) rather
+        // than pinning the full string.
+        expect(body.error.message).toContain('some-tenant');
+        expect(body.error.message).toContain('control_plane.tenants');
+    });
+
+    it('stamps the correlationId + a fresh supportId on the envelope', async function () {
+        const err = new TenantNotFoundError('some-tenant');
+        const { app } = makeRig(err);
+        const res = await app.request('/boom');
+        const body = (await res.json()) as EnvelopeBody;
+        expect(body.error.correlationId).toBe('corr-errors-test');
+        expect(typeof body.error.supportId).toBe('string');
+        expect(body.error.supportId.length).toBeGreaterThan(0);
+    });
+
+    it('still emits a structured server-side log under Tenancy.TenantNotFound', async function () {
+        const err = new TenantNotFoundError('some-tenant');
+        const { app, collector } = makeRig(err);
+        const res = await app.request('/boom');
+        const body = (await res.json()) as EnvelopeBody;
+        const lines = eventsNamed(collector, 'Tenancy.TenantNotFound');
+        expect(lines).toHaveLength(1);
+        const e = assertDefined(lines[0], 'Tenancy.TenantNotFound log event present');
+        expect(e.level).toBe('error');
+        // The log line MUST carry the structured error (code + message)
+        // so operators can join the user-facing supportId back to a root
+        // cause without the client text leaking it.
+        expect(e.error?.code).toBe('TENANT_NOT_FOUND');
+        expect(e.error?.message).toContain('control_plane.tenants');
+        // supportId pairs the log line with the user-facing envelope.
+        expect(e.properties).toMatchObject({
+            supportId: body.error.supportId,
+            tenantId: 'some-tenant',
+        });
+    });
+
+    it('does NOT collapse to TRANSACTION_FAILED / 500 (the regression this slice closes)', async function () {
+        // Belt-and-braces against re-introducing the old behaviour: an
+        // unmapped TenantNotFoundError would send this class down the
+        // catch-all path and the client would get `TRANSACTION_FAILED` /
+        // 500 / "Internal storage failure" — a misleading envelope for
+        // what is in fact a missing tenant registry row.
+        const err = new TenantNotFoundError('some-tenant');
         const { app } = makeRig(err);
         const res = await app.request('/boom');
         expect(res.status).not.toBe(500);

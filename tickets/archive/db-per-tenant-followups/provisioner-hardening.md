@@ -1,8 +1,8 @@
 ---
 title: Harden provisionTenantDatabase — concurrency, precondition, partial-state, onnotice
-status: review
+status: done
 type: refactor
-owner: port-adapter-dev
+owner: architect
 phase: 1
 adr: specs/decisions/0005-custom-schema-storage-strategy.md
 vision: []
@@ -135,3 +135,42 @@ After implementation: pnpm typecheck + adapter-node tests, run `pnpm dev:up` twi
     changes reverted; the source file itself introduces no new
     type errors.
 - 2026-05-20: status → review.
+- 2026-05-20: sdet re-review (bounce-fix pass). All six verification points green:
+  1. `(f6-all-null)` test (test/tenant-db-provider.test.ts:691-785)
+     NULLs all five `db_*` columns, re-runs, asserts all five
+     repopulated, password differs from snapshot
+     (`expect(after[0]?.db_password).not.toBe(passwordBefore)`,
+     line 765), `getPool` succeeds against the recovered row
+     (lines 779-781 — the load-bearing bar). The narrow `(f6)`
+     partial-NULL test (lines 600-665) still passes because
+     `needsFreshPassword` is false when `db_password` survived.
+  2. `ALTER ROLE` path uses `quoteIdent(runtimeRole)` and
+     `quoteLiteral(generatedPassword)` (src/tenant-db-provider.ts:514).
+     `quoteIdent` rejects identifiers outside `[a-z0-9_]`
+     (lines 114-119); `quoteLiteral` doubles single quotes
+     (lines 125-127). No injection vector.
+  3. Rotation-is-safe claim holds: `lookupConnectionInfo`
+     (src/tenant-db-provider.ts:641-677) throws
+     `TenantDatabaseNotProvisionedError` if ANY of the five
+     `db_*` columns is NULL — including `db_password`. With
+     `db_password IS NULL` there is no runtime pool that could
+     have authenticated, so `ALTER ROLE` cannot lock out an
+     in-flight client.
+  4. F4 test (test/tenant-db-provider.test.ts:506-507) pins
+     `aProvisioned.length === 1` AND `bProvisioned.length === 0`.
+     The comment on lines 498-505 explains Promise.all array-order
+     dispatch makes the A vs B winner deterministic.
+  5. 14/14 tests in the file (counted via `it(` matches at lines
+     121/209/246/318/343/356/379/413/465/518/549/600/691/787 plus
+     the surrounding `it.skip` guard). No prior test was modified
+     destructively — only F4's assertion tightened and the new
+     `(f6-all-null)` appended.
+  6. Edge case (createdRole=false, existingPassword!==null, but
+     pg_roles password drift from db_password): outside
+     `needsFreshPassword` truth so no ALTER ROLE fires; subsequent
+     `getPool` would fail authn at the postgres protocol level.
+     Acceptable — this is a "someone ran ALTER ROLE behind our
+     back" path, not a crash-recovery path, and is not in the
+     threat model for this slice.
+- 2026-05-20: status → architect.
+- 2026-05-20 (architect): all seven verification points green. I1 — provisioner remains platform code, no HTTP side-door; called only from `apps/server/src/bootstrap.ts` and `scripts/dev-up.ts`. I14 — `ALTER ROLE` runs on the privileged `controlPlane` connection (tenant-db-provider.ts:514); runtime role grants are unchanged across rotation. I16 — `ALTER ROLE` is cluster-scope, reachable only from the private `runProvisionTenantDatabase`; not exposed via ports, no route. Idempotency contract — all three paths (all-existing reconciled / all-NULL recovery / DB-exists-role-doesn't) converge under re-run; the `generatedPassword !== null` keying is correct. F4 concurrency — `inFlightProvision` wraps the new ALTER ROLE path; second caller awaits A's promise and receives the same result object. Observability — Provisioned event fires once per minted credential (first-time OR recovery), suppressed on pure idempotent re-run. Minor coverage note: no dedicated test for out-of-band manual DROP DATABASE / DROP ROLE (one without the other); filed as `provisioner-out-of-band-state-coverage`. Status → done; archived.

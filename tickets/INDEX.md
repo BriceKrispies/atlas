@@ -32,8 +32,8 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## db-per-tenant-followups/
 
-- [provisioner-hardening](db-per-tenant-followups/provisioner-hardening.md) — refactor — review — → sdet — MEDIUM (bounce fix: F6 all-NULL recovery via ALTER ROLE + F4 test pinned; 14/14 tests green)
-- [tenant-not-found-http-mapping](db-per-tenant-followups/tenant-not-found-http-mapping.md) — refactor — scoped — → module-dev — LOW (sdet F2 from followups review; latent gap until a route calls the provisioner)
+- [wrapped-tenant-errors-unmapped](db-per-tenant-followups/wrapped-tenant-errors-unmapped.md) — drift-finding — open — → module-dev — LOW (sdet finding: bare instanceof in mapError misses Error.cause wrappers for both tenant-error branches)
+- [provisioner-out-of-band-state-coverage](db-per-tenant-followups/provisioner-out-of-band-state-coverage.md) — test — open — → sdet — LOW (architect coverage note: no test for DROP DATABASE-without-DROP ROLE or vice versa)
 
 ## load-testing/
 

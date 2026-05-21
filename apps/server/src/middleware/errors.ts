@@ -18,7 +18,10 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { IngressError } from '@atlas/platform-core';
 import type { AtlasExecutionContext } from '@atlas/platform-core';
 import { IdentityError } from '@atlas/identity';
-import { TenantDatabaseNotProvisionedError } from '@atlas/adapter-node';
+import {
+  TenantDatabaseNotProvisionedError,
+  TenantNotFoundError,
+} from '@atlas/adapter-node';
 
 /**
  * Collapse user-enumerable identity error codes to opaque ones at the
@@ -189,6 +192,28 @@ export function mapError(
       });
     }
     return jsonErrorEnvelope(c, envelope, 503);
+  }
+  if (e instanceof TenantNotFoundError) {
+    // ADR 0005 (db-per-tenant): the provisioner refuses to create orphan
+    // databases / roles when there is no `control_plane.tenants` row. That
+    // is a "tenant does not exist" condition at the registry, not an
+    // internal storage failure — surface it as 404 with the canonical
+    // TENANT_NOT_FOUND code so a future signup-approve / provisioning
+    // route returns the right shape (sibling to the F3 mapping above).
+    const envelope = errorEnvelope(e.code, e.message, correlationId);
+    const ctx = (c.get as (k: 'ctx') => AtlasExecutionContext | undefined)('ctx');
+    if (ctx !== undefined) {
+      ctx.logger.error('tenant not found', {
+        event: 'Tenancy.TenantNotFound',
+        error: {
+          code: e.code,
+          message: e.message,
+          ...(e.stack !== undefined ? { stack: e.stack } : {}),
+        },
+        properties: { supportId: envelope.error.supportId, tenantId: e.tenantId },
+      });
+    }
+    return jsonErrorEnvelope(c, envelope, 404);
   }
   const envelope = errorEnvelope(
     'TRANSACTION_FAILED',
