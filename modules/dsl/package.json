@@ -1,0 +1,23 @@
+{
+  "name": "@atlas/dsl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "atlas-test"
+  },
+  "dependencies": {
+    "@atlas/dsl-substrate": "workspace:*",
+    "@atlas/platform-core": "workspace:*",
+    "@atlas/ports": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlas/dsl-expression": "workspace:*",
+    "@atlas/test": "workspace:*",
+    "@atlas/test-fixtures": "workspace:*"
+  }
+}

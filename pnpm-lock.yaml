@@ -582,6 +582,28 @@ importers:
         specifier: workspace:*
         version: link:../../packages/test-fixtures
 
+  modules/dsl:
+    dependencies:
+      '@atlas/dsl-substrate':
+        specifier: workspace:*
+        version: link:../../packages/dsl-substrate
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../../packages/platform-core
+      '@atlas/ports':
+        specifier: workspace:*
+        version: link:../../ports
+    devDependencies:
+      '@atlas/dsl-expression':
+        specifier: workspace:*
+        version: link:../../packages/dsl-expression
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../../packages/test
+      '@atlas/test-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/test-fixtures
+
   modules/identity:
     dependencies:
       '@atlas/platform-core':
