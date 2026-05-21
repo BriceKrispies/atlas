@@ -715,6 +715,22 @@ importers:
         specifier: ^0.18.0
         version: 0.18.12
 
+  packages/dsl-expression:
+    dependencies:
+      '@atlas/dsl-substrate':
+        specifier: workspace:*
+        version: link:../dsl-substrate
+      '@atlas/platform-core':
+        specifier: workspace:*
+        version: link:../platform-core
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../test
+      '@atlas/test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
+
   packages/dsl-substrate:
     dependencies:
       '@atlas/platform-core':

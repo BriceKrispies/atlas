@@ -55,11 +55,99 @@ export interface BudgetTicket {
 }
 
 /**
- * Open a fresh budget ticket. Implementation deferred to slice #3 (the
- * expression DSL ships the first concrete evaluator and the first
- * implementation of this factory). The shape is committed here so DSL
- * authors can write evaluators against the interface today.
+ * Substrate-shipped factory interface for budget tickets. Implemented by
+ * `openBudget` below. DSL authors call the function; the interface exists
+ * for tests and alternate implementations (e.g., a budget mock that
+ * exposes consumption counts for assertions).
  */
 export interface BudgetFactory {
   open(stepLimit: number, wallClockMs: number): BudgetTicket;
+}
+
+/**
+ * Concrete `BudgetTicket` implementation. Tracks remaining steps and
+ * wall-clock budget against a wall-clock start anchor (captured at open
+ * time). Both `consumeSteps` and `consumeWallClock` are non-throwing;
+ * exceeding either yields `{ok: false, error: DSL_BUDGET_EXCEEDED}`.
+ *
+ * The wall-clock side is sampled by the caller (the evaluator's loop
+ * calls `consumeWallClock(0)` periodically to check elapsed time without
+ * charging more time — the ticket reads `Date.now()` and compares to its
+ * anchor). Step budgeting is the primary mechanism; wall-clock is a
+ * safety net for runtime-dominated work like deep host-op chains.
+ *
+ * No ambient state is read except `Date.now()` — and that's required for
+ * the wall-clock budget to mean anything. The ticket is otherwise
+ * referentially transparent on its inputs.
+ */
+export function openBudget(stepLimit: number, wallClockMs: number): BudgetTicket {
+  if (stepLimit < 0) {
+    throw new Error(`openBudget: stepLimit must be >= 0 (got ${stepLimit})`);
+  }
+  if (wallClockMs < 0) {
+    throw new Error(`openBudget: wallClockMs must be >= 0 (got ${wallClockMs})`);
+  }
+  let remainingSteps = stepLimit;
+  let remainingWallClock = wallClockMs;
+  const startedAt = Date.now();
+
+  function refreshWallClock(): void {
+    const elapsed = Date.now() - startedAt;
+    remainingWallClock = Math.max(0, wallClockMs - elapsed);
+  }
+
+  return {
+    consumeSteps(n: number): Result<void, DslError> {
+      if (n < 0) {
+        return {
+          ok: false,
+          error: {
+            code: 'DSL_BUDGET_EXCEEDED',
+            message: `BudgetTicket.consumeSteps requires n >= 0 (got ${n})`,
+          },
+        };
+      }
+      if (n > remainingSteps) {
+        remainingSteps = 0;
+        return {
+          ok: false,
+          error: {
+            code: 'DSL_BUDGET_EXCEEDED',
+            message: `step budget exhausted (limit ${stepLimit})`,
+          },
+        };
+      }
+      remainingSteps -= n;
+      return { ok: true, value: undefined };
+    },
+    consumeWallClock(ms: number): Result<void, DslError> {
+      // First refresh the wall-clock view, then charge the explicit ms.
+      refreshWallClock();
+      if (ms < 0) {
+        return {
+          ok: false,
+          error: {
+            code: 'DSL_BUDGET_EXCEEDED',
+            message: `BudgetTicket.consumeWallClock requires ms >= 0 (got ${ms})`,
+          },
+        };
+      }
+      if (ms > remainingWallClock) {
+        remainingWallClock = 0;
+        return {
+          ok: false,
+          error: {
+            code: 'DSL_BUDGET_EXCEEDED',
+            message: `wall-clock budget exhausted (limit ${wallClockMs}ms)`,
+          },
+        };
+      }
+      remainingWallClock -= ms;
+      return { ok: true, value: undefined };
+    },
+    get remaining() {
+      refreshWallClock();
+      return { steps: remainingSteps, wallClockMs: remainingWallClock };
+    },
+  };
 }

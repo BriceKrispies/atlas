@@ -44,6 +44,7 @@ export type {
   BudgetTicket,
   BudgetFactory,
 } from './budget.ts';
+export { openBudget } from './budget.ts';
 
 export type {
   HostOpDef,
@@ -75,6 +76,7 @@ export type {
 } from './contract-tests.ts';
 export {
   stubConformanceChecker,
+  makeConformanceChecker,
   ok,
   err,
 } from './contract-tests.ts';

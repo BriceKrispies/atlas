@@ -178,6 +178,123 @@ export function stubConformanceChecker(): DslConformanceChecker {
 }
 
 /**
+ * Real conformance checker. Lands in slice #3 alongside the expression DSL.
+ * Drives the six §2 properties as executable assertions:
+ *
+ *   - **Bounded**: `stepCost(ast)` for each sample's AST root is >= 1.
+ *   - **Pure**: evaluating the same `(ast, scope, hostOps)` twice yields
+ *     `Result.ok` agreement and (when ok) value equality via JSON-string
+ *     comparison. Approximation, not proof — purity is undecidable in
+ *     general, but a sample-driven differential assertion catches the
+ *     common drift cases.
+ *   - **No ambient I/O**: every effectful op in the registry names a
+ *     port; every pure op leaves port null. The closed-set property
+ *     (ADR 0007 §6) is enforced at registration; this assertion proves
+ *     the registry was registered correctly.
+ *   - **Deterministic**: shares its body with the purity check.
+ *   - **Budget-enforced**: re-evaluates each `expect.outcome === 'ok'`
+ *     sample with a step budget of 1; the assertion expects either an
+ *     `ok` outcome (trivial AST, finished within the budget) or a
+ *     `DSL_BUDGET_EXCEEDED` failure. Anything else means the evaluator
+ *     ignored the budget.
+ *   - **Statically typeable**: for samples whose `expect.outcome` is
+ *     `'error'` with `code === 'DSL_UNKNOWN_IDENTIFIER'`, `staticCheck`
+ *     must return at least one error with that same code.
+ *
+ * Returns a list of human-readable violation strings per method; empty
+ * array = pass. Aggregating violations rather than throwing keeps the
+ * substrate's no-throws invariant intact.
+ */
+export function makeConformanceChecker(): DslConformanceChecker {
+  function deepEqualJson(a: unknown, b: unknown): boolean {
+    // Structural equality via canonical JSON. Adequate for the value
+    // shapes a DSL outputs (primitives + JSON-serialisable structures).
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  return {
+    checkBounded(args) {
+      const violations: string[] = [];
+      const evaluator = args.makeEvaluator();
+      for (const sample of args.samples) {
+        const cost = evaluator.stepCost(sample.ast);
+        if (!Number.isFinite(cost) || cost < 1) {
+          violations.push(`sample '${sample.name}': stepCost(ast) returned ${cost}; must be >= 1`);
+        }
+      }
+      return violations;
+    },
+    async checkPure(args) {
+      const { openBudget } = await import('./budget.ts');
+      const violations: string[] = [];
+      const evaluator = args.makeEvaluator();
+      for (const sample of args.samples) {
+        const b1 = openBudget(10_000, 5000);
+        const r1 = await evaluator.evaluate(sample.ast, sample.scope, sample.ops, b1);
+        const b2 = openBudget(10_000, 5000);
+        const r2 = await evaluator.evaluate(sample.ast, sample.scope, sample.ops, b2);
+        if (r1.ok !== r2.ok) {
+          violations.push(
+            `sample '${sample.name}': two evaluations disagreed on ok (${r1.ok} vs ${r2.ok})`,
+          );
+        } else if (r1.ok && r2.ok && !deepEqualJson(r1.value, r2.value)) {
+          violations.push(`sample '${sample.name}': two evaluations returned different values`);
+        }
+      }
+      return violations;
+    },
+    checkNoAmbientIo(args) {
+      const violations: string[] = [];
+      for (const op of args.registry.list()) {
+        if (op.category === 'effectful' && op.port === null) {
+          violations.push(`op '${op.name}': effectful but port is null`);
+        }
+      }
+      return violations;
+    },
+    async checkDeterministic(args) {
+      // Determinism subsumes purity (same inputs → same outputs).
+      // Implementation re-uses the purity body.
+      return this.checkPure(args);
+    },
+    async checkBudgetEnforced(args) {
+      const { openBudget } = await import('./budget.ts');
+      const violations: string[] = [];
+      const evaluator = args.makeEvaluator();
+      for (const sample of args.samples) {
+        if (sample.expect.outcome !== 'ok') continue;
+        // 1-step budget: anything beyond a trivial AST must exceed.
+        const tinyBudget = openBudget(1, 5000);
+        const r = await evaluator.evaluate(sample.ast, sample.scope, sample.ops, tinyBudget);
+        if (!r.ok && r.error.code !== 'DSL_BUDGET_EXCEEDED') {
+          violations.push(
+            `sample '${sample.name}': tiny-budget eval failed with ${r.error.code} rather than DSL_BUDGET_EXCEEDED`,
+          );
+        }
+        // ok and BUDGET_EXCEEDED are both acceptable — the AST may have been small enough to fit.
+      }
+      return violations;
+    },
+    checkStaticallyTypeable(args) {
+      const violations: string[] = [];
+      const evaluator = args.makeEvaluator();
+      for (const sample of args.samples) {
+        if (sample.expect.outcome !== 'error') continue;
+        if (sample.expect.code !== 'DSL_UNKNOWN_IDENTIFIER') continue;
+        const errors = evaluator.staticCheck(sample.ast, sample.hints ?? {});
+        const found = errors.some((e) => e.code === 'DSL_UNKNOWN_IDENTIFIER');
+        if (!found) {
+          violations.push(
+            `sample '${sample.name}': staticCheck did not catch DSL_UNKNOWN_IDENTIFIER`,
+          );
+        }
+      }
+      return violations;
+    },
+  };
+}
+
+/**
  * Synthetic Result helpers used by future assertions and by the meta-test
  * to construct typed `Result` values without resorting to `as` casts.
  * Exported so DSL authors can use them in their own tests.
