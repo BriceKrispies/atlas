@@ -32,10 +32,7 @@ export interface EventStore {
    *
    * Returns `null` when no event exists for that (tenant, key) pair.
    */
-  findByIdempotencyKey(
-    tenantId: string,
-    idempotencyKey: string,
-  ): Promise<EventEnvelope | null>;
+  findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<EventEnvelope | null>;
 
   /**
    * Read all events for a tenant in seq order. Used by tooling and

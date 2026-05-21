@@ -65,12 +65,11 @@ export type EventDispatcher = (envelope: EventEnvelope) => Promise<void>;
  * module ownership.
  */
 export function cacheTagDispatcher(cache: Cache): EventDispatcher {
-    return async function (envelope) {
-        const tags = envelope.cacheInvalidationTags;
-        if (!tags || tags.length === 0)
-            return;
-        await cache.invalidateByTags(tags);
-    };
+  return async function (envelope) {
+    const tags = envelope.cacheInvalidationTags;
+    if (!tags || tags.length === 0) return;
+    await cache.invalidateByTags(tags);
+  };
 }
 /**
  * Compose any number of `EventDispatcher` closures into a single
@@ -93,31 +92,29 @@ export function cacheTagDispatcher(cache: Cache): EventDispatcher {
  * would survive past their invalidation window. Module dispatchers
  * must be idempotent against re-runs (Invariant I12).
  */
-export function composeDispatchers(...dispatchers: ReadonlyArray<EventDispatcher | null | undefined>): EventDispatcher {
-    // Resolve null/undefined eagerly so the per-event hot path is a
-    // straight loop with no branching.
-    const real: EventDispatcher[] = [];
-    for (const d of dispatchers) {
-        if (d != null)
-            real.push(d);
+export function composeDispatchers(
+  ...dispatchers: ReadonlyArray<EventDispatcher | null | undefined>
+): EventDispatcher {
+  // Resolve null/undefined eagerly so the per-event hot path is a
+  // straight loop with no branching.
+  const real: EventDispatcher[] = [];
+  for (const d of dispatchers) {
+    if (d != null) real.push(d);
+  }
+  return async function (envelope) {
+    let firstError: unknown = NO_ERROR;
+    for (const d of real) {
+      try {
+        await d(envelope);
+      } catch (err) {
+        if (firstError === NO_ERROR) firstError = err;
+        // Continue to the next dispatcher so cleanup-shaped
+        // dispatchers (cache-tag invalidation, policy-bundle
+        // invalidation) still fire on partial failure.
+      }
     }
-    return async function (envelope) {
-        let firstError: unknown = NO_ERROR;
-        for (const d of real) {
-            try {
-                await d(envelope);
-            }
-            catch (err) {
-                if (firstError === NO_ERROR)
-                    firstError = err;
-                // Continue to the next dispatcher so cleanup-shaped
-                // dispatchers (cache-tag invalidation, policy-bundle
-                // invalidation) still fire on partial failure.
-            }
-        }
-        if (firstError !== NO_ERROR)
-            throw firstError;
-    };
+    if (firstError !== NO_ERROR) throw firstError;
+  };
 }
 /**
  * Sentinel for "no error yet" — distinguishes from a dispatcher that

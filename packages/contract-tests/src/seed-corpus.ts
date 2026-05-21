@@ -39,7 +39,7 @@
  * same seed shape so the same test bodies work everywhere.
  */
 import { describe, test, expect } from '@atlas/test';
-import type { Fixture, FixtureRef, Scenario, ScenarioRef, SeedCorpus, } from '@atlas/ports';
+import type { Fixture, FixtureRef, Scenario, ScenarioRef, SeedCorpus } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 /**
  * Build a deliberately-malformed Scenario or Fixture body for adversarial
@@ -51,7 +51,7 @@ import { assertDefined } from '@atlas/test-fixtures/assert';
  * type-system escape lives in exactly one audited spot.
  */
 const makeMalformed = function <T>(shape: unknown): T {
-    return shape as T;
+  return shape as T;
 };
 /**
  * Adapter-side surface for the contract suite. Each `it(...)` calls the
@@ -59,30 +59,35 @@ const makeMalformed = function <T>(shape: unknown): T {
  * its assertions, and is done.
  */
 export interface SeedCorpusFactoryResult {
-    corpus: SeedCorpus;
-    /** Add a scenario AFTER construction. Used by snapshot-semantics tests. */
-    addScenario(scenario: Scenario): void | Promise<void>;
-    /** Add a fixture AFTER construction. */
-    addFixture(fixture: Fixture): void | Promise<void>;
-    /** Remove a scenario by id. Used by the delete-during-iteration test. */
-    removeScenario(scenarioId: string): void | Promise<void>;
-    /**
-     * Run `fn` with the named AJV schema temporarily absent from this
-     * adapter's validator registry. Used to exercise the
-     * `SEED_VALIDATOR_NOT_REGISTERED` branch. Must restore the registry
-     * even if `fn` throws.
-     *
-     * Adapters that cannot meaningfully simulate this (extremely rare —
-     * every adapter validates somewhere) may omit it; the related tests
-     * skip with a recorded reason.
-     */
-    simulateValidatorMissing?: (schemaId: 'seed.scenario.v1' | 'seed.fixture.v1', fn: () => Promise<void>) => Promise<void>;
+  corpus: SeedCorpus;
+  /** Add a scenario AFTER construction. Used by snapshot-semantics tests. */
+  addScenario(scenario: Scenario): void | Promise<void>;
+  /** Add a fixture AFTER construction. */
+  addFixture(fixture: Fixture): void | Promise<void>;
+  /** Remove a scenario by id. Used by the delete-during-iteration test. */
+  removeScenario(scenarioId: string): void | Promise<void>;
+  /**
+   * Run `fn` with the named AJV schema temporarily absent from this
+   * adapter's validator registry. Used to exercise the
+   * `SEED_VALIDATOR_NOT_REGISTERED` branch. Must restore the registry
+   * even if `fn` throws.
+   *
+   * Adapters that cannot meaningfully simulate this (extremely rare —
+   * every adapter validates somewhere) may omit it; the related tests
+   * skip with a recorded reason.
+   */
+  simulateValidatorMissing?: (
+    schemaId: 'seed.scenario.v1' | 'seed.fixture.v1',
+    fn: () => Promise<void>,
+  ) => Promise<void>;
 }
 export interface SeedCorpusFactoryArgs {
-    scenarios: ReadonlyArray<Scenario>;
-    fixtures: ReadonlyArray<Fixture>;
+  scenarios: ReadonlyArray<Scenario>;
+  fixtures: ReadonlyArray<Fixture>;
 }
-export type SeedCorpusFactory = (args: SeedCorpusFactoryArgs) => Promise<SeedCorpusFactoryResult> | SeedCorpusFactoryResult;
+export type SeedCorpusFactory = (
+  args: SeedCorpusFactoryArgs,
+) => Promise<SeedCorpusFactoryResult> | SeedCorpusFactoryResult;
 // ─── Worked-example fixture (specs/crosscut/seed-corpus.md §9) ──────
 //
 // The §9 example is materialised — `axisBindings: { region, tier }`
@@ -91,168 +96,168 @@ export type SeedCorpusFactory = (args: SeedCorpusFactoryArgs) => Promise<SeedCor
 // contract suite uses both so adapters get tested against realistic
 // content.
 const WORKED_FIXTURE: Fixture = {
-    schemaVersion: 1,
-    fixtureId: 'fixtures/tenants/single-basic',
-    steps: [
-        {
-            stepId: 'register-admin-user',
-            asTenant: 'team-onboard',
-            asPrincipal: 'operator',
-            intent: {
-                eventId: 'evt-register-admin-user-0001',
-                eventType: 'Identity.UserCreated',
-                schemaId: 'identity.user.create.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T11:59:58.000Z',
-                tenantId: 't_team_onboard',
-                correlationId: 'seed:fixtures/tenants/single-basic:0',
-                idempotencyKey: 'seed-fixture-single-basic-0',
-                payload: {
-                    actionId: 'Identity.User.Create',
-                    resourceType: 'user',
-                    email: 'admin@example.com',
-                    givenName: 'Team',
-                    familyName: 'Admin',
-                },
-            },
+  schemaVersion: 1,
+  fixtureId: 'fixtures/tenants/single-basic',
+  steps: [
+    {
+      stepId: 'register-admin-user',
+      asTenant: 'team-onboard',
+      asPrincipal: 'operator',
+      intent: {
+        eventId: 'evt-register-admin-user-0001',
+        eventType: 'Identity.UserCreated',
+        schemaId: 'identity.user.create.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T11:59:58.000Z',
+        tenantId: 't_team_onboard',
+        correlationId: 'seed:fixtures/tenants/single-basic:0',
+        idempotencyKey: 'seed-fixture-single-basic-0',
+        payload: {
+          actionId: 'Identity.User.Create',
+          resourceType: 'user',
+          email: 'admin@example.com',
+          givenName: 'Team',
+          familyName: 'Admin',
         },
-        {
-            stepId: 'grant-admin-membership',
-            asTenant: 'team-onboard',
-            asPrincipal: 'operator',
-            intent: {
-                eventId: 'evt-grant-admin-membership-0001',
-                eventType: 'Identity.MembershipCreated',
-                schemaId: 'identity.membership.create.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T11:59:59.000Z',
-                tenantId: 't_team_onboard',
-                correlationId: 'seed:fixtures/tenants/single-basic:1',
-                idempotencyKey: 'seed-fixture-single-basic-1',
-                payload: {
-                    actionId: 'Identity.Membership.Create',
-                    resourceType: 'membership',
-                    userId: 'u_admin',
-                    roles: ['admin'],
-                },
-            },
+      },
+    },
+    {
+      stepId: 'grant-admin-membership',
+      asTenant: 'team-onboard',
+      asPrincipal: 'operator',
+      intent: {
+        eventId: 'evt-grant-admin-membership-0001',
+        eventType: 'Identity.MembershipCreated',
+        schemaId: 'identity.membership.create.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T11:59:59.000Z',
+        tenantId: 't_team_onboard',
+        correlationId: 'seed:fixtures/tenants/single-basic:1',
+        idempotencyKey: 'seed-fixture-single-basic-1',
+        payload: {
+          actionId: 'Identity.Membership.Create',
+          resourceType: 'membership',
+          userId: 'u_admin',
+          roles: ['admin'],
         },
-    ],
+      },
+    },
+  ],
 };
 const WORKED_SCENARIO: Scenario = {
-    schemaVersion: 1,
-    scenarioId: 'team-onboard/region=us-east-1/tier=starter',
-    description: 'Onboards a small developer-team tenant via the worked example in seed-corpus.md §9.',
-    tags: ['onboarding', 'identity', 'invite-flow'],
-    axisBindings: {
-        region: 'us-east-1',
-        tier: 'starter',
+  schemaVersion: 1,
+  scenarioId: 'team-onboard/region=us-east-1/tier=starter',
+  description:
+    'Onboards a small developer-team tenant via the worked example in seed-corpus.md §9.',
+  tags: ['onboarding', 'identity', 'invite-flow'],
+  axisBindings: {
+    region: 'us-east-1',
+    tier: 'starter',
+  },
+  steps: [
+    {
+      stepId: 'issue-editor-invite',
+      asTenant: 'team-onboard',
+      asPrincipal: 'admin',
+      intent: {
+        eventId: 'evt-issue-editor-invite-0001',
+        eventType: 'Identity.InviteIssued',
+        schemaId: 'identity.invite.issue.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T12:00:00.000Z',
+        tenantId: 't_team_onboard',
+        correlationId: 'seed:team-onboard/region=us-east-1/tier=starter:0',
+        idempotencyKey: 'seed-team-onboard-step-0',
+        payload: {
+          actionId: 'Identity.Invite.Issue',
+          resourceType: 'invite',
+          email: 'editor@example.com',
+          rolesOnAccept: ['editor'],
+        },
+      },
     },
-    steps: [
-        {
-            stepId: 'issue-editor-invite',
-            asTenant: 'team-onboard',
-            asPrincipal: 'admin',
-            intent: {
-                eventId: 'evt-issue-editor-invite-0001',
-                eventType: 'Identity.InviteIssued',
-                schemaId: 'identity.invite.issue.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T12:00:00.000Z',
-                tenantId: 't_team_onboard',
-                correlationId: 'seed:team-onboard/region=us-east-1/tier=starter:0',
-                idempotencyKey: 'seed-team-onboard-step-0',
-                payload: {
-                    actionId: 'Identity.Invite.Issue',
-                    resourceType: 'invite',
-                    email: 'editor@example.com',
-                    rolesOnAccept: ['editor'],
-                },
-            },
+    {
+      stepId: 'accept-editor-invite',
+      asTenant: 'team-onboard',
+      intent: {
+        eventId: 'evt-accept-editor-invite-0001',
+        eventType: 'Identity.InviteAccepted',
+        schemaId: 'identity.invite.accept.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T12:00:01.000Z',
+        tenantId: 't_team_onboard',
+        correlationId: 'seed:team-onboard/region=us-east-1/tier=starter:1',
+        idempotencyKey: 'seed-team-onboard-step-1',
+        payload: {
+          actionId: 'Identity.Invite.Accept',
+          resourceType: 'invite',
+          presentedToken: 'inv-editor-0001-plaintext',
+          acceptedEmail: 'editor@example.com',
         },
-        {
-            stepId: 'accept-editor-invite',
-            asTenant: 'team-onboard',
-            intent: {
-                eventId: 'evt-accept-editor-invite-0001',
-                eventType: 'Identity.InviteAccepted',
-                schemaId: 'identity.invite.accept.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T12:00:01.000Z',
-                tenantId: 't_team_onboard',
-                correlationId: 'seed:team-onboard/region=us-east-1/tier=starter:1',
-                idempotencyKey: 'seed-team-onboard-step-1',
-                payload: {
-                    actionId: 'Identity.Invite.Accept',
-                    resourceType: 'invite',
-                    presentedToken: 'inv-editor-0001-plaintext',
-                    acceptedEmail: 'editor@example.com',
-                },
-            },
-            expect: { ok: true },
-        },
-    ],
+      },
+      expect: { ok: true },
+    },
+  ],
 };
 // A simpler "fixed-origin" scenario (no axisBindings) so origin='fixed'
 // vs 'materialized' can be asserted independently. Single step, tagged
 // 'smoke' so prefix/tags filters have something to bite on.
 const FIXED_SCENARIO: Scenario = {
-    schemaVersion: 1,
-    scenarioId: 'minimal-tenant-bootstrap',
-    description: 'Seeds a single tenant with no fixtures.',
-    tags: ['smoke'],
-    steps: [
-        {
-            stepId: 'create-tenant',
-            intent: {
-                eventId: '00000000-0000-4000-8000-000000000001',
-                eventType: 'tenant.create',
-                schemaId: 'tenant.create.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T00:00:00.000Z',
-                tenantId: 't_seed',
-                correlationId: 'seed:minimal-tenant-bootstrap:0',
-                idempotencyKey: 'seed-minimal-0',
-                payload: {
-                    actionId: 'tenant.create',
-                    resourceType: 'tenant',
-                    handle: 'seed-tenant',
-                },
-            },
-            asPrincipal: 'operator',
+  schemaVersion: 1,
+  scenarioId: 'minimal-tenant-bootstrap',
+  description: 'Seeds a single tenant with no fixtures.',
+  tags: ['smoke'],
+  steps: [
+    {
+      stepId: 'create-tenant',
+      intent: {
+        eventId: '00000000-0000-4000-8000-000000000001',
+        eventType: 'tenant.create',
+        schemaId: 'tenant.create.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T00:00:00.000Z',
+        tenantId: 't_seed',
+        correlationId: 'seed:minimal-tenant-bootstrap:0',
+        idempotencyKey: 'seed-minimal-0',
+        payload: {
+          actionId: 'tenant.create',
+          resourceType: 'tenant',
+          handle: 'seed-tenant',
         },
-    ],
+      },
+      asPrincipal: 'operator',
+    },
+  ],
 };
 const ADMIN_FIXTURE: Fixture = {
-    schemaVersion: 1,
-    fixtureId: 'fixtures/admin-principal',
-    steps: [
-        {
-            stepId: 'register-admin',
-            intent: {
-                eventId: '00000000-0000-4000-8000-000000000002',
-                eventType: 'identity.principalCreate',
-                schemaId: 'identity.principal.create.v1',
-                schemaVersion: 1,
-                occurredAt: '2026-05-10T00:00:00.000Z',
-                tenantId: 't_seed',
-                correlationId: 'seed:fixtures/admin-principal:0',
-                idempotencyKey: 'seed-fixture-admin-0',
-                payload: {
-                    actionId: 'identity.principal.create',
-                    resourceType: 'principal',
-                    handle: 'admin',
-                },
-            },
+  schemaVersion: 1,
+  fixtureId: 'fixtures/admin-principal',
+  steps: [
+    {
+      stepId: 'register-admin',
+      intent: {
+        eventId: '00000000-0000-4000-8000-000000000002',
+        eventType: 'identity.principalCreate',
+        schemaId: 'identity.principal.create.v1',
+        schemaVersion: 1,
+        occurredAt: '2026-05-10T00:00:00.000Z',
+        tenantId: 't_seed',
+        correlationId: 'seed:fixtures/admin-principal:0',
+        idempotencyKey: 'seed-fixture-admin-0',
+        payload: {
+          actionId: 'identity.principal.create',
+          resourceType: 'principal',
+          handle: 'admin',
         },
-    ],
+      },
+    },
+  ],
 };
 // ─── Helpers ────────────────────────────────────────────────────────
 async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
-    const out: T[] = [];
-    for await (const x of it)
-        out.push(x);
-    return out;
+  const out: T[] = [];
+  for await (const x of it) out.push(x);
+  return out;
 }
 /**
  * Step-wise iteration helper. `AsyncIterable<T>[Symbol.asyncIterator]()`
@@ -263,35 +268,40 @@ async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
  * semantics tests can still introduce a mid-iteration mutation without
  * hand-writing `.next()` calls.
  */
-async function takeWith<T>(iter: AsyncIterable<T>, n: number, afterFirst?: () => void | Promise<void>): Promise<{
-    values: T[];
-    exhausted: boolean;
+async function takeWith<T>(
+  iter: AsyncIterable<T>,
+  n: number,
+  afterFirst?: () => void | Promise<void>,
+): Promise<{
+  values: T[];
+  exhausted: boolean;
 }> {
-    const values: T[] = [];
-    let exhausted = true;
-    let i = 0;
-    for await (const v of iter) {
-        values.push(v);
-        i += 1;
-        if (i === 1 && afterFirst)
-            await afterFirst();
-        if (i >= n) {
-            exhausted = false;
-            break;
-        }
+  const values: T[] = [];
+  let exhausted = true;
+  let i = 0;
+  for await (const v of iter) {
+    values.push(v);
+    i += 1;
+    if (i === 1 && afterFirst) await afterFirst();
+    if (i >= n) {
+      exhausted = false;
+      break;
     }
-    return { values, exhausted };
+  }
+  return { values, exhausted };
 }
-function refFor(corpusResult: {
+function refFor(
+  corpusResult: {
     corpus: SeedCorpus;
-}, scenarioId: string) {
-    return async function (): Promise<ScenarioRef> {
-        for await (const ref of corpusResult.corpus.listScenarios()) {
-            if (ref.scenarioId === scenarioId)
-                return ref;
-        }
-        throw new Error(`test helper: scenario ${scenarioId} not in corpus`);
-    };
+  },
+  scenarioId: string,
+) {
+  return async function (): Promise<ScenarioRef> {
+    for await (const ref of corpusResult.corpus.listScenarios()) {
+      if (ref.scenarioId === scenarioId) return ref;
+    }
+    throw new Error(`test helper: scenario ${scenarioId} not in corpus`);
+  };
 }
 // ─── Contract ───────────────────────────────────────────────────────
 /**
@@ -302,472 +312,540 @@ function refFor(corpusResult: {
  * documented surface.
  */
 export function seedCorpusContract(makeAdapter: SeedCorpusFactory): void {
-    describe('SeedCorpus contract', function () {
-        // ─── listScenarios — shape ────────────────────────────────────
-        describe('listScenarios (shape)', function () {
-            test('yields a ScenarioRef per stored scenario, contentHash is 64-char lowercase hex', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const refs = await collect(r.corpus.listScenarios());
-                expect(refs).toHaveLength(1);
-                const ref = assertDefined(refs[0], 'first scenario ref after toHaveLength(1)');
-                expect(ref.scenarioId).toBe('minimal-tenant-bootstrap');
-                expect(ref.origin).toBe('fixed');
-                expect(ref.contentHash).toMatch(/^[0-9a-f]{64}$/);
-            });
-            test('is AsyncIterable (Symbol.asyncIterator), not Promise<Array>', async function () {
-                // Pin the streaming shape declared by the port JSDoc — fuzz
-                // expansions of large templates may produce 10K+ refs and
-                // adapters MUST not pre-buffer into an array. We check the
-                // iterator protocol explicitly rather than relying on
-                // `for await` to paper over a Promise-shaped return.
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const iterable: AsyncIterable<ScenarioRef> = r.corpus.listScenarios();
-                expect(typeof iterable[Symbol.asyncIterator]).toBe('function');
-                const seen: ScenarioRef[] = [];
-                for await (const v of iterable)
-                    seen.push(v);
-                expect(seen).toHaveLength(1);
-                const firstValue = assertDefined(seen[0], 'first scenario after toHaveLength(1)');
-                expect(firstValue.scenarioId).toBe('minimal-tenant-bootstrap');
-            });
-            test('over an empty corpus completes without error', async function () {
-                const r = await makeAdapter({ scenarios: [], fixtures: [] });
-                const refs = await collect(r.corpus.listScenarios());
-                expect(refs).toHaveLength(0);
-            });
-            test('sets origin=materialized when axisBindings present, fixed otherwise', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
-                    fixtures: [],
-                });
-                const refs = await collect(r.corpus.listScenarios());
-                const byId = new Map(refs.map(function (ref) {
-                    return [ref.scenarioId, ref];
-                }));
-                const fixedRef = assertDefined(byId.get('minimal-tenant-bootstrap'), 'FIXED_SCENARIO ref in listScenarios result');
-                const matRef = assertDefined(byId.get(WORKED_SCENARIO.scenarioId), 'WORKED_SCENARIO ref in listScenarios result');
-                expect(fixedRef.origin).toBe('fixed');
-                expect(matRef.origin).toBe('materialized');
-            });
-            test('propagates axisBindings on the ScenarioRef for materialized scenarios; omits/leaves-undefined for fixed', async function () {
-                // The port doc (`ports/src/seed-corpus.ts`) declares
-                // `axisBindings?: Readonly<Record<string, string>>` on
-                // `ScenarioRef`, and the worked example (§9) emits it. A
-                // future fs/sqlite adapter that returned origin='materialized'
-                // but left axisBindings undefined on the ref would break the
-                // round-trip into `scenario-fuzzing.md` axis system (consumers
-                // expect the bindings without re-loading the scenario body).
-                // Pin it explicitly — neither the origin check above nor the
-                // axes-filter check pins what the ref itself carries.
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
-                    fixtures: [],
-                });
-                const refs = await collect(r.corpus.listScenarios());
-                const byId = new Map(refs.map(function (ref) {
-                    return [ref.scenarioId, ref];
-                }));
-                const matRef = assertDefined(byId.get(WORKED_SCENARIO.scenarioId), 'WORKED_SCENARIO ref in listScenarios result');
-                expect(matRef.axisBindings).toEqual({
-                    region: 'us-east-1',
-                    tier: 'starter',
-                });
-                const fixedRef = assertDefined(byId.get('minimal-tenant-bootstrap'), 'FIXED_SCENARIO ref in listScenarios result');
-                // FIXED scenarios MUST NOT surface axisBindings — either omit
-                // the key or leave it explicitly undefined. Pinning the
-                // distinction lets consumers (the axis system) discriminate
-                // origin solely from the ref.
-                expect(fixedRef.axisBindings).toBeUndefined();
-            });
+  describe('SeedCorpus contract', function () {
+    // ─── listScenarios — shape ────────────────────────────────────
+    describe('listScenarios (shape)', function () {
+      test('yields a ScenarioRef per stored scenario, contentHash is 64-char lowercase hex', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
         });
-        // ─── listScenarios — filters ──────────────────────────────────
-        describe('listScenarios (filters)', function () {
-            test('prefix filter narrows correctly; non-matching prefix returns empty', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
-                    fixtures: [],
-                });
-                const matched = await collect(r.corpus.listScenarios({ prefix: 'minimal-' }));
-                expect(matched.map(function (x) {
-                    return x.scenarioId;
-                })).toEqual([
-                    'minimal-tenant-bootstrap',
-                ]);
-                const empty = await collect(r.corpus.listScenarios({ prefix: 'no-match-' }));
-                expect(empty).toHaveLength(0);
-            });
-            test('tags filter ANDs across tags (all listed tags must match)', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
-                    fixtures: [],
-                });
-                const matched = await collect(r.corpus.listScenarios({ tags: ['smoke'] }));
-                expect(matched.map(function (x) {
-                    return x.scenarioId;
-                })).toEqual([
-                    'minimal-tenant-bootstrap',
-                ]);
-                // 'smoke' exists on FIXED_SCENARIO; 'absent' does not exist
-                // anywhere — AND requires both, so result is empty.
-                const empty = await collect(r.corpus.listScenarios({ tags: ['smoke', 'absent'] }));
-                expect(empty).toHaveLength(0);
-                // Two real tags present on WORKED_SCENARIO must both match.
-                const both = await collect(r.corpus.listScenarios({ tags: ['onboarding', 'identity'] }));
-                expect(both.map(function (x) {
-                    return x.scenarioId;
-                })).toEqual([WORKED_SCENARIO.scenarioId]);
-            });
-            test('axes filter narrows to materialised scenarios whose bindings match', async function () {
-                const otherMaterialised: Scenario = {
-                    ...WORKED_SCENARIO,
-                    scenarioId: 'team-onboard/region=eu-west-1/tier=starter',
-                    axisBindings: { region: 'eu-west-1', tier: 'starter' },
-                };
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO, WORKED_SCENARIO, otherMaterialised],
-                    fixtures: [],
-                });
-                const ueast = await collect(r.corpus.listScenarios({ axes: { region: 'us-east-1' } }));
-                expect(ueast.map(function (x) {
-                    return x.scenarioId;
-                })).toEqual([WORKED_SCENARIO.scenarioId]);
-                const both = await collect(r.corpus.listScenarios({
-                    axes: { region: 'us-east-1', tier: 'starter' },
-                }));
-                expect(both).toHaveLength(1);
-                const firstBoth = assertDefined(both[0], 'first match after toHaveLength(1)');
-                expect(firstBoth.scenarioId).toBe(WORKED_SCENARIO.scenarioId);
-                const noMatch = await collect(r.corpus.listScenarios({ axes: { region: 'ap-south-1' } }));
-                expect(noMatch).toHaveLength(0);
-            });
+        const refs = await collect(r.corpus.listScenarios());
+        expect(refs).toHaveLength(1);
+        const ref = assertDefined(refs[0], 'first scenario ref after toHaveLength(1)');
+        expect(ref.scenarioId).toBe('minimal-tenant-bootstrap');
+        expect(ref.origin).toBe('fixed');
+        expect(ref.contentHash).toMatch(/^[0-9a-f]{64}$/);
+      });
+      test('is AsyncIterable (Symbol.asyncIterator), not Promise<Array>', async function () {
+        // Pin the streaming shape declared by the port JSDoc — fuzz
+        // expansions of large templates may produce 10K+ refs and
+        // adapters MUST not pre-buffer into an array. We check the
+        // iterator protocol explicitly rather than relying on
+        // `for await` to paper over a Promise-shaped return.
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
         });
-        // ─── listScenarios — snapshot-at-iteration-start ─────────────
-        //
-        // Spec: `specs/crosscut/seed-corpus.md` §4.1 + port JSDoc. Pinned
-        // here so the fs + sqlite adapters honour the same semantic when
-        // they land (Phases 2 and 4). Without these tests an adapter
-        // could legally surface concurrent edits mid-iteration and claim
-        // spec compliance.
-        describe('listScenarios (snapshot-at-iteration-start)', function () {
-            test('post-start ADDs are NOT observed by the in-flight iterator', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                // Mutate AFTER the first yield, then consume the rest — the
-                // in-flight iterator MUST NOT surface 'late-add'.
-                const { values, exhausted } = await takeWith<ScenarioRef>(r.corpus.listScenarios(), 100, function () {
-                    return r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
-                });
-                expect(exhausted).toBe(true);
-                expect(values.map(function (v) {
-                    return v.scenarioId;
-                })).toEqual([FIXED_SCENARIO.scenarioId]);
-            });
-            test('post-start DELETES of not-yet-yielded entries are NOT observed', async function () {
-                const scenarios: Scenario[] = [];
-                for (let i = 0; i < 3; i += 1) {
-                    scenarios.push({ ...FIXED_SCENARIO, scenarioId: `s-${i}` });
-                }
-                const r = await makeAdapter({ scenarios, fixtures: [] });
-                // Remove an entry the iterator hasn't reached yet (after the
-                // first yield). Snapshot-at-iteration-start semantics require
-                // all three originally-snapshotted scenarios to still surface.
-                const { values, exhausted } = await takeWith<ScenarioRef>(r.corpus.listScenarios(), 100, function () {
-                    return r.removeScenario('s-2');
-                });
-                expect(exhausted).toBe(true);
-                const seen = values.map(function (v) {
-                    return v.scenarioId;
-                }).sort();
-                expect(seen).toEqual(['s-0', 's-1', 's-2']);
-            });
-            test('a NEW listScenarios() call AFTER a mutation DOES observe it (per-call snapshot)', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const before = (await collect(r.corpus.listScenarios())).map(function (x) {
-                    return x.scenarioId;
-                });
-                expect(before).toEqual([FIXED_SCENARIO.scenarioId]);
-                await r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
-                const after = (await collect(r.corpus.listScenarios()))
-                    .map(function (x) {
-                    return x.scenarioId;
-                })
-                    .sort();
-                expect(after).toEqual([FIXED_SCENARIO.scenarioId, 'late-add'].sort());
-            });
-            test('snapshot is captured at listScenarios() call, NOT at first Symbol.asyncIterator() call', async function () {
-                // Spec §4.1 + port JSDoc: "the iterator is materialised
-                // against the corpus state at the moment listScenarios() is
-                // called". A lazy adapter (e.g., an fs adapter that walks the
-                // directory only when the iterator first advances) could
-                // silently pass every other snapshot test by snapshotting at
-                // first iteration instead. Pin the distinction.
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const iterable = r.corpus.listScenarios();
-                // Mutate AFTER listScenarios() but BEFORE first .next() —
-                // a lazy adapter would observe 'late-add'; a spec-compliant
-                // adapter would not.
-                await r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
-                const seen: string[] = [];
-                for await (const ref of iterable)
-                    seen.push(ref.scenarioId);
-                expect(seen).toEqual(['minimal-tenant-bootstrap']);
-            });
-            test('early-break does not leak state — re-iterating yields the full list', async function () {
-                const scenarios: Scenario[] = [];
-                for (let i = 0; i < 3; i += 1) {
-                    scenarios.push({ ...FIXED_SCENARIO, scenarioId: `s-${i}` });
-                }
-                const r = await makeAdapter({ scenarios, fixtures: [] });
-                // First iteration with early break.
-                let count = 0;
-                for await (const _ of r.corpus.listScenarios()) {
-                    count += 1;
-                    if (count === 1)
-                        break;
-                }
-                expect(count).toBe(1);
-                // Second iteration should see all 3 again.
-                const second = await collect(r.corpus.listScenarios());
-                expect(second).toHaveLength(3);
-            });
+        const iterable: AsyncIterable<ScenarioRef> = r.corpus.listScenarios();
+        expect(typeof iterable[Symbol.asyncIterator]).toBe('function');
+        const seen: ScenarioRef[] = [];
+        for await (const v of iterable) seen.push(v);
+        expect(seen).toHaveLength(1);
+        const firstValue = assertDefined(seen[0], 'first scenario after toHaveLength(1)');
+        expect(firstValue.scenarioId).toBe('minimal-tenant-bootstrap');
+      });
+      test('over an empty corpus completes without error', async function () {
+        const r = await makeAdapter({ scenarios: [], fixtures: [] });
+        const refs = await collect(r.corpus.listScenarios());
+        expect(refs).toHaveLength(0);
+      });
+      test('sets origin=materialized when axisBindings present, fixed otherwise', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
+          fixtures: [],
         });
-        // ─── loadScenario / loadFixture ──────────────────────────────
-        describe('loadScenario / loadFixture', function () {
-            test('loadScenario returns a body that validates against seed.scenario.v1 (round-trip)', async function () {
-                const r = await makeAdapter({
-                    scenarios: [WORKED_SCENARIO],
-                    fixtures: [],
-                });
-                const ref = await refFor(r, WORKED_SCENARIO.scenarioId)();
-                const loaded = await r.corpus.loadScenario(ref);
-                expect(loaded).toEqual(WORKED_SCENARIO);
-                expect(loaded.schemaVersion).toBe(1);
-                expect(loaded.steps).toHaveLength(2);
-            });
-            test('loadFixture returns a body that validates against seed.fixture.v1 (round-trip)', async function () {
-                const r = await makeAdapter({
-                    scenarios: [],
-                    fixtures: [ADMIN_FIXTURE],
-                });
-                const loaded = await r.corpus.loadFixture({
-                    fixtureId: ADMIN_FIXTURE.fixtureId,
-                    // contentHash is opaque to the contract — the spec says the
-                    // hash "lets the caller verify integrity" but the port JSDoc
-                    // marks rejection on mismatch as MAY. Adapters that don't
-                    // verify must still accept a hash-shaped string.
-                    contentHash: '0'.repeat(64),
-                });
-                expect(loaded.fixtureId).toBe(ADMIN_FIXTURE.fixtureId);
-                expect(loaded.schemaVersion).toBe(1);
-            });
-            test('loadScenario throws SEED_SCENARIO_NOT_FOUND for an unknown scenarioId', async function () {
-                const r = await makeAdapter({ scenarios: [], fixtures: [] });
-                await expect(r.corpus.loadScenario({
-                    scenarioId: 'does-not-exist',
-                    contentHash: '0'.repeat(64),
-                    origin: 'fixed',
-                })).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
-            });
-            test('loadFixture throws SEED_FIXTURE_NOT_FOUND for unknown fixtureId; does NOT collapse into SEED_SCENARIO_NOT_FOUND', async function () {
-                const r = await makeAdapter({ scenarios: [], fixtures: [] });
-                await expect(r.corpus.loadFixture({
-                    fixtureId: 'ghost',
-                    contentHash: '0'.repeat(64),
-                })).rejects.toThrow(/SEED_FIXTURE_NOT_FOUND/);
-                await expect(r.corpus.loadFixture({
-                    fixtureId: 'ghost',
-                    contentHash: '0'.repeat(64),
-                })).rejects.not.toThrow(/SEED_SCENARIO_NOT_FOUND/);
-            });
-            test('loadScenario throws SEED_VALIDATION_FAILED when the stored body violates the schema (bad schemaVersion)', async function () {
-                // schemaVersion of 2 violates the const:1 constraint in
-                // seed.scenario.v1. Validation MUST catch this on load.
-                const bad = makeMalformed<Scenario>({
-                    ...FIXED_SCENARIO,
-                    schemaVersion: 2,
-                });
-                const r = await makeAdapter({ scenarios: [bad], fixtures: [] });
-                await expect(r.corpus.loadScenario({
-                    scenarioId: bad.scenarioId,
-                    contentHash: '0'.repeat(64),
-                    origin: 'fixed',
-                })).rejects.toThrow(/SEED_VALIDATION_FAILED/);
-                // Pin the distinction in both directions so a future swap of
-                // the two error branches would fail this assertion AND the
-                // missing-validator one — not just one of them.
-                await expect(r.corpus.loadScenario({
-                    scenarioId: bad.scenarioId,
-                    contentHash: '0'.repeat(64),
-                    origin: 'fixed',
-                })).rejects.not.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
-            });
-            test('loadScenario throws SEED_VALIDATION_FAILED on an unknown top-level field (additionalProperties:false)', async function () {
-                const bad = makeMalformed<Scenario>({
-                    ...FIXED_SCENARIO,
-                    extraneous: 'nope',
-                });
-                const r = await makeAdapter({ scenarios: [bad], fixtures: [] });
-                await expect(r.corpus.loadScenario({
-                    scenarioId: bad.scenarioId,
-                    contentHash: '0'.repeat(64),
-                    origin: 'fixed',
-                })).rejects.toThrow(/SEED_VALIDATION_FAILED/);
-            });
-            test('loadFixture throws SEED_VALIDATION_FAILED when the stored fixture body violates seed.fixture.v1', async function () {
-                // Symmetry with the scenario-body path: the errors taxonomy
-                // (`specs/crosscut/errors.md`) lists SEED_VALIDATION_FAILED as
-                // category VALIDATION for "A scenario or fixture body failed
-                // AJV validation". An adapter that validates scenarios but
-                // silently loads malformed fixtures would silently pass every
-                // existing test — pin the fixture branch explicitly. Use
-                // additionalProperties:false from seed.fixture.v1 as the trip
-                // condition because it's adapter-agnostic (no const fields to
-                // collide with).
-                const badFixture = makeMalformed<Fixture>({
-                    ...ADMIN_FIXTURE,
-                    extraneous: 'nope',
-                });
-                const r = await makeAdapter({ scenarios: [], fixtures: [badFixture] });
-                await expect(r.corpus.loadFixture({
-                    fixtureId: badFixture.fixtureId,
-                    contentHash: '0'.repeat(64),
-                })).rejects.toThrow(/SEED_VALIDATION_FAILED/);
-                await expect(r.corpus.loadFixture({
-                    fixtureId: badFixture.fixtureId,
-                    contentHash: '0'.repeat(64),
-                })).rejects.not.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
-            });
+        const refs = await collect(r.corpus.listScenarios());
+        const byId = new Map(
+          refs.map(function (ref) {
+            return [ref.scenarioId, ref];
+          }),
+        );
+        const fixedRef = assertDefined(
+          byId.get('minimal-tenant-bootstrap'),
+          'FIXED_SCENARIO ref in listScenarios result',
+        );
+        const matRef = assertDefined(
+          byId.get(WORKED_SCENARIO.scenarioId),
+          'WORKED_SCENARIO ref in listScenarios result',
+        );
+        expect(fixedRef.origin).toBe('fixed');
+        expect(matRef.origin).toBe('materialized');
+      });
+      test('propagates axisBindings on the ScenarioRef for materialized scenarios; omits/leaves-undefined for fixed', async function () {
+        // The port doc (`ports/src/seed-corpus.ts`) declares
+        // `axisBindings?: Readonly<Record<string, string>>` on
+        // `ScenarioRef`, and the worked example (§9) emits it. A
+        // future fs/sqlite adapter that returned origin='materialized'
+        // but left axisBindings undefined on the ref would break the
+        // round-trip into `scenario-fuzzing.md` axis system (consumers
+        // expect the bindings without re-loading the scenario body).
+        // Pin it explicitly — neither the origin check above nor the
+        // axes-filter check pins what the ref itself carries.
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
+          fixtures: [],
         });
-        // ─── SEED_VALIDATOR_NOT_REGISTERED ───────────────────────────
-        //
-        // Distinct from SEED_VALIDATION_FAILED — this is a platform /
-        // config fault (the AJV schema was never registered) and MUST
-        // surface a dedicated code per `specs/crosscut/errors.md`. The
-        // factory's `simulateValidatorMissing` hook scopes the missing
-        // condition to the callback so each adapter restores its
-        // registry cleanly. Adapters that don't expose the hook skip
-        // these tests; the reason is recorded so it's visible in the run.
-        describe('SEED_VALIDATOR_NOT_REGISTERED', function () {
-            test('loadScenario surfaces SEED_VALIDATOR_NOT_REGISTERED when seed.scenario.v1 is missing; does NOT collapse into the body-invalid code; mentions the schemaId', async function () {
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                if (!r.simulateValidatorMissing) {
-                    console.warn('adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (scenario) skipped');
-                    return;
-                }
-                await r.simulateValidatorMissing('seed.scenario.v1', async function () {
-                    const ref = await refFor(r, FIXED_SCENARIO.scenarioId)();
-                    await expect(r.corpus.loadScenario(ref)).rejects.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
-                    await expect(r.corpus.loadScenario(ref)).rejects.not.toThrow(/SEED_VALIDATION_FAILED/);
-                    // Naming the schemaId in the message is load-bearing for
-                    // observability — without it, ops can't tell whether the
-                    // scenario or fixture branch tripped.
-                    await expect(r.corpus.loadScenario(ref)).rejects.toThrow(/seed\.scenario\.v1/);
-                });
-            });
-            test('loadFixture surfaces SEED_VALIDATOR_NOT_REGISTERED when seed.fixture.v1 is missing; does NOT collapse into the body-invalid code; mentions the schemaId', async function () {
-                const r = await makeAdapter({
-                    scenarios: [],
-                    fixtures: [ADMIN_FIXTURE],
-                });
-                if (!r.simulateValidatorMissing) {
-                    console.warn('adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (fixture) skipped');
-                    return;
-                }
-                await r.simulateValidatorMissing('seed.fixture.v1', async function () {
-                    const ref: FixtureRef = {
-                        fixtureId: ADMIN_FIXTURE.fixtureId,
-                        contentHash: '0'.repeat(64),
-                    };
-                    await expect(r.corpus.loadFixture(ref)).rejects.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
-                    await expect(r.corpus.loadFixture(ref)).rejects.not.toThrow(/SEED_VALIDATION_FAILED/);
-                    await expect(r.corpus.loadFixture(ref)).rejects.toThrow(/seed\.fixture\.v1/);
-                });
-            });
+        const refs = await collect(r.corpus.listScenarios());
+        const byId = new Map(
+          refs.map(function (ref) {
+            return [ref.scenarioId, ref];
+          }),
+        );
+        const matRef = assertDefined(
+          byId.get(WORKED_SCENARIO.scenarioId),
+          'WORKED_SCENARIO ref in listScenarios result',
+        );
+        expect(matRef.axisBindings).toEqual({
+          region: 'us-east-1',
+          tier: 'starter',
         });
-        // ─── contentHash determinism ─────────────────────────────────
-        describe('contentHash determinism', function () {
-            test('same scenario body → same contentHash across two adapter instances', async function () {
-                // The port doc and spec §4.1 fix contentHash as
-                // sha256Hex(canonicalJsonStringify(body)). Two independent
-                // adapter constructions over the same scenario MUST surface
-                // the same hash, otherwise replays diverge between processes.
-                const a = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const b = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const refA = assertDefined((await collect(a.corpus.listScenarios()))[0], 'adapter A produced at least one scenario ref');
-                const refB = assertDefined((await collect(b.corpus.listScenarios()))[0], 'adapter B produced at least one scenario ref');
-                expect(refA.contentHash).toBe(refB.contentHash);
-                expect(refA.contentHash).toMatch(/^[0-9a-f]{64}$/);
-            });
-            test('PINNED vector: canonical FIXED_SCENARIO hashes to the byte-exact 64-char hex below', async function () {
-                // sha256Hex(canonicalJsonStringify(FIXED_SCENARIO)) — pinned
-                // by literal value so byte-drift in canonicalJsonStringify or
-                // sha256Hex lights up loudly. A regex pin (only 64 hex chars)
-                // would silently pass even if the helper changed casing,
-                // padding semantics, or key ordering.
-                //
-                // To recompute (when FIXED_SCENARIO changes intentionally):
-                //   require('crypto').createHash('sha256')
-                //     .update(canonicalJsonStringify(FIXED_SCENARIO))
-                //     .digest('hex')
-                const r = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const refs = await collect(r.corpus.listScenarios());
-                const firstRef = assertDefined(refs[0], 'first scenario ref for FIXED_SCENARIO');
-                expect(firstRef.contentHash).toBe('52140527f2273d4163c2df17c76509106432e74a418e8ae1a179918638940972');
-            });
-            test('contentHash is stable under shuffled top-level key insertion order (canonical key sort)', async function () {
-                // The reordered scenario differs only in JS-property
-                // insertion order; canonicalJsonStringify sorts keys
-                // lexically so the hash MUST be identical to the
-                // straight-insertion version.
-                // Cloned with deliberately-shuffled key order. The `description`
-                // copy needs the assertDefined narrow because `Scenario.description`
-                // is optional (`string | undefined`); but FIXED_SCENARIO sets it,
-                // so the narrow is safe-by-construction.
-                const reordered: Scenario = {
-                    steps: FIXED_SCENARIO.steps,
-                    schemaVersion: FIXED_SCENARIO.schemaVersion,
-                    description: assertDefined(FIXED_SCENARIO.description, 'FIXED_SCENARIO.description is set above'),
-                    scenarioId: FIXED_SCENARIO.scenarioId,
-                    ...(FIXED_SCENARIO.tags !== undefined ? { tags: FIXED_SCENARIO.tags } : {}),
-                };
-                const a = await makeAdapter({
-                    scenarios: [FIXED_SCENARIO],
-                    fixtures: [],
-                });
-                const b = await makeAdapter({
-                    scenarios: [reordered],
-                    fixtures: [],
-                });
-                const refA = assertDefined((await collect(a.corpus.listScenarios()))[0], 'adapter A produced at least one scenario ref');
-                const refB = assertDefined((await collect(b.corpus.listScenarios()))[0], 'adapter B (reordered) produced at least one scenario ref');
-                expect(refA.contentHash).toBe(refB.contentHash);
-            });
-        });
+        const fixedRef = assertDefined(
+          byId.get('minimal-tenant-bootstrap'),
+          'FIXED_SCENARIO ref in listScenarios result',
+        );
+        // FIXED scenarios MUST NOT surface axisBindings — either omit
+        // the key or leave it explicitly undefined. Pinning the
+        // distinction lets consumers (the axis system) discriminate
+        // origin solely from the ref.
+        expect(fixedRef.axisBindings).toBeUndefined();
+      });
     });
+    // ─── listScenarios — filters ──────────────────────────────────
+    describe('listScenarios (filters)', function () {
+      test('prefix filter narrows correctly; non-matching prefix returns empty', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
+          fixtures: [],
+        });
+        const matched = await collect(r.corpus.listScenarios({ prefix: 'minimal-' }));
+        expect(
+          matched.map(function (x) {
+            return x.scenarioId;
+          }),
+        ).toEqual(['minimal-tenant-bootstrap']);
+        const empty = await collect(r.corpus.listScenarios({ prefix: 'no-match-' }));
+        expect(empty).toHaveLength(0);
+      });
+      test('tags filter ANDs across tags (all listed tags must match)', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO],
+          fixtures: [],
+        });
+        const matched = await collect(r.corpus.listScenarios({ tags: ['smoke'] }));
+        expect(
+          matched.map(function (x) {
+            return x.scenarioId;
+          }),
+        ).toEqual(['minimal-tenant-bootstrap']);
+        // 'smoke' exists on FIXED_SCENARIO; 'absent' does not exist
+        // anywhere — AND requires both, so result is empty.
+        const empty = await collect(r.corpus.listScenarios({ tags: ['smoke', 'absent'] }));
+        expect(empty).toHaveLength(0);
+        // Two real tags present on WORKED_SCENARIO must both match.
+        const both = await collect(r.corpus.listScenarios({ tags: ['onboarding', 'identity'] }));
+        expect(
+          both.map(function (x) {
+            return x.scenarioId;
+          }),
+        ).toEqual([WORKED_SCENARIO.scenarioId]);
+      });
+      test('axes filter narrows to materialised scenarios whose bindings match', async function () {
+        const otherMaterialised: Scenario = {
+          ...WORKED_SCENARIO,
+          scenarioId: 'team-onboard/region=eu-west-1/tier=starter',
+          axisBindings: { region: 'eu-west-1', tier: 'starter' },
+        };
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO, WORKED_SCENARIO, otherMaterialised],
+          fixtures: [],
+        });
+        const ueast = await collect(r.corpus.listScenarios({ axes: { region: 'us-east-1' } }));
+        expect(
+          ueast.map(function (x) {
+            return x.scenarioId;
+          }),
+        ).toEqual([WORKED_SCENARIO.scenarioId]);
+        const both = await collect(
+          r.corpus.listScenarios({
+            axes: { region: 'us-east-1', tier: 'starter' },
+          }),
+        );
+        expect(both).toHaveLength(1);
+        const firstBoth = assertDefined(both[0], 'first match after toHaveLength(1)');
+        expect(firstBoth.scenarioId).toBe(WORKED_SCENARIO.scenarioId);
+        const noMatch = await collect(r.corpus.listScenarios({ axes: { region: 'ap-south-1' } }));
+        expect(noMatch).toHaveLength(0);
+      });
+    });
+    // ─── listScenarios — snapshot-at-iteration-start ─────────────
+    //
+    // Spec: `specs/crosscut/seed-corpus.md` §4.1 + port JSDoc. Pinned
+    // here so the fs + sqlite adapters honour the same semantic when
+    // they land (Phases 2 and 4). Without these tests an adapter
+    // could legally surface concurrent edits mid-iteration and claim
+    // spec compliance.
+    describe('listScenarios (snapshot-at-iteration-start)', function () {
+      test('post-start ADDs are NOT observed by the in-flight iterator', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        // Mutate AFTER the first yield, then consume the rest — the
+        // in-flight iterator MUST NOT surface 'late-add'.
+        const { values, exhausted } = await takeWith<ScenarioRef>(
+          r.corpus.listScenarios(),
+          100,
+          function () {
+            return r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
+          },
+        );
+        expect(exhausted).toBe(true);
+        expect(
+          values.map(function (v) {
+            return v.scenarioId;
+          }),
+        ).toEqual([FIXED_SCENARIO.scenarioId]);
+      });
+      test('post-start DELETES of not-yet-yielded entries are NOT observed', async function () {
+        const scenarios: Scenario[] = [];
+        for (let i = 0; i < 3; i += 1) {
+          scenarios.push({ ...FIXED_SCENARIO, scenarioId: `s-${i}` });
+        }
+        const r = await makeAdapter({ scenarios, fixtures: [] });
+        // Remove an entry the iterator hasn't reached yet (after the
+        // first yield). Snapshot-at-iteration-start semantics require
+        // all three originally-snapshotted scenarios to still surface.
+        const { values, exhausted } = await takeWith<ScenarioRef>(
+          r.corpus.listScenarios(),
+          100,
+          function () {
+            return r.removeScenario('s-2');
+          },
+        );
+        expect(exhausted).toBe(true);
+        const seen = values
+          .map(function (v) {
+            return v.scenarioId;
+          })
+          .sort();
+        expect(seen).toEqual(['s-0', 's-1', 's-2']);
+      });
+      test('a NEW listScenarios() call AFTER a mutation DOES observe it (per-call snapshot)', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const before = (await collect(r.corpus.listScenarios())).map(function (x) {
+          return x.scenarioId;
+        });
+        expect(before).toEqual([FIXED_SCENARIO.scenarioId]);
+        await r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
+        const after = (await collect(r.corpus.listScenarios()))
+          .map(function (x) {
+            return x.scenarioId;
+          })
+          .sort();
+        expect(after).toEqual([FIXED_SCENARIO.scenarioId, 'late-add'].sort());
+      });
+      test('snapshot is captured at listScenarios() call, NOT at first Symbol.asyncIterator() call', async function () {
+        // Spec §4.1 + port JSDoc: "the iterator is materialised
+        // against the corpus state at the moment listScenarios() is
+        // called". A lazy adapter (e.g., an fs adapter that walks the
+        // directory only when the iterator first advances) could
+        // silently pass every other snapshot test by snapshotting at
+        // first iteration instead. Pin the distinction.
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const iterable = r.corpus.listScenarios();
+        // Mutate AFTER listScenarios() but BEFORE first .next() —
+        // a lazy adapter would observe 'late-add'; a spec-compliant
+        // adapter would not.
+        await r.addScenario({ ...FIXED_SCENARIO, scenarioId: 'late-add' });
+        const seen: string[] = [];
+        for await (const ref of iterable) seen.push(ref.scenarioId);
+        expect(seen).toEqual(['minimal-tenant-bootstrap']);
+      });
+      test('early-break does not leak state — re-iterating yields the full list', async function () {
+        const scenarios: Scenario[] = [];
+        for (let i = 0; i < 3; i += 1) {
+          scenarios.push({ ...FIXED_SCENARIO, scenarioId: `s-${i}` });
+        }
+        const r = await makeAdapter({ scenarios, fixtures: [] });
+        // First iteration with early break.
+        let count = 0;
+        for await (const _ of r.corpus.listScenarios()) {
+          count += 1;
+          if (count === 1) break;
+        }
+        expect(count).toBe(1);
+        // Second iteration should see all 3 again.
+        const second = await collect(r.corpus.listScenarios());
+        expect(second).toHaveLength(3);
+      });
+    });
+    // ─── loadScenario / loadFixture ──────────────────────────────
+    describe('loadScenario / loadFixture', function () {
+      test('loadScenario returns a body that validates against seed.scenario.v1 (round-trip)', async function () {
+        const r = await makeAdapter({
+          scenarios: [WORKED_SCENARIO],
+          fixtures: [],
+        });
+        const ref = await refFor(r, WORKED_SCENARIO.scenarioId)();
+        const loaded = await r.corpus.loadScenario(ref);
+        expect(loaded).toEqual(WORKED_SCENARIO);
+        expect(loaded.schemaVersion).toBe(1);
+        expect(loaded.steps).toHaveLength(2);
+      });
+      test('loadFixture returns a body that validates against seed.fixture.v1 (round-trip)', async function () {
+        const r = await makeAdapter({
+          scenarios: [],
+          fixtures: [ADMIN_FIXTURE],
+        });
+        const loaded = await r.corpus.loadFixture({
+          fixtureId: ADMIN_FIXTURE.fixtureId,
+          // contentHash is opaque to the contract — the spec says the
+          // hash "lets the caller verify integrity" but the port JSDoc
+          // marks rejection on mismatch as MAY. Adapters that don't
+          // verify must still accept a hash-shaped string.
+          contentHash: '0'.repeat(64),
+        });
+        expect(loaded.fixtureId).toBe(ADMIN_FIXTURE.fixtureId);
+        expect(loaded.schemaVersion).toBe(1);
+      });
+      test('loadScenario throws SEED_SCENARIO_NOT_FOUND for an unknown scenarioId', async function () {
+        const r = await makeAdapter({ scenarios: [], fixtures: [] });
+        await expect(
+          r.corpus.loadScenario({
+            scenarioId: 'does-not-exist',
+            contentHash: '0'.repeat(64),
+            origin: 'fixed',
+          }),
+        ).rejects.toThrow(/SEED_SCENARIO_NOT_FOUND/);
+      });
+      test('loadFixture throws SEED_FIXTURE_NOT_FOUND for unknown fixtureId; does NOT collapse into SEED_SCENARIO_NOT_FOUND', async function () {
+        const r = await makeAdapter({ scenarios: [], fixtures: [] });
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: 'ghost',
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.toThrow(/SEED_FIXTURE_NOT_FOUND/);
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: 'ghost',
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.not.toThrow(/SEED_SCENARIO_NOT_FOUND/);
+      });
+      test('loadScenario throws SEED_VALIDATION_FAILED when the stored body violates the schema (bad schemaVersion)', async function () {
+        // schemaVersion of 2 violates the const:1 constraint in
+        // seed.scenario.v1. Validation MUST catch this on load.
+        const bad = makeMalformed<Scenario>({
+          ...FIXED_SCENARIO,
+          schemaVersion: 2,
+        });
+        const r = await makeAdapter({ scenarios: [bad], fixtures: [] });
+        await expect(
+          r.corpus.loadScenario({
+            scenarioId: bad.scenarioId,
+            contentHash: '0'.repeat(64),
+            origin: 'fixed',
+          }),
+        ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+        // Pin the distinction in both directions so a future swap of
+        // the two error branches would fail this assertion AND the
+        // missing-validator one — not just one of them.
+        await expect(
+          r.corpus.loadScenario({
+            scenarioId: bad.scenarioId,
+            contentHash: '0'.repeat(64),
+            origin: 'fixed',
+          }),
+        ).rejects.not.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
+      });
+      test('loadScenario throws SEED_VALIDATION_FAILED on an unknown top-level field (additionalProperties:false)', async function () {
+        const bad = makeMalformed<Scenario>({
+          ...FIXED_SCENARIO,
+          extraneous: 'nope',
+        });
+        const r = await makeAdapter({ scenarios: [bad], fixtures: [] });
+        await expect(
+          r.corpus.loadScenario({
+            scenarioId: bad.scenarioId,
+            contentHash: '0'.repeat(64),
+            origin: 'fixed',
+          }),
+        ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+      });
+      test('loadFixture throws SEED_VALIDATION_FAILED when the stored fixture body violates seed.fixture.v1', async function () {
+        // Symmetry with the scenario-body path: the errors taxonomy
+        // (`specs/crosscut/errors.md`) lists SEED_VALIDATION_FAILED as
+        // category VALIDATION for "A scenario or fixture body failed
+        // AJV validation". An adapter that validates scenarios but
+        // silently loads malformed fixtures would silently pass every
+        // existing test — pin the fixture branch explicitly. Use
+        // additionalProperties:false from seed.fixture.v1 as the trip
+        // condition because it's adapter-agnostic (no const fields to
+        // collide with).
+        const badFixture = makeMalformed<Fixture>({
+          ...ADMIN_FIXTURE,
+          extraneous: 'nope',
+        });
+        const r = await makeAdapter({ scenarios: [], fixtures: [badFixture] });
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: badFixture.fixtureId,
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.toThrow(/SEED_VALIDATION_FAILED/);
+        await expect(
+          r.corpus.loadFixture({
+            fixtureId: badFixture.fixtureId,
+            contentHash: '0'.repeat(64),
+          }),
+        ).rejects.not.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
+      });
+    });
+    // ─── SEED_VALIDATOR_NOT_REGISTERED ───────────────────────────
+    //
+    // Distinct from SEED_VALIDATION_FAILED — this is a platform /
+    // config fault (the AJV schema was never registered) and MUST
+    // surface a dedicated code per `specs/crosscut/errors.md`. The
+    // factory's `simulateValidatorMissing` hook scopes the missing
+    // condition to the callback so each adapter restores its
+    // registry cleanly. Adapters that don't expose the hook skip
+    // these tests; the reason is recorded so it's visible in the run.
+    describe('SEED_VALIDATOR_NOT_REGISTERED', function () {
+      test('loadScenario surfaces SEED_VALIDATOR_NOT_REGISTERED when seed.scenario.v1 is missing; does NOT collapse into the body-invalid code; mentions the schemaId', async function () {
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        if (!r.simulateValidatorMissing) {
+          console.warn(
+            'adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (scenario) skipped',
+          );
+          return;
+        }
+        await r.simulateValidatorMissing('seed.scenario.v1', async function () {
+          const ref = await refFor(r, FIXED_SCENARIO.scenarioId)();
+          await expect(r.corpus.loadScenario(ref)).rejects.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
+          await expect(r.corpus.loadScenario(ref)).rejects.not.toThrow(/SEED_VALIDATION_FAILED/);
+          // Naming the schemaId in the message is load-bearing for
+          // observability — without it, ops can't tell whether the
+          // scenario or fixture branch tripped.
+          await expect(r.corpus.loadScenario(ref)).rejects.toThrow(/seed\.scenario\.v1/);
+        });
+      });
+      test('loadFixture surfaces SEED_VALIDATOR_NOT_REGISTERED when seed.fixture.v1 is missing; does NOT collapse into the body-invalid code; mentions the schemaId', async function () {
+        const r = await makeAdapter({
+          scenarios: [],
+          fixtures: [ADMIN_FIXTURE],
+        });
+        if (!r.simulateValidatorMissing) {
+          console.warn(
+            'adapter omitted simulateValidatorMissing — SEED_VALIDATOR_NOT_REGISTERED (fixture) skipped',
+          );
+          return;
+        }
+        await r.simulateValidatorMissing('seed.fixture.v1', async function () {
+          const ref: FixtureRef = {
+            fixtureId: ADMIN_FIXTURE.fixtureId,
+            contentHash: '0'.repeat(64),
+          };
+          await expect(r.corpus.loadFixture(ref)).rejects.toThrow(/SEED_VALIDATOR_NOT_REGISTERED/);
+          await expect(r.corpus.loadFixture(ref)).rejects.not.toThrow(/SEED_VALIDATION_FAILED/);
+          await expect(r.corpus.loadFixture(ref)).rejects.toThrow(/seed\.fixture\.v1/);
+        });
+      });
+    });
+    // ─── contentHash determinism ─────────────────────────────────
+    describe('contentHash determinism', function () {
+      test('same scenario body → same contentHash across two adapter instances', async function () {
+        // The port doc and spec §4.1 fix contentHash as
+        // sha256Hex(canonicalJsonStringify(body)). Two independent
+        // adapter constructions over the same scenario MUST surface
+        // the same hash, otherwise replays diverge between processes.
+        const a = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const b = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const refA = assertDefined(
+          (await collect(a.corpus.listScenarios()))[0],
+          'adapter A produced at least one scenario ref',
+        );
+        const refB = assertDefined(
+          (await collect(b.corpus.listScenarios()))[0],
+          'adapter B produced at least one scenario ref',
+        );
+        expect(refA.contentHash).toBe(refB.contentHash);
+        expect(refA.contentHash).toMatch(/^[0-9a-f]{64}$/);
+      });
+      test('PINNED vector: canonical FIXED_SCENARIO hashes to the byte-exact 64-char hex below', async function () {
+        // sha256Hex(canonicalJsonStringify(FIXED_SCENARIO)) — pinned
+        // by literal value so byte-drift in canonicalJsonStringify or
+        // sha256Hex lights up loudly. A regex pin (only 64 hex chars)
+        // would silently pass even if the helper changed casing,
+        // padding semantics, or key ordering.
+        //
+        // To recompute (when FIXED_SCENARIO changes intentionally):
+        //   require('crypto').createHash('sha256')
+        //     .update(canonicalJsonStringify(FIXED_SCENARIO))
+        //     .digest('hex')
+        const r = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const refs = await collect(r.corpus.listScenarios());
+        const firstRef = assertDefined(refs[0], 'first scenario ref for FIXED_SCENARIO');
+        expect(firstRef.contentHash).toBe(
+          '52140527f2273d4163c2df17c76509106432e74a418e8ae1a179918638940972',
+        );
+      });
+      test('contentHash is stable under shuffled top-level key insertion order (canonical key sort)', async function () {
+        // The reordered scenario differs only in JS-property
+        // insertion order; canonicalJsonStringify sorts keys
+        // lexically so the hash MUST be identical to the
+        // straight-insertion version.
+        // Cloned with deliberately-shuffled key order. The `description`
+        // copy needs the assertDefined narrow because `Scenario.description`
+        // is optional (`string | undefined`); but FIXED_SCENARIO sets it,
+        // so the narrow is safe-by-construction.
+        const reordered: Scenario = {
+          steps: FIXED_SCENARIO.steps,
+          schemaVersion: FIXED_SCENARIO.schemaVersion,
+          description: assertDefined(
+            FIXED_SCENARIO.description,
+            'FIXED_SCENARIO.description is set above',
+          ),
+          scenarioId: FIXED_SCENARIO.scenarioId,
+          ...(FIXED_SCENARIO.tags !== undefined ? { tags: FIXED_SCENARIO.tags } : {}),
+        };
+        const a = await makeAdapter({
+          scenarios: [FIXED_SCENARIO],
+          fixtures: [],
+        });
+        const b = await makeAdapter({
+          scenarios: [reordered],
+          fixtures: [],
+        });
+        const refA = assertDefined(
+          (await collect(a.corpus.listScenarios()))[0],
+          'adapter A produced at least one scenario ref',
+        );
+        const refB = assertDefined(
+          (await collect(b.corpus.listScenarios()))[0],
+          'adapter B (reordered) produced at least one scenario ref',
+        );
+        expect(refA.contentHash).toBe(refB.contentHash);
+      });
+    });
+  });
 }

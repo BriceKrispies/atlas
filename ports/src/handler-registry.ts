@@ -1,9 +1,4 @@
-import type {
-  EventEnvelope,
-  IntentEnvelope,
-  IntentPayload,
-  Logger,
-} from '@atlas/platform-core';
+import type { EventEnvelope, IntentEnvelope, IntentPayload, Logger } from '@atlas/platform-core';
 import type { EventStore } from './event-store.ts';
 import type { CatalogStateStore } from './catalog-state-store.ts';
 
@@ -45,10 +40,7 @@ export interface HandlerResult {
  * runtime.
  */
 export interface IntentHandler<TPayload extends IntentPayload = IntentPayload> {
-  handle(
-    ctx: IntentHandlerContext,
-    envelope: IntentEnvelope<TPayload>,
-  ): Promise<HandlerResult>;
+  handle(ctx: IntentHandlerContext, envelope: IntentEnvelope<TPayload>): Promise<HandlerResult>;
 }
 
 export interface HandlerRegistry {

@@ -57,11 +57,7 @@ export interface CustomDomainStore {
    * domain owned by the same tenant. The unique partial index on
    * `(tenant_id) WHERE is_primary` enforces "at most one primary".
    */
-  add(input: {
-    hostname: string;
-    tenantId: string;
-    isPrimary: boolean;
-  }): Promise<CustomDomain>;
+  add(input: { hostname: string; tenantId: string; isPrimary: boolean }): Promise<CustomDomain>;
 
   /**
    * Mark a domain as `disabled`. The row stays in place for audit; the

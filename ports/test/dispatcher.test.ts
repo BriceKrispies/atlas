@@ -8,112 +8,137 @@ import { describe, it, expect, vi } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import { composeDispatchers } from '../src/dispatcher.ts';
 function envelope(): EventEnvelope {
-    return {
-        eventId: 'evt-1',
-        eventType: 'StructuredCatalog.FamilyPublished',
-        schemaId: 'catalog.family_published.v1',
-        schemaVersion: 1,
-        occurredAt: new Date('2026-04-29T00:00:00Z').toISOString(),
-        tenantId: 'tenant-itest',
-        correlationId: 'corr-1',
-        idempotencyKey: 'idem-1',
-        causationId: null,
-        principalId: 'user-1',
-        userId: 'user-1',
-        cacheInvalidationTags: ['Tenant:tenant-itest'],
-        payload: {},
-    };
+  return {
+    eventId: 'evt-1',
+    eventType: 'StructuredCatalog.FamilyPublished',
+    schemaId: 'catalog.family_published.v1',
+    schemaVersion: 1,
+    occurredAt: new Date('2026-04-29T00:00:00Z').toISOString(),
+    tenantId: 'tenant-itest',
+    correlationId: 'corr-1',
+    idempotencyKey: 'idem-1',
+    causationId: null,
+    principalId: 'user-1',
+    userId: 'user-1',
+    cacheInvalidationTags: ['Tenant:tenant-itest'],
+    payload: {},
+  };
 }
 describe('composeDispatchers', function () {
-    it('runs every dispatcher in order on the happy path', async function () {
-        const calls: string[] = [];
-        const dispatch = composeDispatchers(async function () {
-            calls.push('a');
-        }, async function () {
-            calls.push('b');
-        }, async function () {
-            calls.push('c');
+  it('runs every dispatcher in order on the happy path', async function () {
+    const calls: string[] = [];
+    const dispatch = composeDispatchers(
+      async function () {
+        calls.push('a');
+      },
+      async function () {
+        calls.push('b');
+      },
+      async function () {
+        calls.push('c');
+      },
+    );
+    await dispatch(envelope());
+    expect(calls).toEqual(['a', 'b', 'c']);
+  });
+  it('skips null/undefined entries (lets callers conditionally include)', async function () {
+    const calls: string[] = [];
+    const dispatch = composeDispatchers(
+      async function () {
+        calls.push('a');
+      },
+      null,
+      undefined,
+      async function () {
+        calls.push('b');
+      },
+    );
+    await dispatch(envelope());
+    expect(calls).toEqual(['a', 'b']);
+  });
+  it('runs every dispatcher even when an earlier one throws (Chunk 11 semantics)', async function () {
+    const calls: string[] = [];
+    const dispatch = composeDispatchers(
+      async function () {
+        calls.push('a');
+        throw new Error('a failed');
+      },
+      async function () {
+        calls.push('b');
+      },
+      async function () {
+        calls.push('c');
+      },
+    );
+    await expect(dispatch(envelope())).rejects.toThrow('a failed');
+    // Crucially, b and c still ran — this is the cache-tag-flush
+    // guarantee the audit asked for.
+    expect(calls).toEqual(['a', 'b', 'c']);
+  });
+  it('re-throws only the FIRST error when multiple dispatchers fail', async function () {
+    const dispatch = composeDispatchers(
+      async function () {
+        throw new Error('first');
+      },
+      async function () {
+        throw new Error('second');
+      },
+    );
+    await expect(dispatch(envelope())).rejects.toThrow('first');
+  });
+  it('does not throw if every dispatcher resolves', async function () {
+    const dispatch = composeDispatchers(
+      async function () {},
+      async function () {},
+    );
+    await expect(dispatch(envelope())).resolves.toBeUndefined();
+  });
+  it('awaits each dispatcher serially', async function () {
+    const ticks: string[] = [];
+    const dispatch = composeDispatchers(
+      async function () {
+        await new Promise(function (r) {
+          return setTimeout(r, 0);
         });
-        await dispatch(envelope());
-        expect(calls).toEqual(['a', 'b', 'c']);
+        ticks.push('a-end');
+      },
+      async function () {
+        ticks.push('b-start');
+      },
+    );
+    await dispatch(envelope());
+    expect(ticks).toEqual(['a-end', 'b-start']);
+  });
+  it('passes the same envelope to every dispatcher', async function () {
+    const seen: EventEnvelope[] = [];
+    const dispatch = composeDispatchers(
+      async function (e) {
+        seen.push(e);
+      },
+      async function (e) {
+        seen.push(e);
+      },
+    );
+    const env = envelope();
+    await dispatch(env);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(env);
+    expect(seen[1]).toBe(env);
+  });
+  it('handles a dispatcher that throws `undefined` (sentinel guard)', async function () {
+    // If a dispatcher rejects with literal `undefined`, the composer
+    // must still re-throw it — that's why the sentinel symbol exists.
+    const spy = vi.fn();
+    const undefinedThrower = async function (): Promise<void> {
+      // Re-thrown via Promise.reject so we don't trip ESLint's
+      // "only throw Error" rule while still exercising the sentinel
+      // guard against literal-`undefined` rejections.
+      return Promise.reject(undefined);
+    };
+    const dispatch = composeDispatchers(undefinedThrower, async function () {
+      spy();
     });
-    it('skips null/undefined entries (lets callers conditionally include)', async function () {
-        const calls: string[] = [];
-        const dispatch = composeDispatchers(async function () {
-            calls.push('a');
-        }, null, undefined, async function () {
-            calls.push('b');
-        });
-        await dispatch(envelope());
-        expect(calls).toEqual(['a', 'b']);
-    });
-    it('runs every dispatcher even when an earlier one throws (Chunk 11 semantics)', async function () {
-        const calls: string[] = [];
-        const dispatch = composeDispatchers(async function () {
-            calls.push('a');
-            throw new Error('a failed');
-        }, async function () {
-            calls.push('b');
-        }, async function () {
-            calls.push('c');
-        });
-        await expect(dispatch(envelope())).rejects.toThrow('a failed');
-        // Crucially, b and c still ran — this is the cache-tag-flush
-        // guarantee the audit asked for.
-        expect(calls).toEqual(['a', 'b', 'c']);
-    });
-    it('re-throws only the FIRST error when multiple dispatchers fail', async function () {
-        const dispatch = composeDispatchers(async function () {
-            throw new Error('first');
-        }, async function () {
-            throw new Error('second');
-        });
-        await expect(dispatch(envelope())).rejects.toThrow('first');
-    });
-    it('does not throw if every dispatcher resolves', async function () {
-        const dispatch = composeDispatchers(async function () { }, async function () { });
-        await expect(dispatch(envelope())).resolves.toBeUndefined();
-    });
-    it('awaits each dispatcher serially', async function () {
-        const ticks: string[] = [];
-        const dispatch = composeDispatchers(async function () {
-            await new Promise(function (r) {
-                return setTimeout(r, 0);
-            });
-            ticks.push('a-end');
-        }, async function () {
-            ticks.push('b-start');
-        });
-        await dispatch(envelope());
-        expect(ticks).toEqual(['a-end', 'b-start']);
-    });
-    it('passes the same envelope to every dispatcher', async function () {
-        const seen: EventEnvelope[] = [];
-        const dispatch = composeDispatchers(async function (e) {
-            seen.push(e);
-        }, async function (e) {
-            seen.push(e);
-        });
-        const env = envelope();
-        await dispatch(env);
-        expect(seen).toHaveLength(2);
-        expect(seen[0]).toBe(env);
-        expect(seen[1]).toBe(env);
-    });
-    it('handles a dispatcher that throws `undefined` (sentinel guard)', async function () {
-        // If a dispatcher rejects with literal `undefined`, the composer
-        // must still re-throw it — that's why the sentinel symbol exists.
-        const spy = vi.fn();
-        const undefinedThrower = async function (): Promise<void> {
-            // Re-thrown via Promise.reject so we don't trip ESLint's
-            // "only throw Error" rule while still exercising the sentinel
-            // guard against literal-`undefined` rejections.
-            return Promise.reject(undefined);
-        };
-        const dispatch = composeDispatchers(undefinedThrower, async function () {
-            spy();
-        });
-        await expect(dispatch(envelope())).rejects.toBeUndefined();
-        expect(spy).toHaveBeenCalledTimes(1);
-    });
+    await expect(dispatch(envelope())).rejects.toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

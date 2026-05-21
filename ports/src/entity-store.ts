@@ -73,20 +73,14 @@ export interface EntityStore {
     entityId: string,
   ): Promise<Entity<TAttrs> | null>;
 
-  put<TAttrs = unknown>(
-    input: EntityWriteInput<TAttrs>,
-  ): Promise<Entity<TAttrs>>;
+  put<TAttrs = unknown>(input: EntityWriteInput<TAttrs>): Promise<Entity<TAttrs>>;
 
   /**
    * Soft-delete: marks status as 'deleted' rather than removing the row.
    * Hard delete is reserved for compliance flows (right-to-be-forgotten)
    * and goes through a separate operator path.
    */
-  delete(
-    tenantId: string,
-    entityType: string,
-    entityId: string,
-  ): Promise<void>;
+  delete(tenantId: string, entityType: string, entityId: string): Promise<void>;
 
   list<TAttrs = unknown>(
     tenantId: string,

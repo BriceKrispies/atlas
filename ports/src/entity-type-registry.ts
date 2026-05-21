@@ -19,21 +19,14 @@
  * platform-wide registration).
  */
 
-import type {
-  EntityTypeRow,
-  FieldRow,
-  IndexDeclarationRow,
-} from '@atlas/platform-core';
+import type { EntityTypeRow, FieldRow, IndexDeclarationRow } from '@atlas/platform-core';
 
 export interface EntityTypeRegistry {
   /**
    * Get the registered entity type, resolving tenant override > platform
    * default. Returns null when neither exists.
    */
-  getEntityType(
-    entityType: string,
-    tenantId: string,
-  ): Promise<EntityTypeRow | null>;
+  getEntityType(entityType: string, tenantId: string): Promise<EntityTypeRow | null>;
 
   /** All entity types visible to a tenant (overrides + platform defaults). */
   listEntityTypes(tenantId: string): Promise<EntityTypeRow[]>;
@@ -42,10 +35,7 @@ export interface EntityTypeRegistry {
    * All fields for an entity type, with override resolution applied.
    * Fields whose tenant override exists shadow the platform default.
    */
-  listFields(
-    entityType: string,
-    tenantId: string,
-  ): Promise<FieldRow[]>;
+  listFields(entityType: string, tenantId: string): Promise<FieldRow[]>;
 
   /**
    * All declared indexes for an entity type. The platform-wide subset
@@ -53,10 +43,7 @@ export interface EntityTypeRegistry {
    * at boot; tenant-specific indexes are added once Phase F custom-fields
    * lands.
    */
-  listIndexes(
-    entityType: string,
-    tenantId: string | null,
-  ): Promise<IndexDeclarationRow[]>;
+  listIndexes(entityType: string, tenantId: string | null): Promise<IndexDeclarationRow[]>;
 
   /**
    * Cross-cutting: all platform-default indexes across every entity type.

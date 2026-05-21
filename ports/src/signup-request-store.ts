@@ -51,10 +51,7 @@ export interface SignupRequestStore {
    * Filter by status, ordered by `createdAt` ascending. `limit` defaults
    * to 50.
    */
-  list(filter?: {
-    status?: SignupRequestStatus;
-    limit?: number;
-  }): Promise<SignupRequest[]>;
+  list(filter?: { status?: SignupRequestStatus; limit?: number }): Promise<SignupRequest[]>;
 
   /**
    * Mark a pending row approved with the resolved tenantId. Throws when

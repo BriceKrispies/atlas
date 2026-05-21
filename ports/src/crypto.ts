@@ -29,7 +29,11 @@ export interface Crypto {
    * `iv` is taken from inside `randomBytes(12)` by the caller.
    * Returns `iv || tag || ciphertext` concatenated.
    */
-  aesGcmEncrypt(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array): {
+  aesGcmEncrypt(
+    key: Uint8Array,
+    iv: Uint8Array,
+    plaintext: Uint8Array,
+  ): {
     ciphertext: Uint8Array;
     tag: Uint8Array;
   };

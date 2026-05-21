@@ -31,16 +31,9 @@ export interface RelationWriteInput<TAttrs = unknown> {
 }
 
 export interface RelationStore {
-  add<TAttrs = unknown>(
-    input: RelationWriteInput<TAttrs>,
-  ): Promise<Relation<TAttrs>>;
+  add<TAttrs = unknown>(input: RelationWriteInput<TAttrs>): Promise<Relation<TAttrs>>;
 
-  remove(
-    tenantId: string,
-    edgeType: string,
-    fromId: string,
-    toId: string,
-  ): Promise<void>;
+  remove(tenantId: string, edgeType: string, fromId: string, toId: string): Promise<void>;
 
   /** Forward traversal: edges originating at `fromId`. */
   outgoing<TAttrs = unknown>(
