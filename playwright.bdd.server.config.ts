@@ -36,8 +36,15 @@ import { defineConfig, devices } from '@playwright/test';
 import { defineBddConfig } from 'playwright-bdd';
 
 const testDir = defineBddConfig({
-  features: ['tests/bdd/features/tenancy/**/*.feature'],
-  steps: ['tests/bdd/steps/tenancy/**/*.ts', 'tests/bdd/support/**/*.ts'],
+  features: [
+    'tests/bdd/features/tenancy/**/*.feature',
+    'tests/bdd/features/identity/**/*.feature',
+  ],
+  steps: [
+    'tests/bdd/steps/tenancy/**/*.ts',
+    'tests/bdd/steps/identity/**/*.ts',
+    'tests/bdd/support/**/*.ts',
+  ],
   outputDir: '.features-gen/bdd-server',
 });
 
@@ -51,6 +58,16 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
   workers: 1,
+
+  // Builds the admin SPA into `dist/admin/` BEFORE any `webServer` entry
+  // boots. apps/server's `adminSpaRoutes` (mounted last in
+  // `apps/server/src/main.ts`) serves the built artefacts at the root,
+  // making the admin SPA + API same-origin on `:3000`. Structural
+  // extraction for the §11 retro at
+  // `tickets/kernel-extraction/admin-spa-serve-static.md`. Modeled as
+  // `globalSetup` rather than a `webServer` entry because `vite build`
+  // is a one-shot — there's no port for Playwright to probe.
+  globalSetup: './tests/bdd/support/bdd-server-global-setup.ts',
 
   outputDir: 'tests/bdd/screenshots-server',
 

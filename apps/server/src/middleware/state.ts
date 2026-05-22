@@ -18,16 +18,28 @@ import {
 } from '@atlas/adapter-node';
 import { dslHandlerRegistry } from '@atlas/dsl';
 import { policyEvaluatedEvent, shouldEmitPolicyEvaluated } from '@atlas/ports';
-import { catalogHandlerRegistry, catalogDispatcher, type CatalogQueryDeps } from '@atlas/catalog';
-import { authzHandlerRegistry, composeRegistries } from '@atlas/authz';
+import type { QueryDescriptor, QueryRegistry } from '@atlas/ports';
+import {
+  catalogHandlerRegistry,
+  catalogDispatcher,
+  catalogQueryRegistry,
+  type CatalogQueryDeps,
+} from '@atlas/catalog';
+import {
+  authzHandlerRegistry,
+  authzQueryRegistry,
+  composeRegistries,
+} from '@atlas/authz';
 import {
   contentPagesHandlerRegistry,
   contentPagesDispatcher,
+  contentPagesQueryRegistry,
   type ContentPagesQueryDeps,
 } from '@atlas/content-pages';
 import {
   identityHandlerRegistry,
   identityDispatcher,
+  identityQueryRegistry,
   findUserByIdpSubject,
   getMembershipEntity,
   type IdentityQueryDeps,
@@ -211,6 +223,74 @@ export const REQUEST_DISPATCHER_CHAIN_NAMES: ReadonlyArray<string> = [
   'policy-cache',
   'server-events',
 ];
+
+/**
+ * Read-only composition of multiple `QueryRegistry` instances. The
+ * query-side catch-all (`apps/server/src/routes/queries.ts`) dispatches
+ * against this — every per-module `*QueryRegistry` lookup is a `get`
+ * against the composition, in registration order. First hit wins.
+ *
+ * The composed view exposes the full `QueryRegistry` shape (`register`
+ * proxies to the FIRST registry — present for symmetry with
+ * `composeRegistries`'s shape, but expected to be unused at runtime: the
+ * per-module registries are populated at module-load time, not via the
+ * composed view). `list()` flattens for `atlasctl query list` and
+ * `kernel verify` parity checks per `specs/crosscut/action-driven-routing.md` §5.
+ *
+ * Conflict policy: first hit wins. The per-port `createQueryRegistry`'s
+ * built-in double-register rejection means in-module collisions throw at
+ * load time; across-module collisions on the same `queryId` go to
+ * whichever module registers first in the compose call (the order below
+ * is alphabetical). If two modules ever register the same queryId the
+ * `list()` snapshot surfaces both, which is the signal `kernel verify`
+ * needs to file a drift-finding ticket.
+ */
+export function composeQueryRegistries(
+  ...registries: ReadonlyArray<QueryRegistry>
+): QueryRegistry {
+  return {
+    register(descriptor: QueryDescriptor): void {
+      // Composed view is a read surface; mutations go through the
+      // owning module's registry. Throw to surface a wiring bug at
+      // call site rather than silently no-oping.
+      const first = registries[0];
+      if (!first) {
+        throw new Error('composeQueryRegistries: cannot register on empty composition');
+      }
+      first.register(descriptor);
+    },
+    get(queryId: string): QueryDescriptor | undefined {
+      for (const r of registries) {
+        const d = r.get(queryId);
+        if (d) return d;
+      }
+      return undefined;
+    },
+    list(): ReadonlyArray<QueryDescriptor> {
+      const out: QueryDescriptor[] = [];
+      for (const r of registries) out.push(...r.list());
+      return out;
+    },
+  };
+}
+
+/**
+ * Process-wide composed `QueryRegistry`. Built once at module-load time
+ * because all per-module registries are pure (they read no per-request
+ * state). The catch-all in `routes/queries.ts` reads through this; tests
+ * can build their own composition via `composeQueryRegistries` and pass
+ * it to `queryRoutes()` directly.
+ *
+ * Ordering is alphabetical by module name — deterministic for `list()`
+ * output and the `atlasctl query list` parity check; conflicts would
+ * surface as a `kernel verify` finding.
+ */
+export const controlPlaneQueryRegistry: QueryRegistry = composeQueryRegistries(
+  authzQueryRegistry(),
+  catalogQueryRegistry(),
+  contentPagesQueryRegistry(),
+  identityQueryRegistry(),
+);
 
 /**
  * Test-only override for {@link buildRequestBundle}. Node ESM modules are

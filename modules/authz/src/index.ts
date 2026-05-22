@@ -23,3 +23,7 @@ export {
   composeRegistries,
 } from './handlers/registry.ts';
 export { AuthzError, codes as authzErrorCodes } from './errors.ts';
+
+// Action-driven query registry — substrate-only stub today (authz reads
+// migrate onto the catch-all in a follow-up slice).
+export { authzQueryRegistry } from './queries/registry.ts';

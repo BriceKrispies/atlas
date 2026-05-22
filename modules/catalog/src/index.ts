@@ -80,3 +80,8 @@ export {
   searchCatalog,
   type CatalogQueryDeps,
 } from './query-router.ts';
+
+// Action-driven query registry — substrate-only stub today (catalog reads
+// migrate onto the catch-all in a follow-up slice with architect review
+// for new audit volume per `specs/crosscut/action-driven-routing.md` §4.5).
+export { catalogQueryRegistry } from './queries/registry.ts';

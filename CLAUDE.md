@@ -284,6 +284,7 @@ Architectural laws — violating any is a bug. Full definitions in `specs/archit
 - **I9**: Cache keys MUST include `tenantId` (unless explicitly PUBLIC)
 - **I10**: Cache invalidation is event-driven via tag-based purging, not TTL
 - **I12**: Projections must be rebuildable from event history alone
+- **I20**: Tenant-visible feature changes ship as a tenant intent or platform-data change — never via a restart (operator-experience invariant; gate-enforced from `always-on.md` §6 Phase 7). Restart for a kernel-surface change triggers a [Kernel Touch Retrospective](specs/crosscut/always-on.md#§11-kernel-touch-retrospective).
 
 ## Core Concepts
 

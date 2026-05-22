@@ -36,10 +36,17 @@ export function healthRoutes(state: AppState): Hono {
             ready = false;
             checks['registry'] = 'no actions loaded';
         }
+        // bootId + startedAt are stamped at process start (see
+        // bootstrap.ts AppState docs). They surface here — not on
+        // /healthz — so liveness probes stay terse and readiness
+        // carries the I20 zero-restart witness. Test harnesses compare
+        // bootId across probes to assert "same process answered both."
+        const bootId = state.bootId;
+        const startedAt = state.startedAt.toISOString();
         if (!ready) {
-            return c.json({ status: 'unavailable', checks }, 503);
+            return c.json({ status: 'unavailable', bootId, startedAt, checks }, 503);
         }
-        return c.json({ status: 'ok', checks });
+        return c.json({ status: 'ok', bootId, startedAt, checks });
     });
     return app;
 }

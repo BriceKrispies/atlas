@@ -64,7 +64,7 @@ Achievably hot (work tracked in §6, currently kernel by accident):
 
 | Surface | Today | Target |
 |---|---|---|
-| Action → route binding | Hardcoded `app.route(...)` calls in [`apps/server/src/main.ts`](../../apps/server/src/main.ts) | One catch-all dispatching via `controlPlaneRegistry`; new actions wire themselves |
+| Action → route binding (intent + query sides) | Hardcoded `app.route(...)` for intents and hand-mounted `app.get(...)` / `app.post(...)` for reads in [`apps/server/src/main.ts`](../../apps/server/src/main.ts) and `apps/server/src/routes/*.ts` | Two catch-alls — `POST /api/v1/intents` dispatching via `controlPlaneRegistry` (a composed `HandlerRegistry`), and `GET/POST /api/v1/queries/:queryId` dispatching via a composed `QueryRegistry`; new intents and queries register in their module's `*HandlerRegistry` / `*QueryRegistry` and wire themselves. See [`action-driven-routing.md`](action-driven-routing.md). |
 | Dispatcher chain composition | Mirrored across [`apps/server/src/middleware/state.ts`](../../apps/server/src/middleware/state.ts) and [`apps/projection-worker/src/tenant-loop.ts`](../../apps/projection-worker/src/tenant-loop.ts) | `packages/dispatch-chain` registry — runtime-mutable, audited |
 | Module manifests | Bundled via `moduleManifests()` from [`@atlas/schemas`](../../packages/schemas/) | Loaded from `control_plane.module_manifests`; tenant-enabled subset cached per request |
 | First-party module code (handlers, projections, queries) | TypeScript imported at boot | `register(kernel) / dispose()` lifecycle + dynamic `import()` with cache-busting |
@@ -166,12 +166,13 @@ Builds on [ADR 0008](../decisions/0008-atlas-on-atlas.md) staging. Stages 1–3 
 | Phase | Work | Owner | Gates |
 |---|---|---|---|
 | 0 | Stage 5 — extract [`packages/dispatch-chain`](../../packages/) consolidating `state.ts` ↔ `tenant-loop.ts` duplication | spine-owner + port-adapter-dev | I12 dispatch test rebuilds projections against extracted chain |
-| 1 | Action-driven routing — replace hand-wired `app.route(...)` with one catch-all dispatching via `controlPlaneRegistry` | spine-owner + module-dev | Existing route tests pass; I1 enforced by the single dispatcher |
+| 1 | **Action-driven routing — both intent and query sides.** Replace hand-wired `app.route(...)` for intents AND hand-mounted `app.get(...)` / `app.post(...)` read routes with two catch-alls: `POST /api/v1/intents` (already in place — dispatches via `controlPlaneRegistry` to a composed `HandlerRegistry`) and `GET/POST /api/v1/queries/:queryId` (new — dispatches via a composed `QueryRegistry` to per-module-registered query functions). Both catch-alls run the same per-request bundle build, the same authz step (`submitIntent` for intents; `evaluateRead` for queries), and the same audit pathway. After this phase, adding a new intent OR a new query is a module-only edit (register in the module's `*HandlerRegistry` or `*QueryRegistry`); no kernel touch in `apps/server/src/main.ts` or `routes/*.ts`. The query-side contract (descriptor shape, `queryId` naming, authz-on-read, cache-key descriptor) is normative in [`action-driven-routing.md`](action-driven-routing.md). | spine-owner + module-dev | Existing intent route tests pass; existing read route tests pass against the migrated route (one example per the substrate ticket); I1 enforced by the two catch-alls being the only mounts; I2 enforced by authz running before dispatch on both sides; integration test asserts a synthetic query registered in a module registry is reachable via `GET /api/v1/queries/<id>` without an `apps/server` edit |
 | 2 | Dispatcher-chain registry — runtime-mutable `register/unregister` with operator authz + audit | spine-owner | I12 holds across `register/unregister`; SDET adversarial pass |
 | 3 | Module lifecycle (§4.1) + dynamic loader — `HotReloadable<T>` contract; first-party modules opt in one at a time; identity last (largest blast radius) | module-dev | Reload of `catalog` works under load without dropping a request |
 | 4 | Multi-replica reload coordinator | spine-owner + compute-owner | Two-replica BDD scenario: reload completes; both replicas serve N+1 |
 | 5 | Frontend surface bundle reload — version-suffix or shadow registry | frontend-dev | Admin shell hot-reloads a surface without full reload |
 | 6 | AppState → typed mutable registry with port-swap protocol (§4.4) — last because it touches the most | spine-owner + port-adapter-dev | Mailer / PolicyEngine / WasmHost swap covered by contract tests in [`packages/contract-tests`](../../packages/contract-tests/) |
+| 7 | **Kernel-extraction backlog drained — [I20](../architecture.md#i20-operator-feature-delivery-is-an-intent) becomes merge-blocking.** Phases 0–6 have shipped; the open `tickets/kernel-extraction/` extraction-plan tickets accumulated during phases 0–6 have all merged or been dropped with a written justification. From this point forward, a kernel touch without an accompanying §11 retrospective and a linked extraction-plan ticket fails the architect gate. | spine-owner + vision-keeper | `tickets/kernel-extraction/` has no `scoped`/`in-flight` extraction-plan tickets older than 90 days; vision-keeper attests in its monthly audit that the kernel-touch rate is trending toward zero; architect gate enforces I20 as merge-blocking on every PR |
 
 Each phase lands as its own slice under the [slice workflow](../../CLAUDE.md#slice-workflow), referenced from `tickets/atlas-on-atlas/`.
 
@@ -227,3 +228,50 @@ The always-on contract is checked by:
 - **`atlasctl kernel verify`** — operator-runnable invariant scan against the live registry. Flags routes not in the action registry, handlers not registered, dispatchers not in the chain, surfaces missing from the surface registry.
 
 Drift findings here become `type: drift-finding` tickets per [`tickets/CLAUDE.md`](../../tickets/CLAUDE.md).
+
+---
+
+## §11 Kernel Touch Retrospective
+
+`always-on.md` §2 names what is structurally kernel; [I20](../architecture.md#i20-operator-feature-delivery-is-an-intent) names the operator-visible contract that follows from it: *Atlas does not restart to ship a feature.* §11 is the self-improvement loop that closes between the two — every time the kernel is touched, a structured retrospective asks "what category of thing did we just decide was kernel, and how do we make the next change of that category data?"
+
+The retrospective is the mechanism that prevents kernel creep. Without it, every individual restart looks defensible in isolation; with it, each restart is recorded, categorised, and paired with an extraction plan.
+
+### §11.1 When the retrospective fires
+
+A retrospective MUST be filed when **any** of the following lands on `main`:
+
+1. A change to any file path in [`always-on.md` §2](#§2-what-is-restart-required-the-kernel)'s kernel-surface table (ingress pipeline order, event-store append path, projection-rebuild loop, `ports/` definitions, framework binding, listener bootstrap) — **except** type-only changes that touch no behavior and no order.
+2. A new HTTP route mounted in `apps/server/src/main.ts` outside the catch-all dispatcher (once [§6 Phase 1](#§6-staged-path) lands, the catch-all *is* the only legal mount; new mounts outside it are explicitly retrospective-triggering).
+3. A new field added to the event envelope, the request envelope, or any port surface in `ports/` — these propagate through every adapter and consumer at build time, not at request time.
+4. An adapter selection whose decision lives in a `switch`/`if` chain rather than a registry (until [§6 Phase 6](#§6-staged-path) ships, adapter selection is kernel by accident; each addition is a retro trigger).
+5. Any change the operator notices as "I need to restart Atlas for this to take effect."
+
+A retrospective is **not** required for:
+
+- Type-only edits, comment/doc edits, dependency upgrades, formatting, test-only edits inside the kernel surface.
+- Restart for Node / OS / container / TLS-cert / framework-binding upgrades (per [§8](#§8-out-of-scope)).
+- Bug fixes that restore previously-shipped behavior without introducing a new category (these still restart, but the category is already in the table — log the touch in the existing extraction ticket if one is open).
+
+### §11.2 What the retrospective contains
+
+A kernel-touch retrospective is a markdown file at `tickets/kernel-extraction/<slug>.md` with the [template frontmatter](../../tickets/kernel-extraction/_template.md) and five required body fields:
+
+1. **What category of change was this?** Name the category in a sentence the next agent can grep for. Bad: "added a field." Good: "added a new field to the event envelope that every consumer must understand at build time." The category is the thing the extraction plan will make hot.
+2. **What forced it into the kernel?** Cite the structural invariant or coupling that made this impossible to express as data today. Reference I1–I18 by id and `always-on.md` §2 by row.
+3. **What's the missing seam?** Name the port, registry, manifest field, or instruction-set entry that would have made this category hot. Use the concrete file path even if the file does not exist yet (`ports/src/event-envelope-registry.ts`, `packages/kernel/src/route-registry.ts`, etc.). Vague ("we need a registry somewhere") fails the retrospective.
+4. **What's the extraction plan?** Link to a `scoped` follow-up ticket whose `acceptance:` bar reads literally: *"a change of category X lands as data, not as a kernel diff."* The follow-up ticket can be in any set; the retrospective just needs its path. A retrospective without a linked extraction ticket fails the architect gate.
+5. **Confidence the category is now closed.** Self-honest assessment: did this retro close the category (the next change of this shape will be hot), narrow it (the next change is still kernel but the *next-next* is hot), or just record it (no extraction plan converges; recording is the whole point this round)? "Narrow" and "record" are both valid — silently claiming "closed" without an extraction plan that actually closes it is not.
+
+### §11.3 Process
+
+- **Author**: the agent (or user) shipping the kernel touch files the retrospective in the same PR as the kernel change. Not "in a follow-up PR."
+- **Architect gate**: the architect agent's invariant review verifies (a) the retrospective exists for any §11.1 trigger, (b) the five fields are filled, (c) the extraction-plan ticket exists at the linked path with `status: scoped` or stronger.
+- **Vision-keeper audit**: monthly drift audit treats `tickets/kernel-extraction/` as a backlog lane. Categories recurring three times *without* an extraction-plan ticket merging get escalated as drift in the vision-keeper report.
+- **Effective gate**: from publication of §11, the retrospective is required for every kernel touch (architect-gated). [I20](../architecture.md#i20-operator-feature-delivery-is-an-intent) becomes a merge-blocking invariant once [§6 Phase 7](#§6-staged-path) ships — until then, an unavoidable kernel touch with a complete retrospective passes; an avoidable one (where the extraction would have been small) does not.
+
+### §11.4 What the loop produces
+
+Over time the retrospective lane should produce a steadily shrinking list of categories the kernel still owns. Each merged extraction ticket removes one category from the list. The list is visible as the set of open `tickets/kernel-extraction/*.md` plus the cross-references from each retro into its extraction ticket — no separate index needed.
+
+The directional claim, audited by `vision-keeper`: *the rate at which new categories enter the kernel should trend toward zero, and the rate at which existing categories leave the kernel should be visible in the merged tickets.* If both rates are zero for an extended window, that is either victory (the kernel is genuinely irreducible at the current scope) or stagnation (no one is doing the extraction work) — `vision-keeper` is responsible for distinguishing the two and flagging the latter.

@@ -36,6 +36,43 @@ export interface ServerStackContext {
   tenantId: string | null;
   /** Set in the Given that boots the postgres client. */
   hasPostgres: boolean;
+  /**
+   * apps/server bootId captured in the Background — re-asserted at the
+   * end of the scenario for the I20 zero-restart probe. Optional so
+   * non-I20 scenarios leave it unset.
+   */
+  bootId?: string;
+  /**
+   * Identity / tenant-admin-invites-user scenario state. Captured under
+   * its own field rather than reusing the signup fields so a single
+   * shared `ServerStackContext` interface can carry both shapes.
+   */
+  invite?: InviteScenarioContext;
+  /** Captured response from the I2 negative scenario's invite-issue call. */
+  lastDenyResponse?: { status: number; body: string };
+  /** Outsider email used by the I2 negative scenario. */
+  outsiderEmail?: string;
+}
+
+export interface InviteScenarioContext {
+  /** Tenant id used by this scenario (always `acme` today). */
+  tenantId: string;
+  /** Seeded tenant-admin user id (`acme-admin`). */
+  adminUserId: string;
+  /** Seeded tenant-admin email. */
+  adminEmail: string;
+  /** Seeded tenant-admin password (BDD fixture, not a secret). */
+  adminPassword: string;
+  /** Per-run-unique invitee email — `bdd-invitee-${runId}@example.com`. */
+  inviteeEmail: string;
+  /** Role granted on accept (`Viewer`). */
+  inviteeRole: string;
+  /** Password the invitee will set. */
+  inviteePassword: string;
+  /** Set after `Identity.Invite.Issue` returns — the plaintext token. */
+  invitePlaintextToken: string | null;
+  /** Set after `Identity.Invite.Accept` runs — the new user's id. */
+  inviteeUserId: string | null;
 }
 
 export interface BddWorld {

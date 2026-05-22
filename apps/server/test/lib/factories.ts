@@ -292,6 +292,8 @@ export function buildFakeAppState(opts: FakeAppStateOptions = {}): FakeAppState 
     };
     const state: AppState = {
         config,
+        bootId: globalThis.crypto.randomUUID(),
+        startedAt: new Date(),
         logPipeline,
         levelController,
         inspectionSink: notWired('inspectionSink'),

@@ -87,6 +87,29 @@ import { ServerEventBroadcast } from './events/broadcast.ts';
 export interface AppState {
   readonly config: AppConfig;
   /**
+   * Per-process boot identity. A fresh UUID is generated once at
+   * `bootstrap` time and surfaced through `GET /readyz` so test
+   * harnesses (and operators) can mechanically assert I20 zero-restart
+   * — i.e. "the process I'm probing now is the same one that handled
+   * the prior step." Two `AppState` instances in the same Node process
+   * (e.g. unit tests) carry different `bootId`s; a single bootstrap
+   * keeps the same value for the process lifetime.
+   *
+   * Future kernel-identity introspection (Stage 9 operator surface —
+   * `tickets/atlas-on-atlas/stage-9-operator-surface.md`) MUST read
+   * this field rather than re-deriving boot identity; the field is
+   * source-of-truth.
+   */
+  readonly bootId: string;
+  /**
+   * Wall-clock timestamp of bootstrap completion. Paired with `bootId`
+   * on `GET /readyz` for the same I20 zero-restart probe — the harness
+   * can show "running since X" alongside the boot identity. ISO-8601
+   * on the wire; `Date` in-process so callers can compute uptime
+   * without a re-parse.
+   */
+  readonly startedAt: Date;
+  /**
    * Process-wide logging pipeline. Sinks: ConsoleJsonSink (stdout) +
    * MemoryRingBufferSink (in-memory ring for atlasctl inspection — see
    * specs/crosscut/logging.md and PR 3 for atlasctl logging commands).
@@ -231,6 +254,12 @@ export interface BootstrapDeps {
 }
 
 export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise<AppState> {
+  // Per-process boot identity. Stamped before any other side effect so
+  // crash-during-bootstrap logs can still be attributed to a boot. See
+  // AppState.bootId docs above for the I20 contract this surfaces.
+  const bootId = globalThis.crypto.randomUUID();
+  const startedAt = new Date();
+
   const controlPlaneSql = postgres(config.controlPlaneDbUrl, { max: 5 });
 
   // Probe the connection up front — fail loud at boot rather than mid-request.
@@ -455,6 +484,8 @@ export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise
 
   const state: AppState = {
     config,
+    bootId,
+    startedAt,
     logPipeline: deps.logPipeline,
     levelController: deps.levelController,
     inspectionSink: deps.inspectionSink,
@@ -523,6 +554,19 @@ export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise
       },
     });
   }
+
+  // Boot-ready marker — carries the per-process boot identity so log
+  // scrapes can correlate "the process I'm probing now" with the boot
+  // line. `Server.Boot.Complete` (emitted in main.ts) is the existing
+  // marker, but it has no payload; this line is the structured carrier
+  // for bootId + startedAt that the /readyz response also reveals.
+  deps.bootCtx.logger.info('server boot ready', {
+    event: 'Server.Boot.Ready',
+    properties: {
+      bootId,
+      startedAt: startedAt.toISOString(),
+    },
+  });
 
   return state;
 }

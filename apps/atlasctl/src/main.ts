@@ -14,6 +14,7 @@ import { resolveCredential, AuthError } from './auth.ts';
 import { newCorrelationId } from './correlation.ts';
 import { runVersion } from './commands/version.ts';
 import { runHealth } from './commands/health.ts';
+import { runDoctor } from './commands/doctor.ts';
 import { runValidate } from './commands/intents/validate.ts';
 import { runSubmit } from './commands/intents/submit.ts';
 import { runPush } from './commands/push.ts';
@@ -103,6 +104,18 @@ async function main(argv: string[]): Promise<number> {
         try {
             const client = buildClient(opts());
             exitCode = await runHealth(client, flags(opts()));
+        }
+        catch (e) {
+            printSetupError(e, flags(opts()).json);
+            exitCode = 2;
+        }
+    });
+    program
+        .command('doctor')
+        .description('diagnose + auto-recover local operator environment (Phase A: podman-machine check on Windows)')
+        .action(async function () {
+        try {
+            exitCode = await runDoctor(flags(opts()), { correlationId: newCorrelationId() });
         }
         catch (e) {
             printSetupError(e, flags(opts()).json);

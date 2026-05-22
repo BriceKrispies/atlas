@@ -245,6 +245,18 @@ Phase A wires the mTLS credential type (config block accepting `cert`, `key`, op
 
 Aggregate control-plane API health (a separate process from ingress) is part of Phase B.
 
+### Doctor — Phase A
+
+`atlasctl doctor` diagnoses the operator's **local development environment** (NOT the running Atlas deployment — that's `health`). Runs a registry of checks; each check can `ok` / `fixed` / `failed` / `skipped`. Auto-recovery is attempted by default; checks that cannot self-heal report `failed` with a diagnostic the operator can act on.
+
+| Check | What it verifies | Recovery behavior |
+|-------|------------------|-------------------|
+| `podman-machine` | (Windows only) podman binary on PATH; default podman machine running; named pipe (`//./pipe/podman-machine-default`) reachable for `make db-up` | If machine stopped: `podman machine start`. If pipe unreachable: `podman machine stop && podman machine start`. Returns `skipped` on non-Windows hosts. |
+
+Exit code 0 if every check is `ok` or `fixed`; non-zero if any unfixed `failed` remains. Output respects `--json` / `--quiet` per [Structured Output](#structured-output). Adding a new check is a single registration in `apps/atlasctl/src/commands/doctor.ts`'s registry — no main.ts edit.
+
+The doctor framework is operator-only and read/repair on the local host; it does NOT touch the running Atlas deployment, does NOT issue intents, and does NOT require credentials.
+
 ### Discovery — Phase B
 
 | Operation | Description |

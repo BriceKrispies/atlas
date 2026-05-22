@@ -44,3 +44,16 @@ export {
   type CreatePageInput,
   type UpdatePageInput,
 } from './content-pages.ts';
+
+export {
+  listMemberships,
+  issueInvite,
+  acceptInvite,
+  setUserPassword,
+  passwordLogin,
+  type MembershipSummary,
+  type IssueInviteInput,
+  type AcceptInviteInput,
+  type SetPasswordInput,
+  type PasswordLoginInput,
+} from './identity.ts';

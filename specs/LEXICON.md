@@ -143,6 +143,76 @@ Every entry includes:
 - **Rules**:
   - All commands must map to exactly one ActionId.
 
+### HandlerRegistry
+- **Kind**: Noun (port)
+- **Meaning**: The intent-side dispatch registry. Maps `ActionId` → `IntentHandler`. Per-module handler registries (`identityHandlerRegistry`, `catalogHandlerRegistry`, …) compose into `controlPlaneRegistry` in `apps/server/src/middleware/state.ts`. The intent-side catch-all (`POST /api/v1/intents`) looks up handlers by `actionId` via `controlPlaneRegistry.get(actionId)`.
+- **Shape**:
+  - `get(actionId: string): IntentHandler | undefined`
+  - `list(): ReadonlyArray<{ actionId, handler }>` (optional)
+- **Touches**: INV-INGRESS-001, PIPE-CMD-001
+- **Rules**:
+  - Registering a new handler is a module-only edit; no `apps/server` route mount required.
+  - The registry is the source of truth `atlasctl kernel verify` reads against for I17 parity. See [`crosscut/action-driven-routing.md`](crosscut/action-driven-routing.md) §3.
+
+### QueryRegistry
+- **Kind**: Noun (port)
+- **Meaning**: The query-side dispatch registry. Maps `queryId` → `QueryDescriptor`. Per-module query registries compose into a single registry the query-side catch-all (`GET/POST /api/v1/queries/:queryId`) dispatches through. Symmetric with `HandlerRegistry`; the read-side equivalent.
+- **Shape**:
+  - `register(descriptor: QueryDescriptor): void`
+  - `get(queryId: string): QueryDescriptor | undefined`
+  - `list(): ReadonlyArray<QueryDescriptor>`
+- **Touches**: INV-INGRESS-001, PIPE-QRY-001
+- **Rules**:
+  - Registering a new query is a module-only edit; no `apps/server` route mount required.
+  - `register()` MUST validate descriptor shape — refuse a `cacheKey` that does not include `tenantId` literally; refuse a `queryId` that does not match `<Domain>.<Resource>.<Verb>`.
+  - See [`crosscut/action-driven-routing.md`](crosscut/action-driven-routing.md) §4 for the full contract.
+
+### QueryDescriptor
+- **Kind**: Noun
+- **Meaning**: The per-query metadata held by `QueryRegistry`. Carries the `queryId`, the policy `actionId`, the resource shape, an optional `cacheKey` builder, an optional `nullIsOk` flag, and the `fn` (the `QueryFn` itself). The catch-all reads the descriptor to drive authz, cache, and dispatch declaratively — no hand-coded policy in the route layer.
+- **Shape**:
+  - `queryId` (`<Domain>.<Resource>.<Verb>`)
+  - `actionId` (Cedar action id; usually equals queryId)
+  - `resource: { type, idFrom(params) }`
+  - `cacheKey?(ctx, params): string | null`
+  - `nullIsOk?: boolean`
+  - `fn: QueryFn`
+- **Touches**: PIPE-QRY-001, INV-CACHE-001 (I9)
+- **Rules**:
+  - When non-null, `cacheKey()` MUST contain `ctx.tenantId` literally in its returned string — branching `cacheKey` implementations are rejected at architect review.
+  - `idFrom` returns `''` for list queries (the policy engine treats empty resource id as "the collection").
+  - See [`crosscut/action-driven-routing.md`](crosscut/action-driven-routing.md) §4.1.
+
+### QueryContext
+- **Kind**: Noun
+- **Meaning**: The per-request context handed to every `QueryFn`. The union of what individual module `*QueryDeps` shapes carried before Phase 1: `tenantId`, `principalId`, `correlationId`, optional `logger`, and the read-side adapter port surfaces (`entities`, `relations`, `projections`, `search`). Built once per request in `apps/server/src/middleware/state.ts`'s `buildRequestBundle`; the same instance is passed to every query the request dispatches.
+- **Shape**:
+  - `tenantId`, `principalId`, `correlationId`
+  - `logger?`
+  - `entities?`, `relations?`, `projections?`, `search?`
+- **Touches**: PIPE-QRY-001, INV-INGRESS-001
+- **Rules**:
+  - Replaces every module's `*QueryDeps` interface during the Phase 1 migration (migration contract — see [`crosscut/action-driven-routing.md`](crosscut/action-driven-routing.md) §4.2). Per-module `*QueryDeps` types do not survive the migration.
+  - Optional adapter port fields let modules read only what they need; structural typing handles the narrowing.
+
+### QueryFn
+- **Kind**: Verb (type)
+- **Meaning**: The uniform signature every query function registered on `QueryRegistry` MUST present: `(ctx: QueryContext, params: TParams) => Promise<TResult | null>`. Returning `null` is the canonical "not found" — mapped to 404 by the catch-all unless the descriptor declares `nullIsOk: true`.
+- **Signature**: `(QueryContext, params) -> Promise<T | null>`
+- **Touches**: PIPE-QRY-001
+- **Rules**:
+  - Owns its `params` validation; the catch-all parses only the JSON / querystring shape, not the per-query schema.
+  - MUST be JSON-serialisable in its return.
+
+### queryId
+- **Kind**: Noun (grammar)
+- **Meaning**: A stable string identifying a registered query. Shape `<Domain>.<Resource>.<Verb>` (e.g., `Identity.Memberships.List`, `Catalog.Family.Get`). Mirrors `ActionId`'s shape so one vocabulary covers read and write. The `queryId` is the path parameter to the query-side catch-all (`GET /api/v1/queries/:queryId`).
+- **Shape**: `<Domain>.<Resource>.<Verb>` — PascalCase segments, dot-separated.
+- **Touches**: INV-INGRESS-001, PIPE-QRY-001
+- **Rules**:
+  - URL-shaped ids (`identity/memberships`), `query.<…>` prefixes, and other variants are rejected — the URL path already names "this is a query."
+  - `QueryRegistry.register()` MUST refuse a `queryId` that does not match the grammar.
+
 ### Resource
 - **Kind**: Noun
 - **Meaning**: Target of authorization (Page, WidgetInstance, etc.) with ABAC attributes.

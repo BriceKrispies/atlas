@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { After, AfterStep } from './fixtures.ts';
 import { snapshot, type AtlasSnapshot } from './idb-probe.ts';
-import { cleanupServerStackRun, openControlPlaneSql } from './server-stack.ts';
+import { cleanupInviteRun, cleanupServerStackRun, openControlPlaneSql } from './server-stack.ts';
 const screenshotMode = process.env['BDD_SCREENSHOT_MODE'] ?? 'on-failure';
 const idbSnapshotMode = process.env['BDD_IDB_SNAPSHOT'] ?? 'on-failure';
 // playwright-bdd hook callbacks take a single fixtures arg (see
@@ -82,10 +82,19 @@ After('@server', async function ({ world }) {
     if (!sql)
         return;
     try {
-        await cleanupServerStackRun(sql, {
-            email: ctx.email,
-            tenantSlug: ctx.tenantSlug,
-        });
+        if (ctx.email && ctx.tenantSlug) {
+            await cleanupServerStackRun(sql, {
+                email: ctx.email,
+                tenantSlug: ctx.tenantSlug,
+            });
+        }
+        if (ctx.invite) {
+            await cleanupInviteRun(sql, {
+                tenantId: ctx.invite.tenantId,
+                adminEmail: ctx.invite.adminEmail,
+                inviteeEmail: ctx.invite.inviteeEmail,
+            });
+        }
     }
     finally {
         await sql.end({ timeout: 5 });

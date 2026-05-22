@@ -388,6 +388,30 @@ The following invariants are **non-negotiable** and must be enforced by any impl
 
 ---
 
+<!-- I19 reserved for "Kernel State Machine-Readability" per tickets/atlas-on-atlas/stage-4-kernel-observability-invariant.md (status: scoped). Do not reuse the id. -->
+
+### I20: Operator Feature Delivery Is an Intent
+
+**Invariant**: Any change that becomes visible to a tenant end-user — new behavior, new surface, new policy, new schema, new function, new workflow, new content — MUST reach them via a tenant intent or platform-data change. A change that requires kernel restart to become user-visible is a category violation and triggers the [Kernel Touch Retrospective](crosscut/always-on.md#§11-kernel-touch-retrospective).
+
+**Semantics**:
+
+- Operator perspective, not system perspective. [I1–I18 + `always-on.md` §2](crosscut/always-on.md#§2-what-is-restart-required-the-kernel) name what is structurally kernel; I20 names the operator's contract: *"I never restart Atlas to ship a feature."*
+- "Tenant intent" = anything the canonical intent pipeline can carry (a write through `submitIntent`, a policy bundle bump, a schema mutation, a function upload, a DSL declaration, a workflow trigger). See [`crosscut/runtime-instruction-set.md`](crosscut/runtime-instruction-set.md).
+- "Platform-data change" = anything in the data plane catalogued at [`always-on.md` §3](crosscut/always-on.md#§3-what-is-data-hot-changeable-today) — Cedar policies, schemas, functions, declarations, log levels, custom-domain mapping, idempotency-key store, cache contents.
+- Restart for a Node / OS / container upgrade is **not** a violation (per [`always-on.md` §8](crosscut/always-on.md#§8-out-of-scope)). Restart to ship a tenant-visible feature **is**.
+- The boundary: if a tenant or end-user would notice the change before vs. after the restart, the restart is the violation. If only an operator would notice (e.g., a Node version, a TLS cert), it is not.
+
+**Purpose**: ADR 0008 ([`decisions/0008-atlas-on-atlas.md`](decisions/0008-atlas-on-atlas.md)) committed to the recursive-kernel principle; `always-on.md` named the kernel surface and the staged path; I20 names the operator-visible commitment that those two together imply. Without I20, the kernel boundary can creep: each individual restart looks defensible in isolation, but the cumulative effect is a system whose feature delivery requires downtime. I20 makes every restart-to-ship-a-feature a category-level event with a required follow-up.
+
+**Violation**: A feature change ships that requires `apps/server` to be restarted (or any other process in the kernel surface — see [`always-on.md` §2](crosscut/always-on.md#§2-what-is-restart-required-the-kernel)) to become user-visible, and no `tickets/kernel-extraction/<slug>.md` retrospective is filed naming the category, the missing seam, and the extraction plan.
+
+**Effective**: I20 is **normative-from-publication, gate-enforced from [`always-on.md` §6 Phase 7](crosscut/always-on.md#§6-staged-path)** (kernel-migration merge). Until Phase 7 lands, the retrospective is **required** for every kernel touch (architect-gated), but the invariant itself does not block merge — several stages of unavoidable kernel work must ship first. From Phase 7 onward, the invariant blocks merge for any change that violates it without an accompanying extraction-plan ticket.
+
+**Source**: [`decisions/0008-atlas-on-atlas.md`](decisions/0008-atlas-on-atlas.md), [`crosscut/always-on.md` §11](crosscut/always-on.md#§11-kernel-touch-retrospective)
+
+---
+
 ## Architecture Planes
 
 ### Control Plane

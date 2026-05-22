@@ -225,6 +225,12 @@ export {
   findSessionsByAccessTokenLookup,
 } from './queries.ts';
 
+// Action-driven query registry — per-module dispatch surface consumed by
+// the server's query-side catch-all (`GET/POST /api/v1/queries/:queryId`).
+// See `specs/crosscut/action-driven-routing.md` §4 + the file header for
+// the contract.
+export { identityQueryRegistry } from './queries/registry.ts';
+
 // Phase A7 — Risk engine.
 export {
   defaultRiskScorer,

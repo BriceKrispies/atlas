@@ -74,6 +74,17 @@ export type {
   HandlerResult,
 } from './handler-registry.ts';
 export type {
+  QueryRegistry,
+  QueryDescriptor,
+  QueryContext,
+  QueryFn,
+} from './query-registry.ts';
+export {
+  createQueryRegistry,
+  validateDescriptor,
+  QUERY_ID_PATTERN,
+} from './query-registry.ts';
+export type {
   PolicyEngine,
   PolicyPrincipal,
   PolicyResource,

@@ -32,6 +32,8 @@ import { bootstrap, shutdown, type AppState } from './bootstrap.ts';
 import { healthRoutes } from './routes/health.ts';
 import { metricsRoutes } from './routes/metrics.ts';
 import { intentRoutes } from './routes/intents.ts';
+import { queryRoutes } from './routes/queries.ts';
+import { controlPlaneQueryRegistry } from './middleware/state.ts';
 import { catalogRoutes } from './routes/catalog.ts';
 import { authzRoutes } from './routes/authz.ts';
 import { contentPagesRoutes } from './routes/content-pages.ts';
@@ -51,6 +53,7 @@ import { tenantHomeRoutes } from './routes/tenant-home.ts';
 import { adminSignupRoutes } from './routes/admin-signups.ts';
 import { adminLoggingRoutes } from './routes/admin-logging.ts';
 import { tenantDocsRoutes, operatorDocsRoutes } from './routes/docs.ts';
+import { adminSpaRoutes } from './routes/admin-spa.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 import { executionContextMiddleware } from './middleware/execution-context.ts';
 function buildApp(state: AppState): Hono<{
@@ -100,6 +103,16 @@ function buildApp(state: AppState): Hono<{
   }>();
   authed.use('*', principalMiddleware(state));
   authed.route('/', intentRoutes(state));
+  // Query-side catch-all (`GET/POST /api/v1/queries/:queryId`). Adding a
+  // new read endpoint after this lands is a module-only edit — register
+  // a descriptor in the module's `*QueryRegistry` and it's reachable. See
+  // `specs/crosscut/action-driven-routing.md` §4.
+  authed.route(
+    '/',
+    queryRoutes(state, controlPlaneQueryRegistry, function (bundle) {
+      return bundle.ingress.cache;
+    }),
+  );
   authed.route('/', catalogRoutes(state));
   authed.route('/', authzRoutes(state));
   authed.route('/', contentPagesRoutes(state));
@@ -121,6 +134,13 @@ function buildApp(state: AppState): Hono<{
     authed.route('/', debugRoutes(state));
   }
   app.route('/', authed);
+  // Admin SPA static-serve — mounted LAST so every /api/*, /oauth/*,
+  // /saml/*, /scim/*, /healthz, /readyz, /metrics, /signup, /docs
+  // route registered above takes precedence. Hono dispatches in mount
+  // order; the SPA catch-all only handles GETs that nothing else
+  // matched. Structural extraction for the §11 retro at
+  // `tickets/kernel-extraction/admin-spa-serve-static.md`.
+  app.route('/', adminSpaRoutes(state));
   return app;
 }
 async function main(): Promise<void> {

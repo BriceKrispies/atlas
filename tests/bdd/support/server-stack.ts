@@ -461,6 +461,133 @@ export async function readSignupCacheInvalidationTags(
 }
 
 /**
+ * Generic version of the cache-tag reader for any event the tenant
+ * appended. Per sdet verdict #7 — refactor of the signup-specific
+ * helper. Returns the latest event matching the (tenant, type[, key])
+ * triple.
+ */
+export async function readEventCacheInvalidationTags(
+  sql: postgres.Sql,
+  tenantId: string,
+  eventType: string,
+  idempotencyKey: string | null,
+): Promise<string[]> {
+  if (idempotencyKey !== null) {
+    const rows = await sql<Array<{ cache_invalidation_tags: string[] | null }>>`
+      SELECT cache_invalidation_tags
+      FROM events
+      WHERE tenant_id = ${tenantId}
+        AND event_type = ${eventType}
+        AND idempotency_key = ${idempotencyKey}
+      ORDER BY occurred_at DESC
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) {
+      throw new Error(
+        `event ${eventType} (key=${idempotencyKey}) not found for tenant '${tenantId}'`,
+      );
+    }
+    return row.cache_invalidation_tags ?? [];
+  }
+  const rows = await sql<Array<{ cache_invalidation_tags: string[] | null }>>`
+    SELECT cache_invalidation_tags
+    FROM events
+    WHERE tenant_id = ${tenantId}
+      AND event_type = ${eventType}
+    ORDER BY occurred_at DESC
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) {
+    throw new Error(
+      `event ${eventType} not found for tenant '${tenantId}'`,
+    );
+  }
+  return row.cache_invalidation_tags ?? [];
+}
+
+/**
+ * Count events of a given type for a tenant. Used by the I2 negative
+ * step — assert 0 events were emitted for a deny path.
+ */
+export async function countEventsOfType(
+  sql: postgres.Sql,
+  tenantId: string,
+  eventType: string,
+): Promise<number> {
+  const rows = await sql<Array<{ count: string }>>`
+    SELECT COUNT(*)::text AS count
+    FROM events
+    WHERE tenant_id = ${tenantId}
+      AND event_type = ${eventType}
+  `;
+  const row = rows[0];
+  return row ? Number(row.count) : 0;
+}
+
+/**
+ * Read the apps/server bootId from `/readyz`. The endpoint surfaces
+ * `bootId` (uuid stamped in bootstrap.ts) + `startedAt` so harnesses
+ * can mechanically assert I20 zero-restart.
+ */
+export async function readBootId(
+  request: APIRequestContext,
+): Promise<string> {
+  const res = await request.get('/readyz');
+  const bodyText = await res.text();
+  const status = res.status();
+  if (status !== 200 && status !== 503) {
+    throw new Error(`readBootId: /readyz returned ${status}: ${bodyText}`);
+  }
+  const body: unknown = JSON.parse(bodyText);
+  if (!isRecord(body)) {
+    throw new Error(`readBootId: /readyz returned non-object: ${bodyText}`);
+  }
+  const bootId = body['bootId'];
+  if (typeof bootId !== 'string' || bootId.length === 0) {
+    throw new Error(`readBootId: bootId missing in /readyz body: ${bodyText}`);
+  }
+  return bootId;
+}
+
+/**
+ * Cleanup helper for the identity / tenant-admin-invites-user run.
+ * Deletes the seeded tenant-admin + invitee rows so reruns don't trip
+ * unique indexes. Tenant `acme` is left in place across runs — it's a
+ * stable BDD fixture.
+ */
+export async function cleanupInviteRun(
+  sql: postgres.Sql,
+  args: { tenantId: string; adminEmail: string; inviteeEmail: string },
+): Promise<void> {
+  const adminEmail = args.adminEmail.toLowerCase();
+  const inviteeEmail = args.inviteeEmail.toLowerCase();
+  await sql`DELETE FROM control_plane.email_log WHERE to_address IN (${adminEmail}, ${inviteeEmail})`;
+  // Per-tenant rows live in `entities` (db-per-tenant fallback uses
+  // shared control plane in dev). Scope deletes by tenant_id so other
+  // tenants' rows stay intact.
+  try {
+    await sql`DELETE FROM events WHERE tenant_id = ${args.tenantId} AND event_type IN (
+      'Identity.InviteIssued',
+      'Identity.InviteAccepted',
+      'Identity.UserCreated',
+      'Identity.MembershipCreated',
+      'Identity.UserPasswordSet',
+      'Identity.PasswordLoginSucceeded',
+      'Identity.AuthSessionIssued'
+    )`;
+  } catch {
+    // best-effort
+  }
+  try {
+    await sql`DELETE FROM entities WHERE tenant_id = ${args.tenantId} AND entity_type IN ('User', 'Membership', 'InviteToken', 'AuthSession')`;
+  } catch {
+    // best-effort
+  }
+}
+
+/**
  * Idempotent per-run cleanup. Mirrors the DELETE block in
  * `tests/integration/public-signup.itest.ts:169-172` so reruns don't
  * trip the unique index on `(email, tenant_slug)`.

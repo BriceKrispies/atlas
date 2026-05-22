@@ -82,3 +82,7 @@ export type {
   ContentPagesDispatchContextV2,
   ContentPagesQueryDepsV2,
 } from './entities/contracts.ts';
+
+// Action-driven query registry — substrate-only stub today (content-pages
+// reads migrate onto the catch-all in a follow-up slice).
+export { contentPagesQueryRegistry } from './queries/registry.ts';

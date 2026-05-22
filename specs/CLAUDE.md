@@ -46,6 +46,7 @@ Any spec content under retired-domain directories should be considered legacy no
 - `crosscut/kernel-vs-data.md` — architectural inventory of trusted kernel code vs hot-changeable runtime data, plus the "could this be data?" decision rule. Read for any capability scope that proposes new behavior (the question is always "code or data?"). Distinct from `crosscut/always-on.md`, which names the same split as an *operational* contract for hot-reload mechanics.
 - `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
 - `crosscut/always-on.md` — always-on contract: what's kernel (restart-required) vs. data (hot-changeable), hot-reload lifecycle, operator surface. Sets the bar [ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6 deferred.
+- `crosscut/action-driven-routing.md` — catch-all contract for both the intent-side (`POST /api/v1/intents` via `HandlerRegistry`) and the query-side (`GET/POST /api/v1/queries/:queryId` via `QueryRegistry`). Read when scoping any new write action or read endpoint — both are module-only edits after `always-on.md` §6 Phase 1.
 - `crosscut/errors.md` — error taxonomy (referenced by every domain).
 - `crosscut/events.md` — event vocabulary (referenced by every domain).
 - `crosscut/logging.md` — logging contract (structured JSON, mandatory fields, levels, redaction). Audited by the `observability-architect` agent.
@@ -78,6 +79,7 @@ The legacy `specs/modules/` folder is gone — all content has migrated.
 | `crosscut/runtime-instruction-set.md` | The ten kernel instructions tenant programs issue — read when adding actions / ports / quota dimensions / surfaces / FunctionRuntime consumers |
 | `crosscut/kernel-vs-data.md` | Kernel/data inventory + "could this be data?" decision rule — read when scoping any new capability or considering hot-reload extraction |
 | `crosscut/always-on.md` | Always-on contract — kernel/data split, hot-reload rules ([ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6) |
+| `crosscut/action-driven-routing.md` | Catch-all contract — intent + query sides; read for any new action / read endpoint |
 | `crosscut/atlasctl.md` | Operator CLI — tooling, not a domain |
 | `crosscut/errors.md` | Error taxonomy — referenced by every domain |
 | `crosscut/events.md` | Event vocabulary — referenced by every domain |

@@ -59,6 +59,7 @@ Stage 9 closes the always-on §5 commitment. After it, the always-on contract is
 
 **In:**
 
+0. **`bootId` + `startedAt` in the day-one kernel-info response** — per the §11 retrospective at [`tickets/kernel-extraction/bootid-for-i20-probe.md`](../kernel-extraction/bootid-for-i20-probe.md), the Stage 9 surface MUST include `state.bootId` and `state.startedAt` in `GET /api/v1/kernel/snapshot` (and/or `GET /api/v1/kernel/modules`) so future kernel-identity introspection lands as a property add against a standing handler, not a fresh `AppState` field + new route response shape. The fields are already populated on `AppState` by the chore that filed the retro; Stage 9 reads them, doesn't re-add them. This is the seam-narrowing the retro committed Stage 9 to ship.
 1. **HTTP routes** (`apps/server/src/routes/kernel.ts`) — four endpoints, all operator-authz gated.
 2. **atlasctl commands** under `kernel` subcommand — thin HTTP wrappers.
 3. **Audit emission** from kernel mutations — `Audit.Kernel.*` events through the existing `AuditEmitter` port.

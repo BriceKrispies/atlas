@@ -7,6 +7,11 @@ import './features/content/pages-list/PagesListPage.ts';
 import './features/authz/policies-list/PoliciesListPage.ts';
 import './features/authz/policy-editor/PolicyEditorPage.ts';
 import './features/authz/policy-diff/PolicyDiffDialog.ts';
+import './features/identity/users-surface.ts';
+import './features/identity/invite-form-surface.ts';
+import './features/identity/login-surface.ts';
+import './features/identity/accept-invite-surface.ts';
+import './features/identity/set-password-surface.ts';
 // Wire the AtlasSurface ↔ backend bridge for tag-filtered SSE refetch
 // (see worker.md phase 5). Surfaces declare `subscribesTo(): string[]`
 // and the bound adapter opens a pooled `EventSource` keyed by the tag
