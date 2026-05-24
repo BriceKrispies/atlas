@@ -2,9 +2,8 @@
  * Regression test for tickets/archive/chore/schema-id-normalization-sweep.md
  * (commit bd30daf): the 11 canonical schemas under specs/schemas/contracts/
  * + their duplicated copies under packages/page-templates/src/schemas/ +
- * packages/widget-host/src/schemas/ were renamed from
- *   `https://atlas-platform.example.com/schemas/<name>.v<n>.json`
- * to bare short-form `<name>.v<n>`.
+ * packages/widget-host/src/schemas/ were renamed from the legacy
+ * long-form example.com schema URL to bare short-form `<name>.v<n>`.
  *
  * The page-templates `validatePageDocument` flow is load-bearing: it
  * constructs its own AJV instance and registers `page_layout.schema.json`

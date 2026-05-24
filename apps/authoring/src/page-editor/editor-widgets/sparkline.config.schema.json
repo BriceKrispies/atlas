@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://atlas-platform.example.com/schemas/ui/widget/sandbox/sparkline/config.v1.json",
+  "$id": "ui.widget.sandbox.sparkline.config.v1",
   "title": "SparklineWidgetConfig",
   "description": "Config for sandbox.sparkline — a compact inline line chart driven by a comma-separated numeric series.",
   "type": "object",
