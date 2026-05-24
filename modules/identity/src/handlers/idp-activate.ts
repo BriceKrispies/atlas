@@ -66,7 +66,9 @@ export async function handleIdpActivate(
     idempotencyKey: `identity.idp.activate.${cmd.idpId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped IdP config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `IdentityProvider:${cmd.idpId}`,
@@ -100,7 +102,8 @@ function synthesizeNoopEvent(
     idempotencyKey: `identity.idp.activate-noop.${cmd.idpId}.${Date.now()}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped IdP no-op event — no User subject.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`],
     payload: { idpId: doc.idpId, alreadyActive: true },
   };

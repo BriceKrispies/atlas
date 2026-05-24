@@ -60,7 +60,9 @@ export async function handleIdpDisable(
     idempotencyKey: `identity.idp.disable.${cmd.idpId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped IdP config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `IdentityProvider:${cmd.idpId}`,

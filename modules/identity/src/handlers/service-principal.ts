@@ -49,7 +49,10 @@ export async function handleServicePrincipalCreate(
     idempotencyKey: `identity.sp.create.${spId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the ServicePrincipal (a non-User principal), not a User and
+    // not the actor. No User subject → null. The actor is in `principalId`;
+    // the human owner is `document.ownerUserId` in the payload.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ServicePrincipal:${spId}`],
     payload: { document },
   };
@@ -102,7 +105,9 @@ export async function handleServicePrincipalSetScopes(
     idempotencyKey: `identity.sp.set-scopes.${cmd.spId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the ServicePrincipal (a non-User principal), not the actor.
+    // No User subject → null.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ServicePrincipal:${cmd.spId}`],
     payload: { document: updated },
   };
@@ -156,7 +161,9 @@ export async function handleServicePrincipalDisable(
     idempotencyKey: `identity.sp.disable.${cmd.spId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the ServicePrincipal (a non-User principal), not the actor.
+    // No User subject → null.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ServicePrincipal:${cmd.spId}`],
     payload: { document: disabled },
   };

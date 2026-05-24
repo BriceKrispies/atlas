@@ -106,7 +106,9 @@ export async function handleIdpConfigure(
     idempotencyKey: `identity.idp.configure.${idpId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped IdP config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `IdentityProvider:${idpId}`,

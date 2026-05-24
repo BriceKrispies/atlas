@@ -60,7 +60,9 @@ export async function handleScimTokenEnable(
     idempotencyKey: `identity.scim-token.enable.${tokenId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SCIM connector credential — no User subject. The actor
+    // minting it is in `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ScimToken:${tokenId}`],
     payload: { document },
   };
@@ -144,7 +146,9 @@ export async function handleScimTokenRotate(
     idempotencyKey: `identity.scim-token.rotate.${cmd.tokenId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SCIM connector credential — no User subject. The actor
+    // rotating it is in `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ScimToken:${cmd.tokenId}`],
     payload: { document: flippedPredecessor },
   };
@@ -159,7 +163,8 @@ export async function handleScimTokenRotate(
     idempotencyKey: `identity.scim-token.enable.${newTokenId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SCIM connector credential (successor) — no User subject.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ScimToken:${newTokenId}`],
     payload: { document: successor },
   };
@@ -221,7 +226,9 @@ export async function handleScimTokenRevoke(
     idempotencyKey: `identity.scim-token.revoke.${cmd.tokenId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SCIM connector credential — no User subject. The actor
+    // revoking it is in `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ScimToken:${cmd.tokenId}`],
     payload: { document: revoked },
   };

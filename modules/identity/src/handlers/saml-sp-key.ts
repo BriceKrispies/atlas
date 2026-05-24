@@ -128,7 +128,9 @@ export async function handleSamlSpKeyRotate(
     idempotencyKey: `identity.saml.sp-key.rotate.${cmd.keyId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SAML SP signing key — no User subject. The actor
+    // performing the rotation is in `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `SamlSpKey:${cmd.keyId}`],
     retentionTag: 'retention:1y',
     payload: { document: flippedPredecessor },
@@ -195,7 +197,9 @@ async function mintKey(
     idempotencyKey: `identity.saml.sp-key.generate.${keyId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped SAML SP signing key — no User subject. The actor
+    // minting the key is in `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `SamlSpKey:${keyId}`],
     retentionTag: 'retention:1y',
     payload: { document },

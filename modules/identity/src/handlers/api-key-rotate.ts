@@ -107,7 +107,9 @@ export async function handleApiKeyRotate(
     idempotencyKey: `identity.api-key.create.${newKeyId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the key's OWNER (carried over from the predecessor), not
+    // the actor who rotated it. SP-owned keys have no User subject → null.
+    userId: successor.userId ?? null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ApiKey:${newKeyId}`],
     payload: { document: successor },
   };
@@ -122,7 +124,9 @@ export async function handleApiKeyRotate(
     idempotencyKey: `identity.api-key.rotate.${cmd.keyId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the key's OWNER (the predecessor's owner), not the actor.
+    // SP-owned keys have no User subject → null.
+    userId: flippedPredecessor.userId ?? null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ApiKey:${cmd.keyId}`],
     payload: { document: flippedPredecessor },
   };

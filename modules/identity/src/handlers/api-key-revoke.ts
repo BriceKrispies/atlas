@@ -48,7 +48,9 @@ export async function handleApiKeyRevoke(
     idempotencyKey: `identity.api-key.revoke.${cmd.keyId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the revoked key's OWNER, not the actor who revoked it.
+    // SP-owned keys have no User subject → null.
+    userId: revoked.userId ?? null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ApiKey:${cmd.keyId}`],
     payload: { document: revoked },
   };

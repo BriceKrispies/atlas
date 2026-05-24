@@ -77,7 +77,9 @@ export async function handleMembershipCreate(
     idempotencyKey: `identity.membership.create.${cmd.tenantId}.${cmd.userId}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the User whose Membership is created, not the actor
+    // (admin/robot) creating it. `principalId` carries the actor.
+    userId: cmd.userId,
     cacheInvalidationTags: [
       `Tenant:${cmd.tenantId}`,
       `User:${cmd.userId}`,

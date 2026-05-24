@@ -84,7 +84,9 @@ export async function handleApiKeyCreate(cmd: ApiKeyCreateCommand, eventStore: E
         idempotencyKey: `identity.api-key.create.${keyId}`,
         causationId: null,
         principalId: cmd.principalId,
-        userId: cmd.principalId,
+        // Subject is the key's OWNER (the User the key belongs to), not the
+        // actor who minted it. SP-owned keys have no User subject → null.
+        userId: document.userId ?? null,
         cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `ApiKey:${keyId}`],
         payload: { document },
     };

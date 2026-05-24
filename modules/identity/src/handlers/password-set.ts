@@ -88,7 +88,10 @@ export async function handlePasswordSet(
     idempotencyKey: `identity.password.set.${cmd.tenantId}.${cmd.userId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Subject is the User whose password changed, not the actor. The actor
+    // may be the user themselves, an admin, or the reset flow — all carried
+    // in `principalId`. Audit "events about user X" must index this row.
+    userId: cmd.userId,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `User:${cmd.userId}`],
     payload: { document },
   };

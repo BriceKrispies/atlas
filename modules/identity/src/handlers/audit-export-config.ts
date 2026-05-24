@@ -94,7 +94,9 @@ export async function handleAuditExportConfigure(
     idempotencyKey: `identity.audit-export.configure.${cmd.tenantId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `AuditExportConfig:${SINGLETON_ID}`],
     retentionTag: 'retention:1y',
     payload: { document },
@@ -147,7 +149,9 @@ export async function handleAuditExportActivate(
     idempotencyKey: `identity.audit-export.activate.${cmd.configId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `AuditExportConfig:${cmd.configId}`],
     retentionTag: 'retention:1y',
     payload: { document },
@@ -200,7 +204,9 @@ export async function handleAuditExportDisable(
     idempotencyKey: `identity.audit-export.disable.${cmd.configId}.${occurredAt}`,
     causationId: null,
     principalId: cmd.principalId,
-    userId: cmd.principalId,
+    // Tenant-scoped config event — no User subject. The actor is in
+    // `principalId`.
+    userId: null,
     cacheInvalidationTags: [`Tenant:${cmd.tenantId}`, `AuditExportConfig:${cmd.configId}`],
     retentionTag: 'retention:1y',
     payload: { document },
