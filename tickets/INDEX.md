@@ -12,7 +12,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [stage-7-kernel-migration](atlas-on-atlas/stage-7-kernel-migration.md) — refactor — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-6 — ⚠ NEEDS RE-SCOPE: still plans to collapse query routes that the landed query-side catch-all already owns (see sweep finding)
 - [stage-8-manifests-and-drift-probe](atlas-on-atlas/stage-8-manifests-and-drift-probe.md) — refactor — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-6
 - [stage-9-operator-surface](atlas-on-atlas/stage-9-operator-surface.md) — capability — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-7, atlas-on-atlas/stage-8
-- [control-plane-schema-registry](atlas-on-atlas/control-plane-schema-registry.md) — capability — scoped — → spine-owner — **HIGH** (make schema/action registration control-plane DATA so it's hot/no-restart per I20+ADR 0014; unblocks identity-schema add → password login as a pure data write; Phase-0 dropped blocked_by:stage-8 — independent of unbuilt packages/kernel)
+- [control-plane-schema-registry](atlas-on-atlas/control-plane-schema-registry.md) — capability — **Phase-1 BUILT, verify** — → spine-owner — **HIGH** (2026-05-24 recon: `PostgresControlPlaneRegistry` + `registry-refresh.ts` already implement registry-as-data with the O1 snapshot/N+1 design; frontmatter stale. REMAINING: verify idb parity + always-on no-restart test + deps:check, then advance — do NOT re-dispatch as greenfield)
 
 ## chore/
 
@@ -39,7 +39,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## tenancy/
 
-- [admin-approve-provisions-tenant-db](tenancy/admin-approve-provisions-tenant-db.md) — capability — open — → spine-owner — **HIGH** (admin-approve never calls PostgresTenantDbProvider.provisionTenantDatabase; blocks tenant-admin-invites-user; surfaces as TENANT_DATABASE_NOT_PROVISIONED 503 on existing public-signup BDD too)
+- [admin-approve-provisions-tenant-db](tenancy/admin-approve-provisions-tenant-db.md) — capability — **BUILT (unit), verify-BDD** — → spine-owner — **HIGH** (2026-05-24 recon: `provisionAndMigrateTenant` already wired into the approve route + 4/4 unit tests green → acceptance #1–#4 met. REMAINING: live `bdd:server` for #5–#7, then close + unblock tenant-admin-invites-user + admin-approves-signup-bdd. Do NOT dispatch an implementer.)
 - [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — **BLOCKED** — → module-dev — HIGH (5/5 slices landed but scenario fails end-to-end with 503 TENANT_DATABASE_NOT_PROVISIONED; blocked_by: tenancy/admin-approve-provisions-tenant-db)
 
 ## load-testing/
@@ -73,7 +73,9 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [query-dsl](dsl/query-dsl.md) — capability — open — → spec-keeper — MEDIUM (first effectful-host-op DSL; port: 'EntityStore'; ADR 0007 §10)
 - [atlasctl-dsl-cli](dsl/atlasctl-dsl-cli.md) — capability — open — → spec-keeper — LOW (CLI wrappers for the 4 live HTTP endpoints; agentic-first dogfood)
 - [bdd-roundtrip](dsl/bdd-roundtrip.md) — test — open — → sdet — MEDIUM (closes slice-workflow Phase 2 gate for the DSL surface)
-- [cedar-policy-actions](dsl/cedar-policy-actions.md) — capability — open — → spine-owner — **HIGH** (slice #5a deferred I2 gate on read/validate routes)
+- [cedar-policy-actions](dsl/cedar-policy-actions.md) — capability — **architect-passed, awaiting merge** — → spine-owner — **HIGH** (I2 gate on DSL read/validate routes; pilot pipeline impl→sdet→architect complete 2026-05-24, diff uncommitted pending user merge)
+- [cedar-policy-bdd-witness](dsl/cedar-policy-bdd-witness.md) — test — open — → sdet — LOW (architect followup #1; wire-level authz BDD; blocked_by: dsl/cedar-policy-actions)
+- [expression-capability-spec](dsl/expression-capability-spec.md) — spec — open — → spec-keeper — MEDIUM (retro DSL capability README; spec-first gate was bypassed for the whole DSL surface)
 
 ## testing-floor/
 

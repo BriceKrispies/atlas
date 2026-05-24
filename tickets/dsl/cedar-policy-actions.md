@@ -1,6 +1,6 @@
 ---
 title: Cedar policy gating for Dsl.<Kind>.{Read,List,Validate}
-status: open
+status: architect
 type: capability
 owner: spine-owner
 phase: 0
@@ -23,7 +23,7 @@ acceptance:
   - Live smoke: curl with admin → 200; curl with unprivileged user → 403
   - Existing dev-tenant smoke-tests still pass (admin role permits)
 created: 2026-05-21
-updated: 2026-05-21
+updated: 2026-05-24
 ---
 
 ## Why
@@ -120,3 +120,4 @@ short-circuit before validateDslSource() runs.
   policy check was deliberately skipped (the actions weren't registered).
   Slice #5b registered Dsl.Expression.Update; this ticket registers
   the read/list/validate triple and wires the gate.
+- 2026-05-24: **implemented + reviewed via the pilot pipeline — architect PASS, awaiting user merge.** module-dev wired `evaluateRead()` into all four DSL read handlers (`apps/server/src/routes/dsl.ts`), gate before every store touch + parse; 3 actions added to the manifest; default Cedar fixture at `specs/policy-fixtures/cli/dsl-expression-default.cedar`. sdet adversarial pass added 10 tests (route deny/permit + ordering + the real-manifest→real-classifier runtime-grant witness in `modules/identity/test/role-packs.test.ts`), 28/28 green. architect invariant gate = **PASS-WITH-FOLLOWUPS, zero required changes**: ruled the version-`400`-before-authz acceptable (mirrors canonical `authz.ts`), slice structurally honest at the unit layer. Followups filed: `dsl/cedar-policy-bdd-witness` (#1), drift-gate folded into `chore/sync-schemas-coverage-decision` (#2), spec-first gap → `dsl/expression-capability-spec`. Diff is uncommitted in the working tree pending the user's merge review; on merge → `done` + archive.
