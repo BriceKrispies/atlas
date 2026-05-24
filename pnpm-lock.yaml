@@ -144,15 +144,9 @@ importers:
       '@atlas/adapter-policy-cedar':
         specifier: workspace:*
         version: link:../policy-cedar
-      '@atlas/content-pages':
-        specifier: workspace:*
-        version: link:../../modules/content-pages
       '@atlas/dsl-substrate':
         specifier: workspace:*
         version: link:../../packages/dsl-substrate
-      '@atlas/identity':
-        specifier: workspace:*
-        version: link:../../modules/identity
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../../packages/platform-core

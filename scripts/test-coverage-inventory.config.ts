@@ -214,8 +214,6 @@ export const config: InventoryConfig = {
     { path: 'adapters/seed-memory/src/index.ts', reason: 'barrel re-export of seed-memory adapter' },
     // IDB stubs that throw — server-only ports unreachable in browser sim.
     { path: 'adapters/idb/src/repository-store.ts', reason: 'server-only stubs that throw — no IDB behavior to test' },
-    // Adapter migration seed runner — fixture loader, deterministic data.
-    { path: 'adapters/node/src/migrations/seed.ts', reason: 'fixture-loader wiring for control-plane seed inserts' },
     // Pure transformation builder (PascalCase→snake_case) covered transitively in entity-type-registry.
     { path: 'adapters/node/src/action-schema-id.ts', reason: 'pure string transformer covered transitively by entity-type-registry tests' },
     // Cedar adapter entity-store: pure mapping from PolicyEvaluationRequest to Cedar request.

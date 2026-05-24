@@ -32,5 +32,4 @@ export {
   type ProvisionTenantDatabaseResult,
 } from './tenant-db-provider.ts';
 export { runMigrations, type MigrationKind, type MigrationRunResult } from './migrations/runner.ts';
-export { runControlPlaneSeed, type SeedResult } from './migrations/seed.ts';
 export { seedControlPlaneSchemaRegistry } from './schema-registry-seed.ts';

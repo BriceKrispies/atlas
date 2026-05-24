@@ -88,20 +88,6 @@
   "waivers": [
     {
       "from": "@atlas/adapter-node",
-      "to": "@atlas/identity",
-      "reason": "adapter imports buildRolePackBundle + identity seed-type identifiers from the identity domain module (dead/unwired control-plane seed code). Fixed by relocating the seed generators to the composition-root / scripts layer.",
-      "removeBy": "PR4",
-      "ticket": "arch/hard-layering PR4"
-    },
-    {
-      "from": "@atlas/adapter-node",
-      "to": "@atlas/content-pages",
-      "reason": "adapter imports content-pages seed-type identifiers from the content-pages domain module (dead/unwired control-plane seed code). Fixed by relocating the seed generators to the composition-root / scripts layer.",
-      "removeBy": "PR4",
-      "ticket": "arch/hard-layering PR4"
-    },
-    {
-      "from": "@atlas/adapter-node",
       "to": "@atlas/adapter-policy-cedar",
       "reason": "cross-adapter import (adapter -> adapter), forbidden by adapters/CLAUDE.md. adapter-node reuses Cedar bundle/seed helpers from adapter-policy-cedar. Fixed by extracting the shared helper down to a port/runtime seam or wiring at the composition root.",
       "removeBy": "PR6",
