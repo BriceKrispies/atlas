@@ -1,5 +1,13 @@
 import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { Cache } from '@atlas/ports';
+import {
+  runProperty as runI9Property,
+  tenantScopedKey,
+} from './properties/i9-cache-tenant-scope.ts';
+import {
+  runProperty as runI10Property,
+  invalidateByEventTags,
+} from './properties/i10-cache-invalidation.ts';
 function sleep(ms: number): Promise<void> {
   return new Promise(function (r) {
     return setTimeout(r, ms);
@@ -158,6 +166,18 @@ export function cacheContract(makeCache: () => Promise<Cache>): void {
         expect(await cache.get(`k-b-${i}`)).toBeNull();
         expect(await cache.get(`k-ab-${i}`)).toBeNull();
       }
+    });
+    // ── Cross-cutting invariant properties (testing.md §2.2) ──────────
+    // The Cache underpins I9 (tenant-scoped keys, via the key-builder seam)
+    // and I10 (event-driven tag invalidation). Each adapter that imports
+    // this suite runs the SAME universally-quantified properties against its
+    // own backing store. The properties' broken-adapter self-tests live
+    // alongside them in src/properties/.
+    test('[property] I9 — every tenant-scoped cache key contains the tenantId', async function () {
+      await runI9Property({ makeCache, cacheKeyFor: tenantScopedKey });
+    });
+    test('[property] I10 — event tags purge exactly the matching cache entries', async function () {
+      await runI10Property({ makeCache, invalidateForEvent: invalidateByEventTags });
     });
   });
 }

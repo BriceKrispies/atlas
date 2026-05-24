@@ -15,8 +15,9 @@
     "@atlas/ports": "workspace:*"
   },
   "devDependencies": {
+    "@atlas/test": "workspace:*",
     "@atlas/test-fixtures": "workspace:*",
-    "@atlas/test": "workspace:*"
+    "fast-check": "^4.8.0"
   },
   "peerDependencies": {
     "@atlas/test": "workspace:*"

@@ -2,6 +2,15 @@ import { describe, test, expect, beforeEach } from '@atlas/test';
 import type { EventEnvelope } from '@atlas/platform-core';
 import type { EventStore } from '@atlas/ports';
 import { assertDefined } from '@atlas/test-fixtures/assert';
+import { runProperty as runI3Property } from './properties/i3-idempotency.ts';
+import {
+  runProperty as runI6Property,
+  linkCausationByParentId,
+} from './properties/i6-causation.ts';
+import {
+  runProperty as runI12Property,
+  type Projector,
+} from './properties/i12-projection-rebuild.ts';
 interface MakeEventOptions {
   eventId?: string;
   tenantId?: string;
@@ -319,6 +328,46 @@ export function eventStoreContract(makeStore: () => Promise<EventStore>): void {
           return e.tenantId === 'tenant-x-b';
         }),
       ).toBe(true);
+    });
+    // ── Cross-cutting invariant properties (testing.md §2.2) ──────────
+    // The EventStore enforces I3 (idempotency), I6 (causation linkage),
+    // and is the rebuild source for I12 (projection rebuildability). Each
+    // adapter that imports this suite runs the SAME universally-quantified
+    // properties against its own backing store. The properties' own
+    // broken-adapter self-tests live alongside them in src/properties/.
+    test('[property] I3 — duplicate idempotencyKey never re-executes (append dedups)', async function () {
+      await runI3Property({ makeStore });
+    });
+    test('[property] I6 — every emitted event causationId references an event in the request set', async function () {
+      await runI6Property({ makeStore, emitChain: linkCausationByParentId });
+    });
+    test('[property] I12 — projections rebuild identically and dispatch is idempotent', async function () {
+      // A pure last-write-wins projector exercised against the real store:
+      // determinism + idempotent re-apply must hold for any event sequence.
+      type State = Record<string, string>;
+      const projector: Projector<State> = {
+        empty: function () {
+          return {};
+        },
+        apply: function (state, event) {
+          const p = event.payload as { resourceId: string; kind: string };
+          if (p.kind === 'deleted') {
+            const { [p.resourceId]: _drop, ...rest } = state;
+            return rest;
+          }
+          return { ...state, [p.resourceId]: p.kind };
+        },
+        serialize: function (s) {
+          return JSON.stringify(
+            Object.fromEntries(
+              Object.entries(s).sort(function (a, b) {
+                return a[0].localeCompare(b[0]);
+              }),
+            ),
+          );
+        },
+      };
+      await runI12Property({ makeStore, projector });
     });
   });
 }
