@@ -70,8 +70,7 @@ module.exports = [
   "to": {
     "path": "^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
-      "^packages/logging/",
-      "^adapters/policy-cedar/"
+      "^packages/logging/"
     ]
   }
 },

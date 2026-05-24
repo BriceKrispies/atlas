@@ -141,9 +141,6 @@ importers:
 
   adapters/node:
     dependencies:
-      '@atlas/adapter-policy-cedar':
-        specifier: workspace:*
-        version: link:../policy-cedar
       '@atlas/dsl-substrate':
         specifier: workspace:*
         version: link:../../packages/dsl-substrate

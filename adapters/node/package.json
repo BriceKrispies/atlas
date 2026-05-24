@@ -9,7 +9,6 @@
     "./migrations": "./src/migrations/runner.ts"
   },
   "dependencies": {
-    "@atlas/adapter-policy-cedar": "workspace:*",
     "@atlas/dsl-substrate": "workspace:*",
     "@atlas/platform-core": "workspace:*",
     "@atlas/ports": "workspace:*",

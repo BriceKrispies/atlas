@@ -85,13 +85,5 @@
     "@atlas/openapi"
   ],
 
-  "waivers": [
-    {
-      "from": "@atlas/adapter-node",
-      "to": "@atlas/adapter-policy-cedar",
-      "reason": "cross-adapter import (adapter -> adapter), forbidden by adapters/CLAUDE.md. adapter-node reuses Cedar bundle/seed helpers from adapter-policy-cedar. Fixed by extracting the shared helper down to a port/runtime seam or wiring at the composition root.",
-      "removeBy": "PR6",
-      "ticket": "arch/hard-layering PR6"
-    }
-  ]
+  "waivers": []
 }

@@ -150,6 +150,7 @@
               {
                 "group": [
                   "@atlas/adapter-idb",
+                  "@atlas/adapter-policy-cedar",
                   "@atlas/adapter-policy-stub",
                   "@atlas/adapter-seed-memory",
                   "@atlas/admin",
