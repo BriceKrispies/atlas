@@ -89,8 +89,8 @@ jobs:
         if: always()
         run: |
           pnpm arch:emit
-          git diff --exit-code architecture/generated \
-            || { echo "::error::architecture/generated is stale — run 'pnpm arch:emit' and commit."; exit 1; }
+          git diff --exit-code .oxlintrc.json architecture/generated/dep-cruiser-rules.cjs \
+            || { echo "::error::generated layer rules are stale — run 'pnpm arch:emit' and commit."; exit 1; }
 
       - name: dep-cruiser (graph-level ring + cycle gate)
         if: always()

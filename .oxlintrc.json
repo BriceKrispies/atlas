@@ -1,6 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "extends": ["./architecture/generated/oxlint-layers.json"],
   "plugins": ["typescript", "oxc"],
   "categories": {
     "correctness": "error"
@@ -40,7 +39,10 @@
     "typescript/no-non-null-assertion": "error",
     "typescript/consistent-type-assertions": [
       "error",
-      { "assertionStyle": "as", "objectLiteralTypeAssertions": "never" }
+      {
+        "assertionStyle": "as",
+        "objectLiteralTypeAssertions": "never"
+      }
     ],
     "typescript/ban-ts-comment": [
       "error",
@@ -132,6 +134,2211 @@
               {
                 "group": ["nodemailer"],
                 "message": "nodemailer is confined to @atlas/adapter-node. Apps must reach SMTP through the Mailer port (constructed via createMailer in bootstrap)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/abi/**/*.ts", "packages/abi/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/abi may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["adapters/idb/**/*.ts", "adapters/idb/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/adapter-idb may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["adapters/node/**/*.ts", "adapters/node/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/adapter-node may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["adapters/policy-cedar/**/*.ts", "adapters/policy-cedar/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/adapter-policy-cedar may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["adapters/policy-stub/**/*.ts", "adapters/policy-stub/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/adapter-policy-stub may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["adapters/seed-memory/**/*.ts", "adapters/seed-memory/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/adapter-seed-memory may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/admin/**/*.ts", "apps/admin/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/admin may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/api-client/**/*.ts", "packages/api-client/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/api-client may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/atlasctl/**/*.ts", "apps/atlasctl/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/authoring",
+                  "@atlas/bundle-standard",
+                  "@atlas/chaos",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/atlasctl may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/authoring/**/*.ts", "apps/authoring/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authz",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/authoring may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/authz/**/*.ts", "modules/authz/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/authz may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["bundles/standard/**/*.ts", "bundles/standard/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/bundle-standard may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/catalog/**/*.ts", "modules/catalog/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/catalog may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/content-pages/**/*.ts", "modules/content-pages/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/content-pages may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/core/**/*.ts", "packages/core/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/core may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/design/**/*.ts", "packages/design/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/design may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/dsl/**/*.ts", "modules/dsl/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/dsl may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/dsl-expression/**/*.ts", "packages/dsl-expression/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/dsl-expression may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/dsl-substrate/**/*.ts", "packages/dsl-substrate/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/dsl-substrate may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/identity/**/*.ts", "modules/identity/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/identity may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ingress/**/*.ts", "packages/ingress/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/ingress may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/logging/**/*.ts", "packages/logging/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/logging may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/metrics/**/*.ts", "packages/metrics/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/metrics may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/page-templates/**/*.ts", "packages/page-templates/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/page-templates may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/platform-core/**/*.ts", "packages/platform-core/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/platform-core may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["ports/**/*.ts", "ports/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/ports may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/projection-worker/**/*.ts", "apps/projection-worker/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/bundle-standard",
+                  "@atlas/chaos",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/projection-worker may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/repository/**/*.ts", "modules/repository/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/repository may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/sandbox/**/*.ts", "apps/sandbox/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/sandbox may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/schemas/**/*.ts", "packages/schemas/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/schemas may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/seeder/**/*.ts", "packages/seeder/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/seeder may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/server/**/*.ts", "apps/server/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/bundle-standard",
+                  "@atlas/chaos",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/sandbox",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/server may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/sim/**/*.ts", "apps/sim/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/bundle-standard",
+                  "@atlas/chaos",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/sim may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/tenancy/**/*.ts", "modules/tenancy/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/tenancy may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/test-state/**/*.ts", "packages/test-state/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/test-state may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/wasm-host/**/*.ts", "packages/wasm-host/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/identity",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/wasm-host may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/widget-host/**/*.ts", "packages/widget-host/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/widget-host may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/widgets/**/*.ts", "packages/widgets/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/wasm-host"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/widgets may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
             ]
           }
