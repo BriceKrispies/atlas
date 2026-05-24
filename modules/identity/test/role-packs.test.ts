@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from '@atlas/test';
 import type { ActionDeclaration } from '@atlas/platform-core';
+import { moduleManifests } from '@atlas/schemas';
 import { buildRolePacksCedar, buildRolePackBundle } from '../src/index.ts';
 const ACTIONS: ActionDeclaration[] = [
     { actionId: 'ContentPages.Page.Create', resourceType: 'Page', verb: 'create', auditLevel: 'INFO' },
@@ -88,6 +89,93 @@ describe('buildRolePacksCedar', function () {
         expect(readBlock).toContain('Action::"Module.Mystery"');
     });
 });
+// ----------------------------------------------------------------------
+// SDET — end-to-end runtime-grant witness for the DSL read surface.
+//
+// `tickets/dsl/cedar-policy-actions.md` claims the live permit for the new
+// `Dsl.Expression.{Read,List,Validate}` actions comes NOT from the .cedar
+// fixture but from this generator auto-classifying the manifest verbs into
+// the read bucket. The route tests prove the GATE exists; they DON'T prove a
+// real admin gets a permit at runtime — they inject a stub policy engine.
+//
+// This is the missing link: drive the ACTUAL bundled DSL manifest through the
+// ACTUAL classifier (the same path `adapters/node/src/migrations/seed.ts`
+// runs via `moduleManifests()` → `collectManifestActions` →
+// `buildRolePacksCedar`). If a future verb-classification change, a manifest
+// edit (e.g. flipping `read`→`activate`), or a missing manifest registration
+// would 403 admin at runtime, THIS fails — instead of silently shipping a
+// dead read surface behind green route tests.
+// ----------------------------------------------------------------------
+describe('DSL read surface — runtime grant via real manifest classification', function () {
+    // Mirror seed.ts's collectManifestActions shape coercion.
+    function collectActions(): ActionDeclaration[] {
+        const out: ActionDeclaration[] = [];
+        for (const m of moduleManifests()) {
+            const actions = (m as { actions?: unknown }).actions;
+            if (!Array.isArray(actions)) continue;
+            for (const a of actions) {
+                const aid = (a as { actionId?: unknown }).actionId;
+                const rt = (a as { resourceType?: unknown }).resourceType;
+                const verb = (a as { verb?: unknown }).verb;
+                if (typeof aid !== 'string' || typeof rt !== 'string') continue;
+                out.push({
+                    actionId: aid,
+                    resourceType: rt,
+                    verb: typeof verb === 'string' ? verb : '',
+                    auditLevel: 'INFO',
+                });
+            }
+        }
+        return out;
+    }
+
+    const DSL_READ_ACTIONS = [
+        'Dsl.Expression.Read',
+        'Dsl.Expression.List',
+        'Dsl.Expression.Validate',
+    ];
+
+    it('the bundled manifest set actually contains the three DSL read actions', function () {
+        const ids = collectActions().map((a) => a.actionId);
+        for (const id of DSL_READ_ACTIONS) {
+            expect(ids).toContain(id);
+        }
+    });
+
+    it('TenantAdmin is granted all three DSL read actions at runtime', function () {
+        const cedar = buildRolePacksCedar(collectActions());
+        const adminBlock =
+            cedar.split('@id("role-tenant-admin")')[1]?.split('@id("role-author-write")')[0] ?? '';
+        for (const id of DSL_READ_ACTIONS) {
+            expect(adminBlock).toContain(`Action::"${id}"`);
+        }
+    });
+
+    it('the three DSL read actions land in the READ bucket (Viewer + Author-read), NOT the write bucket', function () {
+        const cedar = buildRolePacksCedar(collectActions());
+        const writeBlock =
+            cedar.split('@id("role-author-write")')[1]?.split('@id("role-author-read")')[0] ?? '';
+        const viewerBlock =
+            cedar.split('@id("role-viewer")')[1]?.split('@id("role-service-principal")')[0] ?? '';
+        for (const id of DSL_READ_ACTIONS) {
+            // If a manifest verb edit pushed these into WRITE_VERBS, Viewer
+            // (read-only) would lose the read surface — caught here.
+            expect(viewerBlock).toContain(`Action::"${id}"`);
+            expect(writeBlock).not.toContain(`Action::"${id}"`);
+        }
+    });
+
+    it('Dsl.Expression.Update (verb=update) stays in the WRITE bucket — Viewer must NOT get it', function () {
+        const cedar = buildRolePacksCedar(collectActions());
+        const writeBlock =
+            cedar.split('@id("role-author-write")')[1]?.split('@id("role-author-read")')[0] ?? '';
+        const viewerBlock =
+            cedar.split('@id("role-viewer")')[1]?.split('@id("role-service-principal")')[0] ?? '';
+        expect(writeBlock).toContain('Action::"Dsl.Expression.Update"');
+        expect(viewerBlock).not.toContain('Action::"Dsl.Expression.Update"');
+    });
+});
+
 describe('buildRolePackBundle', function () {
     it('wraps the cedar text in the policy_json wrapper shape', function () {
         const bundle = buildRolePackBundle(ACTIONS);

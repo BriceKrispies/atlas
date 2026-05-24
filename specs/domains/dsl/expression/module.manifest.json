@@ -11,6 +11,24 @@
       "resourceType": "DslArtifact",
       "verb": "update",
       "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Dsl.Expression.Read",
+      "resourceType": "DslArtifact",
+      "verb": "read",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Dsl.Expression.List",
+      "resourceType": "DslArtifact",
+      "verb": "list",
+      "auditLevel": "INFO"
+    },
+    {
+      "actionId": "Dsl.Expression.Validate",
+      "resourceType": "DslArtifact",
+      "verb": "read",
+      "auditLevel": "INFO"
     }
   ],
   "resources": [{ "resourceType": "DslArtifact", "ownership": "module" }],

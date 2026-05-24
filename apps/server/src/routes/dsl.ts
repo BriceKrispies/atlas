@@ -12,13 +12,21 @@
  * pipeline at `POST /api/v1/intents` once the action schema is registered
  * (deferred to slice #5b).
  *
- * Authz: the action ids (`Dsl.<Kind>.{List,Read,Validate}`) are not yet
- * in the platform's module manifests, so the `policyEngine.evaluate()`
- * check that other read routes run is deliberately skipped here — adding
- * it now would deny every request. A follow-up slice lands the manifest +
- * the policy check together; until then, the route is auth-gated by the
- * standard `principalMiddleware` (the principal must resolve before
- * reaching this route group).
+ * Authz (Invariant I2): every handler below runs `evaluateRead()` BEFORE
+ * touching the store or parsing any source — mirroring the read-path gate
+ * in `routes/authz.ts`. The action ids are:
+ *   - `GET  /api/v1/dsl/:kind`                  → `Dsl.<Kind>.List`
+ *   - `GET  /api/v1/dsl/:kind/:apiName(/v/...)` → `Dsl.<Kind>.Read`
+ *   - `POST /api/v1/dsl/:kind/validate`         → `Dsl.<Kind>.Validate`
+ * A `deny` decision short-circuits to 403 `AUTHZ_POLICY_DENIED` with NO
+ * store read (so the existence of an artifact is never leaked) and, for
+ * `validate`, NO parse — the gate runs before `validateDslSource()` because
+ * even parsing is a side effect I2 forbids on a denied request. The action
+ * ids are registered in `specs/domains/dsl/expression/module.manifest.json`;
+ * the default permit shape lives in
+ * `specs/policy-fixtures/cli/dsl-expression-default.cedar` and the runtime
+ * grant comes from the platform-default role packs (read/list verbs land in
+ * the read bucket for TenantAdmin / Author / Viewer).
  */
 
 import { Hono } from 'hono';
@@ -30,12 +38,56 @@ import {
   validateDslSource,
 } from '@atlas/dsl';
 import { DslHandlerError } from '@atlas/dsl';
+import { evaluateRead } from '@atlas/ingress';
+import type { PolicyDecision } from '@atlas/ports';
+import type { IngressState } from '@atlas/ingress';
 import type { AppState } from '../bootstrap.ts';
 import { errorResponse, mapError } from '../middleware/errors.ts';
 import { buildRequestBundle } from '../middleware/state.ts';
 import type { ServerVariables } from '../middleware/principal.ts';
 
 type AppCtx = Context<{ Variables: ServerVariables }>;
+
+/**
+ * Capitalise a DSL `kind` for action-id composition (`expression` →
+ * `Expression`), matching the `Dsl.<Kind>.<Verb>` action naming in the
+ * module manifests. Mirrors the helper in `modules/dsl`'s update handler.
+ */
+function capitaliseKind(kind: string): string {
+  if (kind.length === 0) return kind;
+  return (kind[0] ?? '').toUpperCase() + kind.slice(1);
+}
+
+/**
+ * Run the read-path authz gate for a DSL action against the `DslArtifact`
+ * resource type. Returns the decision; the caller short-circuits on
+ * `deny`. Kept as a named helper (not an inline closure) so it's directly
+ * unit-testable and so all four routes share one gate shape.
+ *
+ * `artifactId` is the resource id — `''` for List (resource-set-wide) and
+ * for Validate (no persisted artifact yet), the apiName for Read.
+ */
+function dslReadDecision(
+  ingress: IngressState,
+  principalId: string,
+  tenantId: string,
+  action: string,
+  artifactId: string,
+  correlationId: string,
+): Promise<PolicyDecision> {
+  return evaluateRead(
+    {
+      principal: { id: principalId, tenantId, attributes: {} },
+      action,
+      resource: { type: 'DslArtifact', id: artifactId, tenantId, attributes: {} },
+      context: { correlationId },
+    },
+    ingress,
+  );
+}
+
+const POLICY_DENIED_CODE = 'AUTHZ_POLICY_DENIED';
+const POLICY_DENIED_MESSAGE = 'Not authorized to perform this action';
 
 interface ValidateBody {
   source?: unknown;
@@ -56,6 +108,17 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     const kind = c.req.param('kind') ?? '';
     try {
       const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await dslReadDecision(
+        bundle.ingress,
+        principal.principalId,
+        principal.tenantId,
+        `Dsl.${capitaliseKind(kind)}.List`,
+        '',
+        correlationId,
+      );
+      if (decision.effect === 'deny') {
+        return errorResponse(c, POLICY_DENIED_CODE, POLICY_DENIED_MESSAGE, 403, correlationId);
+      }
       const artifacts = await listDslArtifacts(
         {
           tenantId: principal.tenantId,
@@ -93,6 +156,17 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     const apiName = c.req.param('apiName') ?? '';
     try {
       const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await dslReadDecision(
+        bundle.ingress,
+        principal.principalId,
+        principal.tenantId,
+        `Dsl.${capitaliseKind(kind)}.Read`,
+        apiName,
+        correlationId,
+      );
+      if (decision.effect === 'deny') {
+        return errorResponse(c, POLICY_DENIED_CODE, POLICY_DENIED_MESSAGE, 403, correlationId);
+      }
       const artifact = await getDslArtifact(
         {
           tenantId: principal.tenantId,
@@ -139,6 +213,17 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
     }
     try {
       const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await dslReadDecision(
+        bundle.ingress,
+        principal.principalId,
+        principal.tenantId,
+        `Dsl.${capitaliseKind(kind)}.Read`,
+        apiName,
+        correlationId,
+      );
+      if (decision.effect === 'deny') {
+        return errorResponse(c, POLICY_DENIED_CODE, POLICY_DENIED_MESSAGE, 403, correlationId);
+      }
       const artifact = await getDslArtifactVersion(
         {
           tenantId: principal.tenantId,
@@ -173,7 +258,34 @@ export function dslRoutes(state: AppState): Hono<{ Variables: ServerVariables }>
   // artifact-write budget. Idempotent (no audit, no event, no write).
   app.post('/api/v1/dsl/:kind/validate', async function (c: AppCtx) {
     const correlationId = c.get('correlationId');
+    const principal = c.get('principal');
     const kind = c.req.param('kind') ?? '';
+    // I2 short-circuit: authz runs BEFORE the body is read and BEFORE
+    // `validateDslSource()` parses anything. Even parsing the candidate
+    // source is a side effect (CPU, error shapes, log lines) that a
+    // denied request must not trigger — so the gate is the very first
+    // thing the handler does, ahead of `c.req.json()`.
+    let denied: Response | undefined;
+    try {
+      const bundle = await buildRequestBundle(state, principal, correlationId);
+      const decision = await dslReadDecision(
+        bundle.ingress,
+        principal.principalId,
+        principal.tenantId,
+        `Dsl.${capitaliseKind(kind)}.Validate`,
+        '',
+        correlationId,
+      );
+      if (decision.effect === 'deny') {
+        denied = errorResponse(c, POLICY_DENIED_CODE, POLICY_DENIED_MESSAGE, 403, correlationId);
+      }
+    } catch (e) {
+      if (e instanceof DslHandlerError) {
+        return errorResponse(c, e.code, e.message, e.status, correlationId);
+      }
+      return mapError(c, e, correlationId);
+    }
+    if (denied) return denied;
     let body: ValidateBody;
     try {
       body = (await c.req.json()) as ValidateBody;
