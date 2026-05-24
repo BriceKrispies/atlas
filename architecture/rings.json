@@ -1,0 +1,130 @@
+{
+  "$generatedBy": "Hand-maintained. The ONLY source of truth for Atlas's layer model.",
+  "$consumedBy": "scripts/gen-arch-rules.ts (pnpm arch:check / arch:emit)",
+  "$spec": "specs/decisions/0016-hard-layered-ring-architecture.md",
+  "description": "Concentric ring model for Atlas, expressed as a DAG (not a linear order — the hexagon has sibling rings). Each ring declares which rings it MAY import (`mayImport`); everything else is forbidden (R1, inward-only). A ring that lists itself permits same-ring cross-package imports. Cross-stack imports are forbidden except for declared sharedLeaves. Tooling packages may import anything, but production code may never import a tooling package. `domain` and `adapter` are SIBLINGS: both import inward (abi/ports/runtime) but never each other; neither lists `domain`/`adapter` in mayImport. Module-to-module (same-ring domain) and adapter-to-adapter are forbidden — the composition root (`apps`) is the only ring that wires domain + adapter together.",
+
+  "rings": {
+    "abi": { "stack": "backend", "mayImport": [] },
+    "ports": { "stack": "backend", "mayImport": ["abi"] },
+    "runtime": { "stack": "backend", "mayImport": ["abi", "ports", "runtime"] },
+    "domain": { "stack": "backend", "mayImport": ["abi", "ports", "runtime"] },
+    "adapter": { "stack": "backend", "mayImport": ["abi", "ports", "runtime"] },
+    "apps": { "stack": "backend", "mayImport": ["abi", "ports", "runtime", "domain", "adapter"] },
+
+    "ui-core": { "stack": "frontend", "mayImport": [] },
+    "ui-design": { "stack": "frontend", "mayImport": ["ui-core"] },
+    "ui-composite": { "stack": "frontend", "mayImport": ["ui-core", "ui-design", "ui-composite"] },
+    "ui-template": { "stack": "frontend", "mayImport": ["ui-core", "ui-design", "ui-composite"] },
+    "ui-bundle": {
+      "stack": "frontend",
+      "mayImport": ["ui-core", "ui-design", "ui-composite", "ui-template"]
+    },
+    "ui-app": {
+      "stack": "frontend",
+      "mayImport": ["ui-core", "ui-design", "ui-composite", "ui-template", "ui-bundle"]
+    }
+  },
+
+  "sharedLeaves": ["@atlas/logging"],
+
+  "assignments": {
+    "@atlas/ports": "ports",
+
+    "@atlas/platform-core": "runtime",
+    "@atlas/ingress": "runtime",
+    "@atlas/logging": "runtime",
+    "@atlas/metrics": "runtime",
+    "@atlas/schemas": "runtime",
+    "@atlas/wasm-host": "runtime",
+    "@atlas/dsl-substrate": "runtime",
+    "@atlas/dsl-expression": "runtime",
+    "@atlas/seeder": "runtime",
+
+    "@atlas/authz": "domain",
+    "@atlas/catalog": "domain",
+    "@atlas/content-pages": "domain",
+    "@atlas/identity": "domain",
+    "@atlas/repository": "domain",
+    "@atlas/tenancy": "domain",
+    "@atlas/dsl": "domain",
+
+    "@atlas/adapter-idb": "adapter",
+    "@atlas/adapter-policy-stub": "adapter",
+    "@atlas/adapter-seed-memory": "adapter",
+    "@atlas/adapter-policy-cedar": "adapter",
+    "@atlas/adapter-node": "adapter",
+
+    "@atlas/server": "apps",
+    "@atlas/projection-worker": "apps",
+    "@atlas/sim": "apps",
+    "@atlas/atlasctl": "apps",
+
+    "@atlas/core": "ui-core",
+    "@atlas/test-state": "ui-core",
+    "@atlas/design": "ui-design",
+    "@atlas/api-client": "ui-design",
+    "@atlas/widgets": "ui-composite",
+    "@atlas/widget-host": "ui-composite",
+    "@atlas/page-templates": "ui-template",
+    "@atlas/bundle-standard": "ui-bundle",
+    "@atlas/admin": "ui-app",
+    "@atlas/authoring": "ui-app",
+    "@atlas/sandbox": "ui-app"
+  },
+
+  "tooling": [
+    "@atlas/test",
+    "@atlas/test-fixtures",
+    "@atlas/contract-tests",
+    "@atlas/arch-tests",
+    "@atlas/chaos",
+    "@atlas/stryker-runner-node-test",
+    "@atlas/openapi"
+  ],
+
+  "waivers": [
+    {
+      "from": "@atlas/ports",
+      "to": "@atlas/platform-core",
+      "reason": "ports (Ring 1) imports shared ABI types from platform-core (runtime) — an outward edge. Fixed by carving @atlas/abi (Ring 0) and repointing ports there.",
+      "removeBy": "PR2",
+      "ticket": "arch/hard-layering PR2"
+    },
+    {
+      "from": "@atlas/ports",
+      "to": "@atlas/dsl-substrate",
+      "reason": "ports (Ring 1) imports DslArtifact/SourceMap/ArtifactRef shapes from dsl-substrate (runtime) — an outward edge. Fixed by moving those shapes into @atlas/abi (Ring 0).",
+      "removeBy": "PR2",
+      "ticket": "arch/hard-layering PR2"
+    },
+    {
+      "from": "@atlas/adapter-node",
+      "to": "@atlas/authz",
+      "reason": "adapter (Ring 4) imports the PolicyStore interface + AuthzError from the authz domain module — a sibling-ring edge. Fixed by promoting PolicyStore (and its error contract) to a port.",
+      "removeBy": "PR3",
+      "ticket": "arch/hard-layering PR3"
+    },
+    {
+      "from": "@atlas/adapter-node",
+      "to": "@atlas/identity",
+      "reason": "adapter imports buildRolePackBundle + identity seed-type identifiers from the identity domain module (dead/unwired control-plane seed code). Fixed by relocating the seed generators to the composition-root / scripts layer.",
+      "removeBy": "PR4",
+      "ticket": "arch/hard-layering PR4"
+    },
+    {
+      "from": "@atlas/adapter-node",
+      "to": "@atlas/content-pages",
+      "reason": "adapter imports content-pages seed-type identifiers from the content-pages domain module (dead/unwired control-plane seed code). Fixed by relocating the seed generators to the composition-root / scripts layer.",
+      "removeBy": "PR4",
+      "ticket": "arch/hard-layering PR4"
+    },
+    {
+      "from": "@atlas/adapter-node",
+      "to": "@atlas/adapter-policy-cedar",
+      "reason": "cross-adapter import (adapter -> adapter), forbidden by adapters/CLAUDE.md. adapter-node reuses Cedar bundle/seed helpers from adapter-policy-cedar. Fixed by extracting the shared helper down to a port/runtime seam or wiring at the composition root.",
+      "removeBy": "PR6",
+      "ticket": "arch/hard-layering PR6"
+    }
+  ]
+}

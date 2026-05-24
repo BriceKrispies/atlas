@@ -65,6 +65,9 @@
     "safe": "node --experimental-transform-types scripts/safe-pnpm.ts",
     "overseer:check": "node --experimental-transform-types scripts/overseer-check.ts",
     "overseer:check:verbose": "node --experimental-transform-types scripts/overseer-check.ts --verbose",
+    "arch:check": "node --experimental-transform-types scripts/gen-arch-rules.ts",
+    "arch:check:verbose": "node --experimental-transform-types scripts/gen-arch-rules.ts --verbose",
+    "arch:emit": "node --experimental-transform-types scripts/gen-arch-rules.ts --emit",
     "test-coverage:inventory": "node --experimental-transform-types scripts/test-coverage-inventory.ts",
     "test-coverage:inventory:check": "node --experimental-transform-types scripts/test-coverage-inventory.ts --check"
   },

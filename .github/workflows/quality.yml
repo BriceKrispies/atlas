@@ -62,6 +62,40 @@ jobs:
         if: always()
         run: pnpm lint:spectral
 
+  # --- Architecture ring gate (ADR 0016) -----------------------------------
+  architecture:
+    name: Architecture rings (arch:check / generated-drift / dep-cruiser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: arch:check (ring matrix + waiver ratchet — authoritative)
+        if: always()
+        run: pnpm arch:check
+
+      - name: generated rules are not stale (arch:emit is a no-op diff)
+        if: always()
+        run: |
+          pnpm arch:emit
+          git diff --exit-code architecture/generated \
+            || { echo "::error::architecture/generated is stale — run 'pnpm arch:emit' and commit."; exit 1; }
+
+      - name: dep-cruiser (graph-level ring + cycle gate)
+        if: always()
+        run: pnpm deps:check
+
   # --- Test coverage (report-only, no thresholds yet) ----------------------
   coverage:
     name: Vitest coverage (report-only)

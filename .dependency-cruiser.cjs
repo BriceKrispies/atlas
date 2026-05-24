@@ -11,8 +11,20 @@
  *
  * Run: `pnpm deps:check` (validate) / `pnpm deps:graph` (visualize).
  */
+// Ring rules generated from architecture/rings.json by scripts/gen-arch-rules.ts
+// (`pnpm arch:emit`). The package.json matrix gate (`pnpm arch:check`) is the
+// authoritative per-edge check; these give dep-cruiser graph-level coverage of
+// the same model. ADR 0016.
+let generatedRingRules = [];
+try {
+  generatedRingRules = require('./architecture/generated/dep-cruiser-rules.cjs');
+} catch {
+  // arch:emit has not run yet; ring enforcement still holds via `pnpm arch:check`.
+}
+
 module.exports = {
   forbidden: [
+    ...generatedRingRules,
     {
       name: 'no-cross-module-internals',
       severity: 'error',

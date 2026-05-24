@@ -1,7 +1,13 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vitest/globals"]
+    // Was ["vitest/globals"] — vitest was removed in favour of the @atlas/test
+    // (node:test) runner, leaving a dangling type-lib reference that broke
+    // `pnpm typecheck` (TS2688) AND silently dropped the base config's node
+    // types (a child `types` array replaces, not merges). Tests import
+    // { describe, it, expect } explicitly from @atlas/test, so no test globals
+    // are needed here. Restored to node. (ADR 0016 enablement.)
+    "types": ["node"]
     // Workspace package paths intentionally NOT mapped here. pnpm symlinks
     // each declared dep into the importer's `node_modules/`; TypeScript's
     // `moduleResolution: "bundler"` walks that the same way Node does. A
