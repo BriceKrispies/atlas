@@ -73,7 +73,6 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [query-dsl](dsl/query-dsl.md) — capability — open — → spec-keeper — MEDIUM (first effectful-host-op DSL; port: 'EntityStore'; ADR 0007 §10)
 - [atlasctl-dsl-cli](dsl/atlasctl-dsl-cli.md) — capability — open — → spec-keeper — LOW (CLI wrappers for the 4 live HTTP endpoints; agentic-first dogfood)
 - [bdd-roundtrip](dsl/bdd-roundtrip.md) — test — open — → sdet — MEDIUM (closes slice-workflow Phase 2 gate for the DSL surface)
-- [cedar-policy-actions](dsl/cedar-policy-actions.md) — capability — **architect-passed, awaiting merge** — → spine-owner — **HIGH** (I2 gate on DSL read/validate routes; pilot pipeline impl→sdet→architect complete 2026-05-24, diff uncommitted pending user merge)
 - [cedar-policy-bdd-witness](dsl/cedar-policy-bdd-witness.md) — test — open — → sdet — LOW (architect followup #1; wire-level authz BDD; blocked_by: dsl/cedar-policy-actions)
 - [expression-capability-spec](dsl/expression-capability-spec.md) — spec — open — → spec-keeper — MEDIUM (retro DSL capability README; spec-first gate was bypassed for the whole DSL surface)
 
