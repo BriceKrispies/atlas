@@ -71,7 +71,8 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 ## testing-floor/
 
 - [scaffold-tooling](testing-floor/scaffold-tooling.md) — capability — open — → module-dev — HIGH (atlasctl test scaffold; mechanical floor for Phase 1.0 of every slice; specs/crosscut/testing.md §2.1 §8)
-- [property-generators](testing-floor/property-generators.md) — test — open — → sdet — HIGH (fast-check properties for I3/I5/I6/I9/I10/I12/I13/I16 in packages/contract-tests; testing.md §2.2 mandatory)
+- [property-seams-repoint](testing-floor/property-seams-repoint.md) — drift-finding — open — → sdet — MEDIUM (re-point I5/I6/I9/I13/I16 properties from synthetic seams to production ingress/ports; from property-generators architect gate)
+- [node-test-harness-config](testing-floor/node-test-harness-config.md) — drift-finding — open — → port-adapter-dev — LOW (prepare:false vs production + HAS_DB-gated Postgres parity leg; from property-generators architect gate)
 - [coverage-and-linkage-gates](testing-floor/coverage-and-linkage-gates.md) — chore — open — → sdet — HIGH (per-package branch-coverage floors + bidirectional @spec linkage check; testing.md §5 §9)
 - [retrofit-chore-set](testing-floor/retrofit-chore-set.md) — refactor — open — → user — MEDIUM (parent ticket; blocked_by all three above; sequenced spine→extensibility→first-party→adapters→frontend per testing.md §11)
 
