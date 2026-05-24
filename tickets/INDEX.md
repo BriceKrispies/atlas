@@ -52,11 +52,6 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [admin-spa-serve-static](kernel-extraction/admin-spa-serve-static.md) — drift-finding — scoped — → architect — MEDIUM (§11 retro #4; closes the admin-SPA same-origin category for the BDD path; supersedes predecessor CORS retro)
 - [admin-spa-root-shadow](kernel-extraction/admin-spa-root-shadow.md) — drift-finding — scoped — → architect — MEDIUM (§11 retro #5; legacy `GET /` version-JSON handler shadowed the SPA serveStatic catch-all; corrects retro #4's `closed` claim)
 
-## drift-2026-05/
-
-- [healthz-negative-test-for-bootid-contract](drift-2026-05/healthz-negative-test-for-bootid-contract.md) — drift-finding — open — → sdet — LOW (locks /healthz terse contract per first §11 retro F2)
-- [readyz-503-branch-test-coverage](drift-2026-05/readyz-503-branch-test-coverage.md) — drift-finding — open — → sdet — LOW (closes asymmetric coverage on /readyz 503 branch per first §11 retro F3)
-
 ## drift-always-on-2026-05/
 
 - [db-wipe-reseed-forces-restart](drift-always-on-2026-05/db-wipe-reseed-forces-restart.md) — drift-finding — open — → vision-keeper — **HIGH** (umbrella; acceptance MET by W4: bootId stable across wipe→reseed; closes on merge of G1/G2/G3)
