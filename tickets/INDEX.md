@@ -18,7 +18,6 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [query-catchall-lookup-before-authz-oracle](chore/query-catchall-lookup-before-authz-oracle.md) — drift-finding — open — → spine-owner — MEDIUM (descriptor lookup runs before authz; registered-vocabulary oracle; spec decision needed at action-driven-routing.md §4.5)
 - [server-typecheck-test-file-fixes](chore/server-typecheck-test-file-fixes.md) — chore — open — → port-adapter-dev — LOW (pre-existing `Type 'never'` errors from ffe5f4c vitest shim aftershock)
-- [page-document-canonical-sync](chore/page-document-canonical-sync.md) — chore — scoped — → first-party-apps-owner — MEDIUM
 - [sync-schemas-coverage-decision](chore/sync-schemas-coverage-decision.md) — spec — open — → spec-keeper — LOW (decision-only)
 
 ## seeder/
