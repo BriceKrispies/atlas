@@ -685,6 +685,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/test
 
+  packages/abi:
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../test
+
   packages/api-client:
     dependencies:
       '@atlas/core':
@@ -770,6 +776,9 @@ importers:
 
   packages/dsl-substrate:
     dependencies:
+      '@atlas/abi':
+        specifier: workspace:*
+        version: link:../abi
       '@atlas/platform-core':
         specifier: workspace:*
         version: link:../platform-core
@@ -867,6 +876,10 @@ importers:
         version: 0.18.12
 
   packages/platform-core:
+    dependencies:
+      '@atlas/abi':
+        specifier: workspace:*
+        version: link:../abi
     devDependencies:
       '@atlas/ports':
         specifier: workspace:*
@@ -998,12 +1011,9 @@ importers:
 
   ports:
     dependencies:
-      '@atlas/dsl-substrate':
+      '@atlas/abi':
         specifier: workspace:*
-        version: link:../packages/dsl-substrate
-      '@atlas/platform-core':
-        specifier: workspace:*
-        version: link:../packages/platform-core
+        version: link:../packages/abi
       ajv:
         specifier: ^8.17.0
         version: 8.20.0

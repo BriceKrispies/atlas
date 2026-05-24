@@ -27,7 +27,7 @@
  */
 
 import { SingleFlight } from './singleflight.ts';
-import type { CacheSetOptions } from './types.ts';
+import type { CacheSetOptions } from '@atlas/abi';
 
 /**
  * Minimal structural shape of the `Cache` port required by `CachedRead`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@atlas/test';
 import { PrincipalCache } from './principal-cache.ts';
-import type { Principal } from './types.ts';
+import type { Principal } from '@atlas/abi';
 function makePrincipal(overrides: Partial<Principal> = {}): Principal {
     return {
         principalId: 'p-1',

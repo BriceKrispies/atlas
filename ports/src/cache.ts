@@ -1,4 +1,4 @@
-import type { CacheSetOptions } from '@atlas/platform-core';
+import type { CacheSetOptions } from '@atlas/abi';
 
 export interface Cache {
   get(key: string): Promise<unknown | null>;

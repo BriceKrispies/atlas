@@ -5,6 +5,20 @@
  */
 module.exports = [
 {
+  "name": "ring-abi-no-outward",
+  "severity": "error",
+  "comment": "Ring 'abi' (backend) may import only [nothing] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+  "from": {
+    "path": "^(packages/abi)/"
+  },
+  "to": {
+    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
+    "pathNot": [
+      "^packages/logging/"
+    ]
+  }
+},
+{
   "name": "ring-ports-no-outward",
   "severity": "error",
   "comment": "Ring 'ports' (backend) may import only [abi] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
@@ -14,9 +28,7 @@ module.exports = [
   "to": {
     "path": "^(packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
-      "^packages/logging/",
-      "^packages/platform-core/",
-      "^packages/dsl-substrate/"
+      "^packages/logging/"
     ]
   }
 },
@@ -88,7 +100,7 @@ module.exports = [
     "path": "^(packages/core|packages/test-state)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
       "^packages/logging/"
     ]
@@ -102,7 +114,7 @@ module.exports = [
     "path": "^(packages/api-client|packages/design)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
       "^packages/logging/"
     ]
@@ -116,7 +128,7 @@ module.exports = [
     "path": "^(packages/widget-host|packages/widgets)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
       "^packages/logging/"
     ]
@@ -130,7 +142,7 @@ module.exports = [
     "path": "^(packages/page-templates)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
       "^packages/logging/"
     ]
@@ -144,7 +156,7 @@ module.exports = [
     "path": "^(bundles/standard)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|apps/admin|apps/authoring|apps/sandbox)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|apps/admin|apps/authoring|apps/sandbox)/",
     "pathNot": [
       "^packages/logging/"
     ]
@@ -158,7 +170,7 @@ module.exports = [
     "path": "^(apps/admin|apps/authoring|apps/sandbox)/"
   },
   "to": {
-    "path": "^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim)/",
+    "path": "^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim)/",
     "pathNot": [
       "^packages/logging/"
     ]

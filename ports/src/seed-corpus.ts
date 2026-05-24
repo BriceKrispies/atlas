@@ -1,4 +1,4 @@
-import type { IntentEnvelope } from '@atlas/platform-core';
+import type { IntentEnvelope } from '@atlas/abi';
 
 /**
  * Seed corpus port — the library of scenarios and fixtures the system can

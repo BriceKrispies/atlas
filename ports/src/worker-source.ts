@@ -1,4 +1,4 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/abi';
 
 /**
  * Feed of new events for the projection worker. The worker reads events

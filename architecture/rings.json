@@ -29,6 +29,8 @@
   "sharedLeaves": ["@atlas/logging"],
 
   "assignments": {
+    "@atlas/abi": "abi",
+
     "@atlas/ports": "ports",
 
     "@atlas/platform-core": "runtime",
@@ -84,20 +86,6 @@
   ],
 
   "waivers": [
-    {
-      "from": "@atlas/ports",
-      "to": "@atlas/platform-core",
-      "reason": "ports (Ring 1) imports shared ABI types from platform-core (runtime) — an outward edge. Fixed by carving @atlas/abi (Ring 0) and repointing ports there.",
-      "removeBy": "PR2",
-      "ticket": "arch/hard-layering PR2"
-    },
-    {
-      "from": "@atlas/ports",
-      "to": "@atlas/dsl-substrate",
-      "reason": "ports (Ring 1) imports DslArtifact/SourceMap/ArtifactRef shapes from dsl-substrate (runtime) — an outward edge. Fixed by moving those shapes into @atlas/abi (Ring 0).",
-      "removeBy": "PR2",
-      "ticket": "arch/hard-layering PR2"
-    },
     {
       "from": "@atlas/adapter-node",
       "to": "@atlas/authz",

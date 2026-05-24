@@ -1,6 +1,6 @@
 export type { EventStore, StoredEvent } from './event-store.ts';
 export type { AnalyticsStore, AnalyticsQuery } from './analytics-store.ts';
-export type { AnalyticsEvent } from '@atlas/platform-core';
+export type { AnalyticsEvent } from '@atlas/abi';
 export { InMemoryAnalyticsStore } from './analytics-store.ts';
 export type { Cache } from './cache.ts';
 export type { SecretStore } from './secret-store.ts';

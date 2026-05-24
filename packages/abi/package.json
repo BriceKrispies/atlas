@@ -1,5 +1,5 @@
 {
-  "name": "@atlas/dsl-substrate",
+  "name": "@atlas/abi",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,12 +11,7 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "atlas-test"
   },
-  "dependencies": {
-    "@atlas/abi": "workspace:*",
-    "@atlas/platform-core": "workspace:*"
-  },
   "devDependencies": {
-    "@atlas/test": "workspace:*",
-    "@atlas/test-fixtures": "workspace:*"
+    "@atlas/test": "workspace:*"
   }
 }

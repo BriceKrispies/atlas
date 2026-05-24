@@ -12,6 +12,9 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "atlas-test"
   },
+  "dependencies": {
+    "@atlas/abi": "workspace:*"
+  },
   "devDependencies": {
     "@atlas/ports": "workspace:*",
     "@atlas/test-fixtures": "workspace:*",

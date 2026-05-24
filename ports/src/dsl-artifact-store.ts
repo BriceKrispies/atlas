@@ -29,7 +29,7 @@
  * dependency on the substrate.
  */
 
-import type { DslArtifact, SourceMap, ArtifactRef } from '@atlas/dsl-substrate';
+import type { DslArtifact, SourceMap, ArtifactRef } from '@atlas/abi';
 
 /**
  * Input shape for `save`. Mirrors `DslArtifact` minus the server-minted

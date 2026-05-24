@@ -1,4 +1,4 @@
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/abi';
 
 /**
  * An EventEnvelope after persistence — `seq` is guaranteed populated.

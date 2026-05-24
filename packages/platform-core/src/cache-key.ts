@@ -21,7 +21,7 @@
  *   `vary(k1=v1,k2=v2)`. If no dimension has a runtime value we emit
  *   the literal `none`.
  */
-import type { CacheArtifact, VaryDimension } from './manifest.ts';
+import type { CacheArtifact, VaryDimension } from '@atlas/abi';
 /**
  * Lower-case key used by `varyValues` lookups and the rendered vary hash.
  * Mirrors Rust's `format!("{:?}", dim).to_lowercase()`.

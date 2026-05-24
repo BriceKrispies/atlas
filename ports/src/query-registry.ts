@@ -17,7 +17,7 @@
  * `register()` smoke check), I17 (every queryId reachable from every
  * surface).
  */
-import type { Logger } from '@atlas/platform-core';
+import type { Logger } from '@atlas/abi';
 
 /**
  * Per-request context handed to every `QueryFn`. The union of what

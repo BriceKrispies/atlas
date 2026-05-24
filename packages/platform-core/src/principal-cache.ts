@@ -25,7 +25,7 @@
  * cannot DOS the pool either.
  */
 
-import type { Principal } from './types.ts';
+import type { Principal } from '@atlas/abi';
 
 export interface PrincipalCacheOptions {
   /** Maximum cached entries before LRU eviction. Default 10000. */

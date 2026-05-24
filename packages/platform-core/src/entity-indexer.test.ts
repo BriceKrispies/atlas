@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@atlas/test';
-import type { IndexDeclarationRow } from './control-plane-db.ts';
+import type { IndexDeclarationRow } from '@atlas/abi';
 import { createIndexSql, dropIndexSql, indexNameFor, jsonbPathExpr, reconcile as reconcileEntityIndexes, } from './entity-indexer.ts';
 function decl(partial: Partial<IndexDeclarationRow>): IndexDeclarationRow {
     return {

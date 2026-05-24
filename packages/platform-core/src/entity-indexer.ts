@@ -15,7 +15,7 @@
  *
  * See `~/.claude/plans/yes-mossy-galaxy.md` for the L3 plan.
  */
-import type { IndexDeclarationRow } from './control-plane-db.ts';
+import type { IndexDeclarationRow } from '@atlas/abi';
 /** Postgres index name we materialize for a given declaration. */
 export function indexNameFor(decl: {
     entity_type: string;

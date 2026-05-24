@@ -1,4 +1,4 @@
-import type { SearchDocument } from '@atlas/platform-core';
+import type { SearchDocument } from '@atlas/abi';
 
 export interface SearchEngine {
   index(doc: SearchDocument): Promise<void>;

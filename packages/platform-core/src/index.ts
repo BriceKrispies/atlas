@@ -8,7 +8,7 @@ export type {
   CacheSetOptions,
   AnalyticsEvent,
   ServerEvent,
-} from './types.ts';
+} from '@atlas/abi';
 
 export { IngressError } from './errors.ts';
 export type { ErrorBody, IngressErrorCode } from './errors.ts';
@@ -45,7 +45,7 @@ export type {
   FieldRow,
   IndexDeclarationRow,
   RegistryOrigin,
-} from './control-plane-db.ts';
+} from '@atlas/abi';
 
 export { normalizeHost, tenantBaseUrl } from './tenant-urls.ts';
 export type { PrimaryCustomDomainLookup } from './tenant-urls.ts';
@@ -80,14 +80,14 @@ export {
 
 // Logging / execution-context primitives. Interfaces only — the
 // implementation lives in @atlas/logging. Per specs/crosscut/logging.md.
-export type { LogLevel, LogEvent, LogEventError } from './log-event.ts';
-export type { Logger, LogFields } from './logger.ts';
+export type { LogLevel, LogEvent, LogEventError } from '@atlas/abi';
+export type { Logger, LogFields } from '@atlas/abi';
 export { toLogError } from './log-error.ts';
 export type {
   AtlasEnvironment,
   AtlasExecutionContext,
   AtlasExecutionContextPatch,
-} from './execution-context.ts';
+} from '@atlas/abi';
 
 export type {
   ModuleManifest,
@@ -104,7 +104,7 @@ export type {
   SchemaCompatibility,
   VaryDimension,
   PrivacyLevel,
-} from './manifest.ts';
+} from '@atlas/abi';
 
 export {
   ValidationError,

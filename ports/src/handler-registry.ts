@@ -1,4 +1,4 @@
-import type { EventEnvelope, IntentEnvelope, IntentPayload, Logger } from '@atlas/platform-core';
+import type { EventEnvelope, IntentEnvelope, IntentPayload, Logger } from '@atlas/abi';
 import type { EventStore } from './event-store.ts';
 import type { CatalogStateStore } from './catalog-state-store.ts';
 

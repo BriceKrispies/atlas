@@ -5,7 +5,7 @@
  * firing when an upstream projection rebuild threw).
  */
 import { describe, it, expect, vi } from '@atlas/test';
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/abi';
 import { composeDispatchers } from '../src/dispatcher.ts';
 function envelope(): EventEnvelope {
   return {

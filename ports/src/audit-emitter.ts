@@ -24,7 +24,7 @@
  * platform-emitted events.
  */
 
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/abi';
 import type { PolicyDecision, PolicyEvaluationRequest } from './policy-engine.ts';
 
 /** Schema id for `StructuredAuthz.PolicyEvaluated` events. */

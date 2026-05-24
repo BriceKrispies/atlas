@@ -46,7 +46,7 @@ export interface MailerSendResult {
  * time logger (if any) — useful for adapter-internal flows that have no
  * request context.
  */
-import type { Logger } from '@atlas/platform-core';
+import type { Logger } from '@atlas/abi';
 export interface MailerSendOptions {
   logger?: Logger;
 }

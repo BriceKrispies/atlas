@@ -12,7 +12,7 @@
  * MUST carry a `tenantId`, and implementations MUST NOT return events
  * from other tenants.
  */
-import type { AnalyticsEvent } from '@atlas/platform-core';
+import type { AnalyticsEvent } from '@atlas/abi';
 /** Filter for `AnalyticsStore.query`. Only `tenantId` is required. */
 export interface AnalyticsQuery {
   tenantId: string;

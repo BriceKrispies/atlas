@@ -19,7 +19,7 @@
  * platform-wide registration).
  */
 
-import type { EntityTypeRow, FieldRow, IndexDeclarationRow } from '@atlas/platform-core';
+import type { EntityTypeRow, FieldRow, IndexDeclarationRow } from '@atlas/abi';
 
 export interface EntityTypeRegistry {
   /**

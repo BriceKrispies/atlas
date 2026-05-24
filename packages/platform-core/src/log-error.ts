@@ -17,7 +17,7 @@
  * non-Error throws.
  */
 
-import type { LogEventError } from './log-event.ts';
+import type { LogEventError } from '@atlas/abi';
 
 export function toLogError(cause: unknown): LogEventError {
   if (cause instanceof Error) {

@@ -1,7 +1,80 @@
 {
   "overrides": [
     {
-      "files": ["adapters/idb/**/*.ts", "adapters/idb/**/*.tsx"],
+      "files": [
+        "packages/abi/**/*.ts",
+        "packages/abi/**/*.tsx"
+      ],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/abi may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "adapters/idb/**/*.ts",
+        "adapters/idb/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -58,7 +131,10 @@
       }
     },
     {
-      "files": ["adapters/node/**/*.ts", "adapters/node/**/*.tsx"],
+      "files": [
+        "adapters/node/**/*.ts",
+        "adapters/node/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -111,7 +187,10 @@
       }
     },
     {
-      "files": ["adapters/policy-cedar/**/*.ts", "adapters/policy-cedar/**/*.tsx"],
+      "files": [
+        "adapters/policy-cedar/**/*.ts",
+        "adapters/policy-cedar/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -168,7 +247,10 @@
       }
     },
     {
-      "files": ["adapters/policy-stub/**/*.ts", "adapters/policy-stub/**/*.tsx"],
+      "files": [
+        "adapters/policy-stub/**/*.ts",
+        "adapters/policy-stub/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -225,7 +307,10 @@
       }
     },
     {
-      "files": ["adapters/seed-memory/**/*.ts", "adapters/seed-memory/**/*.tsx"],
+      "files": [
+        "adapters/seed-memory/**/*.ts",
+        "adapters/seed-memory/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -282,7 +367,10 @@
       }
     },
     {
-      "files": ["apps/admin/**/*.ts", "apps/admin/**/*.tsx"],
+      "files": [
+        "apps/admin/**/*.ts",
+        "apps/admin/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -297,6 +385,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -340,7 +429,10 @@
       }
     },
     {
-      "files": ["packages/api-client/**/*.ts", "packages/api-client/**/*.tsx"],
+      "files": [
+        "packages/api-client/**/*.ts",
+        "packages/api-client/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -355,6 +447,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -404,7 +497,10 @@
       }
     },
     {
-      "files": ["apps/atlasctl/**/*.ts", "apps/atlasctl/**/*.tsx"],
+      "files": [
+        "apps/atlasctl/**/*.ts",
+        "apps/atlasctl/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -449,7 +545,10 @@
       }
     },
     {
-      "files": ["apps/authoring/**/*.ts", "apps/authoring/**/*.tsx"],
+      "files": [
+        "apps/authoring/**/*.ts",
+        "apps/authoring/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -464,6 +563,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -507,7 +607,10 @@
       }
     },
     {
-      "files": ["modules/authz/**/*.ts", "modules/authz/**/*.tsx"],
+      "files": [
+        "modules/authz/**/*.ts",
+        "modules/authz/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -564,7 +667,10 @@
       }
     },
     {
-      "files": ["bundles/standard/**/*.ts", "bundles/standard/**/*.tsx"],
+      "files": [
+        "bundles/standard/**/*.ts",
+        "bundles/standard/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -579,6 +685,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -623,7 +730,10 @@
       }
     },
     {
-      "files": ["modules/catalog/**/*.ts", "modules/catalog/**/*.tsx"],
+      "files": [
+        "modules/catalog/**/*.ts",
+        "modules/catalog/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -680,7 +790,10 @@
       }
     },
     {
-      "files": ["modules/content-pages/**/*.ts", "modules/content-pages/**/*.tsx"],
+      "files": [
+        "modules/content-pages/**/*.ts",
+        "modules/content-pages/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -737,7 +850,10 @@
       }
     },
     {
-      "files": ["packages/core/**/*.ts", "packages/core/**/*.tsx"],
+      "files": [
+        "packages/core/**/*.ts",
+        "packages/core/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -752,6 +868,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -803,7 +920,10 @@
       }
     },
     {
-      "files": ["packages/design/**/*.ts", "packages/design/**/*.tsx"],
+      "files": [
+        "packages/design/**/*.ts",
+        "packages/design/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -818,6 +938,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -867,7 +988,10 @@
       }
     },
     {
-      "files": ["modules/dsl/**/*.ts", "modules/dsl/**/*.tsx"],
+      "files": [
+        "modules/dsl/**/*.ts",
+        "modules/dsl/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -924,7 +1048,10 @@
       }
     },
     {
-      "files": ["packages/dsl-expression/**/*.ts", "packages/dsl-expression/**/*.tsx"],
+      "files": [
+        "packages/dsl-expression/**/*.ts",
+        "packages/dsl-expression/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -982,7 +1109,10 @@
       }
     },
     {
-      "files": ["packages/dsl-substrate/**/*.ts", "packages/dsl-substrate/**/*.tsx"],
+      "files": [
+        "packages/dsl-substrate/**/*.ts",
+        "packages/dsl-substrate/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1040,7 +1170,10 @@
       }
     },
     {
-      "files": ["modules/identity/**/*.ts", "modules/identity/**/*.tsx"],
+      "files": [
+        "modules/identity/**/*.ts",
+        "modules/identity/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1097,7 +1230,10 @@
       }
     },
     {
-      "files": ["packages/ingress/**/*.ts", "packages/ingress/**/*.tsx"],
+      "files": [
+        "packages/ingress/**/*.ts",
+        "packages/ingress/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1155,7 +1291,10 @@
       }
     },
     {
-      "files": ["packages/logging/**/*.ts", "packages/logging/**/*.tsx"],
+      "files": [
+        "packages/logging/**/*.ts",
+        "packages/logging/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1213,7 +1352,10 @@
       }
     },
     {
-      "files": ["packages/metrics/**/*.ts", "packages/metrics/**/*.tsx"],
+      "files": [
+        "packages/metrics/**/*.ts",
+        "packages/metrics/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1271,7 +1413,10 @@
       }
     },
     {
-      "files": ["packages/page-templates/**/*.ts", "packages/page-templates/**/*.tsx"],
+      "files": [
+        "packages/page-templates/**/*.ts",
+        "packages/page-templates/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1286,6 +1431,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -1331,7 +1477,10 @@
       }
     },
     {
-      "files": ["packages/platform-core/**/*.ts", "packages/platform-core/**/*.tsx"],
+      "files": [
+        "packages/platform-core/**/*.ts",
+        "packages/platform-core/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1389,7 +1538,10 @@
       }
     },
     {
-      "files": ["ports/**/*.ts", "ports/**/*.tsx"],
+      "files": [
+        "ports/**/*.ts",
+        "ports/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1424,11 +1576,13 @@
                   "@atlas/design",
                   "@atlas/dsl",
                   "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
                   "@atlas/identity",
                   "@atlas/ingress",
                   "@atlas/metrics",
                   "@atlas/openapi",
                   "@atlas/page-templates",
+                  "@atlas/platform-core",
                   "@atlas/projection-worker",
                   "@atlas/repository",
                   "@atlas/sandbox",
@@ -1453,7 +1607,10 @@
       }
     },
     {
-      "files": ["apps/projection-worker/**/*.ts", "apps/projection-worker/**/*.tsx"],
+      "files": [
+        "apps/projection-worker/**/*.ts",
+        "apps/projection-worker/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1498,7 +1655,10 @@
       }
     },
     {
-      "files": ["modules/repository/**/*.ts", "modules/repository/**/*.tsx"],
+      "files": [
+        "modules/repository/**/*.ts",
+        "modules/repository/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1555,7 +1715,10 @@
       }
     },
     {
-      "files": ["apps/sandbox/**/*.ts", "apps/sandbox/**/*.tsx"],
+      "files": [
+        "apps/sandbox/**/*.ts",
+        "apps/sandbox/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1570,6 +1733,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -1613,7 +1777,10 @@
       }
     },
     {
-      "files": ["packages/schemas/**/*.ts", "packages/schemas/**/*.tsx"],
+      "files": [
+        "packages/schemas/**/*.ts",
+        "packages/schemas/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1671,7 +1838,10 @@
       }
     },
     {
-      "files": ["packages/seeder/**/*.ts", "packages/seeder/**/*.tsx"],
+      "files": [
+        "packages/seeder/**/*.ts",
+        "packages/seeder/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1729,7 +1899,10 @@
       }
     },
     {
-      "files": ["apps/server/**/*.ts", "apps/server/**/*.tsx"],
+      "files": [
+        "apps/server/**/*.ts",
+        "apps/server/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1774,7 +1947,10 @@
       }
     },
     {
-      "files": ["apps/sim/**/*.ts", "apps/sim/**/*.tsx"],
+      "files": [
+        "apps/sim/**/*.ts",
+        "apps/sim/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1819,7 +1995,10 @@
       }
     },
     {
-      "files": ["modules/tenancy/**/*.ts", "modules/tenancy/**/*.tsx"],
+      "files": [
+        "modules/tenancy/**/*.ts",
+        "modules/tenancy/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1876,7 +2055,10 @@
       }
     },
     {
-      "files": ["packages/test-state/**/*.ts", "packages/test-state/**/*.tsx"],
+      "files": [
+        "packages/test-state/**/*.ts",
+        "packages/test-state/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -1891,6 +2073,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -1942,7 +2125,10 @@
       }
     },
     {
-      "files": ["packages/wasm-host/**/*.ts", "packages/wasm-host/**/*.tsx"],
+      "files": [
+        "packages/wasm-host/**/*.ts",
+        "packages/wasm-host/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -2000,7 +2186,10 @@
       }
     },
     {
-      "files": ["packages/widget-host/**/*.ts", "packages/widget-host/**/*.tsx"],
+      "files": [
+        "packages/widget-host/**/*.ts",
+        "packages/widget-host/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -2015,6 +2204,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",
@@ -2061,7 +2251,10 @@
       }
     },
     {
-      "files": ["packages/widgets/**/*.ts", "packages/widgets/**/*.tsx"],
+      "files": [
+        "packages/widgets/**/*.ts",
+        "packages/widgets/**/*.tsx"
+      ],
       "excludeFiles": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -2076,6 +2269,7 @@
             "patterns": [
               {
                 "group": [
+                  "@atlas/abi",
                   "@atlas/adapter-idb",
                   "@atlas/adapter-node",
                   "@atlas/adapter-policy-cedar",

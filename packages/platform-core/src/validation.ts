@@ -8,8 +8,8 @@
 //   MissingField, InvalidFormat, Duplicate, InvalidReference,
 //   ConstraintViolation.
 
-import type { EventEnvelope, SearchDocument } from './types.ts';
-import type { ModuleManifest } from './manifest.ts';
+import type { EventEnvelope, SearchDocument } from '@atlas/abi';
+import type { ModuleManifest } from '@atlas/abi';
 
 /**
  * Analytics event shape mirroring `crates/core/src/types.rs::AnalyticsEvent`

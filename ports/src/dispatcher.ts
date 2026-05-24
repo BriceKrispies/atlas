@@ -41,7 +41,7 @@
  * that each module exports a dispatcher-factory the wiring layer
  * composes; the port itself is module-agnostic.
  */
-import type { EventEnvelope } from '@atlas/platform-core';
+import type { EventEnvelope } from '@atlas/abi';
 import type { Cache } from './cache.ts';
 /**
  * Per-request, already-context-bound dispatcher closure. Each module's
