@@ -12,6 +12,8 @@ This document is one of three that together describe Atlas-as-runtime. Each has 
 
 These three are deliberately non-overlapping. If you are looking for "how do I reload a module," see `always-on.md` §4–§5. If you are looking for "why is the kernel/data split a thing at all," see [ADR 0008 §2](../decisions/0008-atlas-on-atlas.md). If you are looking for "is this new behavior I am adding kernel or data," you are in the right place — read on.
 
+> The kernel/data split described here is **conceptual** (restart-required vs hot-changeable). [ADR 0016](../decisions/0016-hard-layered-ring-architecture.md) gives it a **statically-provable** physical form: the concentric ring model (`abi → ports → runtime → domain → adapter → apps`) enforced from [`architecture/rings.json`](../../architecture/rings.json) via `pnpm arch:check`. The innermost rings (`abi`, `ports`, the `runtime` ingress/dispatch loop) are exactly the kernel surface named in §2; the outer rings and the data plane in §3 are what they operate on.
+
 The split exists because Atlas is the recursive kernel described in [ADR 0008](../decisions/0008-atlas-on-atlas.md): Atlas's own admin / identity / authz / audit operations run through the same primitives any tenant uses, so the irreducible-code surface must stay small enough to trust uniformly. Everything that *can* be data *is* data; the kernel is what is left.
 
 ---

@@ -412,6 +412,15 @@ The following invariants are **non-negotiable** and must be enforced by any impl
 
 ---
 
+## Layer Rings (ADR 0016)
+
+On top of the hexagonal port/adapter structure, Atlas enforces a **hard concentric ring** model, statically verified. Dependencies point **inward only** (R1); a package may only import a layer through its public surface (R2). The model is a DAG, not a linear order — `domain` (modules) and `adapter` are **siblings** that both depend inward on `abi`/`ports`/`runtime` but never on each other; only `apps` (the composition root) may wire both.
+
+- **Backend stack:** `abi` (Ring 0, pure contract types — `@atlas/abi`) → `ports` (Ring 1) → `runtime` (Ring 2 — ingress, platform-core, logging, metrics, schemas, wasm-host, dsl-substrate) → `domain` (Ring 3 — `modules/*`) / `adapter` (Ring 4 — `adapters/*`, siblings) → `apps` (Ring 5).
+- **Frontend stack (parallel):** `ui-core` → `ui-design` → `ui-composite` → `ui-template` → `ui-bundle` → `ui-app`. Frontend reaches the backend only over HTTP (I1). The single sanctioned cross-stack import is `@atlas/core → @atlas/logging` (a zero-runtime-dep leaf).
+
+The single source of truth is [`architecture/rings.json`](../architecture/rings.json). `pnpm arch:check` validates every workspace package.json edge against the ring matrix (authoritative, with a shrink-only waiver ratchet); `pnpm arch:emit` generates the dep-cruiser graph rules and oxlint per-package import bans from the same manifest. Full rationale: [`decisions/0016-hard-layered-ring-architecture.md`](decisions/0016-hard-layered-ring-architecture.md). This is the static-analysis-provable form of the kernel/data split described in [`crosscut/kernel-vs-data.md`](crosscut/kernel-vs-data.md).
+
 ## Architecture Planes
 
 ### Control Plane

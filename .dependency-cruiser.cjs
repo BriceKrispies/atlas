@@ -48,31 +48,12 @@ module.exports = {
       from: {},
       to: { circular: true },
     },
-    {
-      name: 'modules-no-adapters',
-      severity: 'error',
-      comment:
-        'Modules depend on ports, never on adapters. Mirrors the oxlint ' +
-        'no-restricted-imports rule; defensive belt-and-suspenders.',
-      from: {
-        path: '^modules/',
-        // role-packs.ts is a documented exception (see modules/CLAUDE.md):
-        // identity builds Cedar role-pack bundles via a type-only import
-        // from @atlas/adapter-policy-cedar. The right shape is a port,
-        // and that refactor is tracked separately.
-        pathNot: '^modules/identity/src/policies/role-packs\\.ts$',
-      },
-      to: { path: '^adapters/' },
-    },
-    {
-      name: 'ports-no-impls',
-      severity: 'error',
-      comment:
-        'Ports define interfaces only. Importing from modules, adapters, ' +
-        'or apps would create a cycle.',
-      from: { path: '^ports/' },
-      to: { path: '^(modules|adapters|apps)/' },
-    },
+    // NOTE: `modules-no-adapters` and `ports-no-impls` were removed here —
+    // the generated ring rules (`ring-domain-no-outward`, `ring-ports-no-outward`,
+    // spread in above from architecture/generated/dep-cruiser-rules.cjs) subsume
+    // them exactly, with no stale exceptions. The single source of truth for
+    // layer edges is architecture/rings.json (ADR 0016). Cross-module-internals,
+    // cycles, and orphans remain hand-rules because they are NOT ring-edge checks.
     {
       name: 'no-orphans',
       severity: 'warn',

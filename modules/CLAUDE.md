@@ -110,7 +110,7 @@ asserting `envelope.cacheInvalidationTags` for every test case.
 | authz | HandlerRegistry, IntentHandler, IntentHandlerContext | EventEnvelope, IntentEnvelope |
 | catalog | CatalogStateStore, ProjectionStore, SearchEngine, EventDispatcher, Cache | EventEnvelope, SearchDocument |
 | content-pages | ProjectionStore, RenderTreeStore, WasmHost, EventDispatcher, EventStore | EventEnvelope |
-| identity | EntityStore, RelationStore, EventStore, Cache, HandlerRegistry, IntentHandlerContext | EventEnvelope, IntentEnvelope (also depends on `@atlas/adapter-policy-cedar` for role-pack bundle building) |
+| identity | EntityStore, RelationStore, EventStore, Cache, HandlerRegistry, IntentHandlerContext | EventEnvelope, IntentEnvelope |
 
 ## Consumers
 

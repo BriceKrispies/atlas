@@ -353,6 +353,8 @@ before writing code. The whole stack converges on this list.
 | Vulnerability scan (osv-scanner) | `pnpm vuln:scan` |
 | Test coverage (report) | `pnpm coverage` |
 | Architectural deps (dep-cruiser) | `pnpm deps:check` |
+| Layer ring gate (ADR 0016) | `pnpm arch:check` |
+| Regenerate ring rules from manifest | `pnpm arch:emit` |
 | Invariant scan (overseer) | `pnpm overseer:check` |
 | DB up (Postgres) | `make db-up` |
 
@@ -361,6 +363,8 @@ before writing code. The whole stack converges on this list.
 ## Non-Negotiable Invariants
 
 Architectural laws — violating any is a bug. Full definitions in `specs/architecture.md`.
+
+> **Layer rings (ADR 0016).** On top of the hexagon, Atlas enforces a hard concentric **ring** model — backend `abi → ports → runtime → domain → adapter → apps` and a parallel frontend `ui-core → … → ui-app`, dependencies inward-only. The single source of truth is [`architecture/rings.json`](architecture/rings.json); `pnpm arch:check` validates every package.json edge (authoritative), and `pnpm arch:emit` generates the dep-cruiser + oxlint layer rules from it. Known exceptions are shrink-only waivers (currently **zero**). See [`specs/decisions/0016-hard-layered-ring-architecture.md`](specs/decisions/0016-hard-layered-ring-architecture.md).
 
 - **I1**: All requests go through the single ingress chokepoint — no other module/package exposes HTTP
 - **I2**: Authorization runs BEFORE execution — no side effects on denied requests

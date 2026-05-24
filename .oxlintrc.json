@@ -89,10 +89,6 @@
           {
             "patterns": [
               {
-                "group": ["@atlas/adapter-*"],
-                "message": "Domain modules and ingress must not import concrete adapters. Use ports from @atlas/ports instead. Apps wire adapters."
-              },
-              {
                 "group": ["../*-*/**", "../../*-*/**", "../../../*-*/**"],
                 "message": "Cross-package relative imports are forbidden. Import via the @atlas/<pkg> alias."
               }
@@ -136,27 +132,6 @@
               {
                 "group": ["nodemailer"],
                 "message": "nodemailer is confined to @atlas/adapter-node. Apps must reach SMTP through the Mailer port (constructed via createMailer in bootstrap)."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["ports/**/*.ts"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "@atlas/adapter-*",
-                  "@atlas/catalog",
-                  "@atlas/authz",
-                  "@atlas/content-pages"
-                ],
-                "message": "Ports must not depend on concrete adapters or domain modules — that inverts the dependency arrow."
               }
             ]
           }
