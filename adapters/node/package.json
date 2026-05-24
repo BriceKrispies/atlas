@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@atlas/adapter-policy-cedar": "workspace:*",
-    "@atlas/authz": "workspace:*",
     "@atlas/content-pages": "workspace:*",
     "@atlas/dsl-substrate": "workspace:*",
     "@atlas/identity": "workspace:*",

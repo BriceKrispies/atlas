@@ -25,7 +25,7 @@
  * migration runner already creates `control_plane.policies`.
  */
 import type { Sql } from 'postgres';
-import { AuthzError, authzErrorCodes, type PolicyDetail, type PolicyStatus, type PolicyStore, type PolicySummary, } from '@atlas/authz';
+import { PolicyStoreError, policyStoreErrorCodes, type PolicyDetail, type PolicyStatus, type PolicyStore, type PolicySummary, } from '@atlas/ports';
 interface PolicyRow {
     tenant_id: string;
     version: number;
@@ -136,10 +136,10 @@ export class PostgresPolicyStore implements PolicyStore {
       `;
             const row = rows[0];
             if (!row) {
-                throw new AuthzError(authzErrorCodes.POLICY_NOT_FOUND, `policy not found: tenant=${input.tenantId} version=${input.version}`, 404);
+                throw new PolicyStoreError(policyStoreErrorCodes.POLICY_NOT_FOUND, `policy not found: tenant=${input.tenantId} version=${input.version}`, 404);
             }
             if (row.status !== 'draft') {
-                throw new AuthzError(authzErrorCodes.POLICY_NOT_DRAFT, `policy version ${input.version} is ${row.status}, only drafts can be activated`, 400);
+                throw new PolicyStoreError(policyStoreErrorCodes.POLICY_NOT_DRAFT, `policy version ${input.version} is ${row.status}, only drafts can be activated`, 400);
             }
             await tx `
         UPDATE control_plane.policies
@@ -168,7 +168,7 @@ export class PostgresPolicyStore implements PolicyStore {
       `;
             const row = rows[0];
             if (!row) {
-                throw new AuthzError(authzErrorCodes.POLICY_NOT_FOUND, `policy not found: tenant=${input.tenantId} version=${input.version}`, 404);
+                throw new PolicyStoreError(policyStoreErrorCodes.POLICY_NOT_FOUND, `policy not found: tenant=${input.tenantId} version=${input.version}`, 404);
             }
             if (row.status === 'archived')
                 return;
@@ -180,7 +180,7 @@ export class PostgresPolicyStore implements PolicyStore {
           WHERE tenant_id = ${input.tenantId} AND status = 'active'
         `;
                 if ((activeCount[0]?.count ?? 0) <= 1) {
-                    throw new AuthzError(authzErrorCodes.POLICY_LAST_ACTIVE, 'cannot archive the only active policy — activate a replacement first', 400);
+                    throw new PolicyStoreError(policyStoreErrorCodes.POLICY_LAST_ACTIVE, 'cannot archive the only active policy — activate a replacement first', 400);
                 }
             }
             await tx `

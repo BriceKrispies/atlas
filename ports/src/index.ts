@@ -6,6 +6,14 @@ export type { Cache } from './cache.ts';
 export type { SecretStore } from './secret-store.ts';
 export type { Compression } from './compression.ts';
 export type { Crypto } from './crypto.ts';
+export type {
+  PolicyStore,
+  PolicySummary,
+  PolicyDetail,
+  PolicyStatus,
+  PolicyStoreErrorCode,
+} from './policy-store.ts';
+export { PolicyStoreError, policyStoreErrorCodes } from './policy-store.ts';
 export {
   POLICY_EVALUATED_SCHEMA_ID,
   POLICY_EVALUATED_EVENT_TYPE,

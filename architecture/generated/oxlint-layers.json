@@ -157,6 +157,7 @@
                   "@atlas/arch-tests",
                   "@atlas/atlasctl",
                   "@atlas/authoring",
+                  "@atlas/authz",
                   "@atlas/bundle-standard",
                   "@atlas/catalog",
                   "@atlas/chaos",

@@ -1,6 +1,6 @@
 import type { EventEnvelope } from '@atlas/platform-core';
 import { AuthzError, codes } from '../errors.ts';
-import type { PolicyStore } from '../policy-store.ts';
+import type { PolicyStore } from '@atlas/ports';
 
 export interface CreatePolicyCommand {
   tenantId: string;

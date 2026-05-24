@@ -8,7 +8,7 @@ import type { IntentEnvelope } from '@atlas/platform-core';
 import { handleCreatePolicy } from './create-policy.ts';
 import { handleActivatePolicy } from './activate-policy.ts';
 import { handleArchivePolicy } from './archive-policy.ts';
-import type { PolicyStore } from '../policy-store.ts';
+import type { PolicyStore } from '@atlas/ports';
 
 function readString(payload: Record<string, unknown>, key: string): string {
   const v = payload[key];

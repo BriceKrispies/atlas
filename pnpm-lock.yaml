@@ -144,9 +144,6 @@ importers:
       '@atlas/adapter-policy-cedar':
         specifier: workspace:*
         version: link:../policy-cedar
-      '@atlas/authz':
-        specifier: workspace:*
-        version: link:../../modules/authz
       '@atlas/content-pages':
         specifier: workspace:*
         version: link:../../modules/content-pages

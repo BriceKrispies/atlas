@@ -1,9 +1,11 @@
+// PolicyStore + its types were promoted to @atlas/ports (Ring 1) per ADR 0016.
+// Re-exported here so existing @atlas/authz consumers keep their import path.
 export type {
   PolicyStatus,
   PolicySummary,
   PolicyDetail,
   PolicyStore,
-} from './policy-store.ts';
+} from '@atlas/ports';
 export {
   handleCreatePolicy,
   type CreatePolicyCommand,

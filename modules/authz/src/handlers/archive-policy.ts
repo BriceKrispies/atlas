@@ -1,5 +1,5 @@
 import type { EventEnvelope } from '@atlas/platform-core';
-import type { PolicyStore } from '../policy-store.ts';
+import type { PolicyStore } from '@atlas/ports';
 
 export interface ArchivePolicyCommand {
   tenantId: string;

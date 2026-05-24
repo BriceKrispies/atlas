@@ -88,13 +88,6 @@
   "waivers": [
     {
       "from": "@atlas/adapter-node",
-      "to": "@atlas/authz",
-      "reason": "adapter (Ring 4) imports the PolicyStore interface + AuthzError from the authz domain module — a sibling-ring edge. Fixed by promoting PolicyStore (and its error contract) to a port.",
-      "removeBy": "PR3",
-      "ticket": "arch/hard-layering PR3"
-    },
-    {
-      "from": "@atlas/adapter-node",
       "to": "@atlas/identity",
       "reason": "adapter imports buildRolePackBundle + identity seed-type identifiers from the identity domain module (dead/unwired control-plane seed code). Fixed by relocating the seed generators to the composition-root / scripts layer.",
       "removeBy": "PR4",
