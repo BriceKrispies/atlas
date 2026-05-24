@@ -251,7 +251,8 @@ Aggregate control-plane API health (a separate process from ingress) is part of 
 
 | Check | What it verifies | Recovery behavior |
 |-------|------------------|-------------------|
-| `podman-machine` | (Windows only) podman binary on PATH; default podman machine running; named pipe (`//./pipe/podman-machine-default`) reachable for `make db-up` | If machine stopped: `podman machine start`. If pipe unreachable: `podman machine stop && podman machine start`. Returns `skipped` on non-Windows hosts. |
+| `podman-machine` | (Windows only) podman binary on PATH; default podman machine running; named pipe (`//./pipe/podman-machine-default`) reachable for direct `podman info` calls | If machine stopped: `podman machine start`. If pipe unreachable: `podman machine stop && podman machine start`. Returns `skipped` on non-Windows hosts. |
+| `podman-compose-provider` | (Windows only) the compose provider Atlas's Makefile invokes for `make db-up` does not silently delegate to Docker Desktop's `docker-compose.exe` (which fails to reach the podman pipe). Prefers standalone `podman-compose` (Python). | Reports `ok` if `podman-compose` is on PATH (the Atlas Makefile auto-detects this), `ok` if `podman compose` is native (no docker-compose delegation), `failed` with `pip install podman-compose` recommendation otherwise. No auto-fix today — Python-package install is out of scope for the kernel-free doctor surface. |
 
 Exit code 0 if every check is `ok` or `fixed`; non-zero if any unfixed `failed` remains. Output respects `--json` / `--quiet` per [Structured Output](#structured-output). Adding a new check is a single registration in `apps/atlasctl/src/commands/doctor.ts`'s registry — no main.ts edit.
 

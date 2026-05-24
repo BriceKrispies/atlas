@@ -272,7 +272,7 @@ async function setSegmentValue(page: Page, device: 'mobile' | 'tablet' | 'deskto
     }, device);
 }
 test.describe('authoring.page-editor.preview', function () {
-    test.skip('default device is desktop and frame width matches the desktop preset', async function ({ page }) {
+    test('default device is desktop and frame width matches the desktop preset', async function ({ page }) {
         await mountStandalonePreview(page, 'editor-starter');
         const snap = await readPreviewSnapshot(page, 'editor-starter');
         expect(snap.device).toBe('desktop');
@@ -281,7 +281,7 @@ test.describe('authoring.page-editor.preview', function () {
             return getFrameWidthCss(page);
         }).toBe(1440);
     });
-    test.skip('selecting tablet commits deviceChange on shell and breakpointSet on preview', async function ({ page }) {
+    test('selecting tablet commits deviceChange on shell and breakpointSet on preview', async function ({ page }) {
         await mountStandalonePreview(page, 'editor-starter');
         await setSegmentValue(page, 'tablet');
         // Shell-level commit on editor:<pageId>:shell.
@@ -301,7 +301,7 @@ test.describe('authoring.page-editor.preview', function () {
         const shellSnap = await readShellSnapshotByKey(page, 'editor-starter');
         expect(shellSnap.device).toBe('tablet');
     });
-    test.skip('exit-preview commits setMode { mode: "content" } on the shell', async function ({ page }) {
+    test('exit-preview commits setMode { mode: "content" } on the shell', async function ({ page }) {
         await mountStandalonePreview(page, 'editor-starter');
         await clickPreviewShadow(page, 'atlas-button[name="exit-preview"]');
         await assertCommitted(page, 'editor:editor-starter:shell', {
@@ -311,7 +311,7 @@ test.describe('authoring.page-editor.preview', function () {
         const shellSnap = await readShellSnapshotByKey(page, 'editor-starter');
         expect(shellSnap.mode).toBe('content');
     });
-    test.skip('the inner content-page mounts with edit falsy', async function ({ page }) {
+    test('the inner content-page mounts with edit falsy', async function ({ page }) {
         await mountStandalonePreview(page, 'editor-starter');
         const editFlag = await page.evaluate(function () {
             function getPreviewShadow(): ShadowRoot | null {

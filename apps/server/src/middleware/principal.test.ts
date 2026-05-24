@@ -68,11 +68,10 @@ function buildApp() {
     return app;
 }
 // RED PHASE: `principalType` + `claims` are pre-driven from the Rust
-// `authn::Principal` shape but not yet on the TS `Principal` type. Tests are
-// skipped at runtime via `describe.skip`; the wider type cast below keeps
-// typecheck green until the fields land on the real interface, at which
-// point the cast becomes a no-op and `describe.skip` flips back to
-// `describe`.
+// `authn::Principal` shape but not yet on the TS `Principal` type. These
+// tests RUN and FAIL until the fields land on the real interface — that
+// failure is the explicit signal that the feature isn't shipped yet (no
+// silent .skip). The wider type cast below keeps typecheck green.
 type ExtendedPrincipal = Principal & {
     principalType?: 'user' | 'service' | 'anonymous';
     claims?: Record<string, unknown>;
@@ -122,7 +121,7 @@ function asExtendedPrincipal(v: unknown): ExtendedPrincipal {
     }
     return out;
 }
-describe.skip('Principal interface parity with Rust authn::Principal', function () {
+describe('Principal interface parity with Rust authn::Principal', function () {
     test('Principal has principalType and claims fields (type-level + runtime literal)', function () {
         const p: ExtendedPrincipal = {
             principalId: 'alice',
@@ -135,7 +134,7 @@ describe.skip('Principal interface parity with Rust authn::Principal', function 
         expect(Object.keys(p).sort()).toEqual(['claims', 'principalId', 'principalType', 'tenantId'].sort());
     });
 });
-describe.skip('principalMiddleware — X-Debug-Principal populates principalType + claims', function () {
+describe('principalMiddleware — X-Debug-Principal populates principalType + claims', function () {
     test('user:alice:t1 → principalType="user", claims={}', async function () {
         const app = buildApp();
         const res = await app.request('/echo', {

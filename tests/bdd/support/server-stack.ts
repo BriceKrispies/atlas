@@ -437,27 +437,92 @@ export async function assertSignupStatus(
   }
 }
 
-export async function readSignupCacheInvalidationTags(
-  sql: postgres.Sql,
+/**
+ * Open a `postgres.Sql` connection to a tenant's per-tenant database.
+ *
+ * Reads the tenant's `db_*` columns from `control_plane.tenants` and
+ * opens a fresh pool. Callers MUST `await pool.end()` when done — this
+ * helper does not pool internally because BDD assertions tend to read
+ * once per step and the connection cost is dwarfed by the test
+ * runtime.
+ *
+ * Required after the ADR 0005 db-per-tenant move: tenant events live
+ * in the per-tenant `events` table, not `control_plane.events`. Tests
+ * that assert on event-store state MUST open the per-tenant sql via
+ * this helper rather than reusing the control-plane connection.
+ */
+export async function openTenantSql(
+  controlPlaneSql: postgres.Sql,
   tenantId: string,
-  signupId: string,
-): Promise<string[]> {
-  const rows = await sql<Array<{ cache_invalidation_tags: string[] | null }>>`
-    SELECT cache_invalidation_tags
-    FROM events
+): Promise<postgres.Sql> {
+  const rows = await controlPlaneSql<
+    Array<{
+      db_host: string | null;
+      db_port: number | null;
+      db_user: string | null;
+      db_password: string | null;
+      db_name: string | null;
+    }>
+  >`
+    SELECT db_host, db_port, db_user, db_password, db_name
+    FROM control_plane.tenants
     WHERE tenant_id = ${tenantId}
-      AND event_type = 'Tenancy.SignupApproved'
-      AND idempotency_key = ${`tenancy.signup.approve.${signupId}`}
-    ORDER BY occurred_at DESC
-    LIMIT 1
   `;
   const row = rows[0];
   if (!row) {
+    throw new Error(`openTenantSql: tenant '${tenantId}' not found in control_plane.tenants`);
+  }
+  if (
+    row.db_host === null ||
+    row.db_port === null ||
+    row.db_user === null ||
+    row.db_password === null ||
+    row.db_name === null
+  ) {
     throw new Error(
-      `Tenancy.SignupApproved event not found for tenant '${tenantId}' signup '${signupId}'`,
+      `openTenantSql: tenant '${tenantId}' has NULL db_* columns — provisioning hasn't run`,
     );
   }
-  return row.cache_invalidation_tags ?? [];
+  return postgres({
+    host: row.db_host,
+    port: row.db_port,
+    user: row.db_user,
+    password: row.db_password,
+    database: row.db_name,
+    max: 1,
+  });
+}
+
+export async function readSignupCacheInvalidationTags(
+  controlPlaneSql: postgres.Sql,
+  tenantId: string,
+  signupId: string,
+): Promise<string[]> {
+  // The `Tenancy.SignupApproved` event lives in the per-tenant events
+  // table (ADR 0005 db-per-tenant) — not in `control_plane.events`,
+  // which holds only the legacy pre-db-per-tenant audit rows. Open a
+  // tenant-scoped pool to read it.
+  const tenantSql = await openTenantSql(controlPlaneSql, tenantId);
+  try {
+    const rows = await tenantSql<Array<{ cache_invalidation_tags: string[] | null }>>`
+      SELECT cache_invalidation_tags
+      FROM events
+      WHERE tenant_id = ${tenantId}
+        AND event_type = 'Tenancy.SignupApproved'
+        AND idempotency_key = ${`tenancy.signup.approve.${signupId}`}
+      ORDER BY occurred_at DESC
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) {
+      throw new Error(
+        `Tenancy.SignupApproved event not found in per-tenant DB for tenant '${tenantId}' signup '${signupId}'`,
+      );
+    }
+    return row.cache_invalidation_tags ?? [];
+  } finally {
+    await tenantSql.end({ timeout: 1 });
+  }
 }
 
 /**

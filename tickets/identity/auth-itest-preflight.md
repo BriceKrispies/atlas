@@ -10,8 +10,7 @@ vision: [agentic-first]
 invariants: [I1, I5]
 blocks:
   - identity/security-fixes
-blocked_by:
-  - chore/commit-untracked-deliverables
+blocked_by: []
 files_in_scope:
   - tests/integration/auth/**
   - infra/**
@@ -22,7 +21,7 @@ acceptance:
   - tests/integration/auth/TODO.md updated to reflect post-run state
   - pnpm test:integration tests/integration/auth/ exits 0
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-05-23
 ---
 
 ## Why
@@ -97,3 +96,4 @@ Update tickets/INDEX.md.
 ## Notes / log
 
 - 2026-05-10: created. Migrated from `tests/integration/auth/TODO.md` (which lands via chore/commit-untracked-deliverables).
+- 2026-05-23: ticket-sweep — cleared stale `blocked_by: chore/commit-untracked-deliverables` (archived/resolved); ticket has no remaining blockers.

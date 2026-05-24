@@ -136,6 +136,14 @@ for (const key of Object.keys(expect_ as object)) {
   (expectWithMessage as unknown as Record<string, unknown>)[key] =
     (expect_ as unknown as Record<string, unknown>)[key];
 }
+// `expect.fail(message)` — vitest/chai API jest's `expect` package omits.
+// Used to mark unimplemented contract bodies as explicit failures (e.g.
+// packages/contract-tests). Without it, those call sites throw the opaque
+// "expect.fail is not a function" instead of a clean assertion failure.
+(expectWithMessage as unknown as { fail: (message?: string) => never }).fail =
+  function fail(message?: string): never {
+    throw new Error(message ?? 'expect.fail()');
+  };
 
 export const expect = expectWithMessage as unknown as typeof expectPkg & {
   objectContaining: (shape: unknown) => unknown;
@@ -144,6 +152,7 @@ export const expect = expectWithMessage as unknown as typeof expectPkg & {
   stringMatching: (r: string | RegExp) => unknown;
   any: (ctor: unknown) => unknown;
   anything: () => unknown;
+  fail: (message?: string) => never;
 };
 
 // --- vi shim --------------------------------------------------------------

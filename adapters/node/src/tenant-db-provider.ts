@@ -28,6 +28,43 @@ const DEFAULT_POOL_MAX = 5;
  * concatenating with the `atlas_t_` prefix and `_runtime` suffix.
  */
 const PG_IDENT_MAX = 63;
+/**
+ * Explicit, documented connection-resilience options applied to BOTH
+ * Postgres pool-construction sites — the control-plane pool
+ * (`apps/server/src/bootstrap.ts`) and every per-tenant pool
+ * (`openPostgresFromInfo` below). Single-sourced here so the two sites
+ * cannot drift, and so the pool-resilience regression test can import the
+ * exact object production uses.
+ *
+ * **Why these and not a bespoke reconnect loop.** The empirical probe
+ * (capability spec §Empirical-First Directive, run 2026-05-23 on
+ * postgres.js 3.4.9) confirmed the driver ALREADY recovers per-query after
+ * a Postgres container bounce: the same pool object errors on the first
+ * post-bounce query (`CONNECTION_CLOSED`), sees `57P03` while Postgres is
+ * still starting, then reconnects and succeeds — no pool latch, no manual
+ * retry loop needed. The deliverable for capability `pool-resilience`
+ * (always-on §1, I20) is therefore to make that already-working behaviour
+ * EXPLICIT and INTENTIONAL, not to re-implement the driver's pool.
+ *
+ * - `connect_timeout` (30s): bound how long a single (re)connect attempt
+ *   waits for the server to accept connections, so a wedged network path
+ *   surfaces as an error the per-query reconnect can retry, rather than
+ *   hanging a request indefinitely.
+ * - `idle_timeout` (20s): retire idle sockets so a long-lived pool does
+ *   not accumulate connections the server has silently dropped.
+ * - `max_lifetime` (30min): recycle connections periodically — bounds the
+ *   blast radius of a half-open socket that survives a bounce.
+ *
+ * postgres.js's default per-query reconnect (the actual healing mechanism)
+ * is on by default and is NOT disabled here. See
+ * `specs/domains/runtime/capabilities/pool-resilience/README.md` and
+ * `specs/crosscut/always-on.md` §1 (I20).
+ */
+export const POSTGRES_RESILIENCE_OPTIONS = {
+    connect_timeout: 30,
+    idle_timeout: 20,
+    max_lifetime: 60 * 30,
+} as const;
 export interface TenantDbProvider {
     getPool(tenantId: string): Promise<postgres.Sql>;
 }
@@ -229,6 +266,12 @@ function openPostgresFromInfo(info: TenantConnectionInfo, max: number): postgres
         user: info.user,
         password: info.password,
         max,
+        // Explicit connection-resilience config so a per-tenant pool
+        // survives a Postgres container bounce without an apps/server
+        // restart (capability pool-resilience, always-on §1, I20). The
+        // driver already reconnects per-query; these options make that
+        // intentional and bound. See POSTGRES_RESILIENCE_OPTIONS.
+        ...POSTGRES_RESILIENCE_OPTIONS,
         // Suppress postgres NOTICE chatter (`relation already exists,
         // skipping`, `role already exists, skipping`, etc.) that
         // otherwise leaks to stdout on idempotent provisioner re-runs.
@@ -275,14 +318,50 @@ class TenantPoolCache {
     }
     /**
      * Track a fire-and-forget pool close so `closeAll` can wait for it.
-     * Used by eviction and the race-loser path.
+     * Used by eviction and the race-loser path. Returns the tracked
+     * close promise so callers that need the post-call "pool is gone"
+     * contract (e.g. `invalidate`) can await it.
      */
-    trackClose(pool: postgres.Sql): void {
+    trackClose(pool: postgres.Sql): Promise<void> {
         const p = pool.end({ timeout: 1 }).catch(function () {
             /* swallow — close is best-effort */
         });
         this.pendingCloses.add(p);
         void p.finally(() => this.pendingCloses.delete(p));
+        return p;
+    }
+    /**
+     * Close and evict a single tenant's cached pool, removing it from both
+     * the `pools` map and the `order` LRU array (so a stale tenant id can
+     * never linger as a phantom LRU entry). No-op if no pool is cached for
+     * `tenantId`. Returns the tracked close promise (resolved immediately
+     * on a no-op) so the caller can await the socket teardown — this is
+     * how `PostgresTenantDbProvider.invalidate` upholds its "after resolve,
+     * the previously-cached pool is gone" contract (capability
+     * tenant-pool-invalidation, always-on §1, I20).
+     */
+    delete(tenantId: string): Promise<void> {
+        const pool = this.pools.get(tenantId);
+        if (!pool) {
+            return Promise.resolve();
+        }
+        this.pools.delete(tenantId);
+        const idx = this.order.indexOf(tenantId);
+        if (idx >= 0) {
+            this.order.splice(idx, 1);
+        }
+        return this.trackClose(pool);
+    }
+    /**
+     * Close and evict every cached pool, resetting the LRU bookkeeping.
+     * Awaits all closes. Unlike `closeAll` (which tears the provider down
+     * for good), the provider stays live after `clear` — the next
+     * `getPool` re-resolves and reconnects. Used by
+     * `PostgresTenantDbProvider.invalidateAll` after a full wipe-and-reseed
+     * (capability tenant-pool-invalidation, always-on §1, I20).
+     */
+    async clear(): Promise<void> {
+        await this.closeAll();
     }
     has(tenantId: string): boolean {
         return this.pools.has(tenantId);
@@ -359,6 +438,36 @@ export class PostgresTenantDbProvider implements TenantDbProvider {
     /** Visible for ops/tests. Closes every cached pool. */
     async close(): Promise<void> {
         await this.cache.closeAll();
+    }
+    /**
+     * Close and evict the cached pool for a single tenant. The next
+     * `getPool(tenantId)` re-runs `lookupConnectionInfo` and opens a fresh
+     * pool against the (possibly recreated) tenant database. No-op if no
+     * pool is cached for `tenantId`. The close is awaited so that once this
+     * resolves no previously-cached pool for `tenantId` is reachable via
+     * `getPool`.
+     *
+     * Used by the db-snapshot reseed step after a tenant DB is
+     * dropped/recreated, so a live process drops the stale pool without a
+     * restart (always-on §1, I20). This is an adapter-only API (return type
+     * is void over a Postgres-shaped cache) — deliberately NOT on the
+     * `TenantDbProvider` interface or `@atlas/ports` (see the file header).
+     *
+     * In-flight first-time opens for the same tenant are NOT cancelled —
+     * the reseed tooling quiesces traffic; this evicts what is cached.
+     */
+    async invalidate(tenantId: string): Promise<void> {
+        await this.cache.delete(tenantId);
+    }
+    /**
+     * Close and evict every cached per-tenant pool. The provider stays
+     * live: the next `getPool` for any tenant re-resolves and reconnects.
+     * No-op on an empty cache. Used by the db-snapshot reseed step after a
+     * full wipe-and-reseed (every tenant DB recreated) so a live process
+     * drops all stale pools without a restart (always-on §1, I20).
+     */
+    async invalidateAll(): Promise<void> {
+        await this.cache.clear();
     }
     /**
      * Provision a per-tenant Postgres database for `tenantId`, following

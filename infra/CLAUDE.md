@@ -54,10 +54,9 @@ the rationale.
 
 | Script | Purpose |
 |--------|---------|
-| `../scripts/itest-lifecycle.sh` | Integration test stack management |
-| `../scripts/db-lifecycle.sh` | Database lifecycle operations |
-| `../scripts/wait-for-healthy.sh` | Container health polling |
-| `../scripts/logs.sh` / `../scripts/logs.ps1` | Container log viewer (`bash scripts/logs.sh [service]` or PowerShell variant on Windows) |
+| `../scripts/dev/` (`pnpm devctl`) | **Dev-stack lifecycle**: db / keycloak / obs / smtp — `up/down/status/logs/reset/wait`, cross-platform, `--json` for agents. The `make db-up` / `obs-up` / `keycloak-up` targets are thin aliases over this. |
+| `../scripts/itest-lifecycle.sh` | Integration test stack management (Rust-era — see the Dockerfiles "Stale" note above) |
+| `../scripts/logs.sh` / `../scripts/logs.ps1` | **itest** container log viewer. For the dev stacks use `pnpm devctl logs <service...>`. |
 
 ## DB Connection
 

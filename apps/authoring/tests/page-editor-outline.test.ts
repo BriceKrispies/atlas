@@ -254,7 +254,7 @@ test.describe('authoring.page-editor.shell.left-panel.outline — drag-reorder',
         }, { instanceId: firstId });
         await assertCommitted(page, 'editor:editor-starter:outline', { intent: 'dragEnd', patch: { instanceId: firstId } });
     });
-    test.skip('shell-level moveWidget commit lands when state.ts move-binding bug is fixed', async function ({ page }) {
+    test('shell-level moveWidget commit lands when state.ts move-binding bug is fixed', async function ({ page }) {
         // SKIPPED: blocked on state.ts `moveWidget` losing `this` when it
         // calls `editor.move(args)`. See controller code at the
         // `const moveCall = (editor as ...).move;` extraction.

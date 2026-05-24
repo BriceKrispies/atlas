@@ -19,7 +19,6 @@
  */
 import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
 interface PrometheusSample {
     labels: Record<string, string>;
     value: number;
@@ -94,7 +93,8 @@ async function fetchMetrics(): Promise<Map<string, PrometheusSample[]>> {
     expect(ct).toContain('text/plain');
     return parsePrometheus(await res.text());
 }
-d('[node] observability parity', function () {
+if (baseUrl) {
+describe('[node] observability parity', function () {
     test('metrics endpoint responds with prometheus content-type', async function () {
         const res = await fetch(`${baseUrl}/metrics`, { method: 'GET' });
         expect(res.status).toBe(200);
@@ -140,3 +140,8 @@ d('[node] observability parity', function () {
         }
     });
 });
+} else {
+    describe('[node] observability parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

@@ -56,6 +56,7 @@ import { tenantDocsRoutes, operatorDocsRoutes } from './routes/docs.ts';
 import { adminSpaRoutes } from './routes/admin-spa.ts';
 import { principalMiddleware, type ServerVariables } from './middleware/principal.ts';
 import { executionContextMiddleware } from './middleware/execution-context.ts';
+import { registryRefreshMiddleware } from './middleware/registry-refresh.ts';
 function buildApp(state: AppState): Hono<{
   Variables: ServerVariables;
 }> {
@@ -102,6 +103,13 @@ function buildApp(state: AppState): Hono<{
     Variables: ServerVariables;
   }>();
   authed.use('*', principalMiddleware(state));
+  // Refresh the control-plane schema/action registry snapshot at the request
+  // boundary — BEFORE the intents routes run — so a row written out-of-band
+  // (hot registration) is observed by submitIntent's sync schema/action
+  // lookups on the next request (N+1), same process, stable bootId (I20).
+  // Decision O1: refresh-at-request-boundary keeps the port sync. Authed-only
+  // by design — health/metrics/public routes do not consult the registry.
+  authed.use('*', registryRefreshMiddleware(state.controlPlaneRegistry));
   authed.route('/', intentRoutes(state));
   // Query-side catch-all (`GET/POST /api/v1/queries/:queryId`). Adding a
   // new read endpoint after this lands is a module-only edit — register

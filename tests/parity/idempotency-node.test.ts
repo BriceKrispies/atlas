@@ -2,8 +2,8 @@ import { describe, test, expect } from '@atlas/test';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { intentWithoutIdempotencyKey, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] idempotency parity', function () {
+if (baseUrl) {
+describe('[node] idempotency parity', function () {
     test('test_duplicate_idempotency_key_returns_same_event', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('idem-dup');
         const idem = uniqueIdempotencyKey('itest-dup');
@@ -80,3 +80,8 @@ d('[node] idempotency parity', function () {
         await ingress.close();
     });
 });
+} else {
+    describe('[node] idempotency parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

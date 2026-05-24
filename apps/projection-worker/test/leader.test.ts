@@ -80,10 +80,4 @@ if (HAS_DB) {
         }, 30000);
     });
 }
-else {
-    describe('acquireLeadership (skipped)', function () {
-        it.skip('TEST_TENANT_DB_URL not set — skipping advisory-lock leader tests', function () {
-            // intentionally empty
-        });
-    });
-}
+// TEST_TENANT_DB_URL not set — advisory-lock leader suite registers nothing.

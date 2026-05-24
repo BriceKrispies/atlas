@@ -3,8 +3,8 @@ import { makeServerIngress } from './lib/server-factory.ts';
 import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { intentWithUnknownAction, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] closed_loop parity', function () {
+if (baseUrl) {
+describe('[node] closed_loop parity', function () {
     test('test_intent_builds_projection_and_query_returns_it', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cl-build');
         const seed = loadBadgeFamilySeed();
@@ -54,3 +54,8 @@ d('[node] closed_loop parity', function () {
         await b.ingress.close();
     });
 });
+} else {
+    describe('[node] closed_loop parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

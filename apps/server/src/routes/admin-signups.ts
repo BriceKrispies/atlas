@@ -44,6 +44,46 @@ function errorMessage(err: unknown): string {
         return err.message;
     return String(err);
 }
+/**
+ * Provision a tenant's per-tenant database, then mark it migrated and
+ * invalidate the custom-domain cache so subsequent host-routed requests
+ * resolve the new tenant.
+ *
+ * Extracted (2026-05-22) from the inline `ensureTenantProvisioned`
+ * callback in `adminSignupsRoutes` so the wiring is unit-testable —
+ * see `apps/server/test/routes/admin-signups-provisioning.test.ts`.
+ *
+ * Order matters:
+ *   1. `provisionTenantDatabase` creates the per-tenant DB + runtime
+ *      role and populates `control_plane.tenants.db_*`. Without this,
+ *      step 2 throws TENANT_DATABASE_NOT_PROVISIONED (see
+ *      `adapters/node/src/tenant-db-provider.ts:160-167`).
+ *   2. `ensureTenantMigrated` opens the pool and marks the tenant as
+ *      migrated for this process.
+ *   3. `customDomainCache.invalidate` drops any negative cache entry
+ *      so the next request to `<slug>.<apex>` resolves the new tenant
+ *      — `principalMiddleware`'s host cache started with `null` for
+ *      this hostname before we registered it.
+ *
+ * ADR 0005 (db-per-tenant) names signup-approval as the in-band
+ * provisioning path. This function is that path's body.
+ */
+export async function provisionAndMigrateTenant(
+    state: AppState,
+    tenantId: string,
+): Promise<void> {
+    // Step 1: create the per-tenant DB + runtime role and populate
+    // `control_plane.tenants.db_*`. Idempotent — re-running yields
+    // `created: false` and reuses the existing DB.
+    await state.tenantDb.provisionTenantDatabase({ tenantId });
+    // Step 2: open the pool (now that db_* is populated) and mark
+    // migrated for this process. Without step 1, this throws
+    // TENANT_DATABASE_NOT_PROVISIONED (see tenant-db-provider.ts:160).
+    await ensureTenantMigrated(state, tenantId);
+    // Step 3: drop the negative host cache so the next request to
+    // `<slug>.<apex>` resolves the freshly-registered tenant.
+    state.customDomainCache.invalidate(tenantHostnameFor(tenantId, state.config.tenantApex));
+}
 function requireAdmin(_state: AppState, c: AppCtx, correlationId: string): Response | null {
     // Fail-closed admin gate (Invariant I2). The earlier PR1 implementation
     // short-circuited to allow when `TEST_AUTH_ENABLED=true`, which meant
@@ -118,13 +158,8 @@ export function adminSignupRoutes(state: AppState): Hono<{
                 customDomains: state.customDomains,
                 mailer: state.mailer,
                 apexDomain: state.config.tenantApex,
-                ensureTenantProvisioned: async function (tenantId: string): Promise<void> {
-                    await ensureTenantMigrated(state, tenantId);
-                    // Drop any negative cache entry for the new hostname so
-                    // the next request to <slug>.localhost resolves the
-                    // tenant — `principalMiddleware`'s host cache started
-                    // with `null` for this hostname before we registered it.
-                    state.customDomainCache.invalidate(tenantHostnameFor(tenantId, state.config.tenantApex));
+                ensureTenantProvisioned: function (tenantId: string): Promise<void> {
+                    return provisionAndMigrateTenant(state, tenantId);
                 },
                 issueInvite: function (input) {
                     return issueInviteForTenant(state, input);

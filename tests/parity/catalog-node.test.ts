@@ -14,8 +14,8 @@ import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import type { VariantRow } from '@atlas/catalog';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] catalog_badge_family parity', function () {
+if (baseUrl) {
+describe('[node] catalog_badge_family parity', function () {
     test('test_seed_package_apply_is_idempotent', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cat-idem');
         const seed = loadBadgeFamilySeed();
@@ -114,7 +114,7 @@ d('[node] catalog_badge_family parity', function () {
     // test_seed_event_has_cache_invalidation_tags lives in
     // `catalog-search-node.test.ts` since Chunk 7.2.
 });
-d('[node] catalog_search parity', function () {
+describe('[node] catalog_search parity', function () {
     test('test_search_returns_family_for_anniversary', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cs-fam');
         const seed = loadBadgeFamilySeed();
@@ -177,6 +177,14 @@ d('[node] catalog_search parity', function () {
     // since Chunk 7.2 shipped `/debug/search/index`, `/debug/search/rebuild`
     // and `/debug/events/:eventId`.
 });
+} else {
+    describe('[node] catalog_badge_family parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+    describe('[node] catalog_search parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}
 function canonicalize(rows: ReadonlyArray<VariantRow>): Array<{
     key: string;
     values: Record<string, unknown>;

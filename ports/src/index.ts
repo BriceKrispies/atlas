@@ -22,6 +22,13 @@ export type { ControlPlaneRegistry, ActionEntry } from './control-plane-registry
 export type { CatalogStateStore, CatalogStateRecord } from './catalog-state-store.ts';
 export type { CustomDomainStore, CustomDomain } from './custom-domain-store.ts';
 export type {
+  ClusterStore,
+  ClusterAddInput,
+  ClusterRecord,
+  ClusterAuthKind,
+  ClusterStatus,
+} from './cluster-store.ts';
+export type {
   Mailer,
   EmailMessage,
   MailerSendOptions,

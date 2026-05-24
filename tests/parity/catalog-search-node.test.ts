@@ -23,8 +23,8 @@ import { loadBadgeFamilySeed, buildSeedIntent } from './lib/fixtures.ts';
 import type { SearchDocument } from '@atlas/platform-core';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] catalog_badge_family parity (debug-surface)', function () {
+if (baseUrl) {
+describe('[node] catalog_badge_family parity (debug-surface)', function () {
     test('test_seed_event_has_cache_invalidation_tags', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cat-tag');
         const seed = loadBadgeFamilySeed();
@@ -40,7 +40,7 @@ d('[node] catalog_badge_family parity (debug-surface)', function () {
         await ingress.close();
     });
 });
-d('[node] catalog_search parity (debug-surface)', function () {
+describe('[node] catalog_search parity (debug-surface)', function () {
     test('test_search_permission_filter_excludes_disallowed', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cs-perm');
         const seed = loadBadgeFamilySeed();
@@ -104,3 +104,11 @@ d('[node] catalog_search parity (debug-surface)', function () {
         await ingress.close();
     });
 });
+} else {
+    describe('[node] catalog_badge_family parity (debug-surface) (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+    describe('[node] catalog_search parity (debug-surface) (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

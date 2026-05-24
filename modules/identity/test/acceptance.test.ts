@@ -11,8 +11,9 @@
  * truthful.
  *
  * Out-of-scope (`@phase-a2` / `@phase-a3` tagged scenarios) live as
- * `it.todo` placeholders below — they fail-soft so adding them later
- * is a one-line edit, not a new file scaffold.
+ * failing `it(name, fn)` tests below that throw "TODO: implement" —
+ * adding the real implementation later is a one-line body edit, and the
+ * red failures keep the gap visible in the test report.
  *
  * The Playwright BDD harness picks these features up once the sim
  * wires identity (browser-compatible argon2 dep + AuthSession entity
@@ -377,18 +378,46 @@ describe('role packs (cross-cutting)', function () {
 // @phase-a2 scenarios — placeholder so future progress is trackable.
 // =====================================================================
 describe('@phase-a2 scenarios (deferred)', function () {
-    it.todo('password.feature: Successful password login (AuthSession + cookie)');
-    it.todo('password.feature: Wrong password — rate limited');
-    it.todo('password.feature: Forgot-password flow (ResetToken + email)');
-    it.todo('password.feature: Reset password using a valid token');
-    it.todo('password.feature: Reject reset with expired token');
-    it.todo('magic-link.feature: User requests a magic link (MagicLinkToken + email)');
-    it.todo('magic-link.feature: Magic-link click logs the user in');
-    it.todo('magic-link.feature: Reject expired magic link');
-    it.todo('magic-link.feature: Reject reused magic link');
-    it.todo('magic-link.feature: Throttle repeated requests');
-    it.todo('magic-link.feature: Email-not-found does not leak account existence');
-    it.todo('platform-oidc.feature: User without Membership is rejected (403)');
-    it.todo('platform-oidc.feature: Suspended Membership blocks login (403)');
-    it.todo('platform-oidc.feature: Returning user — AuthSession creation half');
+    it('password.feature: Successful password login (AuthSession + cookie)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('password.feature: Wrong password — rate limited', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('password.feature: Forgot-password flow (ResetToken + email)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('password.feature: Reset password using a valid token', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('password.feature: Reject reset with expired token', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: User requests a magic link (MagicLinkToken + email)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: Magic-link click logs the user in', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: Reject expired magic link', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: Reject reused magic link', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: Throttle repeated requests', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('magic-link.feature: Email-not-found does not leak account existence', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('platform-oidc.feature: User without Membership is rejected (403)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('platform-oidc.feature: Suspended Membership blocks login (403)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('platform-oidc.feature: Returning user — AuthSession creation half', function () {
+        throw new Error('TODO: implement this test');
+    });
 });

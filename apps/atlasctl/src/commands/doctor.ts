@@ -239,7 +239,76 @@ export const podmanMachineCheck: DoctorCheck = {
   },
 };
 
-const DEFAULT_REGISTRY: ReadonlyArray<DoctorCheck> = [podmanMachineCheck];
+export const podmanComposeProviderCheck: DoctorCheck = {
+  name: 'podman-compose-provider',
+
+  async run(deps: CheckDeps): Promise<CheckResult> {
+    if (deps.platform() !== 'win32') {
+      // On Linux / macOS the external-provider delegation isn't pathological;
+      // `podman compose` falls through to a working docker-compose (rare in
+      // dev) or to podman-compose if available. The failure mode this check
+      // catches is Windows-specific: Docker Desktop's `docker-compose.exe`
+      // is the external provider but cannot reach the podman pipe.
+      return {
+        name: this.name,
+        status: 'skipped',
+        details: { reason: 'compose-provider delegation issue is Windows-specific' },
+      };
+    }
+
+    // Prefer the standalone podman-compose Python tool if present — it
+    // talks to podman directly and dodges the external-provider trap.
+    const pcVersionR = await deps.exec('podman-compose', ['--version'], 5_000);
+    if (pcVersionR.ok) {
+      return {
+        name: this.name,
+        status: 'ok',
+        details: {
+          provider: 'podman-compose',
+          version: pcVersionR.stdout.trim().split('\n').slice(-1)[0],
+          note: 'Makefile auto-detects this and uses it for `make db-up`',
+        },
+      };
+    }
+
+    // No standalone tool — `podman compose` will delegate. Probe what the
+    // delegation finds.
+    const composeR = await deps.exec('podman', ['compose', 'version'], 10_000);
+    const composeText = (composeR.stdout + composeR.stderr).toLowerCase();
+    const delegatesToDocker =
+      composeText.includes('docker-compose') || composeText.includes('docker\\compose');
+
+    if (composeR.ok && !delegatesToDocker) {
+      // `podman compose` worked AND wasn't routed through docker-compose
+      // — likely a native podman compose ship. Healthy.
+      return {
+        name: this.name,
+        status: 'ok',
+        details: {
+          provider: 'podman compose (native)',
+          stdout: composeR.stdout.trim(),
+        },
+      };
+    }
+
+    // Either compose failed outright, or it delegated to docker-compose
+    // (and may have appeared to succeed for `version` but will fail for
+    // `up -d` against the podman pipe). Surface the actionable diagnostic.
+    return {
+      name: this.name,
+      status: 'failed',
+      details: {
+        reason: 'no standalone podman-compose installed; `podman compose` delegates to docker-compose which cannot reach the podman pipe on Windows',
+        fix: 'install podman-compose via `pip install podman-compose` (or `pipx install podman-compose`); the Atlas Makefile auto-detects it and prefers it over `podman compose`',
+        delegatesToDocker,
+        composeOk: composeR.ok,
+        stderr: composeR.stderr,
+      },
+    };
+  },
+};
+
+const DEFAULT_REGISTRY: ReadonlyArray<DoctorCheck> = [podmanMachineCheck, podmanComposeProviderCheck];
 
 export interface DoctorOpts {
   correlationId: string;

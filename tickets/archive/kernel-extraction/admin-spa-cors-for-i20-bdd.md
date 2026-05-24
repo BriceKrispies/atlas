@@ -14,7 +14,7 @@ files_in_scope:
   - apps/server/src/main.ts
   - apps/admin/vite.config.ts
 created: 2026-05-21
-updated: 2026-05-21
+updated: 2026-05-23
 ---
 
 ## 1. What category of change was this?
@@ -55,3 +55,4 @@ The extraction-plan ticket is `chore/admin-spa-cors-middleware`; not yet created
 
 - 2026-05-21: filed by frontend-dev as part of Phase 1 of `tickets/identity/tenant-admin-invites-user.md`. Discovered while wiring the I20 zero-restart BDD demonstration: `pnpm bdd:server` will not complete the cross-origin `Identity.Login.Password` POST without this seam. Slice STOPS the end-to-end BDD acceptance pending the unblock; the surfaces + step bindings + I20 probe wiring are in place.
 - 2026-05-21: superseded by `tickets/kernel-extraction/admin-spa-serve-static.md` — module-dev shipped option (b) (`serveStatic` of the admin SPA from `apps/server`) per user choice, rather than option (a) (Hono CORS middleware). The structural fix this retro proposed AS the right move under §3 is what landed. The new retro carries the §11.2 five-field structure for the extraction that actually merged. Status flipped to `done`; architect verifies + archives at gate alongside the new retro. Confidence the category is now closed: this retro recorded `narrow`; the new retro records `closed` for the BDD-path / I20-witness layer with three named hedges (Vite HMR dev loop, missing build artefacts, route mount order) each carrying its own failsafe. Vite HMR cross-origin remains as a recorded sub-category but is not blocking.
+- 2026-05-23: ticket-sweep — this ticket was flipped to `done` on 2026-05-21 but the archival `git mv` was never completed, leaving a terminal-state file in the active tree. Completing the deferred archival step now: moving to `tickets/archive/kernel-extraction/`. (Was already absent from INDEX.md, so no board removal needed.)

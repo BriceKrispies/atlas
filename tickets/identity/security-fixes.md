@@ -10,7 +10,6 @@ vision: [agentic-first]
 invariants: [I2, I4]
 blocks: []
 blocked_by:
-  - chore/commit-untracked-deliverables
   - identity/auth-itest-preflight
 files_in_scope:
   - modules/identity/src/saml/**
@@ -26,7 +25,7 @@ acceptance:
   - F-SAML deferred findings (1, 3, 4, 16 per helpers.ts:18-22) split into their own tickets with citations
   - identity-hardening ADR exists if not already
 created: 2026-05-10
-updated: 2026-05-10
+updated: 2026-05-23
 ---
 
 ## Why
@@ -92,3 +91,4 @@ add lines for all the new sub-tickets under the identity/ section.
 ## Notes / log
 
 - 2026-05-10: created. Findings inventoried via the project state audit at session start. RED tests land via chore/commit-untracked-deliverables.
+- 2026-05-23: ticket-sweep — removed stale `blocked_by: chore/commit-untracked-deliverables` (that ticket is archived/resolved). Remaining blocker `identity/auth-itest-preflight` is still live.

@@ -15,7 +15,6 @@ import { uniqueIdempotencyKey } from './lib/intent-fixtures.ts';
 import { newEventId } from '@atlas/catalog';
 import type { IntentEnvelope } from '@atlas/platform-core';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
 function buildPageCreateIntent(opts: {
     tenantId: string;
     principalId: string;
@@ -68,7 +67,8 @@ function buildPageDeleteIntent(opts: {
         },
     };
 }
-d('[node] content-pages parity', function () {
+if (baseUrl) {
+describe('[node] content-pages parity', function () {
     test('test_page_create_persists_document_and_render_tree', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('cp-create');
         await ingress.submitIntent(buildPageCreateIntent({
@@ -168,3 +168,8 @@ d('[node] content-pages parity', function () {
         await b.ingress.close();
     });
 });
+} else {
+    describe('[node] content-pages parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

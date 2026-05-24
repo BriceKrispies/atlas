@@ -54,13 +54,8 @@ function captureLogger(): { logger: Logger; logs: CapturedLog[] } {
   return { logger, logs };
 }
 
-if (!HAS_DB) {
-  describe('PostgresTenantDbProvider.provisionTenantDatabase (skipped)', function () {
-    it.skip('TEST_TENANT_DB_URL not set — skipping db-per-tenant provisioning tests', function () {
-      // intentionally empty
-    });
-  });
-} else {
+// TEST_TENANT_DB_URL not set — db-per-tenant provisioning suite registers nothing.
+if (HAS_DB) {
   describe('PostgresTenantDbProvider.provisionTenantDatabase', function () {
     // Tenant ids are slugs; dashes are sanitised to underscores in the
     // derived db / role names. Two tenants exercise isolation.
@@ -1132,5 +1127,260 @@ if (!HAS_DB) {
         }
       });
     });
+
+    // --- W2: tenant-pool invalidation (G2) — live cases -----------------
+    // @spec specs/domains/runtime/capabilities/tenant-pool-invalidation/README.md
+    // @spec specs/crosscut/always-on.md §1 (I20)
+    //
+    // Prime a pool against a SCRATCH tenant DB, drop+recreate that DB,
+    // `invalidate(tenantId)`, then assert the next `getPool` reconnects to
+    // the recreated DB. Uses scratch DBs only — never an `atlas_t_*` DB.
+    describe('invalidate / invalidateAll — pool eviction (W2)', function () {
+      const SCRATCH_TENANT = 'pool-inval-scratch';
+      const SCRATCH_DB = 'atlas_pool_inval_scratch';
+      const SCRATCH_TENANT_2 = 'pool-inval-scratch-2';
+      const SCRATCH_DB_2 = 'atlas_pool_inval_scratch_2';
+
+      // Resolve every test tenant to a scratch physical DB, connecting as
+      // the (privileged) control-plane user so the runtime grants are not
+      // in play — this isolates the eviction/reconnect behaviour under test.
+      function scratchResolver(): (tenantId: string) => Promise<{
+        host: string;
+        port: number;
+        name: string;
+        user: string;
+        password: string;
+      } | null> {
+        const opts = controlPlane.options as unknown as {
+          host: string | string[];
+          port: number | number[];
+          user?: string;
+          pass?: string;
+        };
+        const host = Array.isArray(opts.host) ? opts.host[0] : opts.host;
+        const port = Array.isArray(opts.port) ? opts.port[0] : opts.port;
+        return async function (tenantId: string) {
+          const name = tenantId === SCRATCH_TENANT_2 ? SCRATCH_DB_2 : SCRATCH_DB;
+          return {
+            host: host as string,
+            port: port as number,
+            name,
+            user: opts.user ?? 'atlas_platform',
+            password: opts.pass ?? '',
+          };
+        };
+      }
+
+      async function dropScratchDbs(): Promise<void> {
+        for (const db of [SCRATCH_DB, SCRATCH_DB_2]) {
+          await controlPlane.unsafe(`DROP DATABASE IF EXISTS "${db}"`);
+        }
+      }
+
+      beforeEach(async function () {
+        await dropScratchDbs();
+        await controlPlane.unsafe(`CREATE DATABASE "${SCRATCH_DB}"`);
+        await controlPlane.unsafe(`CREATE DATABASE "${SCRATCH_DB_2}"`);
+      });
+
+      afterAll(async function () {
+        await dropScratchDbs();
+      });
+
+      it('invalidate evicts a single tenant pool; getPool reconnects to the recreated DB', async function () {
+        let resolveCount = 0;
+        const base = scratchResolver();
+        const provider = new PostgresTenantDbProvider(controlPlane, {
+          resolveConnection: function (t) {
+            resolveCount += 1;
+            return base(t);
+          },
+        });
+        try {
+          // Prime the pool, write a sentinel marker into the scratch DB so
+          // we can prove the post-invalidate pool is talking to the
+          // RECREATED database (the marker is gone after drop+recreate).
+          const pool1 = await provider.getPool(SCRATCH_TENANT);
+          await pool1.unsafe(
+            'CREATE TABLE pool_inval_marker (id INT)',
+          );
+          await pool1.unsafe('INSERT INTO pool_inval_marker (id) VALUES (1)');
+          const before = await pool1<{ id: number }[]>`SELECT id FROM pool_inval_marker`;
+          expect(before.length).toBe(1);
+          expect(resolveCount).toBe(1);
+
+          // Operator drops + recreates the tenant DB out from under the
+          // live pool. Terminate other backends first so DROP DATABASE
+          // is not blocked by the cached pool's own connections.
+          await controlPlane.unsafe(
+            `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${SCRATCH_DB}' AND pid <> pg_backend_pid()`,
+          );
+          await controlPlane.unsafe(`DROP DATABASE "${SCRATCH_DB}"`);
+          await controlPlane.unsafe(`CREATE DATABASE "${SCRATCH_DB}"`);
+
+          // Invalidate: close + evict the stale pool. The cache should be
+          // empty afterwards.
+          await provider.invalidate(SCRATCH_TENANT);
+
+          // Next getPool re-resolves (resolveCount increments) and opens a
+          // fresh pool against the recreated DB. The marker table no longer
+          // exists — proving we reconnected to the new database, not the
+          // stale one.
+          const pool2 = await provider.getPool(SCRATCH_TENANT);
+          expect(resolveCount).toBe(2);
+          const exists = await pool2<{ present: boolean }[]>`
+            SELECT EXISTS(
+              SELECT 1 FROM information_schema.tables
+              WHERE table_name = 'pool_inval_marker'
+            ) AS present
+          `;
+          expect(exists[0]?.present).toBe(false);
+        } finally {
+          await provider.close();
+        }
+      });
+
+      it('invalidateAll closes and evicts every cached pool; getPool reconnects for all', async function () {
+        const provider = new PostgresTenantDbProvider(controlPlane, {
+          resolveConnection: scratchResolver(),
+        });
+        try {
+          await provider.getPool(SCRATCH_TENANT);
+          await provider.getPool(SCRATCH_TENANT_2);
+          // Two distinct tenants cached.
+          expect((provider as unknown as { cache: { size(): number } }).cache.size()).toBe(2);
+
+          await provider.invalidateAll();
+          expect((provider as unknown as { cache: { size(): number } }).cache.size()).toBe(0);
+
+          // Provider is still live: getPool reconnects for both.
+          const a = await provider.getPool(SCRATCH_TENANT);
+          const b = await provider.getPool(SCRATCH_TENANT_2);
+          const ra = await a<{ ok: number }[]>`SELECT 1 AS ok`;
+          const rb = await b<{ ok: number }[]>`SELECT 1 AS ok`;
+          expect(ra[0]?.ok).toBe(1);
+          expect(rb[0]?.ok).toBe(1);
+          expect((provider as unknown as { cache: { size(): number } }).cache.size()).toBe(2);
+        } finally {
+          await provider.close();
+        }
+      });
+    });
   });
 }
+
+// --- W2: no-op safety + re-resolution — no live DB required ------------
+// These cases exercise the eviction bookkeeping and the "getPool
+// re-resolves after invalidate" contract using a `resolveConnection`
+// override, so they run without a Postgres. They never open a real
+// socket (getPool against the override still constructs a postgres.Sql
+// but issues no query), so teardown closes them best-effort.
+// @spec specs/domains/runtime/capabilities/tenant-pool-invalidation/README.md
+describe('PostgresTenantDbProvider invalidation — no-op + re-resolution (no DB)', function () {
+  function fakeInfo(tenantId: string) {
+    return {
+      host: '127.0.0.1',
+      port: 1,
+      name: `db_${tenantId}`,
+      user: 'u',
+      password: 'p',
+    };
+  }
+
+  it('invalidate on an uncached tenant id is a silent no-op', async function () {
+    const provider = new PostgresTenantDbProvider({} as never, {
+      resolveConnection: async function (t) {
+        return fakeInfo(t);
+      },
+    });
+    const cache = (provider as unknown as { cache: { size(): number } }).cache;
+    expect(cache.size()).toBe(0);
+    // Must not throw, size unchanged.
+    await provider.invalidate('never-cached');
+    expect(cache.size()).toBe(0);
+    // Calling twice is safe.
+    await provider.invalidate('never-cached');
+    expect(cache.size()).toBe(0);
+    await provider.close();
+  });
+
+  it('invalidateAll on an empty cache is a no-op', async function () {
+    const provider = new PostgresTenantDbProvider({} as never, {
+      resolveConnection: async function (t) {
+        return fakeInfo(t);
+      },
+    });
+    const cache = (provider as unknown as { cache: { size(): number } }).cache;
+    expect(cache.size()).toBe(0);
+    await provider.invalidateAll();
+    expect(cache.size()).toBe(0);
+    await provider.close();
+  });
+
+  // sdet W2 gap: the live invalidate test proves a fresh pool reconnects to
+  // the recreated DB, but it relies on pg_terminate_backend to kill the old
+  // backends — it never asserts that `invalidate` itself CLOSED the
+  // previously-cached pool object, nor that the close was AWAITED before
+  // `invalidate` resolved. That "close, don't just drop" + "await the close"
+  // semantic is the entire reason `cache.delete` returns the trackClose
+  // promise (tenant-db-provider.ts:343-354) and `invalidate` awaits it
+  // (:459-461) rather than doing a bare Map delete. Witness it directly,
+  // no DB: capture the exact postgres.Sql `getPool` handed out, invalidate,
+  // then assert a query on the OLD handle rejects with a closed-connection
+  // error (postgres.js throws CONNECTION_ENDED after `.end()`). A regression
+  // that turned `invalidate` into a non-awaiting evict-only would still pass
+  // the re-resolution test above but fail this one.
+  // @spec specs/domains/runtime/capabilities/tenant-pool-invalidation/README.md
+  it('invalidate closes (and awaits the close of) the previously cached pool', async function () {
+    const provider = new PostgresTenantDbProvider({} as never, {
+      resolveConnection: async function (t) {
+        return fakeInfo(t);
+      },
+    });
+    try {
+      const stale = await provider.getPool('t1');
+      // After invalidate resolves, the old pool MUST be closed — a query on
+      // the captured handle rejects because its sockets are gone.
+      await provider.invalidate('t1');
+      let err: unknown;
+      try {
+        await stale`SELECT 1`;
+      } catch (e) {
+        err = e;
+      }
+      expect(err, 'query on the evicted pool should reject — invalidate must have closed it').toBeTruthy();
+      const msg = err instanceof Error ? err.message : String(err);
+      expect(msg).toMatch(/CONNECTION_ENDED|CONNECTION_DESTROYED|closed/i);
+      // And the fresh getPool returns a DIFFERENT, live handle.
+      const fresh = await provider.getPool('t1');
+      expect(fresh).not.toBe(stale);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it('getPool after invalidate re-runs lookupConnectionInfo (re-resolution)', async function () {
+    let resolveCount = 0;
+    const provider = new PostgresTenantDbProvider({} as never, {
+      resolveConnection: async function (t) {
+        resolveCount += 1;
+        return fakeInfo(t);
+      },
+    });
+    try {
+      await provider.getPool('t1');
+      expect(resolveCount).toBe(1);
+      // Second getPool hits the cache — no re-resolution.
+      await provider.getPool('t1');
+      expect(resolveCount).toBe(1);
+      // After invalidate, the next getPool re-resolves.
+      await provider.invalidate('t1');
+      const cache = (provider as unknown as { cache: { size(): number } }).cache;
+      expect(cache.size()).toBe(0);
+      await provider.getPool('t1');
+      expect(resolveCount).toBe(2);
+    } finally {
+      await provider.close();
+    }
+  });
+});

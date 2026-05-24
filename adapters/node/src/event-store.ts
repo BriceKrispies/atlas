@@ -91,7 +91,7 @@ export class PostgresEventStore implements EventStore {
         ${envelope.principalId ?? null},
         ${envelope.userId ?? null},
         ${jsonParam(this.sql, envelope.payload)},
-        ${tags === null ? this.sql`NULL` : this.sql.array(tags)}
+        ${tags === null ? this.sql`NULL` : this.sql`${tags}::text[]`}
       )
       ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
       RETURNING event_id, seq

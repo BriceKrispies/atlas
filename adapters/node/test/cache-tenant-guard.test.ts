@@ -28,6 +28,7 @@
 import { describe, test, expect } from '@atlas/test';
 import { PostgresCache } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';
+// TEST_TENANT_DB_URL not set — Postgres I9 tenant tag guard suite registers nothing.
 if (HAS_DB) {
     describe('PostgresCache.set — Invariant I9 tenant tag guard', function () {
         test('throws when privacy is non-PUBLIC and tags lack any Tenant:* entry', async function () {
@@ -70,13 +71,6 @@ if (HAS_DB) {
                 ttlSeconds: 60,
                 tags: ['Tenant:t1', 'Resource:foo'],
             })).resolves.toBeUndefined();
-        });
-    });
-}
-else {
-    describe('PostgresCache.set — Invariant I9 tenant tag guard (skipped)', function () {
-        test.skip('TEST_TENANT_DB_URL not set — skipping Postgres I9 guard tests', function () {
-            // intentionally empty
         });
     });
 }

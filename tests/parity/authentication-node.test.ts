@@ -11,7 +11,6 @@
  */
 import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
 async function fetchWhoami(headers: Record<string, string>): Promise<{
     status: number;
     body: unknown;
@@ -27,7 +26,8 @@ async function fetchWhoami(headers: Record<string, string>): Promise<{
     }
     return { status: res.status, body };
 }
-d('[node] authentication parity', function () {
+if (baseUrl) {
+describe('[node] authentication parity', function () {
     test('test_missing_token_returns_401', async function () {
         const res = await fetchWhoami({});
         expect(res.status).toBe(401);
@@ -89,3 +89,8 @@ d('[node] authentication parity', function () {
         expect(res.status).toBe(401);
     });
 });
+} else {
+    describe('[node] authentication parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

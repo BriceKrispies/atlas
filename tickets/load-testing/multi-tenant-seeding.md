@@ -6,7 +6,7 @@ owner: port-adapter-dev
 phase: 0
 vision: []
 invariants: [I7, I9]
-blocks: [load-testing/multi-tenant-scenario]
+blocks: [load-testing/remote-load-gen]
 blocked_by: []
 files_in_scope:
   - scripts/seed-tenants.ts
@@ -16,7 +16,7 @@ acceptance:
   - "Idempotent re-run is a no-op (does not throw on existing tenant_id)"
   - "Tear-down script (or doc) exists for removing seeded tenants after a test"
 created: 2026-05-12
-updated: 2026-05-12
+updated: 2026-05-23
 ---
 
 ## Why
@@ -51,3 +51,7 @@ in the ticket must pass.
 
 - 2026-05-12: created. Filed during the load-testing-harness build that
   followed Bet #1 settlement.
+- 2026-05-23: ticket-sweep — `blocks` pointed at `load-testing/multi-tenant-scenario`,
+  which was never filed (dangling ref). Repointed to `load-testing/remote-load-gen`, the
+  real downstream that already declares `blocked_by: load-testing/multi-tenant-seeding`.
+  If a distinct multi-tenant *scenario* ticket was intended, file it and re-add the edge.

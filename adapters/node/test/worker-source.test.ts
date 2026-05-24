@@ -148,10 +148,4 @@ if (HAS_DB) {
         });
     });
 }
-else {
-    describe('PostgresWorkerSource (skipped)', function () {
-        it.skip('TEST_TENANT_DB_URL not set — skipping Postgres worker source tests', function () {
-            // intentionally empty
-        });
-    });
-}
+// TEST_TENANT_DB_URL not set — Postgres worker source suite registers nothing.

@@ -114,8 +114,8 @@ test.describe('e2e — SAML 2.0 SSO (designed; skipped pending realm refresh)', 
         // first flow and replaying it. Implementation deferred until the
         // realm SP is in place — the unit-level handler test covers the
         // logical branch in `modules/identity/test/unit/saml-acs.test.ts`
-        // (under the `describe.skip` block of crypto-bound branches that
-        // this e2e test would unblock).
-        test.skip(true, 'requires captured Response; deferred');
+        // (the crypto-bearing branches there throw "TODO: implement" for
+        // the same reason).
+        throw new Error('TODO: requires captured SAML Response from realm SP; implement once realm SP is in place');
     });
 });

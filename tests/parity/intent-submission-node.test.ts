@@ -2,8 +2,8 @@ import { describe, test, expect } from '@atlas/test';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { intentWithUnknownAction, intentWithUnknownSchema, intentWithSchemaMismatch, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] intent_submission parity', function () {
+if (baseUrl) {
+describe('[node] intent_submission parity', function () {
     test('test_submit_valid_intent_returns_event', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('isub-ok');
         const env = validIntent({
@@ -75,3 +75,8 @@ d('[node] intent_submission parity', function () {
         await ingress.close();
     });
 });
+} else {
+    describe('[node] intent_submission parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

@@ -350,7 +350,7 @@ test.describe('public signup → smtp4dev → magic link → tenant home', funct
     // Enable once Agent B's fix lands; expected behavior is "at most 1
     // mail per signup id, ever." If the fix re-mints + revokes prior,
     // the assertion may need to flex to count <= 2 — see comment inline.
-    test.skip('approve replay does not double-send mail', async function () {
+    test('approve replay does not double-send mail', async function () {
         // Submit a fresh signup distinct from the primary loop's rows.
         const submitRes = await fetch(`${INGRESS}/api/v1/public/signup`, {
             method: 'POST',

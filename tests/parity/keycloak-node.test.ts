@@ -87,8 +87,8 @@ async function mintClientCredentialsToken(): Promise<TokenResponse> {
     }
     return readJsonAs<TokenResponse>(res);
 }
-const dKeycloak = keycloakBaseUrl ? describe : describe.skip;
-dKeycloak('[node] keycloak parity', function () {
+if (keycloakBaseUrl) {
+describe('[node] keycloak parity', function () {
     test('test_keycloak_is_reachable', async function () {
         const { status, body } = await fetchDiscovery();
         expect(status).toBe(200);
@@ -105,8 +105,8 @@ dKeycloak('[node] keycloak parity', function () {
         // production (https) and is not a parity concern here.
         expect(u.host).toBe(configured.host);
     });
-    const dWithServer = serverBaseUrl ? describe : describe.skip;
-    dWithServer('with apps/server', function () {
+    if (serverBaseUrl) {
+    describe('with apps/server', function () {
         test('test_valid_keycloak_token_grants_access', async function () {
             const token = await mintClientCredentialsToken();
             expect(token.access_token).toBeTypeOf('string');
@@ -151,4 +151,14 @@ dKeycloak('[node] keycloak parity', function () {
             expect((body.principalId ?? '').length).toBeGreaterThan(0);
         });
     });
+    } else {
+        describe('with apps/server (skipped: NODE_PARITY_BASE_URL not set)', function () {
+            // intentionally empty — env-gated suite
+        });
+    }
 });
+} else {
+    describe('[node] keycloak parity (skipped: KEYCLOAK_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

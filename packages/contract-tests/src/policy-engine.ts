@@ -43,8 +43,11 @@ function makeRequest(opts: MakeRequestOptions = {}): PolicyEvaluationRequest {
  * - concurrency: parallel `evaluate` calls return consistent results.
  *
  * Adapter-specific semantics (Cedar's forbid-overrides, attribute-based
- * matching, schema validation) live in adapter-local tests; the
- * `describe.skip(...)` blocks below sketch the shape Cedar must satisfy.
+ * matching, schema validation) live in adapter-local tests at
+ * `adapters/policy-cedar/test/cedar-policy-engine.test.ts`. They are NOT
+ * duplicated here: the stub can't satisfy them and the shared
+ * `makeEngine()` factory can't inject policies, so the contract is limited
+ * to the universally-true semantics above.
  */
 export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): void {
   describe('PolicyEngine contract', function () {
@@ -225,38 +228,12 @@ export function policyEngineContract(makeEngine: () => Promise<PolicyEngine>): v
         expect(r.effect).toBe(r.expected);
       }
     });
-    // -----------------------------------------------------------------
-    // Real-engine-only scenarios. The stub does not inspect action,
-    // resource, or attributes; Cedar must. The Cedar adapter's real
-    // assertions live in
-    // `adapters/policy-cedar/test/cedar-policy-engine.test.ts`
-    // (forbid-overrides, attribute-based permit/deny, matched-policies).
-    // We keep `describe.skip` here so the contract surface still
-    // documents the expectation without forcing every adapter to satisfy
-    // it inline. Bodies use `expect.fail(...)` so flipping `.skip` to
-    // `describe` (when adding a new adapter that should satisfy these
-    // inline) immediately surfaces "still TODO" rather than passing
-    // vacuously.
-    // -----------------------------------------------------------------
-    describe.skip('real engine semantics (Cedar — see cedar adapter test)', function () {
-      test('forbid overrides permit (Invariant I4: deny-overrides-allow)', function () {
-        // When a tenant has both a `permit` and a `forbid` rule that match
-        // the same request, the decision must be `deny`.
-        expect.fail('TODO: implement when adapting a real engine inline against this contract');
-      });
-      test('attribute-based: principal.department === resource.department permits', function () {
-        // A policy keyed on principal attributes resolves against the
-        // request envelope's attribute map.
-        expect.fail('TODO: implement when adapting a real engine inline against this contract');
-      });
-      test('matchedPolicies returns policy ids that contributed to the decision', function () {
-        // Real adapters expose policy ids; stub returns undefined.
-        expect.fail('TODO: implement when adapting a real engine inline against this contract');
-      });
-      test('different actions produce different decisions for the same principal/resource', function () {
-        // e.g. Catalog.Family.Read permits, Catalog.Family.Delete denies.
-        expect.fail('TODO: implement when adapting a real engine inline against this contract');
-      });
-    });
+    // Real-engine-only semantics — forbid-overrides (I4), attribute-based
+    // permit/deny, matched-policy traceability, action differentiation —
+    // are NOT part of this shared contract because the stub deliberately
+    // can't satisfy them (allow-all-with-tenant-scope, no policy loading)
+    // and the shared `makeEngine()` factory has no way to inject policies.
+    // That coverage lives, fully exercised, in the Cedar adapter's own
+    // suite: `adapters/policy-cedar/test/cedar-policy-engine.test.ts`.
   });
 }

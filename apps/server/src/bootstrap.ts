@@ -33,9 +33,11 @@ import {
   PostgresSignupRequestStore,
   PostgresTenantDbProvider,
   PostgresTenantStore,
+  POSTGRES_RESILIENCE_OPTIONS,
   SmtpMailer,
   StdoutEventMailer,
   runMigrations,
+  seedControlPlaneSchemaRegistry,
 } from '@atlas/adapter-node';
 import { makeDslKindRegistry, type DslKind, type DslKindRegistry } from '@atlas/dsl';
 import {
@@ -260,13 +262,32 @@ export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise
   const bootId = globalThis.crypto.randomUUID();
   const startedAt = new Date();
 
-  const controlPlaneSql = postgres(config.controlPlaneDbUrl, { max: 5 });
+  // Explicit connection-resilience config (POSTGRES_RESILIENCE_OPTIONS) so
+  // the control-plane pool survives a Postgres container bounce
+  // (`make db-down && make db-up`, `make db-reset`) without an apps/server
+  // restart — same process, stable bootId (capability pool-resilience,
+  // always-on §1, I20). The empirical probe confirmed postgres.js already
+  // reconnects per-query after a bounce; these options make that behaviour
+  // explicit + bounded rather than implicit. Mirrors the per-tenant pool
+  // site (`openPostgresFromInfo`). `max: 5` sizing unchanged.
+  const controlPlaneSql = postgres(config.controlPlaneDbUrl, {
+    max: 5,
+    ...POSTGRES_RESILIENCE_OPTIONS,
+  });
 
   // Probe the connection up front — fail loud at boot rather than mid-request.
   await controlPlaneSql`SELECT 1`;
 
   // Apply control-plane schema migrations. Idempotent; re-runs are no-ops.
   await runMigrations(controlPlaneSql, 'control-plane');
+
+  // Seed the control-plane schema & action registry from the bundled
+  // @atlas/schemas set (idempotent, source='seed'). Runs BEFORE the server
+  // accepts requests so the registry's first snapshot already carries the
+  // platform intent schemas + action catalog (capability
+  // control-plane-schema-registry, I20). Re-boots are a no-op; a
+  // runtime-registered row is never overwritten.
+  await seedControlPlaneSchemaRegistry(controlPlaneSql);
 
   // Seed the platform-tenant row. Per ADR 0008 §1 + Stage 2 the platform
   // is a real row in `control_plane.tenants` — code paths that used to
@@ -364,6 +385,10 @@ export async function bootstrap(config: AppConfig, deps: BootstrapDeps): Promise
     controlPlaneSql,
     deps.bootCtx.logger,
   );
+  // Prime the registry snapshot from the freshly-seeded control-plane tables
+  // before the server accepts requests, so the very first intent's schema +
+  // action lookups resolve without waiting for the background cursor poll.
+  await controlPlaneRegistry.waitForFreshSnapshot();
   const customDomains = new PostgresCustomDomainStore(controlPlaneSql);
   const customDomainCache = new TenantHostCache();
   const principalCache = new PrincipalCache();

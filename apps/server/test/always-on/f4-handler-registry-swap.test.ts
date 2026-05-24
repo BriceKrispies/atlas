@@ -180,9 +180,12 @@ describe('F4 — handler-registry hot-swap (always-on §4.2 / I1)', function () 
   });
 
   // The genuine F4 diagnostic. See test source for the acceptance bar.
-  test.todo(
+  test(
     'two-request swap — request 1 hits v1; mutate kernel.handlers; request 2 hits v2. ' +
       'Requires §6 phase 1 (action-driven routing) so the route resolves at dispatch time. ' +
       'Tracked in tickets/atlas-on-atlas/phase-1-action-routing.md (placeholder until set lands).',
+    function () {
+      throw new Error('TODO: implement this test');
+    },
   );
 });

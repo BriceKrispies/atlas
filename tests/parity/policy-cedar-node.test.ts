@@ -29,7 +29,6 @@ const policyEngineKind = process.env['POLICY_ENGINE'] ?? 'stub';
 // in `cedar` mode. The supervisor sets POLICY_ENGINE on the child but not
 // in the test process, so we accept either signal.
 const enableSuite = baseUrl && (policyEngineKind === 'cedar' || process.env['NODE_PARITY_POLICY_ENGINE'] === 'cedar');
-const d = enableSuite ? describe : describe.skip;
 const CEDAR_BUNDLE = `
   @id("permit-seed-apply")
   permit (
@@ -65,7 +64,8 @@ async function seedPolicy(sql: postgres.Sql, tenantId: string, cedarText: string
       status = 'active'
   `;
 }
-d('[node] Cedar policy engine parity', function () {
+if (enableSuite) {
+describe('[node] Cedar policy engine parity', function () {
     const dbUrl = process.env['CONTROL_PLANE_DB_URL'] ??
         'postgres://atlas_platform:local_dev_password@localhost:15433/control_plane';
     let sql: postgres.Sql;
@@ -152,3 +152,8 @@ d('[node] Cedar policy engine parity', function () {
         await ingress.close();
     });
 });
+} else {
+    describe('[node] Cedar policy engine parity (skipped: NODE_PARITY_BASE_URL or POLICY_ENGINE=cedar not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

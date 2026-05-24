@@ -58,8 +58,8 @@ rg "test\\(.*test_seed_package_apply" tests/parity
    `<suite>-sim.test.ts` and `<suite>-node.test.ts`.
    - Use `makeSimIngress(prefix)` in sim files.
    - Use `makeServerIngress(prefix)` in node files.
-   - Wrap node `describe(...)` blocks with the `baseUrl ? describe : describe.skip`
-     guard so they silent-skip when `NODE_PARITY_BASE_URL` is unset.
+   - Gate node `describe(...)` blocks with `if (baseUrl) { describe(...) } else { describe('... (skipped: NODE_PARITY_BASE_URL not set)', () => {}) }`
+     so they silent-skip when `NODE_PARITY_BASE_URL` is unset.
 4. If the scenario needs a sim-only escape hatch (event-store reads, search
    doc indexing, etc.), it lives only in the sim file. Document the deferral
    in `DEFERRED.md`.

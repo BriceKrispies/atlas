@@ -7,7 +7,6 @@
  */
 import { describe, test, expect } from '@atlas/test';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
 /**
  * Boundary reader for parity-test JSON responses. The wire shape is the
  * route's contract (apps/server/src/routes/health.ts here); we narrow
@@ -16,7 +15,8 @@ const d = baseUrl ? describe : describe.skip;
 async function readJsonAs<T>(res: Response): Promise<T> {
     return (await res.json()) as T;
 }
-d('[node] health parity', function () {
+if (baseUrl) {
+describe('[node] health parity', function () {
     test('test_health_endpoint_returns_200', async function () {
         const res = await fetch(`${baseUrl}/`, { method: 'GET' });
         expect(res.status).toBe(200);
@@ -63,3 +63,8 @@ d('[node] health parity', function () {
         expect(body.name).toBe('@atlas/server');
     });
 });
+} else {
+    describe('[node] health parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

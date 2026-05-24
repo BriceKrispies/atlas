@@ -1,6 +1,6 @@
 ---
 title: BDD scenario — atlas-admin approves a public signup against the real server stack
-status: review
+status: blocked
 type: test
 owner: module-dev
 phase: 0
@@ -8,7 +8,8 @@ capability: specs/domains/tenancy/capabilities/public-signup/README.md
 vision: []
 invariants: [I1, I2, I5, I10, I12]
 blocks: []
-blocked_by: []
+blocked_by:
+  - tenancy/admin-approve-provisions-tenant-db
 files_in_scope:
   - specs/domains/tenancy/capabilities/public-signup/README.md
   - packages/platform-core/src/platform-tenant.ts
@@ -34,7 +35,7 @@ acceptance:
   - smtp4dev REST /api/Messages returns the dispatched email
   - per-tenant entities table exists in the newly-provisioned tenant DB
 created: 2026-05-17
-updated: 2026-05-18
+updated: 2026-05-23
 ---
 
 ## Why
@@ -70,3 +71,4 @@ Implement the slices in tickets/tenancy/admin-approves-signup-bdd.md per the app
 
 - 2026-05-17: created (status=scoped). User approved plan at .claude/plans/im-wanting-to-test-sunny-locket.md.
 - 2026-05-18: all five slices implemented (status=review). Slice 1 (spec-keeper) edited the public-signup capability spec to document the seeded platform-admin actor + the Tenancy.PlatformAdmin.Seeded boot event + a lexicon entry. Slice 2 (module-dev) added PLATFORM_ADMIN_* constants in @atlas/platform-core, wrote `seedPlatformAdmin(entities)` in apps/server, wired it into bootstrap.ts (idempotent; logs `Tenancy.PlatformAdmin.Seeded` on first run only); principal middleware needed no change (the 4-segment X-Debug-Principal form hydrates roles directly). Slice 3 added playwright.bdd.server.config.ts (3 webServer entries: make db-up + pnpm smtp:up + apps/server with canonical dev env + Windows host-resolver flag) and pnpm bdd:server / pnpm bdd:server:report scripts. Slice 4 (module-dev) wrote the @server-tagged feature, step bindings, and tests/bdd/support/server-stack.ts helpers; uses the in-memory ring buffer via /api/v1/admin/logging/correlation/:correlationId/recent for log-tailing (Option B); extended world.ts + hooks.ts to support an After('@server', …) cleanup hook; added eslint.config.ts ignore for playwright.bdd.server.config.ts. Slice 5 renamed StdoutEventMailer's `event: 'mailer.sent'` → `event: 'Mailer.Send.Success'` (now matches SmtpMailer; canonical Domain.Verb.Outcome name per logging contract), updated the test, updated tests/bdd/README.md with the @sim vs @server track section + new commands table entries, switched tests/integration/public-signup.itest.ts admin headers to `user:platform-admin:_platform:admin` and added a header note about the BDD sibling. Verification: pnpm typecheck green, pnpm lint green, every touched vitest test green (5/5), `pnpm exec bddgen --config playwright.bdd.server.config.ts` exit 0 with all 14 step bindings resolved. `pnpm bdd:server` end-to-end NOT run from this turn — requires Postgres + smtp4dev containers + apps/server to be brought up; operator should run `make db-up && pnpm smtp:up && pnpm bdd:server` to validate the live stack. Architect invariant-gate pass (I1/I2/I5/I10/I12) still pending before move to done.
+- 2026-05-23: ticket-sweep — moved `review` → `blocked`. The 2026-05-22 BDD run (see `tenancy/admin-approve-provisions-tenant-db`) showed this scenario fails end-to-end with `approveSignup: 503 TENANT_DATABASE_NOT_PROVISIONED` because admin-approve never provisions the per-tenant DB. The "5/5 slices landed / pending architect" framing overstated readiness: acceptance items "pnpm bdd:server passes end-to-end" and "per-tenant entities table exists in the newly-provisioned tenant DB" are known-red until that gap closes. Added `blocked_by: tenancy/admin-approve-provisions-tenant-db`.

@@ -10,19 +10,13 @@
  * test rather than once. This also lets the suite's "reads against a
  * never-bootstrapped kind return null/empty" assertion fire honestly.
  */
-import { describe, it } from '@atlas/test';
 import { dslArtifactStoreContract } from '@atlas/contract-tests';
 import type { DslArtifactStore } from '@atlas/ports';
 import { PostgresDslArtifactStore } from '../src/index.ts';
 import { freshSql, HAS_DB } from './_setup.ts';
 
-if (!HAS_DB) {
-  describe('PostgresDslArtifactStore (skipped)', function () {
-    it.skip('TEST_TENANT_DB_URL not set — skipping DSL artifact store contract tests', function () {
-      // intentionally empty
-    });
-  });
-} else {
+// TEST_TENANT_DB_URL not set — DSL artifact store contract suite registers nothing.
+if (HAS_DB) {
   dslArtifactStoreContract(async function makeStore(): Promise<DslArtifactStore> {
     const sql = await freshSql();
     // Drop the kinds the contract suite touches so each test starts from

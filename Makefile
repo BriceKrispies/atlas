@@ -5,148 +5,64 @@
 .PHONY: itest-up itest-down itest-restart itest-logs itest-status itest-clean itest-reset itest-test itest
 .PHONY: itest-container-build itest-container-run itest-container
 
-# Container runtime configuration
+# ---------------------------------------------------------------------------
+# Dev-stack lifecycle
+#
+# The db / obs / keycloak / smtp stacks are orchestrated by scripts/dev (the
+# devctl tool). These make targets are THIN ALIASES over it — run devctl
+# directly for machine-readable output:
+#
+#   pnpm devctl stack db up --json
+#   pnpm devctl logs db --tail 100 --no-follow
+#
+# Compose-command resolution (podman-compose vs `podman compose` vs docker)
+# and the Windows podman-compose-provider trap are handled inside the tool.
+# Set CONTAINER_RUNTIME=docker to override podman (the tool reads it).
+# ---------------------------------------------------------------------------
 CONTAINER_RUNTIME ?= podman
-# Use the built-in `compose` subcommand (Podman 4+, Docker 20.10+) rather
-# than the standalone `podman-compose` Python tool. Override with
-# `make COMPOSE_CMD=podman-compose db-up` if you have the standalone tool
-# installed and prefer it.
-COMPOSE_CMD ?= $(CONTAINER_RUNTIME) compose
-COMPOSE_FILE = infra/compose/compose.control-plane.yml
-CONTAINER_NAME = atlas-platform-control-plane-db
+export CONTAINER_RUNTIME
 
-# Database connection settings
-DB_HOST ?= localhost
-DB_PORT ?= 15433
-DB_USER ?= atlas_platform
-DB_NAME ?= control_plane
-PGPASSWORD ?= local_dev_password
-CONTROL_PLANE_DB_URL ?= postgres://$(DB_USER):$(PGPASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)
+DEVCTL = node --experimental-transform-types scripts/dev/main.ts
+
+CONTROL_PLANE_DB_URL ?= postgres://atlas_platform:local_dev_password@localhost:15433/control_plane
 
 help:
-	@echo "Available targets (TypeScript build/test/lint via pnpm — see package.json):"
+	@echo "Atlas dev stacks — thin aliases over scripts/dev (run 'pnpm devctl ...' for --json):"
 	@echo ""
-	@echo "Database targets (using $(CONTAINER_RUNTIME)):"
-	@echo "  db-up         - Start Postgres container, wait for readiness, and run migrations"
-	@echo "  db-down       - Stop Postgres container"
-	@echo "  db-status     - Check if database container is running and healthy"
-	@echo "  db-wait       - Wait for database to be ready to accept connections"
-	@echo "  db-logs       - Show database container logs"
-	@echo "  db-reset      - Reset database (down, up, migrate)"
-	@echo "  db-migrate    - Run database migrations"
-	@echo "  db-seed       - Seed database with sample data"
+	@echo "Database:        db-up db-down db-status db-wait db-logs db-reset db-seed"
+	@echo "Observability:   obs-up obs-down obs-status obs-logs obs-reset obs-open"
+	@echo "Keycloak:        keycloak-up keycloak-down keycloak-status keycloak-wait keycloak-logs keycloak-reset keycloak-open"
+	@echo "SMTP (smtp4dev): pnpm devctl stack smtp up | down | status (or pnpm smtp:up / smtp:down)"
 	@echo ""
-	@echo "Observability targets (using $(CONTAINER_RUNTIME)):"
-	@echo "  obs-up        - Start observability stack (Prometheus, Grafana, Loki)"
-	@echo "  obs-down      - Stop observability stack"
-	@echo "  obs-status    - Check observability services status"
-	@echo "  obs-logs      - Show observability logs"
-	@echo "  obs-reset     - Reset observability (down, remove volumes, up)"
-	@echo "  obs-open      - Show URLs for observability services"
+	@echo "Integration test stack (containerised; Rust-era — see infra/CLAUDE.md):"
+	@echo "  itest-up itest-down itest-restart itest-logs itest-status itest-clean itest-reset itest-test itest"
+	@echo "  itest-container-build itest-container-run itest-container"
 	@echo ""
-	@echo "Keycloak targets (using $(CONTAINER_RUNTIME)):"
-	@echo "  keycloak-up     - Start Keycloak identity provider"
-	@echo "  keycloak-down   - Stop Keycloak"
-	@echo "  keycloak-status - Check Keycloak container status"
-	@echo "  keycloak-logs   - Show Keycloak logs"
-	@echo "  keycloak-wait   - Wait for Keycloak to be healthy"
-	@echo "  keycloak-reset  - Reset Keycloak (down, remove volumes, up)"
-	@echo "  keycloak-open   - Show Keycloak URLs"
+	@echo "Log inspection:  pnpm devctl logs <service...> [--tail N] [--no-follow]"
+	@echo "                 services: db keycloak grafana prometheus loki promtail smtp pgadmin"
 	@echo ""
-	@echo "Integration Test targets (using $(CONTAINER_RUNTIME)):"
-	@echo "  itest-up      - Start full integration test stack (all services + ops UI)"
-	@echo "  itest-down    - Stop integration test stack"
-	@echo "  itest-restart - Restart integration test stack"
-	@echo "  itest-logs    - Show logs from all itest containers"
-	@echo "  itest-status  - Check integration test services status"
-	@echo "  itest-clean   - Remove integration test volumes"
-	@echo "  itest-reset   - Full reset (down, clean, up)"
-	@echo "  itest-test    - Run black-box integration tests"
-	@echo "  itest         - Full workflow: up + wait + test"
-	@echo ""
-	@echo "Single-container integration test:"
-	@echo "  itest-container-build  - Build the full-stack test container"
-	@echo "  itest-container-run    - Run integration tests in the container"
-	@echo "  itest-container        - Build + run (full workflow)"
-	@echo ""
-	@echo "Quick log inspection (alternative to Dozzle UI):"
-	@echo "  bash scripts/logs.sh                  - Follow all container logs"
-	@echo "  bash scripts/logs.sh ingress          - Follow ingress logs only"
-	@echo "  bash scripts/logs.sh --tail 200 db    - Last 200 database log lines"
-	@echo "  Or use Dozzle web UI: http://localhost:8080"
-	@echo ""
-	@echo "Set CONTAINER_RUNTIME=docker to use docker instead of podman"
+	@echo "Set CONTAINER_RUNTIME=docker to use docker instead of podman."
 
-# Database lifecycle targets
+# Database -------------------------------------------------------------------
+db-up:
+	$(DEVCTL) stack db up
+
+db-down:
+	$(DEVCTL) stack db down
+
 db-status:
-	@echo "=== Database Container Status ==="
-	@bash -c ' \
-		if $(CONTAINER_RUNTIME) ps --format "{{.Names}}" | grep -q "^$(CONTAINER_NAME)$$"; then \
-			echo "✓ Container '\''$(CONTAINER_NAME)'\'' is running"; \
-			echo ""; \
-			echo "Container details:"; \
-			$(CONTAINER_RUNTIME) ps --filter "name=$(CONTAINER_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"; \
-		else \
-			echo "✗ Container '\''$(CONTAINER_NAME)'\'' is NOT running"; \
-			exit 1; \
-		fi \
-	'
+	$(DEVCTL) stack db status
 
 db-wait:
-	@echo "Waiting for Postgres to accept connections..."
-	@bash -c ' \
-		for i in {1..30}; do \
-			if $(CONTAINER_RUNTIME) exec $(CONTAINER_NAME) pg_isready -h localhost -U $(DB_USER) -d $(DB_NAME) > /dev/null 2>&1; then \
-				echo "✓ Postgres is ready (attempt $$i/30)"; \
-				exit 0; \
-			fi; \
-			echo "  Waiting for Postgres... (attempt $$i/30)"; \
-			sleep 1; \
-		done; \
-		echo "✗ Postgres failed to become ready after 30 attempts"; \
-		exit 1 \
-	'
+	$(DEVCTL) stack db wait
 
 db-logs:
-	@echo "=== Database Container Logs ==="
-	@$(CONTAINER_RUNTIME) logs $(CONTAINER_NAME)
+	$(DEVCTL) stack db logs
 
-db-up: export POSTGRES_DB = $(DB_NAME)
-db-up: export POSTGRES_USER = $(DB_USER)
-db-up: export POSTGRES_PASSWORD = $(PGPASSWORD)
-db-up:
-	@echo "=== Starting Postgres Container ==="
-	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml up -d
-	@echo ""
-	@$(MAKE) db-wait
-	@echo ""
-	@$(MAKE) db-migrate
-	@echo ""
-	@echo "✓ Database is up, migrated, and ready"
-
-db-down: export POSTGRES_DB = $(DB_NAME)
-db-down: export POSTGRES_USER = $(DB_USER)
-db-down: export POSTGRES_PASSWORD = $(PGPASSWORD)
-db-down:
-	@echo "=== Stopping Postgres Container ==="
-	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml down
-	@echo "✓ Database stopped"
-
-db-reset: export POSTGRES_DB = $(DB_NAME)
-db-reset: export POSTGRES_USER = $(DB_USER)
-db-reset: export POSTGRES_PASSWORD = $(PGPASSWORD)
 db-reset:
-	@echo "=== Resetting Database (down + remove volume + up + migrate) ==="
-	cd infra/compose && $(COMPOSE_CMD) -f compose.control-plane.yml down -v
-	@echo ""
-	@$(MAKE) db-up
-	@echo ""
-	@echo "✓ Database reset complete"
+	$(DEVCTL) stack db reset
 
-db-migrate: export ATLAS_ENV = dev
-db-migrate: export CONTROL_PLANE_DB_URL := $(CONTROL_PLANE_DB_URL)
-db-migrate: db-wait
-	@echo "=== Running Database Migrations ==="
+db-migrate:
 	@echo "Migrations run automatically when @atlas/server boots (apps/server/src/bootstrap.ts)."
 	@echo "To force-run, start the server: pnpm --filter @atlas/server dev"
 
@@ -157,108 +73,48 @@ db-seed: db-wait
 	pnpm --filter @atlas/adapter-node seed
 	@echo "✓ Seed complete"
 
-# Observability lifecycle targets
-obs-status:
-	@echo "=== Observability Services Status ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.observability.yml ps
-
-obs-logs:
-	@echo "=== Observability Logs ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.observability.yml logs -f
-
+# Observability --------------------------------------------------------------
 obs-up:
-	@echo "=== Starting Observability Stack ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.observability.yml up -d
-	@echo "✓ Observability stack started"
-	@echo ""
-	@$(MAKE) obs-open
+	$(DEVCTL) stack obs up
 
 obs-down:
-	@echo "=== Stopping Observability Stack ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.observability.yml down
-	@echo "✓ Observability stack stopped"
+	$(DEVCTL) stack obs down
+
+obs-status:
+	$(DEVCTL) stack obs status
+
+obs-logs:
+	$(DEVCTL) stack obs logs
 
 obs-reset:
-	@echo "=== Resetting Observability Stack ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.observability.yml down -v
-	@echo ""
-	@$(MAKE) obs-up
+	$(DEVCTL) stack obs reset
 
 obs-open:
-	@echo "Observability Services:"
-	@echo "  Grafana:    http://localhost:3001 (admin/admin)"
-	@echo "  Prometheus: http://localhost:9090"
-	@echo "  Loki:       http://localhost:3100"
-	@echo ""
-	@echo "Application Metrics Endpoints:"
-	@echo "  Ingress:    http://localhost:3000/metrics"
-	@echo "  Workers:    http://localhost:9101/metrics"
+	$(DEVCTL) stack obs status
 
-# Keycloak Identity Provider
-KEYCLOAK_CONTAINER_NAME = atlas-keycloak
-
-keycloak-status:
-	@echo "=== Keycloak Container Status ==="
-	@bash -c ' \
-		if $(CONTAINER_RUNTIME) ps --format "{{.Names}}" | grep -q "^$(KEYCLOAK_CONTAINER_NAME)$$"; then \
-			echo "✓ Container '\''$(KEYCLOAK_CONTAINER_NAME)'\'' is running"; \
-			echo ""; \
-			echo "Container details:"; \
-			$(CONTAINER_RUNTIME) ps --filter "name=$(KEYCLOAK_CONTAINER_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"; \
-		else \
-			echo "✗ Container '\''$(KEYCLOAK_CONTAINER_NAME)'\'' is NOT running"; \
-			exit 1; \
-		fi \
-	'
-
-keycloak-wait:
-	@echo "Waiting for Keycloak to be healthy..."
-	@bash -c ' \
-		for i in {1..60}; do \
-			if $(CONTAINER_RUNTIME) inspect --format "{{.State.Health.Status}}" $(KEYCLOAK_CONTAINER_NAME) 2>/dev/null | grep -q "healthy"; then \
-				echo "✓ Keycloak is healthy (attempt $$i/60)"; \
-				exit 0; \
-			fi; \
-			echo "  Waiting for Keycloak... (attempt $$i/60)"; \
-			sleep 2; \
-		done; \
-		echo "✗ Keycloak failed to become healthy after 60 attempts"; \
-		exit 1 \
-	'
-
-keycloak-logs:
-	@echo "=== Keycloak Container Logs ==="
-	@$(CONTAINER_RUNTIME) logs $(KEYCLOAK_CONTAINER_NAME)
-
+# Keycloak -------------------------------------------------------------------
 keycloak-up:
-	@echo "=== Starting Keycloak ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.keycloak.yml up -d
-	@echo ""
-	@$(MAKE) keycloak-wait
-	@echo ""
-	@$(MAKE) keycloak-open
+	$(DEVCTL) stack keycloak up
 
 keycloak-down:
-	@echo "=== Stopping Keycloak ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.keycloak.yml down
-	@echo "✓ Keycloak stopped"
+	$(DEVCTL) stack keycloak down
+
+keycloak-status:
+	$(DEVCTL) stack keycloak status
+
+keycloak-wait:
+	$(DEVCTL) stack keycloak wait
+
+keycloak-logs:
+	$(DEVCTL) stack keycloak logs
 
 keycloak-reset:
-	@echo "=== Resetting Keycloak ==="
-	@cd infra/compose && $(COMPOSE_CMD) -f compose.keycloak.yml down -v
-	@echo ""
-	@$(MAKE) keycloak-up
+	$(DEVCTL) stack keycloak reset
 
 keycloak-open:
-	@echo "Keycloak Identity Provider:"
-	@echo "  Admin Console: http://localhost:8081/admin"
-	@echo "  Credentials:   admin / admin"
-	@echo ""
-	@echo "For services on atlas-dev network:"
-	@echo "  Internal URL:  http://keycloak:8080"
-	@echo "  Issuer URL:    http://keycloak:8080/realms/<realm>"
+	$(DEVCTL) stack keycloak status
 
-# Integration Test Stack
+# Integration Test Stack (containerised; Rust-era — see infra/CLAUDE.md) ------
 ITEST_COMPOSE_FILE = infra/compose/docker-compose.itest.yml
 ITEST_ENV_FILE = infra/compose/.env.itest
 

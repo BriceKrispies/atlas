@@ -242,7 +242,7 @@ test.describe('page-editor-inspector — sections & conditionals', function () {
         expect(snap.openSections['trend']).toBe(true);
         expect(snap.openSections['data']).toBe(false);
     });
-    test.skip('toggling a section commits toggleSection on the inspector', async function ({ page }) {
+    test('toggling a section commits toggleSection on the inspector', async function ({ page }) {
         await openEditor(page, 'editor-starter');
         await mountInspector(page, 'editor-starter');
         await clickCanvasCell(page, STARTER_KPI_ID);
@@ -326,7 +326,7 @@ test.describe('page-editor-inspector — control overrides', function () {
     });
 });
 test.describe('page-editor-inspector — presets', function () {
-    test.skip('applying a preset commits applyPreset and updateWidgetConfig', async function ({ page }) {
+    test('applying a preset commits applyPreset and updateWidgetConfig', async function ({ page }) {
         await openEditor(page, 'editor-starter');
         await mountInspector(page, 'editor-starter');
         await clickCanvasCell(page, STARTER_HEADING_ID);
@@ -358,7 +358,7 @@ test.describe('page-editor-inspector — presets', function () {
     });
 });
 test.describe('page-editor-inspector — copy / paste', function () {
-    test.skip('copy then paste round-trips a heading config to a sibling heading', async function ({ page }) {
+    test('copy then paste round-trips a heading config to a sibling heading', async function ({ page }) {
         // editor-starter has only a single heading on the seed; we add a second
         // heading via the shell controller so we have a paste target.
         await openEditor(page, 'editor-starter');
@@ -425,7 +425,7 @@ test.describe('page-editor-inspector — copy / paste', function () {
     });
 });
 test.describe('page-editor-inspector — multi-select', function () {
-    test.skip('multi-select banner appears for ≥2 widgets and edits apply to all selected', async function ({ page }) {
+    test('multi-select banner appears for ≥2 widgets and edits apply to all selected', async function ({ page }) {
         // editor-starter has a heading + a text widget — same shape (no shared
         // editable fields), so we add a second heading first to guarantee a
         // shared field intersection.

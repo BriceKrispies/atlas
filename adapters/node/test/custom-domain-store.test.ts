@@ -14,14 +14,8 @@ import postgres from 'postgres';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { PostgresCustomDomainStore, runMigrations } from '../src/index.ts';
 import { TEST_DB_URL, HAS_DB } from './_setup.ts';
-if (!HAS_DB) {
-    describe('PostgresCustomDomainStore (skipped)', function () {
-        it.skip('TEST_TENANT_DB_URL not set — skipping Postgres custom-domain contract', function () {
-            // intentionally empty
-        });
-    });
-}
-else {
+// TEST_TENANT_DB_URL not set — Postgres custom-domain contract suite registers nothing.
+if (HAS_DB) {
     describe('PostgresCustomDomainStore', function () {
         let sql: postgres.Sql;
         let store: PostgresCustomDomainStore;

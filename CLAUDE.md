@@ -27,6 +27,55 @@ Do not use this as an excuse to avoid normal implementation work. Use it when th
 
 If the friction touches an invariant, platform boundary, public API, repeated pattern, or agentic-first tenet, escalate through the slice workflow instead of patching locally.
 
+## Test Pyramid Reconciliation
+
+Atlas's discipline is **test-first by spec, BDD-verified by behavior**. The two test layers must agree: if every unit test passes and the BDD scenario for the same capability fails, something is structurally wrong with the unit-test coverage, the test configuration, or the architecture itself. This is **the most important workflow principle in Atlas** alongside the Agent-Operability Law — when it fires, treat it as load-bearing feedback.
+
+### The canonical TDD loop
+
+Every behavior change runs this cycle, no exceptions:
+
+1. **Red** — write the failing unit test at the canonical path (per [`specs/crosscut/testing.md`](specs/crosscut/testing.md) §3). Run it. Confirm it fails for the *intended* reason — not a missing import, not a typo, but a real assertion mismatch on the behavior the spec describes.
+2. **Green** — write the minimum code that makes the test pass. Touch no other test (except enabling `it.todo` → `it`, or fixing a typo). If you find yourself wanting to edit an existing passing test to keep it green, the spec is changing — stop and return to Phase 0.
+3. **Witness** — run the BDD scenario for the capability (`pnpm bdd` or `pnpm bdd:server`). It MUST exercise the production code-path the unit tests just covered.
+4. **Reconcile** — if the BDD passes, the slice is structurally honest. If the BDD fails, **the unit tests do not wrap the behavior**. Do NOT patch the BDD's symptom. Return to step 1 with the next-deeper failing unit test until the unit layer fully witnesses what the BDD asserts.
+
+### The Reconciliation Rule
+
+**When BDD fails while every unit test passes, treat it as architectural feedback — not as a BDD bug.** Concretely, one of the following is true:
+
+- The unit tests exercise the wrong layer (mocking the very thing that fails).
+- The production code-path under BDD has a configuration / data shape / connection mode the unit tests do not reproduce.
+- The bug lives in code that has no testable seam — a private callback, an inline lambda, a closure-captured helper only reachable through HTTP.
+- The test infrastructure observes a different surface than production (queries the wrong DB, reads a different store, uses different envelope serialization).
+
+For each of these, the response is the same: **find the unit-test level where the failing behavior CAN be asserted, write that test (Red), make it pass (Green), then re-run BDD.** Keep going until BDD is green via the unit-layer fix, not via a BDD-test hack.
+
+If no such unit-test level exists because the code shape forbids it, **invoke [`architect`](.claude/agents/architect.md) for a testability gap review**. The architecture is not conducive to unit testing for this behavior, and that is a structural problem to fix, not a test problem to work around.
+
+### Testability as a structural property
+
+The Atlas architecture is **conducive to unit testing by construction**:
+
+- **No inline anonymous callbacks for non-trivial behavior.** Route handlers, dispatcher wirings, and adapter integrations that do real work must be **named, exported functions** that take their dependencies as arguments. If you write `async function (x) { …10 lines… }` inline in a route, extract it before merging — anonymous closures are not unit-testable.
+- **Tests match production configuration.** A test that uses `prepare: false` while production uses `prepare: true`, or a test that uses an in-memory port stub when the bug lives in the SQL binding, **does not count as wrapping the BDD behavior**. The Reconciliation Rule will reveal this — the architectural fix is to make the production configuration the default test configuration.
+- **Test data layout matches production data layout.** Atlas's per-tenant database model ([ADR 0005](specs/decisions/0005-custom-schema-storage-strategy.md)) means tenant-event queries MUST go through per-tenant SQL pools, not control-plane connections. Test helpers that query the wrong store are an architectural smell — fix by extracting a tenant-aware helper rather than inlining the wrong assumption.
+- **Every port has a contract suite at `packages/contract-tests/src/<port>.ts`** that runs against both the Postgres adapter and the IDB adapter. New ports without a contract suite fail the architect gate.
+- **Every Hono route body is unit-testable.** Routes parse + validate + delegate; the delegation target is a named function a unit test can call directly with a `Partial<AppState>`. If the delegation target only exists as an inline closure, it is not unit-testable — and therefore must be extracted before the route can land.
+
+### When to invoke architect for testability review
+
+The [`architect`](.claude/agents/architect.md) agent has explicit responsibility for **testability gap review**. Invoke when:
+
+1. A BDD scenario fails after every unit test for the same capability passes.
+2. A bug surfaces in production behavior that no existing unit test could have caught at the right layer.
+3. You catch yourself thinking "I can't write a unit test for this because it's wired in a route / it's only reachable via HTTP / it's a private callback" — that's the smell.
+4. SDET's Phase 1.0 scaffold-coverage review reports a behavior the spec asserts but no canonical unit-test location exists for.
+
+The architect's review identifies the **structural pattern** that prevents unit testing at the boundary that matters, and produces a refactor recommendation. **The user is the only override on a "this can't be made unit-testable" claim.**
+
+**Anti-pattern:** declaring a test "integration only" to dodge unit-test coverage. If a BDD is the only place that can witness a behavior, the architecture has a testability gap. File the gap as a finding; do not paper over with BDD-only assertions.
+
 ## Agent Routing — Where to Go
 
 Pick the closest match and read its CLAUDE.md before working in that area.
@@ -115,39 +164,73 @@ Phase 0 — Scope
   Gate: spec lists invariants touched, surfaces, lexicon hits, file-by-file plan
   ▸ User checkpoint: spec approved before any code
 
-Phase 1 — Implement (parallel where applicable)
-  module-dev        → handler + projection + query + dispatch test + cache tags + route
-  port-adapter-dev  → any new port + node/idb parity + migrations
-  frontend-dev      → surface + components + test-state reader
-  Gate: pnpm typecheck + pnpm test green; cache tags asserted; I12 dispatch test exists
+Phase 1.0 — Failing test scaffolds (parallel where applicable)
+  module-dev        → handler / projection / query / dispatch test scaffolds
+                      at canonical paths per specs/crosscut/testing.md §3
+  port-adapter-dev  → port contract suite additions + adapter parity scaffolds
+  frontend-dev      → surface state-machine + BDD scaffolds
+                      (assert via getSurfaceSnapshot(), never DOM)
+  Gate: pnpm typecheck green; pnpm test runs and the named tests FAIL with the
+        expected not-implemented assertions; every test carries an @spec
+        annotation; every normative spec clause has at least one failing test
+        targeting it.
 
-Phase 2 — Adversarial review (single pass, not ping-pong)
-  sdet → hunts cache-tag gaps, projection rebuild gaps, tenant-isolation holes,
-         surface-state assertion gaps, untested branches; writes missing tests
-         or files specific feedback
-  Gate: BDD scenarios cover the capability; surface states all asserted
+Phase 1.0 — SDET scaffold-coverage review (single pass)
+  sdet → verifies scaffolds cover every spec assertion, every invariant the
+         spec claims to touch (property tests for universally-quantified ones
+         per testing.md §2.2), every surface state, every branch the spec
+         names; files any missing scaffold as feedback, NOT implementation.
+  Gate: SDET signs off "all tests fail, and the set of failing tests fully
+        describes the spec." A slice cannot enter Phase 1.1 without this.
 
-Phase 3 — Invariant gate (single pass)
-  architect → reviews against I1–I12, hexagonal layering, AtlasElement bar,
-              worker parity; reports violations with invariant ID + file:line
-  No override: invariant violation = back to Phase 1 or escalate to user
+Phase 1.1 — Implementation
+  module-dev / port-adapter-dev / frontend-dev → write code until pnpm test
+         green; touch no test (except enabling it.todo → it, or fixing a typo).
+         A test edit beyond that signals the spec changed — back to Phase 0.
+  Gate: pnpm typecheck + pnpm test green; coverage thresholds met
+        (testing.md §5.2); cache tags asserted; I12 dispatch test exists.
 
-Phase 4 — Optional security review
+Phase 1.2 — Reconcile (Test Pyramid Reconciliation, see above)
+  Whoever owns the slice → run `pnpm bdd` / `pnpm bdd:server` for the
+         capability. If green, proceed to Phase 2. If RED while every Phase 1.1
+         unit test was GREEN, do NOT patch the BDD's symptom. Apply the
+         Reconciliation Rule: find the unit-test level where the failing
+         behavior CAN be asserted, return to Phase 1.0 with a new failing
+         unit test for that behavior. Iterate Red → Green → BDD-witness until
+         BDD is green via the unit-layer fix.
+  Architect invocation: if no unit-test level exists for the failing behavior
+         because the code shape forbids it, invoke `architect` for a
+         testability gap review BEFORE attempting another Red/Green cycle.
+         The architect's recommendation defines the refactor that opens the
+         testable seam.
+  Gate: BDD green for every scenario the capability spec lists, and the
+        Phase 1.1 unit-test suite is the proximate witness for every assertion
+        the BDD made (no BDD-only behaviors).
+
+Phase 2 — Invariant gate (single pass)
+  architect → reviews against I1–I18, hexagonal layering, AtlasElement bar,
+              worker parity, port-contract-suite parity; reports violations
+              with invariant ID + file:line
+  No override: invariant violation = back to Phase 1.1 or escalate to user
+
+Phase 3 — Optional security review
   /security-review skill (when change touches authn/authz/tenant scope/secrets/PII)
 
-Phase 5 — User checkpoint → merge
+Phase 4 — User checkpoint → merge
   Human breaks ties, decides edge cases, holds the merge button
 ```
 
 ### Anti-slop principles
 
 1. **Spec-first hard gate.** No code without a capability README at the canonical path.
-2. **Slice = one capability.** The spec defines scope; the LOC follows. Multiple capabilities = multiple slices.
-3. **Tool-checkable definition of done.** `pnpm typecheck` + `pnpm test` (with cache-tag and I12 assertions named in tests) + `pnpm bdd` for surfaces. Every "done" claim is verified by these.
-4. **Adversarial pass is mandatory and time-boxed.** SDET runs every slice; one pass; produces a green report or specific feedback. Not optional, not infinite.
-5. **Invariant gate is non-negotiable.** Architect rejects on I1–I12 violation; user is the only override.
-6. **User checkpoints at boundaries.** Spec approval before code; final approval before merge. Bypass and you're the one shipping the slop.
-7. **Ticket-first dispatch.** Every agent dispatch references a ticket id — the ticket is the work order, carrying the capability/ADR ref, acceptance bar, and resume prompt. No ticket → scope one first. See [`tickets/CLAUDE.md`](tickets/CLAUDE.md).
+2. **Test-first hard gate.** No implementation in Phase 1.1 without failing scaffolds at canonical paths in Phase 1.0, signed off by SDET. See [`specs/crosscut/testing.md`](specs/crosscut/testing.md).
+2a. **Test Pyramid Reconciliation hard gate.** If Phase 1.2's BDD run fails while Phase 1.1's unit tests are all green, the slice is NOT done — return to Phase 1.0 with a deeper failing unit test for the gap, never patch the BDD's symptom. The Reconciliation Rule (load-bearing principle above) names what to look for; the architect is invokable for testability-gap review when no unit-test level exists for the failing behavior.
+3. **Slice = one capability.** The spec defines scope; the LOC follows. Multiple capabilities = multiple slices.
+4. **Tool-checkable definition of done.** `pnpm typecheck` + `pnpm test` (with cache-tag and I12 assertions named in tests, coverage thresholds met) + `pnpm bdd` for surfaces + `pnpm lint:spec-links` for bidirectional spec↔test linkage. Every "done" claim is verified by these.
+5. **Adversarial pass runs early and once.** SDET runs at Phase 1.0 to validate scaffold coverage against the spec, not at the end. After-the-fact "you forgot a test" is strictly worse than catching it before implementation. Not optional, not infinite.
+6. **Invariant gate is non-negotiable.** Architect rejects on I1–I18 violation; user is the only override.
+7. **User checkpoints at boundaries.** Spec approval before code; final approval before merge. Bypass and you're the one shipping the slop.
+8. **Ticket-first dispatch.** Every agent dispatch references a ticket id — the ticket is the work order, carrying the capability/ADR ref, acceptance bar, and resume prompt. No ticket → scope one first. See [`tickets/CLAUDE.md`](tickets/CLAUDE.md).
 
 ### Mechanically-checked invariants every slice
 
@@ -156,6 +239,10 @@ Phase 5 — User checkpoint → merge
 - `apps/server/src/middleware/state.ts` and `apps/projection-worker/src/tenant-loop.ts` stay mirrored
 - No adapter imports in `/modules`; no HTTP outside `apps/server` (I1, hexagonal)
 - Every new component extends `AtlasElement`; no Lit/React/Vue/bare HTMLElement
+- Every test carries an `@spec:` annotation pointing to the spec section it covers (`specs/crosscut/testing.md` §5.1)
+- Every package meets its branch-coverage floor per `specs/crosscut/testing.md` §5.2
+- Every universally-quantified invariant has a fast-check property test in `packages/contract-tests/src/properties/` (`specs/crosscut/testing.md` §2.2)
+- Every port has a contract suite in `packages/contract-tests/src/<port>.ts`; every adapter imports and runs it
 
 ### Orchestration notes
 

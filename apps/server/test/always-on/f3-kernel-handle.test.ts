@@ -41,15 +41,21 @@
 import { describe, test } from '@atlas/test';
 
 describe('F3 — KernelHandle surface (always-on §4.1 / I1 corollary)', function () {
-  test.todo(
+  test(
     'packages/kernel/test/types.test-d.ts asserts keyof KernelHandle ⊆ port-derived names ' +
       '(expectTypeOf, run via pnpm typecheck). ' +
       'Pin: tickets/atlas-on-atlas/kernel-package-and-types.md',
+    function () {
+      throw new Error('TODO: implement this test');
+    },
   );
 
-  test.todo(
+  test(
     'pnpm deps:check refuses imports of @atlas/adapter-* from packages/kernel and from ' +
       'hot-loadable module bundles (dep-cruiser rule, NOT a vitest probe). ' +
       'Pin: tickets/atlas-on-atlas/deps-check-kernel-rule.md',
+    function () {
+      throw new Error('TODO: implement this test');
+    },
   );
 });

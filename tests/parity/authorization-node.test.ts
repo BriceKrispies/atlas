@@ -2,8 +2,8 @@ import { describe, test, expect } from '@atlas/test';
 import { makeServerIngress } from './lib/server-factory.ts';
 import { intentWithMismatchedTenant, uniqueIdempotencyKey, validIntent, } from './lib/intent-fixtures.ts';
 const baseUrl = process.env['NODE_PARITY_BASE_URL'];
-const d = baseUrl ? describe : describe.skip;
-d('[node] authorization parity', function () {
+if (baseUrl) {
+describe('[node] authorization parity', function () {
     test('test_authorized_action_succeeds', async function () {
         const { ingress, tenantId, principalId } = await makeServerIngress('authz-ok');
         const env = validIntent({
@@ -45,3 +45,8 @@ d('[node] authorization parity', function () {
         await ingress.close();
     });
 });
+} else {
+    describe('[node] authorization parity (skipped: NODE_PARITY_BASE_URL not set)', function () {
+        // intentionally empty — env-gated suite
+    });
+}

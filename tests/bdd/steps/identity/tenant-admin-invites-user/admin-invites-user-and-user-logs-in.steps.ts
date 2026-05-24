@@ -20,6 +20,7 @@ import { expect } from '@playwright/test';
 import { assertDefined } from '@atlas/test-fixtures/assert';
 import { Given, When, Then } from '../../../support/fixtures.ts';
 import {
+  approveSignup,
   cleanupInviteRun,
   countEventsOfType,
   openControlPlaneSql,
@@ -91,12 +92,16 @@ Given('the seeded TenantAdmin for tenant {string} exists in control-plane', asyn
   };
   world.serverStack = ctx;
 
-  // Provision tenant `acme` if it doesn't already exist. We use the
-  // signup → approve path under platform-admin to mirror the production
-  // bootstrap shape. Errors here are tolerated — the tenant may already
-  // exist from a prior scenario run.
+  // Provision tenant `acme` via the production signup → approve path
+  // under platform-admin, so the tenant row + per-tenant DB exist
+  // before downstream steps try to use them. Without the admin-approve
+  // call here, only a `signup_request` row gets created and tenant
+  // `acme` never becomes a real provisioned tenant — ingress requests
+  // then crash at bundle-build with `tenant acme: not found in
+  // control_plane.tenants` (the BDD failure mode surfaced 2026-05-22).
+  let signupId: string | null = null;
   try {
-    await request.post('/api/v1/signup', {
+    const submitRes = await request.post('/api/v1/signup', {
       headers: {
         'Content-Type': 'application/json',
         'X-Correlation-Id': ctx.correlationId,
@@ -107,8 +112,34 @@ Given('the seeded TenantAdmin for tenant {string} exists in control-plane', asyn
         organizationName: 'BDD Acme',
       },
     });
+    if (submitRes.ok()) {
+      const submitBody = (await submitRes.json()) as { signupId?: string };
+      signupId = submitBody.signupId ?? null;
+    }
   } catch {
-    // best-effort
+    // best-effort — a prior scenario run may already have approved
+    // the tenant; the seed step below tolerates "already exists."
+  }
+  if (signupId !== null) {
+    try {
+      await approveSignup(
+        request,
+        'user:platform-admin:_platform:admin',
+        signupId,
+        ctx.correlationId,
+      );
+    } catch (e) {
+      // Approve is best-effort here. If the signup was already approved
+      // (idempotent re-run) or the tenant row already exists, the
+      // approve handler returns 409 — the downstream seed still works
+      // because the tenant DB exists either way. Re-throw only on
+      // unexpected failure shapes so the test fails fast with a real
+      // diagnostic.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('409') && !msg.includes('already')) {
+        throw e;
+      }
+    }
   }
   // Seed the admin user + membership + password via real intents.
   await seedTenantAdmin(request, ctx);

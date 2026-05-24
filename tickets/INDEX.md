@@ -6,10 +6,16 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 - [atlasctl-query-parity](atlas-on-atlas/atlasctl-query-parity.md) — capability — open — → spine-owner — MEDIUM (I17 parity follow-up for query-side catch-all; surfaced by query-catch-all-dispatcher PR)
 - [stage-3-test-refactor](atlas-on-atlas/stage-3-test-refactor.md) — refactor — scoped — → module-dev — **HIGH** (sdet canary pinned, ADR 0008 §2 on probation)
+- [stage-4-kernel-observability-invariant](atlas-on-atlas/stage-4-kernel-observability-invariant.md) — spec — scoped — → spec-keeper — (add I19 Kernel State Machine-Readability + always-on §10 testability amendment)
+- [stage-5-kernel-ports](atlas-on-atlas/stage-5-kernel-ports.md) — refactor — scoped — → port-adapter-dev — blocked_by: atlas-on-atlas/stage-4
+- [stage-6-kernel-package](atlas-on-atlas/stage-6-kernel-package.md) — capability — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-5
+- [stage-7-kernel-migration](atlas-on-atlas/stage-7-kernel-migration.md) — refactor — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-6 — ⚠ NEEDS RE-SCOPE: still plans to collapse query routes that the landed query-side catch-all already owns (see sweep finding)
+- [stage-8-manifests-and-drift-probe](atlas-on-atlas/stage-8-manifests-and-drift-probe.md) — refactor — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-6
+- [stage-9-operator-surface](atlas-on-atlas/stage-9-operator-surface.md) — capability — scoped — → module-dev — blocked_by: atlas-on-atlas/stage-7, atlas-on-atlas/stage-8
+- [control-plane-schema-registry](atlas-on-atlas/control-plane-schema-registry.md) — capability — scoped — → spine-owner — **HIGH** (make schema/action registration control-plane DATA so it's hot/no-restart per I20+ADR 0014; unblocks identity-schema add → password login as a pure data write; Phase-0 dropped blocked_by:stage-8 — independent of unbuilt packages/kernel)
 
 ## chore/
 
-- [podman-machine-windows-pipe-access](chore/podman-machine-windows-pipe-access.md) — chore — open — → user — **HIGH** (blocks first I20 BDD demo end-to-end; local Windows env fix; try `podman machine stop && podman machine start` first)
 - [query-catchall-lookup-before-authz-oracle](chore/query-catchall-lookup-before-authz-oracle.md) — drift-finding — open — → spine-owner — MEDIUM (descriptor lookup runs before authz; registered-vocabulary oracle; spec decision needed at action-driven-routing.md §4.5)
 - [server-typecheck-test-file-fixes](chore/server-typecheck-test-file-fixes.md) — chore — open — → port-adapter-dev — LOW (pre-existing `Type 'never'` errors from ffe5f4c vitest shim aftershock)
 - [handler-userid-propagation-sweep](chore/handler-userid-propagation-sweep.md) — chore — scoped — → module-dev — MEDIUM
@@ -23,7 +29,7 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## identity/
 
-- [tenant-admin-invites-user](identity/tenant-admin-invites-user.md) — capability — **BLOCKED** — → frontend-dev — **HIGH** (Phase 1 code complete + 2 §11 retros closed; **blocked_by: chore/podman-machine-windows-pipe-access** — pnpm bdd:server fails at make db-up due to podman pipe inaccessible on Windows)
+- [tenant-admin-invites-user](identity/tenant-admin-invites-user.md) — capability — **BLOCKED** — → frontend-dev — **HIGH** (Phase 1 code complete + 2 §11 retros closed; doctor unblocker landed 2026-05-22; **now blocked_by: tenancy/admin-approve-provisions-tenant-db** — BDD reaches test code but all 3 failures bottleneck on admin-approve not provisioning per-tenant DBs)
 - [auth-itest-preflight](identity/auth-itest-preflight.md) — test — scoped — → sdet
 - [security-fixes](identity/security-fixes.md) — refactor — open — → spine-owner — blocked_by: identity/auth-itest-preflight
 
@@ -33,7 +39,8 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 
 ## tenancy/
 
-- [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — review — → architect — HIGH (5/5 slices landed; pending invariant gate + live `pnpm bdd:server` run)
+- [admin-approve-provisions-tenant-db](tenancy/admin-approve-provisions-tenant-db.md) — capability — open — → spine-owner — **HIGH** (admin-approve never calls PostgresTenantDbProvider.provisionTenantDatabase; blocks tenant-admin-invites-user; surfaces as TENANT_DATABASE_NOT_PROVISIONED 503 on existing public-signup BDD too)
+- [admin-approves-signup-bdd](tenancy/admin-approves-signup-bdd.md) — test — **BLOCKED** — → module-dev — HIGH (5/5 slices landed but scenario fails end-to-end with 503 TENANT_DATABASE_NOT_PROVISIONED; blocked_by: tenancy/admin-approve-provisions-tenant-db)
 
 ## load-testing/
 
@@ -45,11 +52,20 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 ## kernel-extraction/
 
 - [admin-spa-serve-static](kernel-extraction/admin-spa-serve-static.md) — drift-finding — scoped — → architect — MEDIUM (§11 retro #4; closes the admin-SPA same-origin category for the BDD path; supersedes predecessor CORS retro)
+- [admin-spa-root-shadow](kernel-extraction/admin-spa-root-shadow.md) — drift-finding — scoped — → architect — MEDIUM (§11 retro #5; legacy `GET /` version-JSON handler shadowed the SPA serveStatic catch-all; corrects retro #4's `closed` claim)
 
 ## drift-2026-05/
 
 - [healthz-negative-test-for-bootid-contract](drift-2026-05/healthz-negative-test-for-bootid-contract.md) — drift-finding — open — → sdet — LOW (locks /healthz terse contract per first §11 retro F2)
 - [readyz-503-branch-test-coverage](drift-2026-05/readyz-503-branch-test-coverage.md) — drift-finding — open — → sdet — LOW (closes asymmetric coverage on /readyz 503 branch per first §11 retro F3)
+
+## drift-always-on-2026-05/
+
+- [db-wipe-reseed-forces-restart](drift-always-on-2026-05/db-wipe-reseed-forces-restart.md) — drift-finding — open — → vision-keeper — **HIGH** (umbrella; acceptance MET by W4: bootId stable across wipe→reseed; closes on merge of G1/G2/G3)
+- [pool-reconnect-config](drift-always-on-2026-05/pool-reconnect-config.md) — drift-finding — architect-passed — → port-adapter-dev — HIGH (G1; W1 proven live: container bounce, bootId stable; awaiting merge)
+- [tenant-pool-invalidation-hook](drift-always-on-2026-05/tenant-pool-invalidation-hook.md) — drift-finding — architect-passed — → port-adapter-dev — MEDIUM (G2; invalidate/invalidateAll; awaiting merge)
+- [out-of-band-migration-runner](drift-always-on-2026-05/out-of-band-migration-runner.md) — drift-finding — architect-passed — → port-adapter-dev — MEDIUM (G3; fork (a) standalone runner; proven in W4: migrate-no-boot; awaiting merge)
+- [db-reset-volume-not-dropped](drift-always-on-2026-05/db-reset-volume-not-dropped.md) — drift-finding — open — → port-adapter-dev — MEDIUM (G5: `make db-reset` doesn't drop the volume under podman-compose → silent no-op wipe; found in W4)
 
 ## dsl/
 
@@ -58,6 +74,13 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [atlasctl-dsl-cli](dsl/atlasctl-dsl-cli.md) — capability — open — → spec-keeper — LOW (CLI wrappers for the 4 live HTTP endpoints; agentic-first dogfood)
 - [bdd-roundtrip](dsl/bdd-roundtrip.md) — test — open — → sdet — MEDIUM (closes slice-workflow Phase 2 gate for the DSL surface)
 - [cedar-policy-actions](dsl/cedar-policy-actions.md) — capability — open — → spine-owner — **HIGH** (slice #5a deferred I2 gate on read/validate routes)
+
+## testing-floor/
+
+- [scaffold-tooling](testing-floor/scaffold-tooling.md) — capability — open — → module-dev — HIGH (atlasctl test scaffold; mechanical floor for Phase 1.0 of every slice; specs/crosscut/testing.md §2.1 §8)
+- [property-generators](testing-floor/property-generators.md) — test — open — → sdet — HIGH (fast-check properties for I3/I5/I6/I9/I10/I12/I13/I16 in packages/contract-tests; testing.md §2.2 mandatory)
+- [coverage-and-linkage-gates](testing-floor/coverage-and-linkage-gates.md) — chore — open — → sdet — HIGH (per-package branch-coverage floors + bidirectional @spec linkage check; testing.md §5 §9)
+- [retrofit-chore-set](testing-floor/retrofit-chore-set.md) — refactor — open — → user — MEDIUM (parent ticket; blocked_by all three above; sequenced spine→extensibility→first-party→adapters→frontend per testing.md §11)
 
 ---
 

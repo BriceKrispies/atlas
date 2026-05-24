@@ -6,6 +6,7 @@ export { PostgresSearchEngine } from './search-engine.ts';
 export { PostgresControlPlaneRegistry } from './control-plane-registry.ts';
 export { PostgresCatalogStateStore } from './catalog-state-store.ts';
 export { PostgresCustomDomainStore } from './custom-domain-store.ts';
+export { PostgresClusterStore } from './cluster-store.ts';
 export { PostgresRepositoryStore } from './repository-store.ts';
 export { PostgresRepositoryRevisionStore } from './repository-revision-store.ts';
 export { PostgresEntityStore } from './entity-store.ts';
@@ -25,9 +26,11 @@ export {
   TenantDatabaseNotProvisionedError,
   TenantNotFoundError,
   parseTenantConnectionUrl,
+  POSTGRES_RESILIENCE_OPTIONS,
   type TenantDbProvider,
   type ProvisionTenantDatabaseArgs,
   type ProvisionTenantDatabaseResult,
 } from './tenant-db-provider.ts';
 export { runMigrations, type MigrationKind, type MigrationRunResult } from './migrations/runner.ts';
 export { runControlPlaneSeed, type SeedResult } from './migrations/seed.ts';
+export { seedControlPlaneSchemaRegistry } from './schema-registry-seed.ts';

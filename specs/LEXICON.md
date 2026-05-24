@@ -590,6 +590,22 @@ These entries describe the multi-tenant-fabric vocabulary introduced by [ADR 000
 - **Rules**:
   - Ships with all five MVP-blocking dimensions populated; per-domain dimensions add themselves in their own capability specs.
 
+### Cluster
+- **Kind**: Noun (platform resource)
+- **Meaning**: A Kubernetes cluster (today: k3s) that Atlas can deploy workloads to. Platform-level, **not** tenant-scoped — recorded in `control_plane.clusters`, applies across the whole deployment. Identified by `clusterId` (kebab-case, e.g. `dev`, `prod-us-fsn`). Registered by a trusted operator during Phase 0; later Compute capabilities (`runtime/deploy`, `image-build`) read the registered cluster and act on it.
+- **Shape**: `clusterId`, `name`, `endpoint`, `authKind`, `authSecret`, `region?`, `status` (`active` | `disabled`), `createdAt`.
+- **Touches**: I7 (clusters are platform resources, no per-tenant data here).
+- **Rules**:
+  - Register/disable are idempotent (I3): re-registering an existing `clusterId` is a no-op; disabling an already-disabled (or unknown) id is a no-op.
+
+### Cluster endpoint
+- **Kind**: Noun (field)
+- **Meaning**: The Kubernetes API URL of a `Cluster` (e.g. `https://k3s.example.com:6443`). The address later Compute capabilities call via `@kubernetes/client-node`.
+
+### Cluster auth
+- **Kind**: Noun (field)
+- **Meaning**: The credential Atlas uses to call a `Cluster`'s Kubernetes API. `authKind` is `kubeconfig` (full kubeconfig contents) or `token` (a ServiceAccount token); `authSecret` carries the payload. Stored as TEXT in Phase 0 (same posture as `control_plane.tenants.db_password`); at-rest encryption is a future capability.
+
 ---
 
 ## Seed Corpus Nouns

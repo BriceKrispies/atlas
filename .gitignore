@@ -32,6 +32,10 @@ tests/bdd/screenshots/
 tests/bdd/report/
 .features-gen/
 
+# Stryker mutation reports + sandbox
+reports/mutation/
+.stryker-tmp/
+
 # Node / pnpm / TS workspace
 node_modules/
 dist/
@@ -52,3 +56,8 @@ deps.svg
 # Quality-tooling caches and reports
 .lycheecache
 coverage/
+
+# db-snapshot golden bundles — carry db_password verbatim, never commit.
+# See tools/db-snapshot/README.md.
+fixtures/golden/
+tools/db-snapshot/fixtures/golden/

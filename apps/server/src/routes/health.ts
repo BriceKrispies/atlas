@@ -1,20 +1,22 @@
 /**
- * Health endpoints — `/`, `/healthz`, `/readyz`.
+ * Health endpoints — `/healthz`, `/readyz`.
  *
  * Mirrors the Rust ingress: liveness returns 200 if the process is up;
  * readiness pings the control-plane DB + asserts the registry has actions
  * loaded (registry replaces the Rust schema_registry/policies check, since
  * the TS registry binds the bundled module manifest at construction time).
+ *
+ * Note: the legacy `GET /` handler that returned `{ok, name, version}` was
+ * removed 2026-05-21 — it shadowed the admin SPA serveStatic catch-all
+ * mounted last in `main.ts` (the fourth §11 retro's structural fix). Root
+ * path now correctly falls through to the SPA. The five §11.2 fields are
+ * archived at `tickets/archive/kernel-extraction/admin-spa-root-shadow.md`.
  */
 import { Hono } from 'hono';
 import { errorMessage } from '../middleware/errors.ts';
 import type { AppState } from '../bootstrap.ts';
-const PACKAGE_VERSION = '0.1.0';
 export function healthRoutes(state: AppState): Hono {
     const app = new Hono();
-    app.get('/', function (c) {
-        return c.json({ ok: true, name: '@atlas/server', version: PACKAGE_VERSION });
-    });
     app.get('/healthz', function (c) {
         return c.json({ status: 'ok' });
     });

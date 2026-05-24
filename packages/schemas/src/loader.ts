@@ -87,22 +87,44 @@ const SCHEMAS: ReadonlyArray<AnySchemaObject> = [
   seedAxisDefinition as AnySchemaObject,
 ];
 
-let cachedAjv: Ajv2020 | null = null;
-
-function getAjv(): Ajv2020 {
-  if (cachedAjv) return cachedAjv;
+/**
+ * Construct a fresh ajv instance configured for Atlas schema compilation:
+ * non-strict, all-errors, `addFormats`, and the draft-07 meta-schema
+ * registered (the seeder schemas declare $schema=draft-07; AJV2020 doesn't
+ * load that meta-schema by default).
+ *
+ * Used in two places: (1) the bundled-set ajv that backs the static
+ * `getSchemaValidator(schemaId, version)` lookup of `@atlas/schemas`-shipped
+ * schemas, and (2) one-off per-document instances inside `compileValidator`
+ * for runtime-supplied schema docs (so re-compiling the same `$id` is allowed
+ * — a single shared ajv would reject a duplicate `$id`).
+ *
+ * @spec specs/domains/runtime/capabilities/control-plane-schema-registry/README.md#ajv-compile-on-demand--cache-invalidation
+ */
+function newAjv(): Ajv2020 {
   const ajv = new Ajv2020({ strict: false, allErrors: true });
   addFormats(ajv);
-  // The seeder schemas (seed.scenario.v1, seed.fixture.v1, seed.template.v1,
-  // seed.axis_definition.v1) declare $schema=draft-07. AJV2020 doesn't load
-  // the draft-07 meta-schema by default — registering it here lets those
-  // schemas validate without rewriting them to draft 2020-12.
   ajv.addMetaSchema(draft7MetaSchema as AnySchemaObject);
+  return ajv;
+}
+
+/**
+ * The ajv instance holding the bundled `@atlas/schemas` set. This is NOT a
+ * permanently-memoized single ajv for the whole package any more — it backs
+ * only the lookup of bundled schema ids via `getSchemaValidator`. Runtime
+ * schema docs compile through `compileValidator` into their own ajv instances,
+ * so a schema registered at runtime no longer requires rebuilding the package.
+ */
+let bundledAjv: Ajv2020 | null = null;
+
+function getBundledAjv(): Ajv2020 {
+  if (bundledAjv) return bundledAjv;
+  const ajv = newAjv();
   ajv.addSchema(eventEnvelope as AnySchemaObject);
   for (const s of SCHEMAS) {
     ajv.addSchema(s);
   }
-  cachedAjv = ajv;
+  bundledAjv = ajv;
   return ajv;
 }
 
@@ -130,13 +152,129 @@ export function __setSchemaValidatorOverrideForTest(
   else _schemaValidatorOverrides.set(schemaId, value);
 }
 
+/**
+ * Compile an ajv validator from a schema document supplied at runtime.
+ *
+ * Each call compiles `document` into a fresh ajv instance (configured with
+ * `addFormats` + the draft-07 meta-schema, matching the bundled set). A fresh
+ * instance per document is deliberate: it lets a runtime-registered schema use
+ * any `$id` — including re-registering the same `$id` under a bumped version —
+ * without colliding with a previously-registered `$id` in a shared ajv. The
+ * control-plane registry adapters own the per-`(schemaId, schemaVersion)`
+ * cache + version-driven invalidation; this function is the pure compile step.
+ *
+ * @spec specs/domains/runtime/capabilities/control-plane-schema-registry/README.md#ajv-compile-on-demand--cache-invalidation
+ */
+export function compileValidator(document: Record<string, unknown>): ValidateFunction {
+  const ajv = newAjv();
+  return ajv.compile(document as AnySchemaObject);
+}
+
 export function getSchemaValidator(schemaId: string, _version: number): ValidateFunction | null {
   if (_schemaValidatorOverrides.has(schemaId)) {
     return _schemaValidatorOverrides.get(schemaId) ?? null;
   }
-  const ajv = getAjv();
+  const ajv = getBundledAjv();
   const v = ajv.getSchema(schemaId);
   return (v as ValidateFunction | undefined) ?? null;
+}
+
+/**
+ * A bundled schema-seed row: the `(schemaId, schemaVersion, document)` shape
+ * the control-plane registry seeds on first boot. Derived from the static
+ * `SCHEMAS` array — each bundled schema's `$id` is its `schemaId`; bundled
+ * schemas are all version 1.
+ *
+ * @spec specs/domains/runtime/capabilities/control-plane-schema-registry/README.md#seed-from-bundle-on-boot-idempotent
+ */
+export interface BundledSchemaSeedRow {
+  schemaId: string;
+  schemaVersion: number;
+  document: Record<string, unknown>;
+}
+
+/**
+ * The bundled `@atlas/schemas` set as a seed corpus for the control-plane
+ * schema registry. Each row's `schemaId` is the schema document's `$id`;
+ * bundled schemas are version 1. Schemas without an `$id` are skipped (they
+ * can't be keyed). This is the SEED, not the live source — the control-plane
+ * table, once seeded, is authoritative.
+ */
+export function bundledSchemaSeed(): ReadonlyArray<BundledSchemaSeedRow> {
+  const rows: BundledSchemaSeedRow[] = [];
+  for (const s of SCHEMAS) {
+    const id = (s as { $id?: unknown }).$id;
+    if (typeof id !== 'string' || id.length === 0) continue;
+    rows.push({
+      schemaId: id,
+      schemaVersion: 1,
+      document: s as Record<string, unknown>,
+    });
+  }
+  return rows;
+}
+
+/**
+ * A bundled action-seed row: the `ActionEntry`-shaped catalog entry the
+ * control-plane registry seeds on first boot, plus provenance `moduleId`.
+ * `schemaId`/`schemaVersion` are derived from `actionId` via the shared
+ * `actionIdToSchemaId` convention (PascalCase → lower_snake `.v1`).
+ *
+ * @spec specs/domains/runtime/capabilities/control-plane-schema-registry/README.md#seed-from-bundle-on-boot-idempotent
+ */
+export interface BundledActionSeedRow {
+  actionId: string;
+  resourceType: string;
+  schemaId: string;
+  schemaVersion: number;
+  moduleId?: string;
+}
+
+// Convention mapping shared with the adapters' `actionIdToSchemaId`
+// (`adapters/node/src/action-schema-id.ts`). Kept here so the seed corpus is
+// derivable from `@atlas/schemas` alone (the seed source of truth) without an
+// adapter import.
+const PASCAL_BOUNDARY = /(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g;
+function toSnake(segment: string): string {
+  return segment.replace(PASCAL_BOUNDARY, '_').toLowerCase();
+}
+function deriveSchemaId(actionId: string): { schemaId: string; schemaVersion: number } {
+  const segments = actionId
+    .split('.')
+    .map(toSnake)
+    .filter(function (s) {
+      return s.length > 0;
+    });
+  return { schemaId: `${segments.join('.')}.v1`, schemaVersion: 1 };
+}
+
+/**
+ * The bundled module manifests' action catalog as a seed corpus for the
+ * control-plane action_entries table. Only actions whose derived schema is
+ * present in the bundled set are seeded — matching the adapters' existing
+ * tolerance of manifest entries with no bundled schema. On duplicate
+ * `actionId`, last manifest wins (same last-wins rule the adapters apply).
+ */
+export function bundledActionSeed(): ReadonlyArray<BundledActionSeedRow> {
+  const byActionId = new Map<string, BundledActionSeedRow>();
+  for (const manifest of MODULE_MANIFESTS) {
+    const moduleId = manifest.moduleId;
+    for (const a of manifest.actions ?? []) {
+      const { schemaId, schemaVersion } = deriveSchemaId(a.actionId);
+      if (getSchemaValidator(schemaId, schemaVersion) == null) continue;
+      const row: BundledActionSeedRow = {
+        actionId: a.actionId,
+        resourceType: a.resourceType,
+        schemaId,
+        schemaVersion,
+      };
+      // Only attach `moduleId` when present — `exactOptionalPropertyTypes`
+      // forbids assigning an explicit `undefined` to an optional property.
+      if (moduleId !== undefined) row.moduleId = moduleId;
+      byActionId.set(a.actionId, row);
+    }
+  }
+  return Array.from(byActionId.values());
 }
 
 /**

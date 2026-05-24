@@ -43,6 +43,7 @@ import type { ActionDeclaration } from '@atlas/platform-core';
 import { seedContentPagesEntityTypes } from '../seeds/content-pages-types.ts';
 import { seedIdentityEntityTypes } from '../seeds/identity-types.ts';
 import { jsonParam } from '../seeds/sql-json.ts';
+import { seedControlPlaneSchemaRegistry } from '../schema-registry-seed.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // adapters/node/src/migrations/ -> repo root is four levels up.
@@ -256,6 +257,13 @@ export async function runControlPlaneSeed(
   await seedContentPagesEntityTypes(sql);
   //    Phase A1: identity (User, Membership, InviteToken).
   await seedIdentityEntityTypes(sql);
+
+  // 6. Control-plane schema & action registry (registry-as-data). Seeds the
+  //    bundled @atlas/schemas intent schemas + action catalog into
+  //    control_plane.intent_schemas / action_entries (idempotent, source='seed').
+  //    Thereafter those tables are the live source PostgresControlPlaneRegistry
+  //    reads (capability control-plane-schema-registry, I20).
+  await seedControlPlaneSchemaRegistry(sql);
 
   return {
     tenant: SAMPLE_TENANT_ID,

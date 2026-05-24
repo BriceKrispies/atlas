@@ -47,6 +47,8 @@ Any spec content under retired-domain directories should be considered legacy no
 - `crosscut/atlasctl.md` — operator CLI spec (Phase A foundation; Phase B/C deferred). System-wide / tooling, no domain home.
 - `crosscut/always-on.md` — always-on contract: what's kernel (restart-required) vs. data (hot-changeable), hot-reload lifecycle, operator surface. Sets the bar [ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6 deferred.
 - `crosscut/action-driven-routing.md` — catch-all contract for both the intent-side (`POST /api/v1/intents` via `HandlerRegistry`) and the query-side (`GET/POST /api/v1/queries/:queryId` via `QueryRegistry`). Read when scoping any new write action or read endpoint — both are module-only edits after `always-on.md` §6 Phase 1.
+- `crosscut/streaming-io.md` — streaming I/O contract: the seven sites where data flows as a stream (tarball upload, build logs, function logs, surface subscriptions, event tail, audit pipe-out, import-export), the Web-Streams-at-edge / Node-Streams-inside substrate, and where streams are the wrong tool. Read when scoping any capability whose payload is too large to buffer or whose consumer wants progress-as-it-happens.
+- `crosscut/testing.md` — test-first contract: spec→scaffold→implement (mechanical floor), property-based invariants (I3/I5/I6/I9/I10/I12/I13/I16), BDD-first surfaces. Splits slice Phase 1 into 1.0 (failing scaffolds + SDET coverage review) and 1.1 (implementation). Names canonical test paths, coverage thresholds per package, bidirectional `@spec` linkage, and forbidden patterns. Read before writing any test or any feature.
 - `crosscut/errors.md` — error taxonomy (referenced by every domain).
 - `crosscut/events.md` — event vocabulary (referenced by every domain).
 - `crosscut/logging.md` — logging contract (structured JSON, mandatory fields, levels, redaction). Audited by the `observability-architect` agent.
@@ -80,6 +82,8 @@ The legacy `specs/modules/` folder is gone — all content has migrated.
 | `crosscut/kernel-vs-data.md` | Kernel/data inventory + "could this be data?" decision rule — read when scoping any new capability or considering hot-reload extraction |
 | `crosscut/always-on.md` | Always-on contract — kernel/data split, hot-reload rules ([ADR 0008](decisions/0008-atlas-on-atlas.md) Stage 6) |
 | `crosscut/action-driven-routing.md` | Catch-all contract — intent + query sides; read for any new action / read endpoint |
+| `crosscut/streaming-io.md` | Streaming I/O contract — the seven streaming sites, substrate, and where streams are the wrong tool |
+| `crosscut/testing.md` | Test-first contract — three layers (scaffold/property/BDD), Phase 1.0 precedes 1.1, canonical test paths, coverage thresholds, `@spec` linkage |
 | `crosscut/atlasctl.md` | Operator CLI — tooling, not a domain |
 | `crosscut/errors.md` | Error taxonomy — referenced by every domain |
 | `crosscut/events.md` | Event vocabulary — referenced by every domain |

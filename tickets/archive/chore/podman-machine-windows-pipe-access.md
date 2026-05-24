@@ -1,6 +1,6 @@
 ---
 title: podman machine named-pipe not accessible on Windows — blocks `make db-up` and therefore `pnpm bdd:server`
-status: open
+status: done
 type: chore
 owner: user
 phase: 0
@@ -66,3 +66,9 @@ This is a user-side environment fix, not an agent task. Run `podman machine list
 ## Notes / log
 
 - 2026-05-21: filed by main at the user's request after module-dev's attempt to run the BDD acceptance test on `identity/tenant-admin-invites-user` failed at the Postgres webServer step. module-dev correctly did NOT retry in a loop per the unblock brief — clean failure with diagnostic. Slice code (5 surfaces, serveStatic route, step bindings, BDD config, two §11 retros archived) is complete and architecturally sound; only the local infra blocks the executable witness. User picked option 3 ("file an infra ticket and pause the slice") over alternatives (fix locally + re-run; code review without live BDD).
+- 2026-05-21: **root cause identified — different than initially diagnosed.** User asked for "absolute minimal thing through scripting; an atlas doctor command actually, this can be one of the slices of that." Shipped `tickets/doctor/podman-machine-windows.md` capability slice: new `atlasctl doctor` subcommand with two registered checks (`podman-machine` + `podman-compose-provider`). Running it against the live state revealed: **the podman machine + named pipe are healthy** (this ticket's original diagnosis was wrong — the pipe IS reachable for direct `podman info` calls); the actual blocker is `podman compose` auto-delegating to Docker Desktop's `docker-compose.exe` (the "external compose provider" Podman 4+ picks up from PATH). The Docker binary then can't reach the podman pipe because it uses its own connection path. Doctor's second check reports this clearly with the fix: `pip install podman-compose`. Makefile updated (`COMPOSE_CMD` now auto-detects standalone `podman-compose` and prefers it when present). **Recovery path:** (1) user runs `pip install podman-compose` (or `pipx install podman-compose`), (2) re-runs `atlasctl doctor` to confirm green, (3) `make db-up` then succeeds (auto-detect picks up podman-compose), (4) `pnpm bdd:server` can finally run end-to-end. Ticket title says "named-pipe access" but the real category is "compose-provider delegation" — leaving the title for git-history continuity, retitle on close if desired.
+- 2026-05-22: **status: open → done.** Recovery path executed end-to-end on the live env:
+  1. `uv tool install podman-compose` (user chose uv over pip per session preference) — installed podman-compose 1.5.0 to `~/.local/bin/`.
+  2. `atlasctl doctor` ran via `node --experimental-transform-types apps/atlasctl/src/main.ts doctor` — both checks `ok`.
+  3. `make db-up` succeeded — Postgres container healthy on :15433.
+  4. `pnpm safe bdd:server` reached test code — the BDD harness executes end-to-end. Three test failures remain, but **all three trace to a separate platform-tenancy gap** (tenant `acme` not provisioned because admin-approve endpoint doesn't call `PostgresTenantDbProvider.provisionTenantDatabase`) — NOT this ticket's scope. Filed as `tickets/tenancy/admin-approve-provisions-tenant-db.md` for the platform follow-up. Archiving with that link.

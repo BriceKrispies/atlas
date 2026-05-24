@@ -1,83 +1,134 @@
-import { moduleManifests, getSchemaValidator } from '@atlas/schemas';
+import { compileValidator, bundledSchemaSeed, bundledActionSeed } from '@atlas/schemas';
 import type { ValidateFunction } from 'ajv/dist/2020.js';
 import type { ActionEntry, ControlPlaneRegistry } from '@atlas/ports';
 import type { Logger } from '@atlas/platform-core';
 
 /**
- * Convention-based mapping from a manifest `actionId` to its payload-schema
- * id. PascalCase segments become lower_snake_case, joined by `.`, suffix
- * `.v1`. Mirrors `@atlas/adapter-node/src/action-schema-id.ts`; both
- * adapters share the same `@atlas/schemas` source of truth.
+ * In-memory mirror of the control-plane schema/action registry stores
+ * (`control_plane.intent_schemas` / `control_plane.action_entries` +
+ * `registry_version` cursor). Backs the dynamic-registration path so the sim
+ * + contract suite agree with the Postgres adapter (node↔idb parity).
  *
- *   `Catalog.SeedPackage.Apply` -> `catalog.seed_package.apply.v1`
+ * @spec specs/domains/runtime/capabilities/control-plane-schema-registry/README.md#control-plane-storage-shape
  */
-const PASCAL_BOUNDARY = /(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g;
-
-function toSnake(segment: string): string {
-  return segment.replace(PASCAL_BOUNDARY, '_').toLowerCase();
+export interface InMemorySchemaRegistryStore {
+  /** Keyed by `${schemaId}:${schemaVersion}`. */
+  schemas: Map<
+    string,
+    {
+      schemaId: string;
+      schemaVersion: number;
+      document: Record<string, unknown>;
+      source: 'seed' | 'registered';
+    }
+  >;
+  /** Keyed by `actionId`. */
+  actions: Map<string, ActionEntry & { source: 'seed' | 'registered' }>;
+  /** Monotonic change cursor — bumped on every write; the registry refreshes its snapshot when it advances. */
+  version: number;
 }
 
-function actionIdToSchemaId(actionId: string): { schemaId: string; schemaVersion: number } {
-  const segments = actionId.split('.').map(toSnake).filter(function (s) { return s.length > 0; });
-  return { schemaId: `${segments.join('.')}.v1`, schemaVersion: 1 };
+function schemaKey(schemaId: string, schemaVersion: number): string {
+  return `${schemaId}:${schemaVersion}`;
 }
 
-interface ManifestActionLike {
-  actionId: string;
-  resourceType: string;
+/** Synchronously seed a store from the bundled `@atlas/schemas` set (source='seed'). */
+function seedStoreFromBundle(store: InMemorySchemaRegistryStore): void {
+  for (const row of bundledSchemaSeed()) {
+    const key = schemaKey(row.schemaId, row.schemaVersion);
+    if (store.schemas.has(key)) continue;
+    store.schemas.set(key, {
+      schemaId: row.schemaId,
+      schemaVersion: row.schemaVersion,
+      document: row.document,
+      source: 'seed',
+    });
+  }
+  for (const entry of bundledActionSeed()) {
+    if (store.actions.has(entry.actionId)) continue;
+    store.actions.set(entry.actionId, {
+      actionId: entry.actionId,
+      resourceType: entry.resourceType,
+      schemaId: entry.schemaId,
+      schemaVersion: entry.schemaVersion,
+      source: 'seed',
+    });
+  }
+  store.version += 1;
 }
 
-interface ManifestLike {
-  moduleId?: string;
-  actions?: ManifestActionLike[];
-}
-
+/**
+ * In-memory `ControlPlaneRegistry`. Lookups read directly from the backing
+ * `dynamicStore` (the in-memory analogue of the control-plane tables); the
+ * per-`(schemaId,schemaVersion)` compiled-validator cache is dropped whenever
+ * the store's `version` cursor advances past the version the cache was built
+ * against (version-driven invalidation, mirroring the Postgres adapter). The
+ * sync port surface is preserved (decision O1): the store is in-process, so no
+ * async hop is needed to observe a write.
+ *
+ * When constructed WITHOUT a `dynamicStore`, the registry creates its own
+ * store and seeds it from the bundled `@atlas/schemas` set — matching the
+ * Postgres adapter's seeded-control-plane state (the bundle seeds the live
+ * source on first boot). This is what makes the store-less static contract
+ * (`new InMemoryControlPlaneRegistry()` resolving bundled actions/schemas)
+ * agree with a freshly-seeded Postgres registry.
+ */
 export class InMemoryControlPlaneRegistry implements ControlPlaneRegistry {
-  private actions: Map<string, ActionEntry>;
+  private readonly dynamicStore: InMemorySchemaRegistryStore;
+  private validatorCache: Map<string, ValidateFunction>;
+  private cacheVersion: number;
 
-  constructor(logger?: Logger) {
-    this.actions = new Map();
-    const manifests = moduleManifests() as ReadonlyArray<ManifestLike>;
-    const ownerByAction = new Map<string, string>();
-    for (const manifest of manifests) {
-      const ownerId = manifest.moduleId ?? '<unknown>';
-      for (const a of manifest.actions ?? []) {
-        const { schemaId, schemaVersion } = actionIdToSchemaId(a.actionId);
-        if (getSchemaValidator(schemaId, schemaVersion) == null) continue;
-        if (this.actions.has(a.actionId)) {
-          // Followups: ditto for the IDB sim adapter once a second sim
-          // module lands. Today only one module owns each action, so the
-          // warning fires only on a manifest authoring mistake.
-          logger?.warn('duplicate actionId in module manifest', {
-            event: 'ControlPlaneRegistry.DuplicateAction',
-            properties: {
-              cause: 'two modules claim the same actionId — last-wins',
-              actionId: a.actionId,
-              previousOwner: ownerByAction.get(a.actionId) ?? '<unknown>',
-              newOwner: ownerId,
-            },
-          });
-        }
-        ownerByAction.set(a.actionId, ownerId);
-        this.actions.set(a.actionId, {
-          actionId: a.actionId,
-          resourceType: a.resourceType,
-          schemaId,
-          schemaVersion,
-        });
-      }
+  constructor(_logger?: Logger, dynamicStore?: InMemorySchemaRegistryStore) {
+    void _logger;
+    if (dynamicStore) {
+      this.dynamicStore = dynamicStore;
+    } else {
+      this.dynamicStore = { schemas: new Map(), actions: new Map(), version: 0 };
+      seedStoreFromBundle(this.dynamicStore);
+    }
+    this.validatorCache = new Map();
+    this.cacheVersion = -1;
+  }
+
+  /**
+   * Drop the compiled-validator cache when the store cursor has advanced since
+   * the cache was built. Cheap (a number compare) and called on every lookup
+   * so a row change is observed on the next request.
+   */
+  private syncCache(): void {
+    const store = this.dynamicStore;
+    if (store.version !== this.cacheVersion) {
+      this.validatorCache = new Map();
+      this.cacheVersion = store.version;
     }
   }
 
   hasAction(actionId: string): boolean {
-    return this.actions.has(actionId);
+    return this.dynamicStore.actions.has(actionId);
   }
 
   getAction(actionId: string): ActionEntry | null {
-    return this.actions.get(actionId) ?? null;
+    const row = this.dynamicStore.actions.get(actionId);
+    if (!row) return null;
+    // Strip the provenance `source` tag — the port shape is `ActionEntry`.
+    return {
+      actionId: row.actionId,
+      resourceType: row.resourceType,
+      schemaId: row.schemaId,
+      schemaVersion: row.schemaVersion,
+    };
   }
 
   getSchemaValidator(schemaId: string, version: number): ValidateFunction | null {
-    return getSchemaValidator(schemaId, version);
+    const store = this.dynamicStore;
+    this.syncCache();
+    const key = schemaKey(schemaId, version);
+    const cached = this.validatorCache.get(key);
+    if (cached) return cached;
+    const row = store.schemas.get(key);
+    if (!row) return null;
+    const validate = compileValidator(row.document);
+    this.validatorCache.set(key, validate);
+    return validate;
   }
 }

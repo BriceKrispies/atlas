@@ -255,6 +255,73 @@ rules:
           metavariable: $BODY
           pattern-not-regex: \bthis\b
 
+  # --- Test discipline: no skipped or todo'd tests ------------------------
+  #
+  # Banned per user direction (2026-05-22): `.skip` / `.todo` / `xit` /
+  # `xdescribe` / `xtest` produce false test-coverage signals — the suite
+  # passes green while the assertion is dormant. SDET adversarial review
+  # found 11 critical findings tied directly to skipped or todo'd tests
+  # (see tickets/testing-floor/sdet-review/00-rollup.md).
+  #
+  # Env-gated suites that previously used `const d = baseUrl ? describe :
+  # describe.skip;` MUST refactor to:
+  #
+  #   if (baseUrl) {
+  #     describe('parity — health', function () { ... });
+  #   } else {
+  #     describe('parity — health (skipped: TEST_BASE_URL not set)', function () {});
+  #   }
+  #
+  # Or, for inline DB-availability checks inside a describe block,
+  # `return;` out of the callback early — see adapters/node/test/*.test.ts
+  # for the pattern.
+  #
+  # oxlint doesn't support `no-restricted-syntax` selectors (same reason
+  # `atlas-no-arrow-functions` is here, not in .oxlintrc.json).
+
+  - id: atlas-no-skipped-tests
+    languages: [typescript]
+    severity: ERROR
+    message: |
+      Banned in Atlas: `.skip` / `.todo` / `xit` / `xtest` / `xdescribe`
+      produce false test-coverage signals. Delete the block, or refactor
+      env-gated suites to `if (cond) { describe(...) } else { describe('… (skipped)', () => {}) }`.
+
+      See tickets/testing-floor/sdet-review/00-rollup.md for the rationale
+      (14 critical findings traced directly to skipped/todo'd tests).
+
+      Two narrow exemptions (documented with reason):
+        - `tests/integration/**` — Playwright `test.skip(condition, reason)`
+          is the canonical runtime env-gate when integration tests target
+          external services (DB, SMTP, Keycloak) that may not be reachable
+          on every dev machine. Refactoring to fail-instead-of-skip would
+          change observable test outcome.
+        - `modules/identity/test/bdd/runner.ts` — the BDD runner uses
+          `it.skip` to surface scenarios that don't match the operator's
+          active tag filter; the skip IS the desired user-visible signal.
+    paths:
+      include:
+        - "adapters/"
+        - "apps/"
+        - "modules/"
+        - "packages/"
+        - "ports/"
+        - "tests/"
+        - "bundles/"
+      exclude:
+        - "tests/integration/"
+        - "modules/identity/test/bdd/runner.ts"
+    pattern-either:
+      - pattern: it.skip(...)
+      - pattern: it.todo(...)
+      - pattern: test.skip(...)
+      - pattern: test.todo(...)
+      - pattern: describe.skip(...)
+      - pattern: describe.todo(...)
+      - pattern: xit(...)
+      - pattern: xtest(...)
+      - pattern: xdescribe(...)
+
   # --- Widget isolation: no cross-widget reach ----------------------------
   #
   # Ported from @atlas/eslint-plugin-widgets ▸ no-cross-widget-reach.

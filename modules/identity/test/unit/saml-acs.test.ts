@@ -15,9 +15,9 @@
  * `tests/integration/auth/saml-sso.itest.ts`, against a real Keycloak
  * IdP. They CANNOT be unit-tested without standing up real test certs
  * and real signed XML, and mocking the crypto layer would make the
- * "unit" test theater. Those branches are present below as
- * `describe.skip` with explicit TODO references to the e2e file —
- * keeping them visible in the test report so the gap is auditable.
+ * "unit" test theater. Those branches are scaffolded below as failing
+ * `it(name, fn)` tests that throw "TODO: implement" — they show up red
+ * in the test report so the gap is auditable.
  */
 import { describe, it, expect } from '@atlas/test';
 import { handleSamlAcs, identityErrorCodes, IdentityError, type IdentityProviderDocument, } from '../../src/index.ts';
@@ -183,7 +183,7 @@ describe('handleSamlAcs — tenant scoping', function () {
         }, fx.events, fx.entities)).rejects.toMatchObject({ code: identityErrorCodes.SAML_INVALID_RESPONSE });
     });
 });
-describe.skip('handleSamlAcs — crypto-bearing branches (covered by Layer 3 e2e)', function () {
+describe('handleSamlAcs — crypto-bearing branches (covered by Layer 3 e2e)', function () {
     // The branches below would require real test certs + real signed
     // XML. Mocking `verifySamlResponse` here would defeat the purpose of
     // a unit test (the test would assert what the mock does, not what
@@ -191,11 +191,25 @@ describe.skip('handleSamlAcs — crypto-bearing branches (covered by Layer 3 e2e
     //   tests/integration/auth/saml-sso.itest.ts
     // against a real Keycloak IdP, with full signature verification,
     // replay protection, audience matching, and InResponseTo binding.
-    it.todo('happy path: verified assertion → SamlAssertionVerified event + JIT provision');
-    it.todo('replay-protection: same assertionId twice → second rejected');
-    it.todo('audience mismatch: response Audience != spEntityId → reject');
-    it.todo('expectedInResponseTo: SP-initiated flow rejects mismatched InResponseTo');
-    it.todo('attribute mapping: NameID + email + groups land in JIT claims');
-    it.todo('SamlAssertionVerified envelope shape: cacheInvalidationTags include IdentityProvider:<id>');
-    it.todo('JIT provision integration: emits UserCreated + MembershipCreated when user is new');
+    it('happy path: verified assertion → SamlAssertionVerified event + JIT provision', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('replay-protection: same assertionId twice → second rejected', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('audience mismatch: response Audience != spEntityId → reject', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('expectedInResponseTo: SP-initiated flow rejects mismatched InResponseTo', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('attribute mapping: NameID + email + groups land in JIT claims', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('SamlAssertionVerified envelope shape: cacheInvalidationTags include IdentityProvider:<id>', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('JIT provision integration: emits UserCreated + MembershipCreated when user is new', function () {
+        throw new Error('TODO: implement this test');
+    });
 });

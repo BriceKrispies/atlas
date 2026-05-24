@@ -10,8 +10,9 @@
  * file owns the non-crypto branches: challenge-id lifecycle, expiry,
  * RegisterBegin option shaping.
  *
- * The crypto branches are listed as `it.todo` so the e2e gap is
- * visible in test reports.
+ * The crypto branches are scaffolded as failing `it(name, fn)` tests
+ * that throw "TODO: implement" — so the e2e gap is visible as red in
+ * test reports rather than a silent skip.
  */
 import { describe, it, expect } from '@atlas/test';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON, } from '@simplewebauthn/server';
@@ -126,11 +127,15 @@ describe('handleWebAuthnRegisterFinish — non-crypto branches', function () {
 // e2e wiring just imports it once it has an emitted envelope to
 // inspect. See modules/CLAUDE.md cache-invalidation contract for
 // rationale.
-describe.skip('handleWebAuthnRegisterFinish — I10 cache-tag contract (e2e gap)', function () {
-    it.todo('on success, AuthFactorEnrolled envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>, AuthFactor:<f>]');
+describe('handleWebAuthnRegisterFinish — I10 cache-tag contract (e2e gap)', function () {
+    it('on success, AuthFactorEnrolled envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>, AuthFactor:<f>]', function () {
+        throw new Error('TODO: implement this test');
+    });
 });
-describe.skip('handleWebAuthnAssertFinish — I10 cache-tag contract (e2e gap)', function () {
-    it.todo('on success, MfaChallengeSucceeded envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>]');
+describe('handleWebAuthnAssertFinish — I10 cache-tag contract (e2e gap)', function () {
+    it('on success, MfaChallengeSucceeded envelope.cacheInvalidationTags ⊇ [Tenant:<t>, User:<u>]', function () {
+        throw new Error('TODO: implement this test');
+    });
 });
 describe('handleWebAuthnAssertBegin', function () {
     it('returns challengeId + PublicKeyCredentialRequestOptions', async function () {
@@ -177,15 +182,27 @@ describe('handleWebAuthnAssertFinish — non-crypto branches', function () {
         }, fx.events, fx.entities)).rejects.toBeInstanceOf(IdentityError);
     });
 });
-describe.skip('WebAuthn — crypto-bearing branches (covered by a5-acceptance + Layer 3 e2e)', function () {
+describe('WebAuthn — crypto-bearing branches (covered by a5-acceptance + Layer 3 e2e)', function () {
     // These branches require real CBOR-encoded attestation / assertion
     // responses — the @simplewebauthn/server library validates them
     // against real ES256/RS256/EdDSA signatures. Mocking that here
     // would defeat the purpose of the test.
-    it.todo('RegisterFinish: valid attestation creates AuthFactor and emits AuthFactorEnrolled');
-    it.todo('RegisterFinish: factor cap enforcement (max factors per user)');
-    it.todo('AssertFinish: valid assertion advances signCount and emits MfaChallengeSucceeded');
-    it.todo('AssertFinish: signCount regression triggers anomaly (cloned authenticator detection)');
-    it.todo('AssertFinish: rpId / origin mismatch rejects the assertion');
-    it.todo('Challenge expiry: challenge older than 5 min is treated as not-found');
+    it('RegisterFinish: valid attestation creates AuthFactor and emits AuthFactorEnrolled', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('RegisterFinish: factor cap enforcement (max factors per user)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('AssertFinish: valid assertion advances signCount and emits MfaChallengeSucceeded', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('AssertFinish: signCount regression triggers anomaly (cloned authenticator detection)', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('AssertFinish: rpId / origin mismatch rejects the assertion', function () {
+        throw new Error('TODO: implement this test');
+    });
+    it('Challenge expiry: challenge older than 5 min is treated as not-found', function () {
+        throw new Error('TODO: implement this test');
+    });
 });
