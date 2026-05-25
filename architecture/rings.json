@@ -12,18 +12,27 @@
     "adapter": { "stack": "backend", "mayImport": ["abi", "ports", "runtime"] },
     "apps": { "stack": "backend", "mayImport": ["abi", "ports", "runtime", "domain", "adapter"] },
 
-    "ui-core": { "stack": "frontend", "mayImport": [] },
-    "ui-design": { "stack": "frontend", "mayImport": ["ui-core"] },
-    "ui-composite": { "stack": "frontend", "mayImport": ["ui-core", "ui-design", "ui-composite"] },
-    "ui-template": { "stack": "frontend", "mayImport": ["ui-core", "ui-design", "ui-composite"] },
+    "web-abi": { "stack": "frontend", "mayImport": [] },
+    "web-kernel": { "stack": "frontend", "mayImport": ["web-abi"] },
+    "ui-core": { "stack": "frontend", "mayImport": ["web-kernel"] },
+    "ui-design": { "stack": "frontend", "mayImport": ["web-kernel", "ui-core"] },
+    "ui-composite": {
+      "stack": "frontend",
+      "mayImport": ["web-kernel", "ui-core", "ui-design", "ui-composite"]
+    },
+    "ui-template": {
+      "stack": "frontend",
+      "mayImport": ["web-kernel", "ui-core", "ui-design", "ui-composite"]
+    },
     "ui-bundle": {
       "stack": "frontend",
-      "mayImport": ["ui-core", "ui-design", "ui-composite", "ui-template"]
+      "mayImport": ["web-kernel", "ui-core", "ui-design", "ui-composite", "ui-template"]
     },
     "ui-app": {
       "stack": "frontend",
-      "mayImport": ["ui-core", "ui-design", "ui-composite", "ui-template", "ui-bundle"]
-    }
+      "mayImport": ["web-kernel", "ui-core", "ui-design", "ui-composite", "ui-template", "ui-bundle", "web-abi"]
+    },
+    "bff": { "stack": "frontend", "mayImport": ["web-abi"] }
   },
 
   "sharedLeaves": ["@atlas/logging"],
@@ -62,6 +71,9 @@
     "@atlas/sim": "apps",
     "@atlas/atlasctl": "apps",
 
+    "@atlas/web-abi": "web-abi",
+    "@atlas/web-kernel": "web-kernel",
+
     "@atlas/core": "ui-core",
     "@atlas/test-state": "ui-core",
     "@atlas/design": "ui-design",
@@ -72,7 +84,9 @@
     "@atlas/bundle-standard": "ui-bundle",
     "@atlas/admin": "ui-app",
     "@atlas/authoring": "ui-app",
-    "@atlas/sandbox": "ui-app"
+    "@atlas/sandbox": "ui-app",
+
+    "@atlas/web-bff": "bff"
   },
 
   "tooling": [

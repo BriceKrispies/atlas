@@ -13,7 +13,7 @@ module.exports = [
       path: '^(packages/abi)/',
     },
     to: {
-      path: '^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -26,7 +26,7 @@ module.exports = [
       path: '^(ports)/',
     },
     to: {
-      path: '^(packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -39,7 +39,7 @@ module.exports = [
       path: '^(packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host)/',
     },
     to: {
-      path: '^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -52,7 +52,7 @@ module.exports = [
       path: '^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy)/',
     },
     to: {
-      path: '^(adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -65,7 +65,7 @@ module.exports = [
       path: '^(adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory)/',
     },
     to: {
-      path: '^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -78,7 +78,33 @@ module.exports = [
       path: '^(apps/atlasctl|apps/projection-worker|apps/server|apps/sim)/',
     },
     to: {
-      path: '^(packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/web-abi|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
+      pathNot: ['^packages/logging/'],
+    },
+  },
+  {
+    name: 'ring-web-abi-no-outward',
+    severity: 'error',
+    comment:
+      "Ring 'web-abi' (frontend) may import only [nothing] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+    from: {
+      path: '^(packages/web-abi)/',
+    },
+    to: {
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
+      pathNot: ['^packages/logging/'],
+    },
+  },
+  {
+    name: 'ring-web-kernel-no-outward',
+    severity: 'error',
+    comment:
+      "Ring 'web-kernel' (frontend) may import only [web-abi] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+    from: {
+      path: '^(packages/web-kernel)/',
+    },
+    to: {
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -86,12 +112,12 @@ module.exports = [
     name: 'ring-ui-core-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-core' (frontend) may import only [nothing] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-core' (frontend) may import only [web-kernel] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(packages/core|packages/test-state)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -99,12 +125,12 @@ module.exports = [
     name: 'ring-ui-design-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-design' (frontend) may import only [ui-core] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-design' (frontend) may import only [web-kernel, ui-core] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(packages/api-client|packages/design)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -112,12 +138,12 @@ module.exports = [
     name: 'ring-ui-composite-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-composite' (frontend) may import only [ui-core, ui-design, ui-composite] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-composite' (frontend) may import only [web-kernel, ui-core, ui-design, ui-composite] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(packages/widget-host|packages/widgets)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -125,12 +151,12 @@ module.exports = [
     name: 'ring-ui-template-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-template' (frontend) may import only [ui-core, ui-design, ui-composite] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-template' (frontend) may import only [web-kernel, ui-core, ui-design, ui-composite] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(packages/page-templates)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|bundles/standard|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -138,12 +164,12 @@ module.exports = [
     name: 'ring-ui-bundle-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-bundle' (frontend) may import only [ui-core, ui-design, ui-composite, ui-template] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-bundle' (frontend) may import only [web-kernel, ui-core, ui-design, ui-composite, ui-template] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(bundles/standard)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|apps/admin|apps/authoring|apps/sandbox)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-abi|apps/admin|apps/authoring|apps/sandbox|apps/web-bff)/',
       pathNot: ['^packages/logging/'],
     },
   },
@@ -151,12 +177,25 @@ module.exports = [
     name: 'ring-ui-app-no-outward',
     severity: 'error',
     comment:
-      "Ring 'ui-app' (frontend) may import only [ui-core, ui-design, ui-composite, ui-template, ui-bundle] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+      "Ring 'ui-app' (frontend) may import only [web-kernel, ui-core, ui-design, ui-composite, ui-template, ui-bundle, web-abi] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
     from: {
       path: '^(apps/admin|apps/authoring|apps/sandbox)/',
     },
     to: {
-      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim)/',
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|apps/web-bff)/',
+      pathNot: ['^packages/logging/'],
+    },
+  },
+  {
+    name: 'ring-bff-no-outward',
+    severity: 'error',
+    comment:
+      "Ring 'bff' (frontend) may import only [web-abi] + sharedLeaves. See ADR 0016 / architecture/rings.json.",
+    from: {
+      path: '^(apps/web-bff)/',
+    },
+    to: {
+      path: '^(packages/abi|ports|packages/dsl-expression|packages/dsl-substrate|packages/ingress|packages/logging|packages/metrics|packages/platform-core|packages/schemas|packages/seeder|packages/wasm-host|modules/authz|modules/catalog|modules/content-pages|modules/dsl|modules/identity|modules/repository|modules/tenancy|adapters/idb|adapters/node|adapters/policy-cedar|adapters/policy-stub|adapters/seed-memory|apps/atlasctl|apps/projection-worker|apps/server|apps/sim|packages/web-kernel|packages/core|packages/test-state|packages/api-client|packages/design|packages/widget-host|packages/widgets|packages/page-templates|bundles/standard|apps/admin|apps/authoring|apps/sandbox)/',
       pathNot: ['^packages/logging/'],
     },
   },

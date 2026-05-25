@@ -197,6 +197,9 @@
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -254,6 +257,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -311,6 +317,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -368,6 +377,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -425,6 +437,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -482,6 +497,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -542,7 +560,8 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/admin may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -606,6 +625,8 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -651,6 +672,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -711,7 +735,8 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/authoring may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -767,6 +792,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -828,7 +856,9 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/bundle-standard may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -884,6 +914,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -941,6 +974,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1008,6 +1044,8 @@
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1073,6 +1111,8 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1130,6 +1170,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1188,6 +1231,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1246,6 +1292,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1303,6 +1352,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1361,6 +1413,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1419,6 +1474,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1477,6 +1535,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1539,7 +1600,9 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/page-templates may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -1596,6 +1659,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1662,6 +1728,9 @@
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1707,6 +1776,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1764,6 +1836,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1824,7 +1899,8 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/sandbox may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -1881,6 +1957,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1939,6 +2018,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -1984,6 +2066,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -2029,6 +2114,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -2086,6 +2174,9 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -2153,6 +2244,8 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
@@ -2211,10 +2304,221 @@
                   "@atlas/test",
                   "@atlas/test-fixtures",
                   "@atlas/test-state",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
                   "@atlas/widget-host",
                   "@atlas/widgets"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/wasm-host may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/web-abi/**/*.ts", "packages/web-abi/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/web-bff",
+                  "@atlas/web-kernel",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/web-abi may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web-bff/**/*.ts", "apps/web-bff/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/web-kernel",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/web-bff may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/web-kernel/**/*.ts", "packages/web-kernel/**/*.tsx"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**",
+        "**/tests/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@atlas/abi",
+                  "@atlas/adapter-idb",
+                  "@atlas/adapter-node",
+                  "@atlas/adapter-policy-cedar",
+                  "@atlas/adapter-policy-stub",
+                  "@atlas/adapter-seed-memory",
+                  "@atlas/admin",
+                  "@atlas/api-client",
+                  "@atlas/arch-tests",
+                  "@atlas/atlasctl",
+                  "@atlas/authoring",
+                  "@atlas/authz",
+                  "@atlas/bundle-standard",
+                  "@atlas/catalog",
+                  "@atlas/chaos",
+                  "@atlas/content-pages",
+                  "@atlas/contract-tests",
+                  "@atlas/core",
+                  "@atlas/design",
+                  "@atlas/dsl",
+                  "@atlas/dsl-expression",
+                  "@atlas/dsl-substrate",
+                  "@atlas/identity",
+                  "@atlas/ingress",
+                  "@atlas/metrics",
+                  "@atlas/openapi",
+                  "@atlas/page-templates",
+                  "@atlas/platform-core",
+                  "@atlas/ports",
+                  "@atlas/projection-worker",
+                  "@atlas/repository",
+                  "@atlas/sandbox",
+                  "@atlas/schemas",
+                  "@atlas/seeder",
+                  "@atlas/server",
+                  "@atlas/sim",
+                  "@atlas/stryker-runner-node-test",
+                  "@atlas/tenancy",
+                  "@atlas/test",
+                  "@atlas/test-fixtures",
+                  "@atlas/test-state",
+                  "@atlas/wasm-host",
+                  "@atlas/web-bff",
+                  "@atlas/widget-host",
+                  "@atlas/widgets"
+                ],
+                "message": "Ring violation (ADR 0016): @atlas/web-kernel may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
             ]
           }
@@ -2274,7 +2578,9 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/widget-host may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }
@@ -2336,7 +2642,9 @@
                   "@atlas/tenancy",
                   "@atlas/test",
                   "@atlas/test-fixtures",
-                  "@atlas/wasm-host"
+                  "@atlas/wasm-host",
+                  "@atlas/web-abi",
+                  "@atlas/web-bff"
                 ],
                 "message": "Ring violation (ADR 0016): @atlas/widgets may not import these packages — they are in an outer ring, a sibling ring, or a different stack. See architecture/rings.json."
               }

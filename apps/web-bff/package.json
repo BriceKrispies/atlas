@@ -1,0 +1,14 @@
+{
+  "name": "@atlas/web-bff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "atlas-test"
+  },
+  "devDependencies": {
+    "@atlas/test": "workspace:*"
+  }
+}

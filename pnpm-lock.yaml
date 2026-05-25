@@ -525,6 +525,12 @@ importers:
         specifier: ^6.0.0
         version: 6.4.2(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
 
+  apps/web-bff:
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../../packages/test
+
   bundles/standard:
     dependencies:
       '@atlas/core':
@@ -958,6 +964,18 @@ importers:
       '@types/node':
         specifier: ^22.19.17
         version: 22.19.19
+
+  packages/web-abi:
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../test
+
+  packages/web-kernel:
+    devDependencies:
+      '@atlas/test':
+        specifier: workspace:*
+        version: link:../test
 
   packages/widget-host:
     dependencies:
