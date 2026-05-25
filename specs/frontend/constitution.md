@@ -227,6 +227,8 @@ portal.dashboard.widget.expanded
 
 ## C14: Event-Driven Data Flow
 
+> **Implementation home:** `query()` and `mutate()` are owned by [`@atlas/web-kernel`](web-kernel.md), the in-browser frontend kernel ([ADR 0017](../decisions/0017-two-kernel-frontend-architecture.md)). They return signals and talk to `apps/web-bff` (see [`web-bff.md`](web-bff.md)); `mutate()` posts the unwrapped payload, and the BFF builds the `IntentEnvelope`. The rules below are unchanged — this note names where the primitives live.
+
 **C14.1** Components MUST NOT imperatively fetch-then-set data in sequences. Data fetching MUST go through `query()` or `mutate()`, which return signals. Components render reactively from those signals.
 
 **C14.2** Components MUST NOT poll for updates using `setInterval` or `setTimeout` loops. Server-initiated updates MUST arrive via `channel()` (SSE or WebSocket), which invalidates the relevant `query()` cache or updates signals directly.
@@ -238,6 +240,8 @@ portal.dashboard.widget.expanded
 ---
 
 ## C15: Server Event Channels
+
+> **Implementation home:** `channel()` is owned by [`@atlas/web-kernel`](web-kernel.md) ([ADR 0017](../decisions/0017-two-kernel-frontend-architecture.md)). It connects to `apps/web-bff`'s `GET /events?tags=…` (which pipes the upstream SSE through), exposes `channel.connected` as a signal, and invalidates `query()` caches without touching the DOM. The rules below are unchanged — this note names where the primitive lives.
 
 **C15.1** Every frontend app that displays data which can change server-side MUST connect to the server event channel via `channel()`.
 

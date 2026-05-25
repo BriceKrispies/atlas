@@ -27,6 +27,15 @@ This contract is **prod-safe and authz-gated** — not a dev-only test affordanc
 
 The author contract (`surface-contract.md`) is the source of truth for **what should exist**; the introspection contract (this file) is the source of truth for **what the surface is doing right now**.
 
+## Runtime substrate
+
+The runtime source of "which surfaces are mounted right now" is the **`SurfaceRegistry` in [`@atlas/web-kernel`](web-kernel.md)** ([ADR 0017](../decisions/0017-two-kernel-frontend-architecture.md)). Every `AtlasSurface` registers with the kernel at mount (`webKernel.mount(this)`) and deregisters at unmount, so the registry is the live set this spec's two surfaces resolve against:
+
+- `getSurfaceSnapshot()` reads the current mounted surface's state/data/actions out of the registry-tracked instance.
+- `GET /api/v1/surfaces` enumerates the registry's entries (filtered through the authz pipeline below).
+
+This is the **prod-safe** substrate, distinct from the dev-only `@atlas/test-state` `window.__atlasTest` view — which, per [`web-kernel.md`](web-kernel.md) R-WK-8, becomes a thin dev view over the same `SurfaceRegistry` rather than a second store. Surface state has exactly one source of truth.
+
 ## The Introspection API
 
 Every `AtlasSurface` subclass MUST implement `getSurfaceSnapshot()` returning the structure below.
@@ -155,6 +164,7 @@ Per Invariant **I18** ([ADR 0004](../decisions/0004-platform-invariants-for-mult
 ## Cross-references
 
 - [`surface-contract.md`](surface-contract.md) — The design-time author contract this spec extends.
+- [`web-kernel.md`](web-kernel.md) — The in-browser kernel whose `SurfaceRegistry` is the runtime substrate for `getSurfaceSnapshot()` and `GET /api/v1/surfaces`.
 - [`architecture.md`](../architecture.md) — Invariants I17 (API/CLI/UI parity) and I18 (surface state machine-readability).
 - [`decisions/0003-tenant-defined-data-model-pivot.md`](../decisions/0003-tenant-defined-data-model-pivot.md) — The agentic-first tenet that motivates this spec.
 - [`decisions/0004-platform-invariants-for-multi-tenant-fabric.md`](../decisions/0004-platform-invariants-for-multi-tenant-fabric.md) — The ADR that promoted machine-readable surfaces to a platform invariant.
