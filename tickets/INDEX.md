@@ -76,6 +76,16 @@ Hand-maintained. Organized by **set** (one section per active set folder). See [
 - [coverage-and-linkage-gates](testing-floor/coverage-and-linkage-gates.md) — chore — open — → sdet — HIGH (per-package branch-coverage floors + bidirectional @spec linkage check; testing.md §5 §9)
 - [retrofit-chore-set](testing-floor/retrofit-chore-set.md) — refactor — open — → user — MEDIUM (parent ticket; blocked_by all three above; sequenced spine→extensibility→first-party→adapters→frontend per testing.md §11)
 
+## frontend-kernel/
+
+Two-kernel frontend architecture (ADR 0017). PR1–PR3 landed on main (ADR + specs; web-abi/web-kernel/bff rings + scaffolds + web-bff-no-domain arch-test; `@atlas/web-abi` wire types). Remaining:
+
+- [pr4-web-kernel-impl](frontend-kernel/pr4-web-kernel-impl.md) — capability — **in-flight** — → frontend-dev — **HIGH** (⚠ DRAFT UNCOMMITTED in working tree as of 2026-05-25; frontend-dev built web-kernel + wired core but was cut off before verifying — verify acceptance + commit, or re-run resume prompt if tree was reset)
+- [pr5-api-client-migration](frontend-kernel/pr5-api-client-migration.md) — refactor — scoped — → frontend-dev — blocked_by: frontend-kernel/pr4-web-kernel-impl
+- [pr6-web-bff-server](frontend-kernel/pr6-web-bff-server.md) — capability — scoped — → module-dev — blocked_by: frontend-kernel/pr4-web-kernel-impl (the always-on edge; I1-critical; domain-free by ring)
+- [pr7-admin-pilot](frontend-kernel/pr7-admin-pilot.md) — refactor — scoped — → frontend-dev — blocked_by: frontend-kernel/pr5-api-client-migration, frontend-kernel/pr6-web-bff-server
+- [pr8-rollout-cleanup](frontend-kernel/pr8-rollout-cleanup.md) — refactor — scoped — → frontend-dev — blocked_by: frontend-kernel/pr7-admin-pilot (retire admin-spa.ts; reword canonical I1 text per ADR 0017 §4; waivers→0)
+
 ---
 
 Done and dropped tickets live in [`archive/`](archive/), preserving the same set structure. They are not listed here.
